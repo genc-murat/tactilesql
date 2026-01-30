@@ -410,6 +410,42 @@ export function QueryEditor() {
                 }
             });
 
+            // Handlers for Drag and Drop
+            textarea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+                textarea.classList.add('bg-mysql-teal/10');
+            });
+
+            textarea.addEventListener('dragleave', () => {
+                textarea.classList.remove('bg-mysql-teal/10');
+            });
+
+            textarea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                textarea.classList.remove('bg-mysql-teal/10');
+                const tableName = e.dataTransfer.getData('text/plain');
+
+                if (tableName) {
+                    const cursorPos = textarea.selectionStart;
+                    const text = textarea.value;
+                    const newText = text.substring(0, cursorPos) + tableName + text.substring(cursorPos);
+
+                    textarea.value = newText;
+
+                    // Update tab content and highlighting
+                    const activeTab = tabs.find(t => t.id === activeTabId);
+                    if (activeTab) {
+                        activeTab.content = newText;
+                    }
+                    updateSyntaxHighlight();
+
+                    textarea.focus();
+                    const newPos = cursorPos + tableName.length;
+                    textarea.setSelectionRange(newPos, newPos);
+                }
+            });
+
             // Hide autocomplete on blur
             textarea.addEventListener('blur', () => {
                 setTimeout(hideAutocomplete, 150);

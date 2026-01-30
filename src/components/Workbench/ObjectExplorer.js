@@ -70,7 +70,7 @@ export function ObjectExplorer() {
         const isExpanded = expandedTables.has(key);
         return `
             <div>
-                <div class="table-item flex items-center gap-2 text-gray-500 hover:text-white cursor-pointer py-1 group" data-table="${table}" data-db="${db}">
+                <div class="table-item flex items-center gap-2 text-gray-500 hover:text-white cursor-grab py-1 group" data-table="${table}" data-db="${db}" draggable="true">
                     <span class="material-symbols-outlined text-[10px] transition-transform ${isExpanded ? 'rotate-90' : ''} text-gray-600">arrow_right</span>
                     <span class="material-symbols-outlined text-[14px] text-gray-700 group-hover:text-mysql-teal">table_rows</span>
                     <span>${table}</span>
@@ -227,6 +227,17 @@ export function ObjectExplorer() {
                 e.preventDefault();
                 e.stopPropagation();
                 showContextMenu(e.clientX, e.clientY, item.dataset.table, item.dataset.db);
+            });
+
+            // Drag and drop
+            item.addEventListener('dragstart', (e) => {
+                const tableName = `\`${item.dataset.db}\`.\`${item.dataset.table}\``;
+                e.dataTransfer.setData('text/plain', tableName);
+                e.dataTransfer.effectAllowed = 'copy';
+                item.style.opacity = '0.5';
+            });
+            item.addEventListener('dragend', () => {
+                item.style.opacity = '1';
             });
         });
 
