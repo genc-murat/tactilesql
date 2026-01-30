@@ -1,6 +1,7 @@
 // Top of file import
 import { Dialog } from '../UI/Dialog.js';
 import { invoke } from '@tauri-apps/api/core';
+import { showVisualExplainModal } from '../UI/VisualExplainModal.js';
 
 // SQL Keywords for autocomplete
 const SQL_KEYWORDS = [
@@ -290,7 +291,7 @@ export function QueryEditor() {
                     <button id="execute-btn" class="flex items-center gap-2 px-5 py-2 bg-mysql-teal text-black rounded-md text-[11px] font-black uppercase tracking-widest shadow-[0_0_15px_rgba(0,200,255,0.3)] hover:brightness-110 active:scale-95 transition-all">
                         <span class="material-symbols-outlined text-sm font-bold">play_arrow</span> EXECUTE
                     </button>
-                    <button class="flex items-center gap-2 px-5 py-2 bg-[#1a1d23] border border-white/10 text-gray-300 rounded-md text-[11px] font-bold uppercase tracking-widest hover:bg-white/5 active:scale-95 transition-all shadow-lg">
+                    <button id="explain-btn" class="flex items-center gap-2 px-5 py-2 bg-[#1a1d23] border border-white/10 text-gray-300 rounded-md text-[11px] font-bold uppercase tracking-widest hover:bg-white/5 active:scale-95 transition-all shadow-lg">
                         <span class="material-symbols-outlined text-sm">analytics</span> EXPLAIN
                     </button>
                 </div>
@@ -489,6 +490,45 @@ export function QueryEditor() {
                 } finally {
                     executeBtn.innerHTML = '<span class="material-symbols-outlined text-sm font-bold">play_arrow</span> EXECUTE';
                     executeBtn.classList.remove('opacity-70', 'cursor-not-allowed');
+                }
+            });
+        }
+
+        // Explain Logic
+        const explainBtn = container.querySelector('#explain-btn');
+        if (explainBtn) {
+            explainBtn.addEventListener('click', async () => {
+                const textarea = container.querySelector('#query-input');
+                // Use selected text if available, otherwise use all content
+                const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
+                const queryToRun = selectedText.trim() ? selectedText : textarea.value;
+
+                if (!queryToRun.trim()) {
+                    Dialog.alert('Please enter a query to explain.', 'Info');
+                    return;
+                }
+
+                // Force TRADITIONAL format (tabular) for visual explain compatibility
+                const explainQuery = `EXPLAIN FORMAT=TRADITIONAL ${queryToRun}`;
+
+                try {
+                    explainBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span> ANALYZING';
+                    explainBtn.classList.add('opacity-70', 'cursor-not-allowed');
+
+                    const result = await invoke('execute_query', { query: explainQuery });
+
+                    // Show visual explain
+                    showVisualExplainModal(result);
+
+                    // Also update table for reference
+                    const event = new CustomEvent('tactilesql:query-result', { detail: result });
+                    window.dispatchEvent(event);
+
+                } catch (error) {
+                    Dialog.alert('Explain Failed: ' + error, 'Analysis Error');
+                } finally {
+                    explainBtn.innerHTML = '<span class="material-symbols-outlined text-sm">analytics</span> EXPLAIN';
+                    explainBtn.classList.remove('opacity-70', 'cursor-not-allowed');
                 }
             });
         }

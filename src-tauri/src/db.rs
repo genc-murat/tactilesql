@@ -836,6 +836,9 @@ pub async fn alter_view(
         let pool_guard = state.pool.lock().unwrap();
         pool_guard.clone().ok_or("No active connection")?
     };
+    
+    // Silence unused variable warning
+    let _ = view;
 
     // First, switch to the database
     let use_db = format!("USE `{}`", database);
