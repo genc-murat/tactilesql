@@ -9,8 +9,42 @@ export function ObjectExplorer() {
     let expandedDbs = new Set();
     let dbTables = {}; // cache: { dbName: [tables] }
 
+    // --- System databases list ---
+    const systemDatabases = ['mysql', 'information_schema', 'performance_schema', 'sys'];
+
+    // --- Helper to render a database item ---
+    const renderDatabase = (db) => {
+        const isExpanded = expandedDbs.has(db);
+        const tables = dbTables[db] || [];
+
+        return `
+            <div>
+                <div data-db="${db}" class="db-item flex items-center gap-2 text-gray-400 hover:text-white group cursor-pointer p-1">
+                    <span class="material-symbols-outlined text-xs transition-transform ${isExpanded ? 'rotate-90' : ''}">arrow_right</span>
+                    <div class="w-1.5 h-1.5 rounded-full ${isExpanded ? 'bg-mysql-teal glow-node' : 'bg-gray-700'}"></div>
+                    <span class="font-bold tracking-tight uppercase ${isExpanded ? 'text-mysql-teal' : ''}">${db}</span>
+                </div>
+                ${isExpanded ? `
+                    <div class="pl-6 space-y-0.5 border-l border-white/5 ml-2.5">
+                        ${tables.length === 0 ? '<div class="pl-2 py-1 text-gray-700 italic">Loading tables...</div>' : ''}
+                        ${tables.map(table => `
+                            <div class="table-item flex items-center gap-2 text-gray-500 hover:text-white cursor-pointer py-1 group" data-table="${table}" data-db="${db}">
+                                <span class="material-symbols-outlined text-[14px] text-gray-700 group-hover:text-mysql-teal">table_rows</span>
+                                <span>${table}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    };
+
     // --- Render ---
     const render = () => {
+        // Separate user and system databases
+        const userDbs = databases.filter(db => !systemDatabases.includes(db.toLowerCase()));
+        const systemDbs = databases.filter(db => systemDatabases.includes(db.toLowerCase()));
+
         explorer.innerHTML = `
             <div class="flex items-center justify-between px-2">
                 <h2 class="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-500">Object Explorer</h2>
@@ -20,31 +54,30 @@ export function ObjectExplorer() {
             </div>
             <div id="explorer-tree" class="flex-1 overflow-y-auto custom-scrollbar font-mono text-[11px] space-y-1">
                 ${databases.length === 0 ? '<div class="p-4 text-gray-600 italic">No databases found</div>' : ''}
-                ${databases.map(db => {
-            const isExpanded = expandedDbs.has(db);
-            const tables = dbTables[db] || [];
-
-            return `
-                    <div>
-                        <div data-db="${db}" class="db-item flex items-center gap-2 text-gray-400 hover:text-white group cursor-pointer p-1">
-                            <span class="material-symbols-outlined text-xs transition-transform ${isExpanded ? 'rotate-90' : ''}">arrow_right</span>
-                            <div class="w-1.5 h-1.5 rounded-full ${isExpanded ? 'bg-mysql-teal glow-node' : 'bg-gray-700'}"></div>
-                            <span class="font-bold tracking-tight uppercase ${isExpanded ? 'text-mysql-teal' : ''}">${db}</span>
+                
+                ${userDbs.length > 0 ? `
+                    <div class="mb-3">
+                        <div class="px-2 py-1.5 text-[9px] font-bold uppercase tracking-[0.2em] text-gray-600 flex items-center gap-2">
+                            <span class="material-symbols-outlined text-[12px] text-mysql-teal">database</span>
+                            User Databases
                         </div>
-                        ${isExpanded ? `
-                            <div class="pl-6 space-y-0.5 border-l border-white/5 ml-2.5">
-                                ${tables.length === 0 ? '<div class="pl-2 py-1 text-gray-700 italic">Loading tables...</div>' : ''}
-                                ${tables.map(table => `
-                                    <div class="table-item flex items-center gap-2 text-gray-500 hover:text-white cursor-pointer py-1 group" data-table="${table}" data-db="${db}">
-                                        <span class="material-symbols-outlined text-[14px] text-gray-700 group-hover:text-mysql-teal">table_rows</span>
-                                        <span>${table}</span>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        ` : ''}
+                        <div class="space-y-0.5">
+                            ${userDbs.map(db => renderDatabase(db)).join('')}
+                        </div>
                     </div>
-                    `;
-        }).join('')}
+                ` : ''}
+                
+                ${systemDbs.length > 0 ? `
+                    <div class="mt-2 pt-2 border-t border-white/5">
+                        <div class="px-2 py-1.5 text-[9px] font-bold uppercase tracking-[0.2em] text-gray-600 flex items-center gap-2">
+                            <span class="material-symbols-outlined text-[12px] text-amber-500">settings</span>
+                            System Databases
+                        </div>
+                        <div class="space-y-0.5 opacity-70">
+                            ${systemDbs.map(db => renderDatabase(db)).join('')}
+                        </div>
+                    </div>
+                ` : ''}
             </div>
         `;
 

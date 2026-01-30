@@ -1,4 +1,3 @@
-import { WorkbenchHeader } from '../components/Workbench/WorkbenchHeader.js';
 import { QueryEditor } from '../components/Workbench/QueryEditor.js';
 import { ResultsTable } from '../components/Workbench/ResultsTable.js';
 import { ObjectExplorer } from '../components/Workbench/ObjectExplorer.js';
@@ -8,10 +7,6 @@ import { WorkbenchFooter } from '../components/Workbench/WorkbenchFooter.js';
 export function SqlWorkbench() {
     const container = document.createElement('div');
     container.className = "flex-1 flex flex-col h-full overflow-hidden";
-
-    // Header
-    const header = WorkbenchHeader();
-    container.appendChild(header);
 
     // Main Content Area
     const mainContent = document.createElement('div');

@@ -342,3 +342,133 @@ pub async fn get_table_schema(
 
     Ok(columns)
 }
+
+// --- User Management Commands ---
+
+#[derive(Serialize, Debug)]
+pub struct MySqlUser {
+    pub user: String,
+    pub host: String,
+    pub account_locked: bool,
+    pub password_expired: bool,
+}
+
+#[tauri::command]
+pub async fn get_mysql_users(
+    state: State<'_, AppState>,
+) -> Result<Vec<MySqlUser>, String> {
+    let pool = {
+        let pool_guard = state.pool.lock().unwrap();
+        pool_guard.clone().ok_or("No active connection")?
+    };
+
+    let query = "SELECT User, Host, account_locked, password_expired FROM mysql.user ORDER BY User, Host";
+
+    let rows = sqlx::query(query)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("Failed to fetch users: {}", e))?;
+
+    let mut users = Vec::new();
+    for row in rows {
+        use sqlx::Row;
+        
+        let user: String = row.try_get("User").unwrap_or_default();
+        let host: String = row.try_get("Host").unwrap_or_default();
+        let account_locked_str: String = row.try_get("account_locked").unwrap_or_default();
+        let password_expired_str: String = row.try_get("password_expired").unwrap_or_default();
+        
+        users.push(MySqlUser {
+            user,
+            host,
+            account_locked: account_locked_str == "Y",
+            password_expired: password_expired_str == "Y",
+        });
+    }
+
+    Ok(users)
+}
+
+#[derive(Serialize, Debug)]
+pub struct UserPrivilege {
+    pub privilege: String,
+    pub granted: bool,
+}
+
+#[derive(Serialize, Debug)]
+pub struct UserPrivileges {
+    pub global: Vec<UserPrivilege>,
+    pub databases: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn get_user_privileges(
+    state: State<'_, AppState>,
+    user: String,
+    host: String,
+) -> Result<UserPrivileges, String> {
+    let pool = {
+        let pool_guard = state.pool.lock().unwrap();
+        pool_guard.clone().ok_or("No active connection")?
+    };
+
+    // Get global privileges using SHOW GRANTS
+    let query = format!("SHOW GRANTS FOR '{}'@'{}'", user, host);
+    
+    let rows = sqlx::query(&query)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("Failed to fetch privileges: {}", e))?;
+
+    let mut global_privs = Vec::new();
+    let mut databases = Vec::new();
+    
+    // Define common privileges
+    let all_privileges = vec![
+        "SELECT", "INSERT", "UPDATE", "DELETE", 
+        "CREATE", "DROP", "ALTER", "INDEX",
+        "GRANT OPTION", "SUPER", "PROCESS", "RELOAD",
+        "LOCK TABLES", "REFERENCES", "EVENT", "TRIGGER"
+    ];
+
+    for row in &rows {
+        use sqlx::Row;
+        let grant: String = row.try_get(0).unwrap_or_default();
+        
+        // Extract database from GRANT ... ON `database`.* TO ...
+        if grant.contains(" ON `") {
+            if let Some(start) = grant.find(" ON `") {
+                let after_on = &grant[start + 5..];
+                if let Some(end) = after_on.find('`') {
+                    let db = &after_on[..end];
+                    if db != "*" && !databases.contains(&db.to_string()) {
+                        databases.push(db.to_string());
+                    }
+                }
+            }
+        }
+        
+        // Check each privilege
+        for priv_name in &all_privileges {
+            let has_priv = grant.to_uppercase().contains(priv_name) || grant.contains("ALL PRIVILEGES");
+            
+            // Only add if not already in list
+            if !global_privs.iter().any(|p: &UserPrivilege| p.privilege == *priv_name) {
+                global_privs.push(UserPrivilege {
+                    privilege: priv_name.to_string(),
+                    granted: has_priv,
+                });
+            } else if has_priv {
+                // Update to true if found in any grant
+                if let Some(existing) = global_privs.iter_mut().find(|p| p.privilege == *priv_name) {
+                    existing.granted = true;
+                }
+            }
+        }
+    }
+
+    Ok(UserPrivileges {
+        global: global_privs,
+        databases,
+    })
+}
