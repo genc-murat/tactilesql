@@ -1,0 +1,53 @@
+export function NavBar() {
+    const nav = document.createElement('nav');
+    nav.className = "h-12 bg-[#0a0c10] border-b border-white/5 px-6 flex items-center justify-between z-40";
+
+    // Get current path from hash
+    const currentPath = window.location.hash.split('?')[0].slice(1) || '/';
+
+    const navItems = [
+        { path: '/', label: 'DASHBOARD', icon: 'dashboard' },
+        { path: '/workbench', label: 'EXPLORER', icon: 'code' },
+        { path: '/schema', label: 'DESIGNER', icon: 'table_chart' },
+        { path: '/connections', label: 'CONNECTIONS', icon: 'cable' },
+        { path: '/access-control', label: 'SECURITY', icon: 'shield' },
+    ];
+
+    const renderNavItems = () => {
+        return navItems.map(item => {
+            const isActive = currentPath === item.path;
+            return `
+                <a href="#${item.path}" class="flex items-center gap-2 px-4 py-2 text-[10px] font-bold tracking-widest transition-all rounded-md
+                    ${isActive
+                    ? 'text-mysql-cyan bg-mysql-teal/10 border border-mysql-teal/30'
+                    : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+                }">
+                    <span class="material-symbols-outlined text-sm">${item.icon}</span>
+                    ${item.label}
+                </a>
+            `;
+        }).join('');
+    };
+
+    nav.innerHTML = `
+        <div class="flex items-center gap-4">
+            <a href="#/" class="flex items-center gap-3 mr-6">
+                <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-mysql-teal to-mysql-cyan flex items-center justify-center shadow-lg shadow-mysql-teal/20">
+                    <span class="material-symbols-outlined text-white text-lg">database</span>
+                </div>
+                <div class="text-[10px] font-black tracking-[0.2em] text-white/80 uppercase">TactileSQL</div>
+            </a>
+            <div class="flex items-center gap-1">
+                ${renderNavItems()}
+            </div>
+        </div>
+        <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-500/10 border border-green-500/20">
+                <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                <span class="text-[10px] font-mono text-green-400">Connected</span>
+            </div>
+        </div>
+    `;
+
+    return nav;
+}
