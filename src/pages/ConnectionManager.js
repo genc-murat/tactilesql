@@ -3,7 +3,7 @@ import { Dialog } from '../components/UI/Dialog.js';
 
 export function ConnectionManager() {
     const container = document.createElement('div');
-    container.className = "flex-1 flex flex-col h-full overflow-hidden bg-[#0b0d10] selection:bg-cyan-500/30";
+    container.className = "flex-1 flex flex-col h-full overflow-hidden bg-[#0b0d10] selection:bg-cyan-500/30 relative";
 
     const DEFAULT_CONFIG = {
         id: null,
@@ -17,97 +17,238 @@ export function ConnectionManager() {
 
     let config = { ...DEFAULT_CONFIG };
     let connections = [];
+    let viewMode = 'grid'; // 'grid' | 'edit'
 
-    // --- RENDER HELPERS ---
+    // --- RENDERERS ---
 
-    const renderConnectionList = () => {
-        const listContainer = container.querySelector('#connection-list');
-        if (!listContainer) return;
+    const render = () => {
+        container.innerHTML = '';
+        if (viewMode === 'grid') {
+            renderGridView();
+        } else {
+            renderEditView();
+        }
+    };
 
-        listContainer.innerHTML = connections.map(conn => `
-            <div data-id="${conn.id}" class="connection-item neu-card rounded-2xl p-5 group card-glow-cyan transition-all cursor-pointer relative overflow-hidden mb-4 border border-white/5 hover:border-cyan-500/50">
-                <div class="absolute top-0 right-0 p-4">
-                     <span class="delete-btn material-symbols-outlined text-gray-700 hover:text-red-500 transition-colors text-lg z-10 relative" title="Delete">delete</span>
-                </div>
-                <div class="flex items-center gap-4 mb-5">
-                    <div class="size-12 rounded-2xl bg-cyan-500/10 flex items-center justify-center border border-cyan-500/30 group-hover:border-cyan-500/60 transition-colors">
-                        <span class="material-symbols-outlined text-neon-cyan">dns</span>
-                    </div>
+    const renderGridView = () => {
+        container.innerHTML = `
+            <div class="max-w-7xl mx-auto w-full h-full flex flex-col p-10">
+                <header class="flex items-center justify-between mb-10 shrink-0">
                     <div>
-                        <h3 class="text-[13px] font-bold text-white tracking-tight group-hover:text-neon-cyan transition-colors">${conn.name || 'Untitled Connection'}</h3>
-                        <p class="text-[10px] font-mono text-gray-500 mt-0.5">${conn.host}:${conn.port}</p>
+                        <h1 class="text-3xl font-black text-white tracking-tight mb-2">Connections</h1>
+                        <p class="text-gray-500 font-medium">Select a database cluster to launch workspace.</p>
                     </div>
-                </div>
-                <div class="flex items-center justify-between">
-                    <div class="flex gap-2">
-                        <span class="px-2 py-0.5 rounded-md text-[9px] font-black bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase tracking-tighter">Saved</span>
-                    </div>
-                    <span class="text-[10px] font-mono text-gray-600 font-bold uppercase">${conn.username}</span>
+                    <button id="create-btn" class="gloss-btn-cyan px-6 py-3 rounded-xl text-white text-xs font-bold uppercase tracking-widest flex items-center gap-2 hover:scale-105 transition-transform">
+                        <span class="material-symbols-outlined text-lg">add</span> New Connection
+                    </button>
+                </header>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 overflow-y-auto custom-scrollbar pb-10">
+                    ${connections.map(conn => `
+                        <div class="neu-card group relative p-6 rounded-3xl border border-white/5 hover:border-cyan-500/50 transition-all hover:shadow-[0_0_30px_rgba(6,182,212,0.1)] bg-[#13161b]">
+                            <div class="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button data-id="${conn.id}" class="edit-btn p-2 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="Edit Configuration">
+                                    <span class="material-symbols-outlined text-sm">settings</span>
+                                </button>
+                                <button data-id="${conn.id}" class="delete-btn p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/10 transition-colors" title="Delete">
+                                    <span class="material-symbols-outlined text-sm">delete</span>
+                                </button>
+                            </div>
+
+                            <div class="mb-6">
+                                <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border border-white/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
+                                    <span class="material-symbols-outlined text-cyan-400 text-2xl">database</span>
+                                </div>
+                                <h3 class="text-lg font-bold text-white mb-1 truncate" title="${conn.name}">${conn.name}</h3>
+                                <div class="flex items-center gap-2 text-xs text-gray-500 font-mono">
+                                    <span class="bg-white/5 px-1.5 py-0.5 rounded text-gray-400">${conn.username}</span>
+                                    <span>@</span>
+                                    <span class="text-gray-400">${conn.host}:${conn.port}</span>
+                                </div>
+                            </div>
+
+                            <button data-id="${conn.id}" class="connect-btn w-full py-3 rounded-xl bg-white/5 hover:bg-cyan-500 hover:text-white text-gray-300 font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 group-hover:bg-cyan-500/20 group-hover:text-cyan-400 overflow-hidden relative">
+                                <span class="material-symbols-outlined">bolt</span> Connect
+                            </button>
+                        </div>
+                    `).join('')}
+                    
+                    ${connections.length === 0 ? `
+                        <div class="col-span-full py-20 text-center flex flex-col items-center justify-center border-2 border-dashed border-white/10 rounded-3xl">
+                             <span class="material-symbols-outlined text-6xl text-gray-700 mb-4">dns</span>
+                             <p class="text-gray-500 font-medium">No connections found.</p>
+                             <button id="empty-create-btn" class="mt-4 text-cyan-400 hover:text-cyan-300 font-bold text-sm">Create your first connection</button>
+                        </div>
+                    ` : ''}
                 </div>
             </div>
-        `).join('');
+        `;
 
-        // Attach click handlers
-        listContainer.querySelectorAll('.connection-item').forEach(item => {
-            item.addEventListener('click', (e) => {
-                if (e.target.closest('.delete-btn')) return; // Ignore delete clicks
-                const id = item.dataset.id;
+        // Bind Grid Events
+        container.querySelector('#create-btn').onclick = () => {
+            loadConfig(DEFAULT_CONFIG);
+            viewMode = 'edit';
+            render();
+        };
+
+        const emptyCreate = container.querySelector('#empty-create-btn');
+        if (emptyCreate) emptyCreate.onclick = container.querySelector('#create-btn').onclick;
+
+        container.querySelectorAll('.connect-btn').forEach(btn => {
+            btn.onclick = () => {
+                const id = btn.dataset.id;
+                const match = connections.find(c => c.id === id);
+                if (match) {
+                    loadConfig(match); // Set as current config
+                    handleConnect();  // Trigger connection
+                }
+            };
+        });
+
+        container.querySelectorAll('.edit-btn').forEach(btn => {
+            btn.onclick = () => {
+                const id = btn.dataset.id;
                 const match = connections.find(c => c.id === id);
                 if (match) {
                     loadConfig(match);
+                    viewMode = 'edit';
+                    render();
                 }
+            };
+        });
+
+        container.querySelectorAll('.delete-btn').forEach(btn => {
+            btn.onclick = async () => {
+                const confirmed = await Dialog.confirm('Are you sure you want to delete this connection?', 'Delete');
+                if (confirmed) {
+                    await deleteConnection(btn.dataset.id);
+                }
+            };
+        });
+    };
+
+    const renderEditView = () => {
+        container.innerHTML = `
+             <div class="max-w-4xl mx-auto w-full h-full flex flex-col p-10 justify-center">
+                <button id="back-btn" class="self-start mb-6 flex items-center gap-2 text-gray-500 hover:text-white transition-colors text-sm font-bold uppercase tracking-wider">
+                    <span class="material-symbols-outlined">arrow_back</span> Back to Connections
+                </button>
+
+                <div class="neu-card rounded-3xl p-10 relative overflow-hidden bg-[#13161b] shadow-2xl border border-white/5">
+                    <div class="absolute top-0 right-0 -mt-20 -mr-20 size-96 bg-neon-cyan/5 blur-[120px] rounded-full pointer-events-none"></div>
+                    
+                    <h2 class="text-2xl font-black text-white mb-8 tracking-tight flex items-center gap-3">
+                        <span class="material-symbols-outlined text-neon-cyan">settings_input_component</span>
+                        ${config.id ? 'Edit Connection' : 'New Connection'}
+                    </h2>
+                    
+                    <div class="space-y-6 relative z-10">
+                        <div class="space-y-3">
+                            <label class="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] flex items-center gap-2">Label</label>
+                            <input name="name" class="tactile-input w-full" placeholder="e.g. Production DB" type="text" value="${config.name || ''}" />
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-6">
+                            <div class="col-span-2 space-y-3">
+                                <label class="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] flex items-center gap-2">Host</label>
+                                <input name="host" class="tactile-input w-full" placeholder="127.0.0.1" type="text" value="${config.host}" />
+                            </div>
+                            <div class="space-y-3">
+                                <label class="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] flex items-center gap-2">Port</label>
+                                <input name="port" class="tactile-input w-full" placeholder="3306" type="number" value="${config.port}" />
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-6">
+                            <div class="space-y-3">
+                                <label class="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] flex items-center gap-2">Username</label>
+                                <input name="username" class="tactile-input w-full" placeholder="root" type="text" value="${config.username}" />
+                            </div>
+                            <div class="space-y-3">
+                                <label class="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] flex items-center gap-2">Password</label>
+                                <input name="password" class="tactile-input w-full" placeholder="••••••••" type="password" value="${config.password}" />
+                            </div>
+                        </div>
+
+                        <div class="space-y-3">
+                            <label class="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] flex items-center gap-2">Database (Optional)</label>
+                            <input name="database" class="tactile-input w-full" placeholder="default_db" type="text" value="${config.database}" />
+                        </div>
+                    </div>
+
+                    <div class="mt-10 pt-8 border-t border-white/5 flex items-center justify-between relative z-10">
+                        <button id="test-btn" class="text-gray-400 hover:text-white text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-colors">
+                            <span class="material-symbols-outlined text-lg">wifi_tethering</span> Test Connection
+                        </button>
+                        <div class="flex gap-4">
+                            <button id="save-btn" class="px-8 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-bold uppercase tracking-wider transition-all">
+                                Save
+                            </button>
+                            <button id="connect-now-btn" class="gloss-btn-cyan px-8 py-3 rounded-xl text-white text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-cyan-500/20">
+                                <span class="material-symbols-outlined">bolt</span> Connect
+                            </button>
+                        </div>
+                    </div>
+                </div>
+             </div>
+        `;
+
+        // Bind Edit Events
+        container.querySelectorAll('input').forEach(input => {
+            input.addEventListener('input', (e) => {
+                const { name, value } = e.target;
+                config[name] = name === 'port' ? (parseInt(value) || 3306) : value;
             });
-
-            const deleteBtn = item.querySelector('.delete-btn');
-            if (deleteBtn) {
-                deleteBtn.addEventListener('click', async (e) => {
-                    e.stopPropagation();
-                    const confirmed = await Dialog.confirm('Are you sure you want to permanently delete this connection cluster?', 'Delete Connection');
-                    if (confirmed) {
-                        const id = item.dataset.id;
-                        await deleteConnection(id);
-                    }
-                });
-            }
+            // Enter key shortcut for Connect
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') handleConnect();
+            });
         });
+
+        container.querySelector('#back-btn').onclick = () => {
+            viewMode = 'grid';
+            render();
+        };
+
+        container.querySelector('#test-btn').onclick = handleTestConnection;
+
+        container.querySelector('#save-btn').onclick = async () => {
+            if (await saveCurrentConnection()) {
+                viewMode = 'grid';
+            }
+        };
+
+        container.querySelector('#connect-now-btn').onclick = handleConnect;
     };
 
-    const updateFormValues = () => {
-        const inputs = container.querySelectorAll('input');
-        inputs.forEach(input => {
-            if (config[input.name] !== undefined) {
-                input.value = config[input.name] || '';
-            }
-        });
-    };
 
     // --- LOGIC ---
 
     const loadConfig = (newConfig) => {
         config = { ...newConfig };
-        updateFormValues();
     };
 
     const loadConnections = async () => {
         try {
             connections = await invoke('get_connections');
-            renderConnectionList();
+            if (viewMode === 'grid') renderGridView();
         } catch (error) {
-            console.error('Failed to load connections:', error);
+            console.error('Failed', error);
         }
     };
 
     const saveCurrentConnection = async () => {
         if (!config.name) {
-            Dialog.alert('Please provide a name for this connection.', 'Input Required');
-            return;
+            Dialog.alert('Please provide a specific name for this connection.', 'Input Required');
+            return false;
         }
         try {
             await invoke('save_connection', { config });
             await loadConnections();
-            Dialog.alert('Connection cluster configuration saved successfully.', 'Configuration Saved');
+            return true;
         } catch (error) {
-            Dialog.alert('Failed to save connection: ' + error, 'Save Failed');
+            Dialog.alert('Failed to save: ' + error, 'Error');
+            return false;
         }
     };
 
@@ -115,217 +256,53 @@ export function ConnectionManager() {
         try {
             await invoke('delete_connection', { id });
             await loadConnections();
-            if (config.id === id) {
-                loadConfig(DEFAULT_CONFIG);
-            }
         } catch (error) {
-            Dialog.alert('Failed to delete connection: ' + error, 'Delete Failed');
+            Dialog.alert('Failed delete: ' + error, 'Error');
         }
-    };
-
-    const handleInputChange = (e) => {
-        const { name, value } = e.target;
-        config[name] = name === 'port' ? (parseInt(value) || 3306) : value;
     };
 
     const handleTestConnection = async () => {
         try {
-            const result = await invoke('test_connection', {
-                config: {
-                    host: config.host,
-                    port: config.port,
-                    username: config.username,
-                    password: config.password,
-                    database: config.database || null,
-                    // name and id are irrelevant for testing
-                    name: config.name,
-                    id: config.id
-                }
+            const res = await invoke('test_connection', {
+                config: { ...config, id: config.id || undefined }
             });
-            Dialog.alert(result, 'Connection Test Success');
+            Dialog.alert(res, 'Success');
         } catch (error) {
-            Dialog.alert(error, 'Connection Test Failed');
+            Dialog.alert(error, 'Test Failed');
         }
     };
 
     const handleConnect = async () => {
-        try {
-            const btn = container.querySelector('#connect-btn');
-            const originalText = btn.innerHTML;
-            btn.innerHTML = '<span class="material-symbols-outlined animate-spin text-lg">sync</span> Connecting...';
+        // If we are in edit mode, maybe save first? 
+        // Or act like "One-off" connect?
+        // Let's assume we want to save if it has a name, otherwise just connect temp?
+        // Better to save active config to storage and connect.
+
+        // Visual feedback
+        const btn = container.querySelector('#connect-now-btn') || container.querySelector(`.connect-btn[data-id="${config.id}"]`);
+        if (btn) {
+            const originalContent = btn.innerHTML;
+            btn.innerHTML = '<span class="material-symbols-outlined animate-spin">sync</span> Connecting...';
             btn.disabled = true;
 
-            await invoke('establish_connection', {
-                config: {
-                    ...config,
-                    // Ensure id is string or null, strictly
-                    id: config.id || null,
-                    name: config.name || null
-                }
-            });
-
-            // Store UI state
-            localStorage.setItem('activeConnection', JSON.stringify(config));
-
-            // Navigate
-            window.location.hash = '#/workbench';
-        } catch (error) {
-            Dialog.alert(error, 'Connection Refused');
-            const btn = container.querySelector('#connect-btn');
-            btn.innerHTML = '<span class="material-symbols-outlined text-lg">bolt</span> Connect Now';
-            btn.disabled = false;
+            try {
+                await invoke('establish_connection', {
+                    config: { ...config, id: config.id || null }
+                });
+                localStorage.setItem('activeConnection', JSON.stringify(config));
+                window.location.hash = '/workbench';
+            } catch (err) {
+                Dialog.alert(err, 'Connection Failed');
+                btn.innerHTML = originalContent;
+                btn.disabled = false;
+            }
         }
     };
 
-    // --- HTML STRUCTURE ---
-
-    container.innerHTML = `
-            <header class="h-16 border-b border-white/5 bg-[#16191e] px-8 flex items-center justify-between z-50 shadow-lg">
-                <div class="flex items-center gap-10">
-                    <div class="flex items-center gap-4">
-                        <div class="w-10 h-10 rounded-xl bg-mysql-teal flex items-center justify-center neu-flat border border-white/10">
-                            <span class="material-symbols-outlined text-white text-2xl">database</span>
-                        </div>
-                        <div>
-                            <h1 class="text-[11px] font-black tracking-[0.3em] text-white uppercase">MySQL Workspace</h1>
-                            <div class="flex items-center gap-2">
-                                <span class="text-[9px] font-mono text-neon-cyan/70 font-bold uppercase tracking-widest">Connection Manager v4.0</span>
-                                <div class="w-1.5 h-1.5 rounded-full bg-neon-cyan animate-pulse shadow-[0_0_8px_#00f2ff]"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="flex items-center gap-6">
-                     <button id="new-connection-btn" class="px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-[10px] font-bold text-gray-400 hover:text-white hover:bg-white/10 transition-all uppercase tracking-widest">
-                        New Connection
-                    </button>
-                </div>
-            </header>
-
-            <div class="flex-1 flex overflow-hidden p-6 gap-6 bg-[#0b0d10]">
-                <aside class="w-[380px] flex flex-col gap-5">
-                    <div class="flex items-center justify-between px-3">
-                        <div class="flex items-center gap-3">
-                            <div class="size-2 rounded-full bg-neon-cyan shadow-[0_0_8px_#00f2ff]"></div>
-                            <h2 class="text-[10px] font-black uppercase tracking-[0.25em] text-gray-400">Stored Clusters</h2>
-                        </div>
-                    </div>
-                    <div id="connection-list" class="flex-1 overflow-y-auto custom-scrollbar flex flex-col pr-3">
-                        <!-- Connections rendered here -->
-                    </div>
-                </aside>
-                <main class="flex-1 flex flex-col gap-5">
-                    <div class="flex items-center justify-between px-3">
-                        <div class="flex items-center gap-3">
-                            <span class="material-symbols-outlined text-neon-cyan text-xl">settings_input_component</span>
-                            <h2 class="text-[10px] font-black uppercase tracking-[0.25em] text-gray-400">Connection Details</h2>
-                        </div>
-                    </div>
-                    <div class="neu-card rounded-3xl p-10 flex-1 flex flex-col relative overflow-hidden">
-                        <div class="absolute top-0 right-0 -mt-20 -mr-20 size-96 bg-neon-cyan/5 blur-[120px] rounded-full"></div>
-                        <div class="absolute bottom-0 left-0 -mb-20 -ml-20 size-96 bg-purple-500/5 blur-[120px] rounded-full"></div>
-                        <div class="max-w-3xl mx-auto w-full space-y-8 relative z-10 flex-1 overflow-y-auto">
-                            
-                            <div class="space-y-3">
-                                <label class="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] flex items-center gap-2">
-                                    <span class="material-symbols-outlined text-xs">label</span> Connection Name
-                                </label>
-                                <input name="name" class="tactile-input w-full" placeholder="e.g. My Production DB" type="text" />
-                            </div>
-
-                            <div class="grid grid-cols-6 gap-8">
-                                <div class="col-span-4 space-y-3">
-                                    <label class="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] flex items-center gap-2">
-                                        <span class="material-symbols-outlined text-xs">lan</span> Host Address
-                                    </label>
-                                    <input name="host" class="tactile-input w-full" placeholder="e.g. 127.0.0.1" type="text" />
-                                </div>
-                                <div class="col-span-2 space-y-3">
-                                    <label class="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] flex items-center gap-2">
-                                        <span class="material-symbols-outlined text-xs">tag</span> Port
-                                    </label>
-                                    <input name="port" class="tactile-input w-full" placeholder="3306" type="number" />
-                                </div>
-                            </div>
-                            <div class="grid grid-cols-2 gap-8">
-                                <div class="space-y-3">
-                                    <label class="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] flex items-center gap-2">
-                                        <span class="material-symbols-outlined text-xs">account_circle</span> Username
-                                    </label>
-                                    <div class="relative">
-                                        <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 text-lg">key</span>
-                                        <input name="username" class="tactile-input w-full pl-12" placeholder="root" type="text" />
-                                    </div>
-                                </div>
-                                <div class="space-y-3">
-                                    <label class="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] flex items-center gap-2">
-                                        <span class="material-symbols-outlined text-xs">lock_open</span> Password
-                                    </label>
-                                    <div class="relative">
-                                        <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 text-lg">password</span>
-                                        <input name="password" class="tactile-input w-full pl-12" placeholder="••••••••" type="password" />
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="space-y-3">
-                                <label class="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] flex items-center gap-2">
-                                    <span class="material-symbols-outlined text-xs">database</span> Default Database
-                                </label>
-                                <input name="database" class="tactile-input w-full" placeholder="Optional" type="text" />
-                            </div>
-
-                            <div class="mt-auto pt-10 border-t border-white/5 flex items-center justify-between">
-                                <button id="test-connection-btn" class="gloss-btn-purple px-8 py-3.5 rounded-xl text-white text-[11px] font-black uppercase tracking-[0.2em] flex items-center gap-3">
-                                    <span class="material-symbols-outlined text-lg">wifi_tethering</span>
-                                    Test Signal
-                                </button>
-                                <div class="flex gap-5">
-                                    <button id="save-connection-btn" class="px-8 py-3.5 rounded-xl bg-white/5 border border-white/10 text-[11px] font-black text-gray-400 hover:text-white hover:bg-white/10 transition-all uppercase tracking-[0.2em]">
-                                        Save Config
-                                    </button>
-                                    <button id="connect-btn" class="gloss-btn-cyan px-10 py-3.5 rounded-xl text-white text-[11px] font-black uppercase tracking-[0.2em] flex items-center gap-3">
-                                        <span class="material-symbols-outlined text-lg">bolt</span>
-                                        Connect Now
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </main>
-            </div>
-    `;
-
-    // AttachEventListeners
-    const inputs = container.querySelectorAll('input');
-    inputs.forEach(input => {
-        if (input.name) {
-            input.addEventListener('input', handleInputChange);
-        }
+    // --- INIT ---
+    loadConnections().then(() => {
+        render(); // Initial Render
     });
-
-    const testBtn = container.querySelector('#test-connection-btn');
-    if (testBtn) {
-        testBtn.addEventListener('click', handleTestConnection);
-    }
-
-    const saveBtn = container.querySelector('#save-connection-btn');
-    if (saveBtn) {
-        saveBtn.addEventListener('click', saveCurrentConnection);
-    }
-
-    const connectBtn = container.querySelector('#connect-btn');
-    if (connectBtn) {
-        connectBtn.addEventListener('click', handleConnect);
-    }
-
-    const newBtn = container.querySelector('#new-connection-btn');
-    if (newBtn) {
-        newBtn.addEventListener('click', () => loadConfig(DEFAULT_CONFIG));
-    }
-
-    // Initialize
-    updateFormValues();
-    loadConnections();
 
     return container;
 }
