@@ -1,0 +1,177 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    body {
+        @apply bg-[#0a0c10] text-gray-400 font-['Inter'] antialiased;
+    }
+}
+
+@layer utilities {
+    .glass-header {
+        background: rgba(22, 25, 30, 0.7);
+        backdrop-filter: blur(12px);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .tactile-card {
+        background: linear-gradient(145deg, #16191e, #111418);
+        border: 1px solid rgba(255, 255, 255, 0.03);
+        box-shadow: 8px 8px 16px rgba(0, 0, 0, 0.4),
+            -1px -1px 2px rgba(255, 255, 255, 0.02);
+    }
+
+    .tactile-card-inset {
+        background: #0f1115;
+        box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.5),
+            inset -1px -1px 2px rgba(255, 255, 255, 0.02);
+    }
+
+    .neon-cyan {
+        filter: drop-shadow(0 0 5px rgba(34, 211, 238, 0.6));
+    }
+
+    .neon-purple {
+        filter: drop-shadow(0 0 5px rgba(192, 132, 252, 0.6));
+    }
+
+    .pulse-neon {
+        animation: pulse-neon 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+
+    @keyframes pulse-neon {
+
+        0%,
+        100% {
+            opacity: 1;
+            filter: drop-shadow(0 0 8px rgba(34, 211, 238, 0.8));
+        }
+
+        50% {
+            opacity: 0.6;
+            filter: drop-shadow(0 0 2px rgba(34, 211, 238, 0.2));
+        }
+    }
+
+    .custom-scrollbar::-webkit-scrollbar {
+        width: 4px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+    }
+
+    /* Workbench Utilities */
+    .neu-inset {
+        box-shadow: inset 4px 4px 10px rgba(0, 0, 0, 0.5),
+            inset -1px -1px 3px rgba(255, 255, 255, 0.03);
+    }
+
+    .neu-flat {
+        background: #1a1d23;
+        box-shadow: 6px 6px 12px rgba(0, 0, 0, 0.35),
+            -1px -1px 4px rgba(255, 255, 255, 0.05);
+    }
+
+    .neu-card {
+        background: #16191e;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+
+    .glow-cyan {
+        filter: drop-shadow(0 0 10px rgba(34, 211, 238, 0.5));
+    }
+
+    .glow-node {
+        box-shadow: 0 0 12px rgba(34, 211, 238, 0.3);
+    }
+
+    .syntax-neon-blue {
+        color: #00e5ff;
+        text-shadow: 0 0 5px rgba(0, 229, 255, 0.4);
+    }
+
+    .syntax-neon-green {
+        color: #5efd9c;
+        text-shadow: 0 0 5px rgba(94, 253, 156, 0.4);
+    }
+
+    .syntax-neon-purple {
+        color: #d088ff;
+        text-shadow: 0 0 5px rgba(208, 136, 255, 0.4);
+    }
+
+    .syntax-neon-yellow {
+        color: #fdfd96;
+        text-shadow: 0 0 5px rgba(253, 253, 150, 0.3);
+    }
+
+    /* Connection Manager Utilities */
+    .tactile-input {
+        @apply bg-[#0d0f12] border border-white/10 rounded-xl text-sm font-mono focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all neu-inset px-4 py-3.5 outline-none text-gray-200 placeholder:text-gray-600;
+    }
+
+    .gloss-btn-cyan {
+        background: linear-gradient(180deg, #00f2ff 0%, #00758f 100%);
+        box-shadow: 0 0 20px rgba(0, 242, 255, 0.3),
+            inset 0 1px 1px rgba(255, 255, 255, 0.5),
+            0 4px 0 #004d5e;
+        @apply transform active:translate-y-1 active:shadow-none transition-all duration-75;
+    }
+
+    .gloss-btn-purple {
+        background: linear-gradient(180deg, #d8b4fe 0%, #a855f7 100%);
+        box-shadow: 0 0 20px rgba(168, 85, 247, 0.3),
+            inset 0 1px 1px rgba(255, 255, 255, 0.5),
+            0 4px 0 #6b21a8;
+        @apply transform active:translate-y-1 active:shadow-none transition-all duration-75;
+    }
+
+    .card-glow-cyan:hover {
+        box-shadow: 0 0 20px rgba(0, 242, 255, 0.15), inset 0 0 10px rgba(0, 242, 255, 0.05);
+        border-color: rgba(0, 242, 255, 0.4);
+    }
+
+    .glow-text-cyan {
+        text-shadow: 0 0 10px rgba(0, 242, 255, 0.5);
+    }
+
+    /* Access Control Utilities */
+    .tactile-switch-on {
+        background: linear-gradient(145deg, #00f3ff, #7c3aed);
+        box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3), 0 0 15px rgba(0, 243, 255, 0.4);
+    }
+
+    .tactile-slider-thumb::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 18px;
+        height: 18px;
+        border-radius: 4px;
+        background: #00f3ff;
+        box-shadow: 0 0 12px rgba(0, 243, 255, 0.6);
+        cursor: pointer;
+        border: 2px solid #0b0d11;
+    }
+
+    .text-neon-cyan {
+        color: #00f3ff;
+        text-shadow: 0 0 8px rgba(0, 243, 255, 0.3);
+    }
+
+    .text-neon-purple {
+        color: #a855f7;
+        text-shadow: 0 0 8px rgba(168, 85, 247, 0.3);
+    }
+
+    .glow-purple {
+        filter: drop-shadow(0 0 10px rgba(168, 85, 247, 0.4));
+    }
+}
