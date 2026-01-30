@@ -174,4 +174,31 @@
     .glow-purple {
         filter: drop-shadow(0 0 10px rgba(168, 85, 247, 0.4));
     }
+
+    /* SQL Syntax Highlighting */
+    .sql-keyword {
+        color: #00e5ff;
+        font-weight: 600;
+    }
+
+    .sql-string {
+        color: #5efd9c;
+    }
+
+    .sql-number {
+        color: #ffb86c;
+    }
+
+    .sql-comment {
+        color: #6b7280;
+        font-style: italic;
+    }
+
+    .sql-identifier {
+        color: #fbbf24;
+    }
+
+    .sql-function {
+        color: #d088ff;
+    }
 }

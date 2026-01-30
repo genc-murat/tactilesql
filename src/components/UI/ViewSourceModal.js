@@ -1,21 +1,57 @@
 import { invoke } from '@tauri-apps/api/core';
 import { Dialog } from './Dialog.js';
 
+// SQL Keywords
+const SQL_KEYWORDS = [
+    'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'NOT', 'IN', 'LIKE', 'BETWEEN',
+    'JOIN', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'FULL JOIN', 'CROSS JOIN',
+    'ON', 'AS', 'ORDER BY', 'GROUP BY', 'HAVING', 'LIMIT', 'OFFSET',
+    'INSERT INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE FROM',
+    'CREATE', 'ALTER', 'DROP', 'VIEW', 'TABLE', 'INDEX', 'OR REPLACE',
+    'PRIMARY KEY', 'FOREIGN KEY', 'REFERENCES', 'UNIQUE', 'NOT NULL', 'DEFAULT',
+    'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'NULL', 'IS NULL', 'IS NOT NULL',
+    'ASC', 'DESC', 'UNION', 'DISTINCT', 'COUNT', 'SUM', 'AVG', 'MIN', 'MAX'
+];
+
+// SQL Syntax Highlighting
+function highlightSQL(code) {
+    if (!code) return '';
+
+    let html = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    // Comments
+    html = html.replace(/(--.*$)/gm, '<span class="sql-comment">$1</span>');
+    html = html.replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="sql-comment">$1</span>');
+
+    // Strings
+    html = html.replace(/('(?:[^'\\]|\\.)*')/g, '<span class="sql-string">$1</span>');
+    html = html.replace(/("(?:[^"\\]|\\.)*")/g, '<span class="sql-string">$1</span>');
+
+    // Numbers
+    html = html.replace(/\b(\d+\.?\d*)\b/g, '<span class="sql-number">$1</span>');
+
+    // Keywords
+    const keywordPattern = SQL_KEYWORDS
+        .sort((a, b) => b.length - a.length)
+        .map(k => k.replace(/\s+/g, '\\s+'))
+        .join('|');
+    const keywordRegex = new RegExp(`\\b(${keywordPattern})\\b`, 'gi');
+    html = html.replace(keywordRegex, '<span class="sql-keyword">$1</span>');
+
+    // Backtick identifiers
+    html = html.replace(/(`[^`]+`)/g, '<span class="sql-identifier">$1</span>');
+
+    // Functions
+    html = html.replace(/\b([a-zA-Z_][a-zA-Z0-9_]*)\s*(?=\()/g, '<span class="sql-function">$1</span>');
+
+    return html;
+}
+
 // Simple SQL formatter
 function formatSQL(sql) {
     if (!sql) return sql;
 
-    const keywords = [
-        'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'JOIN', 'LEFT JOIN', 'RIGHT JOIN',
-        'INNER JOIN', 'OUTER JOIN', 'ON', 'AS', 'ORDER BY', 'GROUP BY', 'HAVING',
-        'LIMIT', 'OFFSET', 'UNION', 'INSERT INTO', 'VALUES', 'UPDATE', 'SET',
-        'DELETE FROM', 'CREATE', 'ALTER', 'DROP', 'VIEW', 'TABLE', 'INDEX',
-        'PRIMARY KEY', 'FOREIGN KEY', 'REFERENCES', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END'
-    ];
-
     let formatted = sql;
-
-    // Add newlines before main keywords
     const newlineKeywords = ['SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'JOIN', 'LEFT JOIN',
         'RIGHT JOIN', 'INNER JOIN', 'ORDER BY', 'GROUP BY', 'HAVING', 'LIMIT', 'UNION'];
 
@@ -24,11 +60,8 @@ function formatSQL(sql) {
         formatted = formatted.replace(regex, `\n${kw}`);
     });
 
-    // Clean up multiple spaces and newlines
-    formatted = formatted.replace(/\n\s*\n/g, '\n');
-    formatted = formatted.replace(/^\n/, '');
+    formatted = formatted.replace(/\n\s*\n/g, '\n').replace(/^\n/, '');
 
-    // Indent after SELECT, WHERE etc
     const lines = formatted.split('\n');
     const indentedLines = lines.map((line, i) => {
         const trimmed = line.trim();
@@ -42,7 +75,6 @@ function formatSQL(sql) {
 }
 
 export function showViewSourceModal(dbName, viewName) {
-    // Remove existing modal
     const existing = document.getElementById('view-source-modal');
     if (existing) existing.remove();
 
@@ -67,12 +99,15 @@ export function showViewSourceModal(dbName, viewName) {
                     </button>
                 </div>
             </div>
-            <div class="flex-1 overflow-hidden flex flex-col">
+            <div class="flex-1 overflow-hidden flex flex-col relative">
                 <div id="loading-indicator" class="flex-1 flex items-center justify-center">
                     <span class="material-symbols-outlined animate-spin text-mysql-teal">sync</span>
                     <span class="ml-2 text-gray-500">Loading view definition...</span>
                 </div>
-                <textarea id="view-source-editor" class="hidden flex-1 bg-[#08090c] text-gray-300 font-mono text-[14px] leading-[1.8] p-6 resize-none outline-none focus:ring-1 focus:ring-mysql-teal/30 custom-scrollbar" spellcheck="false"></textarea>
+                <div id="editor-container" class="hidden flex-1 relative bg-[#08090c]">
+                    <pre id="syntax-highlight" class="absolute inset-0 p-6 font-mono text-[14px] leading-[1.8] pointer-events-none overflow-auto custom-scrollbar whitespace-pre-wrap break-words" aria-hidden="true"></pre>
+                    <textarea id="view-source-editor" class="absolute inset-0 w-full h-full bg-transparent text-transparent caret-white font-mono text-[14px] leading-[1.8] p-6 resize-none outline-none focus:ring-1 focus:ring-mysql-teal/30 custom-scrollbar z-10" spellcheck="false"></textarea>
+                </div>
             </div>
             <div class="flex items-center justify-between px-6 py-4 border-t border-white/10 bg-[#16191e]">
                 <div class="text-[10px] text-gray-600">
@@ -93,31 +128,44 @@ export function showViewSourceModal(dbName, viewName) {
     document.body.appendChild(overlay);
 
     const editor = overlay.querySelector('#view-source-editor');
+    const syntaxHighlight = overlay.querySelector('#syntax-highlight');
+    const editorContainer = overlay.querySelector('#editor-container');
     const loadingIndicator = overlay.querySelector('#loading-indicator');
     const saveBtn = overlay.querySelector('#save-btn');
     const formatBtn = overlay.querySelector('#format-btn');
     let originalDefinition = '';
 
-    // Load view definition
+    const updateHighlight = () => {
+        syntaxHighlight.innerHTML = highlightSQL(editor.value) + '\n';
+    };
+
+    // Sync scroll between textarea and highlight
+    editor.addEventListener('scroll', () => {
+        syntaxHighlight.scrollTop = editor.scrollTop;
+        syntaxHighlight.scrollLeft = editor.scrollLeft;
+    });
+
+    editor.addEventListener('input', updateHighlight);
+
     const loadDefinition = async () => {
         try {
             const result = await invoke('get_view_definition', { database: dbName, view: viewName });
             originalDefinition = result.definition;
             editor.value = formatSQL(result.definition);
+            updateHighlight();
             loadingIndicator.classList.add('hidden');
-            editor.classList.remove('hidden');
+            editorContainer.classList.remove('hidden');
             saveBtn.disabled = false;
         } catch (error) {
             loadingIndicator.innerHTML = `<span class="text-red-500">Error: ${error}</span>`;
         }
     };
 
-    // Format button
     formatBtn.onclick = () => {
         editor.value = formatSQL(editor.value);
+        updateHighlight();
     };
 
-    // Event handlers
     overlay.querySelector('#close-modal').onclick = () => overlay.remove();
     overlay.querySelector('#cancel-btn').onclick = () => overlay.remove();
     overlay.onclick = (e) => {
@@ -135,7 +183,6 @@ export function showViewSourceModal(dbName, viewName) {
             saveBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span> SAVING';
             saveBtn.disabled = true;
 
-            // Convert to CREATE OR REPLACE VIEW if needed
             let finalDef = newDefinition;
             if (finalDef.toUpperCase().startsWith('CREATE VIEW')) {
                 finalDef = finalDef.replace(/^CREATE VIEW/i, 'CREATE OR REPLACE VIEW');
@@ -153,7 +200,6 @@ export function showViewSourceModal(dbName, viewName) {
         }
     };
 
-    // Keyboard shortcuts
     document.addEventListener('keydown', function escHandler(e) {
         if (e.key === 'Escape') {
             overlay.remove();

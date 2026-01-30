@@ -20,6 +20,41 @@ const SQL_KEYWORDS = [
     'TEXT', 'BLOB', 'DATE', 'DATETIME', 'TIMESTAMP', 'BOOLEAN', 'BOOL'
 ];
 
+// SQL Syntax Highlighting
+const highlightSQL = (code) => {
+    if (!code) return '';
+
+    // Escape HTML
+    let html = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    // Comments (-- and /* */)
+    html = html.replace(/(--.*$)/gm, '<span class="sql-comment">$1</span>');
+    html = html.replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="sql-comment">$1</span>');
+
+    // Strings ('...' and "...")
+    html = html.replace(/('(?:[^'\\]|\\.)*')/g, '<span class="sql-string">$1</span>');
+    html = html.replace(/("(?:[^"\\]|\\.)*")/g, '<span class="sql-string">$1</span>');
+
+    // Numbers
+    html = html.replace(/\b(\d+\.?\d*)\b/g, '<span class="sql-number">$1</span>');
+
+    // Keywords
+    const keywordPattern = SQL_KEYWORDS
+        .sort((a, b) => b.length - a.length) // Longer keywords first
+        .map(k => k.replace(/\s+/g, '\\s+'))
+        .join('|');
+    const keywordRegex = new RegExp(`\\b(${keywordPattern})\\b`, 'gi');
+    html = html.replace(keywordRegex, '<span class="sql-keyword">$1</span>');
+
+    // Backtick identifiers
+    html = html.replace(/(`[^`]+`)/g, '<span class="sql-identifier">$1</span>');
+
+    // Functions (word followed by parenthesis)
+    html = html.replace(/\b([a-zA-Z_][a-zA-Z0-9_]*)\s*(?=\()/g, '<span class="sql-function">$1</span>');
+
+    return html;
+};
+
 export function QueryEditor() {
     const container = document.createElement('div');
     container.className = "flex flex-col h-[60%] border-b border-white/5";
@@ -261,10 +296,13 @@ export function QueryEditor() {
                 </div>
             </div>
             <div class="flex-1 neu-inset rounded-xl bg-[#08090c] overflow-hidden flex p-4 font-mono text-[14px] leading-relaxed relative focus-within:ring-1 focus-within:ring-mysql-teal/50 transition-all">
-                <div class="w-12 text-gray-700 text-right pr-6 border-r border-white/5 select-none text-xs leading-[22px] pt-1">
+                <div class="w-12 text-gray-700 text-right pr-6 border-r border-white/5 select-none text-xs leading-[22px] pt-1" id="line-numbers">
                     1<br />2<br />3<br />4<br />5<br />6<br />7<br />8<br />9
                 </div>
-                <textarea id="query-input" class="flex-1 bg-transparent border-none text-gray-300 font-mono text-[14px] leading-[22px] pl-6 focus:ring-0 resize-none outline-none custom-scrollbar p-0" spellcheck="false" placeholder="Enter your SQL query here... (Ctrl+Space for suggestions)">${activeTab ? activeTab.content : ''}</textarea>
+                <div class="flex-1 relative pl-6">
+                    <pre id="syntax-highlight" class="absolute inset-0 pl-6 pt-0 font-mono text-[14px] leading-[22px] pointer-events-none overflow-hidden whitespace-pre-wrap break-words" aria-hidden="true"></pre>
+                    <textarea id="query-input" class="relative w-full h-full bg-transparent border-none text-transparent caret-white font-mono text-[14px] leading-[22px] focus:ring-0 resize-none outline-none custom-scrollbar p-0 z-10" spellcheck="false" placeholder="Enter your SQL query here... (Ctrl+Space for suggestions)">${activeTab ? activeTab.content : ''}</textarea>
+                </div>
                 <div class="absolute bottom-4 right-4 text-[10px] text-gray-700 font-bold uppercase tracking-widest">
                     MySQL 8.0 • UTF-8 • <span class="text-mysql-teal/50">Ctrl+Space</span>
                 </div>
@@ -318,13 +356,27 @@ export function QueryEditor() {
 
         // Input Handling with Autocomplete
         const textarea = container.querySelector('#query-input');
+        const syntaxHighlight = container.querySelector('#syntax-highlight');
+
+        // Update syntax highlighting
+        const updateSyntaxHighlight = () => {
+            if (syntaxHighlight && textarea) {
+                syntaxHighlight.innerHTML = highlightSQL(textarea.value) + '\n';
+            }
+        };
+
         if (textarea) {
+            // Initial syntax highlight
+            updateSyntaxHighlight();
+
             // Save content on input
             textarea.addEventListener('input', (e) => {
                 const activeTab = tabs.find(t => t.id === activeTabId);
                 if (activeTab) {
                     activeTab.content = e.target.value;
                 }
+                // Update syntax highlighting
+                updateSyntaxHighlight();
                 // Trigger autocomplete on input
                 showAutocomplete(textarea);
             });
