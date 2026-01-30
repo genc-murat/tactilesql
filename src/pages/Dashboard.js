@@ -50,7 +50,7 @@ export function Dashboard() {
                     FROM information_schema.tables 
                     GROUP BY table_schema;`
                 }),
-                invoke('execute_query', { query: `SELECT * FROM information_schema.processlist ORDER BY TIME DESC LIMIT 10;` })
+                invoke('execute_query', { query: `SELECT ID, USER, HOST, DB, COMMAND, TIME, STATE, INFO FROM information_schema.processlist ORDER BY TIME DESC LIMIT 10;` })
             ]);
 
             // Update Components
