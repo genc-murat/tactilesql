@@ -615,3 +615,175 @@ pub async fn get_table_constraints(
 
     Ok(constraints)
 }
+
+// --- Database Object Commands ---
+
+#[tauri::command]
+pub async fn get_views(
+    state: State<'_, AppState>,
+    database: String
+) -> Result<Vec<String>, String> {
+    let pool = {
+        let pool_guard = state.pool.lock().unwrap();
+        pool_guard.clone().ok_or("No active connection")?
+    };
+
+    let query = format!("SHOW FULL TABLES FROM `{}` WHERE Table_type = 'VIEW'", database);
+    
+    let rows = sqlx::query(&query)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("Failed to fetch views: {}", e))?;
+
+    let views: Vec<String> = rows.iter()
+        .map(|row| {
+            use sqlx::Row;
+            row.try_get::<String, _>(0).unwrap_or_else(|_| {
+                let bytes: Vec<u8> = row.get(0);
+                String::from_utf8_lossy(&bytes).to_string()
+            })
+        })
+        .collect();
+
+    Ok(views)
+}
+
+#[derive(Serialize, Debug)]
+pub struct TriggerInfo {
+    pub name: String,
+    pub event: String,
+    pub timing: String,
+    pub table_name: String,
+}
+
+#[tauri::command]
+pub async fn get_triggers(
+    state: State<'_, AppState>,
+    database: String
+) -> Result<Vec<TriggerInfo>, String> {
+    let pool = {
+        let pool_guard = state.pool.lock().unwrap();
+        pool_guard.clone().ok_or("No active connection")?
+    };
+
+    let query = format!("SHOW TRIGGERS FROM `{}`", database);
+    
+    let rows = sqlx::query(&query)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("Failed to fetch triggers: {}", e))?;
+
+    let mut triggers = Vec::new();
+    for row in rows {
+        use sqlx::Row;
+        triggers.push(TriggerInfo {
+            name: row.try_get("Trigger").unwrap_or_default(),
+            event: row.try_get("Event").unwrap_or_default(),
+            timing: row.try_get("Timing").unwrap_or_default(),
+            table_name: row.try_get("Table").unwrap_or_default(),
+        });
+    }
+
+    Ok(triggers)
+}
+
+#[derive(Serialize, Debug)]
+pub struct RoutineInfo {
+    pub name: String,
+    pub definer: String,
+}
+
+#[tauri::command]
+pub async fn get_procedures(
+    state: State<'_, AppState>,
+    database: String
+) -> Result<Vec<RoutineInfo>, String> {
+    let pool = {
+        let pool_guard = state.pool.lock().unwrap();
+        pool_guard.clone().ok_or("No active connection")?
+    };
+
+    let query = format!("SHOW PROCEDURE STATUS WHERE Db = '{}'", database);
+    
+    let rows = sqlx::query(&query)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("Failed to fetch procedures: {}", e))?;
+
+    let mut procedures = Vec::new();
+    for row in rows {
+        use sqlx::Row;
+        procedures.push(RoutineInfo {
+            name: row.try_get("Name").unwrap_or_default(),
+            definer: row.try_get("Definer").unwrap_or_default(),
+        });
+    }
+
+    Ok(procedures)
+}
+
+#[tauri::command]
+pub async fn get_functions(
+    state: State<'_, AppState>,
+    database: String
+) -> Result<Vec<RoutineInfo>, String> {
+    let pool = {
+        let pool_guard = state.pool.lock().unwrap();
+        pool_guard.clone().ok_or("No active connection")?
+    };
+
+    let query = format!("SHOW FUNCTION STATUS WHERE Db = '{}'", database);
+    
+    let rows = sqlx::query(&query)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("Failed to fetch functions: {}", e))?;
+
+    let mut functions = Vec::new();
+    for row in rows {
+        use sqlx::Row;
+        functions.push(RoutineInfo {
+            name: row.try_get("Name").unwrap_or_default(),
+            definer: row.try_get("Definer").unwrap_or_default(),
+        });
+    }
+
+    Ok(functions)
+}
+
+#[derive(Serialize, Debug)]
+pub struct EventInfo {
+    pub name: String,
+    pub status: String,
+    pub event_type: String,
+}
+
+#[tauri::command]
+pub async fn get_events(
+    state: State<'_, AppState>,
+    database: String
+) -> Result<Vec<EventInfo>, String> {
+    let pool = {
+        let pool_guard = state.pool.lock().unwrap();
+        pool_guard.clone().ok_or("No active connection")?
+    };
+
+    let query = format!("SHOW EVENTS FROM `{}`", database);
+    
+    let rows = sqlx::query(&query)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("Failed to fetch events: {}", e))?;
+
+    let mut events = Vec::new();
+    for row in rows {
+        use sqlx::Row;
+        events.push(EventInfo {
+            name: row.try_get("Name").unwrap_or_default(),
+            status: row.try_get("Status").unwrap_or_default(),
+            event_type: row.try_get("Type").unwrap_or_default(),
+        });
+    }
+
+    Ok(events)
+}

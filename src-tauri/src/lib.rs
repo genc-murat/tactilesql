@@ -26,7 +26,12 @@ pub fn run() {
             db::get_user_privileges,
             db::get_table_indexes,
             db::get_table_foreign_keys,
-            db::get_table_constraints
+            db::get_table_constraints,
+            db::get_views,
+            db::get_triggers,
+            db::get_procedures,
+            db::get_functions,
+            db::get_events
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
