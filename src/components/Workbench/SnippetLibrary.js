@@ -94,14 +94,10 @@ export function SnippetLibrary() {
         const addBtn = aside.querySelector('#add-snippet-btn');
         if (addBtn) {
             addBtn.addEventListener('click', async () => {
-                // Since we don't have a complex form dialog yet, let's use prompt or just save a dummy one for now
-                // ideally we open a modal. For V1 let's create a generic one.
-                // Or better, let's make it interactive.
-                // We'll stick to a simple placeholder for now or prompt
-                // Browsers prompt is ugly but functional for "implement it" request.
-                const title = prompt("Snippet Title:");
+                const title = await Dialog.prompt("Enter a title for your snippet:", "Snippet Title");
                 if (!title) return;
-                const code = prompt("SQL Code:");
+
+                const code = await Dialog.prompt("Enter the SQL code:", "Snippet SQL");
                 if (!code) return;
 
                 snippets.push({

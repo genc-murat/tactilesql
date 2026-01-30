@@ -129,12 +129,80 @@ export class Dialog {
                 type: 'confirm',
                 onConfirm: () => resolve(true)
             });
-            // We need to handle cancel/close resolving false, currently simplistic
             const cancelHandler = () => {
                 resolve(false);
-                this.actions.querySelector('button:first-child').removeEventListener('click', cancelHandler);
+                // cleanup handled by close
             };
-            this.actions.querySelector('button:first-child').addEventListener('click', cancelHandler);
+            // The first button is Cancel in confirm mode
+            const cancelBtn = this.actions.querySelector('button');
+            if (cancelBtn) cancelBtn.addEventListener('click', cancelHandler);
+        });
+    }
+
+    static async prompt(message, title = 'Input Required', defaultValue = '') {
+        return new Promise((resolve) => {
+            // Initialize functionality first
+            this.init();
+
+            this.title.textContent = title;
+            this.message.textContent = message;
+
+            // Custom Content for Input
+            const inputContainer = document.createElement('div');
+            inputContainer.className = "mt-3";
+            inputContainer.innerHTML = `
+                <input type="text" id="dialog-prompt-input" class="w-full bg-[#0b0d11] border border-white/10 rounded p-2 text-xs text-gray-300 focus:border-mysql-teal/50 outline-none" value="${defaultValue}" />
+             `;
+
+            // Temporarily replace message content or append
+            // Let's clear message and re-append text + input
+            this.message.innerHTML = '';
+            this.message.textContent = message;
+            this.message.appendChild(inputContainer);
+
+            // Reset Icon
+            this.iconContainer.className = "mx-auto size-12 rounded-full flex items-center justify-center mb-4 border border-white/10 bg-cyan-500/10 text-neon-cyan";
+            this.icon.textContent = 'edit';
+
+            // Buttons
+            this.actions.innerHTML = '';
+            const cancelBtn = document.createElement('button');
+            cancelBtn.className = "px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider text-gray-400 hover:text-white hover:bg-white/10 transition-colors";
+            cancelBtn.textContent = "Cancel";
+
+            const okBtn = document.createElement('button');
+            okBtn.className = "px-4 py-2 rounded-lg bg-mysql-teal text-black text-[10px] font-bold uppercase tracking-wider hover:brightness-110 transition-colors";
+            okBtn.textContent = "OK";
+
+            const cleanup = () => {
+                // Restore message purely for safety if needed later, but init() handles reset mostly
+            };
+
+            cancelBtn.onclick = () => {
+                this.close();
+                resolve(null);
+            };
+
+            okBtn.onclick = () => {
+                const val = this.message.querySelector('input').value;
+                this.close();
+                resolve(val);
+            };
+
+            this.actions.appendChild(cancelBtn);
+            this.actions.appendChild(okBtn);
+
+            // Animation
+            this.overlay.classList.remove('hidden');
+            void this.overlay.offsetWidth;
+            this.overlay.classList.remove('opacity-0');
+            this.dialog.classList.remove('scale-95');
+
+            // Focus
+            setTimeout(() => {
+                const input = this.message.querySelector('input');
+                if (input) input.focus();
+            }, 50);
         });
     }
 }

@@ -1,6 +1,8 @@
+// Top of file import
+import { Dialog } from '../UI/Dialog.js';
+
 export function QueryEditor() {
-    const container = document.createElement('div');
-    container.className = "flex-1 flex flex-col p-4 gap-4 overflow-hidden min-h-0";
+    // ... existing ...
 
     // --- State ---
     let tabs = [
@@ -146,7 +148,7 @@ export function QueryEditor() {
                             error: error.message || error.toString()
                         }
                     }));
-                    alert('Query Execution Failed: ' + error);
+                    Dialog.alert('Query Execution Failed: ' + error, 'Execution Error');
                 } finally {
                     executeBtn.innerHTML = '<span class="material-symbols-outlined text-sm font-bold">play_arrow</span> EXECUTE';
                     executeBtn.classList.remove('opacity-70', 'cursor-not-allowed');
@@ -178,7 +180,7 @@ export function QueryEditor() {
                 if (!newDb) return;
                 const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
                 if (!activeConfig.username) {
-                    alert("Session lost. Please reconnect.");
+                    Dialog.alert("Session lost. Please reconnect.", "Session Error");
                     return;
                 }
                 try {
@@ -189,7 +191,7 @@ export function QueryEditor() {
                     });
                     localStorage.setItem('activeConnection', JSON.stringify(activeConfig));
                 } catch (error) {
-                    alert(`Failed to switch database: ${error}`);
+                    Dialog.alert(`Failed to switch database: ${error}`, "Switch Failed");
                 } finally {
                     e.target.disabled = false;
                 }
