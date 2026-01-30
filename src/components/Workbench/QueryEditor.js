@@ -1,16 +1,227 @@
 // Top of file import
 import { Dialog } from '../UI/Dialog.js';
+import { invoke } from '@tauri-apps/api/core';
+
+// SQL Keywords for autocomplete
+const SQL_KEYWORDS = [
+    'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'NOT', 'IN', 'LIKE', 'BETWEEN',
+    'JOIN', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'FULL JOIN', 'CROSS JOIN',
+    'ON', 'AS', 'ORDER BY', 'GROUP BY', 'HAVING', 'LIMIT', 'OFFSET',
+    'INSERT INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE FROM',
+    'CREATE TABLE', 'ALTER TABLE', 'DROP TABLE', 'TRUNCATE TABLE',
+    'CREATE INDEX', 'DROP INDEX', 'CREATE DATABASE', 'DROP DATABASE',
+    'PRIMARY KEY', 'FOREIGN KEY', 'REFERENCES', 'UNIQUE', 'NOT NULL', 'DEFAULT',
+    'AUTO_INCREMENT', 'CONSTRAINT', 'CHECK', 'INDEX',
+    'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'DISTINCT',
+    'UNION', 'UNION ALL', 'INTERSECT', 'EXCEPT',
+    'CASE', 'WHEN', 'THEN', 'ELSE', 'END',
+    'NULL', 'IS NULL', 'IS NOT NULL', 'ASC', 'DESC',
+    'VARCHAR', 'INT', 'INTEGER', 'BIGINT', 'DECIMAL', 'FLOAT', 'DOUBLE',
+    'TEXT', 'BLOB', 'DATE', 'DATETIME', 'TIMESTAMP', 'BOOLEAN', 'BOOL'
+];
 
 export function QueryEditor() {
     const container = document.createElement('div');
     container.className = "flex flex-col h-[60%] border-b border-white/5";
-    // ... existing ...
 
     // --- State ---
     let tabs = [
         { id: '1', title: 'Query 1', content: 'SELECT * FROM information_schema.tables;' }
     ];
     let activeTabId = '1';
+
+    // Autocomplete state
+    let suggestions = [];
+    let selectedIndex = 0;
+    let autocompleteVisible = false;
+    let cachedDatabases = [];
+    let cachedTables = {};
+    let cachedColumns = {};
+
+    // --- Autocomplete Logic ---
+    const getCurrentWord = (textarea) => {
+        const cursorPos = textarea.selectionStart;
+        const text = textarea.value.substring(0, cursorPos);
+        const match = text.match(/[\w.]+$/);
+        return match ? match[0] : '';
+    };
+
+    const getCaretCoordinates = (textarea) => {
+        const cursorPos = textarea.selectionStart;
+        const text = textarea.value.substring(0, cursorPos);
+        const lines = text.split('\n');
+        const currentLineIndex = lines.length - 1;
+        const currentLineLength = lines[currentLineIndex].length;
+
+        // Approximate position
+        const lineHeight = 22;
+        const charWidth = 8.4;
+
+        return {
+            top: (currentLineIndex + 1) * lineHeight + 40,
+            left: currentLineLength * charWidth + 80
+        };
+    };
+
+    const loadDatabasesForAutocomplete = async () => {
+        try {
+            cachedDatabases = await invoke('get_databases');
+        } catch (e) {
+            console.error('Failed to load databases for autocomplete', e);
+        }
+    };
+
+    const loadTablesForAutocomplete = async (database) => {
+        if (cachedTables[database]) return cachedTables[database];
+        try {
+            const tables = await invoke('get_tables', { database });
+            cachedTables[database] = tables;
+            return tables;
+        } catch (e) {
+            console.error('Failed to load tables for autocomplete', e);
+            return [];
+        }
+    };
+
+    const loadColumnsForAutocomplete = async (database, table) => {
+        const key = `${database}.${table}`;
+        if (cachedColumns[key]) return cachedColumns[key];
+        try {
+            const columns = await invoke('get_table_schema', { database, table });
+            cachedColumns[key] = columns.map(c => c.name);
+            return cachedColumns[key];
+        } catch (e) {
+            console.error('Failed to load columns for autocomplete', e);
+            return [];
+        }
+    };
+
+    const getSuggestions = async (word) => {
+        if (!word || word.length < 1) return [];
+
+        const upper = word.toUpperCase();
+        const lower = word.toLowerCase();
+        let results = [];
+
+        // SQL Keywords
+        const keywordMatches = SQL_KEYWORDS.filter(k => k.startsWith(upper));
+        results.push(...keywordMatches.map(k => ({ type: 'keyword', value: k, icon: 'code', color: 'text-purple-400' })));
+
+        // Database names
+        const dbMatches = cachedDatabases.filter(db => db.toLowerCase().startsWith(lower));
+        results.push(...dbMatches.map(db => ({ type: 'database', value: db, icon: 'database', color: 'text-mysql-teal' })));
+
+        // Table names from all cached databases
+        const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+        const currentDb = activeConfig.database || '';
+        if (currentDb && cachedTables[currentDb]) {
+            const tableMatches = cachedTables[currentDb].filter(t => t.toLowerCase().startsWith(lower));
+            results.push(...tableMatches.map(t => ({ type: 'table', value: t, icon: 'table_rows', color: 'text-cyan-400' })));
+        }
+
+        // Column names - check if word contains a dot (table.column)
+        if (word.includes('.')) {
+            const [tablePart, colPart] = word.split('.');
+            const colLower = (colPart || '').toLowerCase();
+
+            // Try to find columns for this table
+            for (const db of Object.keys(cachedTables)) {
+                if (cachedTables[db].includes(tablePart)) {
+                    const columns = await loadColumnsForAutocomplete(db, tablePart);
+                    const colMatches = columns.filter(c => c.toLowerCase().startsWith(colLower));
+                    results.push(...colMatches.map(c => ({
+                        type: 'column',
+                        value: `${tablePart}.${c}`,
+                        display: c,
+                        icon: 'view_column',
+                        color: 'text-orange-400'
+                    })));
+                }
+            }
+        }
+
+        // Limit results
+        return results.slice(0, 10);
+    };
+
+    const showAutocomplete = async (textarea) => {
+        const word = getCurrentWord(textarea);
+        suggestions = await getSuggestions(word);
+        selectedIndex = 0;
+
+        if (suggestions.length > 0) {
+            autocompleteVisible = true;
+            renderAutocomplete(textarea);
+        } else {
+            hideAutocomplete();
+        }
+    };
+
+    const hideAutocomplete = () => {
+        autocompleteVisible = false;
+        const popup = container.querySelector('#autocomplete-popup');
+        if (popup) popup.remove();
+    };
+
+    const renderAutocomplete = (textarea) => {
+        let popup = container.querySelector('#autocomplete-popup');
+        if (!popup) {
+            popup = document.createElement('div');
+            popup.id = 'autocomplete-popup';
+            popup.className = 'absolute z-[100] bg-[#1a1d23] border border-white/10 rounded-lg shadow-2xl py-1 min-w-[200px] max-h-[200px] overflow-y-auto custom-scrollbar';
+            const editorContainer = container.querySelector('.neu-inset');
+            if (editorContainer) {
+                editorContainer.style.position = 'relative';
+                editorContainer.appendChild(popup);
+            }
+        }
+
+        const coords = getCaretCoordinates(textarea);
+        popup.style.top = `${coords.top}px`;
+        popup.style.left = `${Math.min(coords.left, 300)}px`;
+
+        popup.innerHTML = suggestions.map((s, i) => `
+            <div class="autocomplete-item px-3 py-1.5 flex items-center gap-2 cursor-pointer transition-colors ${i === selectedIndex ? 'bg-mysql-teal/20 text-white' : 'text-gray-400 hover:bg-white/5'}" data-index="${i}">
+                <span class="material-symbols-outlined text-sm ${s.color}">${s.icon}</span>
+                <span class="font-mono text-[12px]">${s.display || s.value}</span>
+                <span class="text-[9px] text-gray-600 uppercase ml-auto">${s.type}</span>
+            </div>
+        `).join('');
+
+        // Click handlers
+        popup.querySelectorAll('.autocomplete-item').forEach(item => {
+            item.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                const idx = parseInt(item.dataset.index);
+                selectSuggestion(textarea, idx);
+            });
+        });
+    };
+
+    const selectSuggestion = (textarea, index) => {
+        const suggestion = suggestions[index];
+        if (!suggestion) return;
+
+        const cursorPos = textarea.selectionStart;
+        const text = textarea.value;
+        const word = getCurrentWord(textarea);
+        const wordStart = cursorPos - word.length;
+
+        const newText = text.substring(0, wordStart) + suggestion.value + text.substring(cursorPos);
+        textarea.value = newText;
+
+        const newCursorPos = wordStart + suggestion.value.length;
+        textarea.setSelectionRange(newCursorPos, newCursorPos);
+
+        // Update tab content
+        const activeTab = tabs.find(t => t.id === activeTabId);
+        if (activeTab) {
+            activeTab.content = newText;
+        }
+
+        hideAutocomplete();
+        textarea.focus();
+    };
 
     // --- Render ---
     const render = () => {
@@ -53,9 +264,9 @@ export function QueryEditor() {
                 <div class="w-12 text-gray-700 text-right pr-6 border-r border-white/5 select-none text-xs leading-[22px] pt-1">
                     1<br />2<br />3<br />4<br />5<br />6<br />7<br />8<br />9
                 </div>
-                <textarea id="query-input" class="flex-1 bg-transparent border-none text-gray-300 font-mono text-[14px] leading-[22px] pl-6 focus:ring-0 resize-none outline-none custom-scrollbar p-0" spellcheck="false" placeholder="Enter your SQL query here...">${activeTab ? activeTab.content : ''}</textarea>
+                <textarea id="query-input" class="flex-1 bg-transparent border-none text-gray-300 font-mono text-[14px] leading-[22px] pl-6 focus:ring-0 resize-none outline-none custom-scrollbar p-0" spellcheck="false" placeholder="Enter your SQL query here... (Ctrl+Space for suggestions)">${activeTab ? activeTab.content : ''}</textarea>
                 <div class="absolute bottom-4 right-4 text-[10px] text-gray-700 font-bold uppercase tracking-widest">
-                    MySQL 8.0 • UTF-8
+                    MySQL 8.0 • UTF-8 • <span class="text-mysql-teal/50">Ctrl+Space</span>
                 </div>
             </div>
         `;
@@ -105,14 +316,51 @@ export function QueryEditor() {
             });
         }
 
-        // Input Handling (Sync content)
+        // Input Handling with Autocomplete
         const textarea = container.querySelector('#query-input');
         if (textarea) {
+            // Save content on input
             textarea.addEventListener('input', (e) => {
                 const activeTab = tabs.find(t => t.id === activeTabId);
                 if (activeTab) {
                     activeTab.content = e.target.value;
                 }
+                // Trigger autocomplete on input
+                showAutocomplete(textarea);
+            });
+
+            // Keyboard handling for autocomplete
+            textarea.addEventListener('keydown', (e) => {
+                if (autocompleteVisible) {
+                    if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        selectedIndex = Math.min(selectedIndex + 1, suggestions.length - 1);
+                        renderAutocomplete(textarea);
+                    } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        selectedIndex = Math.max(selectedIndex - 1, 0);
+                        renderAutocomplete(textarea);
+                    } else if (e.key === 'Enter' || e.key === 'Tab') {
+                        if (suggestions.length > 0) {
+                            e.preventDefault();
+                            selectSuggestion(textarea, selectedIndex);
+                        }
+                    } else if (e.key === 'Escape') {
+                        e.preventDefault();
+                        hideAutocomplete();
+                    }
+                }
+
+                // Ctrl+Space to trigger autocomplete
+                if (e.ctrlKey && e.code === 'Space') {
+                    e.preventDefault();
+                    showAutocomplete(textarea);
+                }
+            });
+
+            // Hide autocomplete on blur
+            textarea.addEventListener('blur', () => {
+                setTimeout(hideAutocomplete, 150);
             });
         }
 
@@ -124,7 +372,6 @@ export function QueryEditor() {
                 try {
                     executeBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span> RUNNING';
                     executeBtn.classList.add('opacity-70', 'cursor-not-allowed');
-                    const { invoke } = await import('@tauri-apps/api/core');
                     const result = await invoke('execute_query', { query: editorContent });
 
                     const event = new CustomEvent('tactilesql:query-result', { detail: result });
@@ -161,17 +408,21 @@ export function QueryEditor() {
         // --- Database Selector Logic ---
         const dbSelector = container.querySelector('#db-selector');
         if (dbSelector) {
-            const { invoke } = await import('@tauri-apps/api/core');
-
             const loadDatabases = async () => {
                 try {
                     const dbs = await invoke('get_databases');
+                    cachedDatabases = dbs; // Cache for autocomplete
                     const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
                     const currentDb = activeConfig.database || '';
                     dbSelector.innerHTML = `
                         <option value="">Select Database</option>
                         ${dbs.map(db => `<option value="${db}" ${db === currentDb ? 'selected' : ''}>${db}</option>`).join('')}
                     `;
+
+                    // Preload tables for current database
+                    if (currentDb) {
+                        loadTablesForAutocomplete(currentDb);
+                    }
                 } catch (error) {
                     console.error('Failed to load DB list', error);
                 }
@@ -192,6 +443,9 @@ export function QueryEditor() {
                         config: { ...activeConfig, id: activeConfig.id || null, name: activeConfig.name || null }
                     });
                     localStorage.setItem('activeConnection', JSON.stringify(activeConfig));
+
+                    // Load tables for new database
+                    loadTablesForAutocomplete(newDb);
                 } catch (error) {
                     Dialog.alert(`Failed to switch database: ${error}`, "Switch Failed");
                 } finally {
@@ -206,6 +460,7 @@ export function QueryEditor() {
 
     // Initial Render
     render();
+    loadDatabasesForAutocomplete();
 
     return container;
 }
