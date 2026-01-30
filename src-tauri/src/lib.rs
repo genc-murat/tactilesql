@@ -23,7 +23,10 @@ pub fn run() {
             db::get_tables,
             db::get_table_schema,
             db::get_mysql_users,
-            db::get_user_privileges
+            db::get_user_privileges,
+            db::get_table_indexes,
+            db::get_table_foreign_keys,
+            db::get_table_constraints
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -472,3 +472,146 @@ pub async fn get_user_privileges(
         databases,
     })
 }
+
+// --- Table Metadata Commands ---
+
+#[derive(Serialize, Debug)]
+pub struct TableIndex {
+    pub name: String,
+    pub column_name: String,
+    pub non_unique: bool,
+    pub index_type: String,
+}
+
+#[tauri::command]
+pub async fn get_table_indexes(
+    state: State<'_, AppState>,
+    database: String,
+    table: String
+) -> Result<Vec<TableIndex>, String> {
+    let pool = {
+        let pool_guard = state.pool.lock().unwrap();
+        pool_guard.clone().ok_or("No active connection")?
+    };
+
+    let query = format!("SHOW INDEX FROM `{}`.`{}`", database, table);
+    
+    let rows = sqlx::query(&query)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("Failed to fetch indexes: {}", e))?;
+
+    let mut indexes = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    
+    for row in rows {
+        use sqlx::Row;
+        
+        let name: String = row.try_get("Key_name").unwrap_or_default();
+        let column_name: String = row.try_get("Column_name").unwrap_or_default();
+        let non_unique: i64 = row.try_get("Non_unique").unwrap_or(1);
+        let index_type: String = row.try_get("Index_type").unwrap_or_default();
+        
+        // Use composite key to avoid duplicates
+        let key = format!("{}:{}", name, column_name);
+        if !seen.contains(&key) {
+            seen.insert(key);
+            indexes.push(TableIndex {
+                name,
+                column_name,
+                non_unique: non_unique != 0,
+                index_type,
+            });
+        }
+    }
+
+    Ok(indexes)
+}
+
+#[derive(Serialize, Debug)]
+pub struct ForeignKey {
+    pub constraint_name: String,
+    pub column_name: String,
+    pub referenced_table: String,
+    pub referenced_column: String,
+}
+
+#[tauri::command]
+pub async fn get_table_foreign_keys(
+    state: State<'_, AppState>,
+    database: String,
+    table: String
+) -> Result<Vec<ForeignKey>, String> {
+    let pool = {
+        let pool_guard = state.pool.lock().unwrap();
+        pool_guard.clone().ok_or("No active connection")?
+    };
+
+    let query = format!(
+        "SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME 
+         FROM information_schema.KEY_COLUMN_USAGE 
+         WHERE TABLE_SCHEMA = '{}' AND TABLE_NAME = '{}' AND REFERENCED_TABLE_NAME IS NOT NULL",
+        database, table
+    );
+    
+    let rows = sqlx::query(&query)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("Failed to fetch foreign keys: {}", e))?;
+
+    let mut fks = Vec::new();
+    for row in rows {
+        use sqlx::Row;
+        
+        fks.push(ForeignKey {
+            constraint_name: row.try_get("CONSTRAINT_NAME").unwrap_or_default(),
+            column_name: row.try_get("COLUMN_NAME").unwrap_or_default(),
+            referenced_table: row.try_get("REFERENCED_TABLE_NAME").unwrap_or_default(),
+            referenced_column: row.try_get("REFERENCED_COLUMN_NAME").unwrap_or_default(),
+        });
+    }
+
+    Ok(fks)
+}
+
+#[derive(Serialize, Debug)]
+pub struct TableConstraint {
+    pub name: String,
+    pub constraint_type: String,
+}
+
+#[tauri::command]
+pub async fn get_table_constraints(
+    state: State<'_, AppState>,
+    database: String,
+    table: String
+) -> Result<Vec<TableConstraint>, String> {
+    let pool = {
+        let pool_guard = state.pool.lock().unwrap();
+        pool_guard.clone().ok_or("No active connection")?
+    };
+
+    let query = format!(
+        "SELECT CONSTRAINT_NAME, CONSTRAINT_TYPE 
+         FROM information_schema.TABLE_CONSTRAINTS 
+         WHERE TABLE_SCHEMA = '{}' AND TABLE_NAME = '{}'",
+        database, table
+    );
+    
+    let rows = sqlx::query(&query)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("Failed to fetch constraints: {}", e))?;
+
+    let mut constraints = Vec::new();
+    for row in rows {
+        use sqlx::Row;
+        
+        constraints.push(TableConstraint {
+            name: row.try_get("CONSTRAINT_NAME").unwrap_or_default(),
+            constraint_type: row.try_get("CONSTRAINT_TYPE").unwrap_or_default(),
+        });
+    }
+
+    Ok(constraints)
+}
