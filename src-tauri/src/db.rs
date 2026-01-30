@@ -787,3 +787,68 @@ pub async fn get_events(
 
     Ok(events)
 }
+
+// --- View Source Commands ---
+
+#[derive(Serialize, Debug)]
+pub struct ViewDefinition {
+    pub name: String,
+    pub definition: String,
+}
+
+#[tauri::command]
+pub async fn get_view_definition(
+    state: State<'_, AppState>,
+    database: String,
+    view: String
+) -> Result<ViewDefinition, String> {
+    let pool = {
+        let pool_guard = state.pool.lock().unwrap();
+        pool_guard.clone().ok_or("No active connection")?
+    };
+
+    let query = format!("SHOW CREATE VIEW `{}`.`{}`", database, view);
+    
+    let row = sqlx::query(&query)
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| format!("Failed to fetch view definition: {}", e))?;
+
+    use sqlx::Row;
+    let definition: String = row.try_get("Create View").unwrap_or_else(|_| {
+        row.try_get::<String, _>(1).unwrap_or_default()
+    });
+
+    Ok(ViewDefinition {
+        name: view,
+        definition,
+    })
+}
+
+#[tauri::command]
+pub async fn alter_view(
+    state: State<'_, AppState>,
+    database: String,
+    view: String,
+    definition: String
+) -> Result<String, String> {
+    let pool = {
+        let pool_guard = state.pool.lock().unwrap();
+        pool_guard.clone().ok_or("No active connection")?
+    };
+
+    // First, switch to the database
+    let use_db = format!("USE `{}`", database);
+    sqlx::query(&use_db)
+        .execute(&pool)
+        .await
+        .map_err(|e| format!("Failed to switch database: {}", e))?;
+
+    // Execute the view definition (should start with CREATE OR REPLACE VIEW or ALTER VIEW)
+    sqlx::query(&definition)
+        .execute(&pool)
+        .await
+        .map_err(|e| format!("Failed to alter view: {}", e))?;
+
+    Ok("View updated successfully".to_string())
+}

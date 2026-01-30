@@ -1,0 +1,165 @@
+import { invoke } from '@tauri-apps/api/core';
+import { Dialog } from './Dialog.js';
+
+// Simple SQL formatter
+function formatSQL(sql) {
+    if (!sql) return sql;
+
+    const keywords = [
+        'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'JOIN', 'LEFT JOIN', 'RIGHT JOIN',
+        'INNER JOIN', 'OUTER JOIN', 'ON', 'AS', 'ORDER BY', 'GROUP BY', 'HAVING',
+        'LIMIT', 'OFFSET', 'UNION', 'INSERT INTO', 'VALUES', 'UPDATE', 'SET',
+        'DELETE FROM', 'CREATE', 'ALTER', 'DROP', 'VIEW', 'TABLE', 'INDEX',
+        'PRIMARY KEY', 'FOREIGN KEY', 'REFERENCES', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END'
+    ];
+
+    let formatted = sql;
+
+    // Add newlines before main keywords
+    const newlineKeywords = ['SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'JOIN', 'LEFT JOIN',
+        'RIGHT JOIN', 'INNER JOIN', 'ORDER BY', 'GROUP BY', 'HAVING', 'LIMIT', 'UNION'];
+
+    newlineKeywords.forEach(kw => {
+        const regex = new RegExp(`\\b${kw}\\b`, 'gi');
+        formatted = formatted.replace(regex, `\n${kw}`);
+    });
+
+    // Clean up multiple spaces and newlines
+    formatted = formatted.replace(/\n\s*\n/g, '\n');
+    formatted = formatted.replace(/^\n/, '');
+
+    // Indent after SELECT, WHERE etc
+    const lines = formatted.split('\n');
+    const indentedLines = lines.map((line, i) => {
+        const trimmed = line.trim();
+        if (i === 0) return trimmed;
+        if (/^(AND|OR)\b/i.test(trimmed)) return '    ' + trimmed;
+        if (/^(ON)\b/i.test(trimmed)) return '        ' + trimmed;
+        return trimmed;
+    });
+
+    return indentedLines.join('\n');
+}
+
+export function showViewSourceModal(dbName, viewName) {
+    // Remove existing modal
+    const existing = document.getElementById('view-source-modal');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'view-source-modal';
+    overlay.className = 'fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-center justify-center p-4';
+
+    overlay.innerHTML = `
+        <div class="bg-[#0f1115] border border-white/10 rounded-xl shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-[#16191e]">
+                <div class="flex items-center gap-3">
+                    <span class="material-symbols-outlined text-blue-400">visibility</span>
+                    <h2 class="text-sm font-bold text-white uppercase tracking-wider">View Source</h2>
+                    <span class="text-[10px] font-mono text-gray-500 bg-black/30 px-2 py-1 rounded">${dbName}.${viewName}</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <button id="format-btn" class="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-white border border-white/10 rounded hover:bg-white/5 transition-colors flex items-center gap-1.5">
+                        <span class="material-symbols-outlined text-sm">auto_fix_high</span> Format
+                    </button>
+                    <button id="close-modal" class="text-gray-500 hover:text-white transition-colors">
+                        <span class="material-symbols-outlined">close</span>
+                    </button>
+                </div>
+            </div>
+            <div class="flex-1 overflow-hidden flex flex-col">
+                <div id="loading-indicator" class="flex-1 flex items-center justify-center">
+                    <span class="material-symbols-outlined animate-spin text-mysql-teal">sync</span>
+                    <span class="ml-2 text-gray-500">Loading view definition...</span>
+                </div>
+                <textarea id="view-source-editor" class="hidden flex-1 bg-[#08090c] text-gray-300 font-mono text-[14px] leading-[1.8] p-6 resize-none outline-none focus:ring-1 focus:ring-mysql-teal/30 custom-scrollbar" spellcheck="false"></textarea>
+            </div>
+            <div class="flex items-center justify-between px-6 py-4 border-t border-white/10 bg-[#16191e]">
+                <div class="text-[10px] text-gray-600">
+                    <span class="text-yellow-500">⚠</span> Changes will be applied using CREATE OR REPLACE VIEW
+                </div>
+                <div class="flex gap-3">
+                    <button id="cancel-btn" class="px-5 py-2 text-[11px] font-bold uppercase tracking-widest text-gray-400 hover:text-white transition-colors">
+                        Cancel
+                    </button>
+                    <button id="save-btn" class="px-5 py-2 bg-mysql-teal text-black text-[11px] font-black uppercase tracking-widest rounded-md shadow-[0_0_15px_rgba(0,200,255,0.3)] hover:brightness-110 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        Save Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const editor = overlay.querySelector('#view-source-editor');
+    const loadingIndicator = overlay.querySelector('#loading-indicator');
+    const saveBtn = overlay.querySelector('#save-btn');
+    const formatBtn = overlay.querySelector('#format-btn');
+    let originalDefinition = '';
+
+    // Load view definition
+    const loadDefinition = async () => {
+        try {
+            const result = await invoke('get_view_definition', { database: dbName, view: viewName });
+            originalDefinition = result.definition;
+            editor.value = formatSQL(result.definition);
+            loadingIndicator.classList.add('hidden');
+            editor.classList.remove('hidden');
+            saveBtn.disabled = false;
+        } catch (error) {
+            loadingIndicator.innerHTML = `<span class="text-red-500">Error: ${error}</span>`;
+        }
+    };
+
+    // Format button
+    formatBtn.onclick = () => {
+        editor.value = formatSQL(editor.value);
+    };
+
+    // Event handlers
+    overlay.querySelector('#close-modal').onclick = () => overlay.remove();
+    overlay.querySelector('#cancel-btn').onclick = () => overlay.remove();
+    overlay.onclick = (e) => {
+        if (e.target === overlay) overlay.remove();
+    };
+
+    saveBtn.onclick = async () => {
+        const newDefinition = editor.value.trim();
+        if (newDefinition === originalDefinition) {
+            Dialog.alert('No changes to save.', 'Info');
+            return;
+        }
+
+        try {
+            saveBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span> SAVING';
+            saveBtn.disabled = true;
+
+            // Convert to CREATE OR REPLACE VIEW if needed
+            let finalDef = newDefinition;
+            if (finalDef.toUpperCase().startsWith('CREATE VIEW')) {
+                finalDef = finalDef.replace(/^CREATE VIEW/i, 'CREATE OR REPLACE VIEW');
+            } else if (!finalDef.toUpperCase().startsWith('CREATE OR REPLACE VIEW')) {
+                finalDef = `CREATE OR REPLACE VIEW \`${viewName}\` AS ${finalDef}`;
+            }
+
+            await invoke('alter_view', { database: dbName, view: viewName, definition: finalDef });
+            Dialog.alert('View updated successfully!', 'Success');
+            overlay.remove();
+        } catch (error) {
+            Dialog.alert(`Failed to save: ${error}`, 'Error');
+            saveBtn.innerHTML = 'Save Changes';
+            saveBtn.disabled = false;
+        }
+    };
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', function escHandler(e) {
+        if (e.key === 'Escape') {
+            overlay.remove();
+            document.removeEventListener('keydown', escHandler);
+        }
+    });
+
+    loadDefinition();
+}

@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { showViewSourceModal } from '../UI/ViewSourceModal.js';
 
 export function ObjectExplorer() {
     const explorer = document.createElement('aside');
@@ -108,7 +109,7 @@ export function ObjectExplorer() {
                 ${renderObjectCategory(db, 'tables', 'Tables', 'table_rows', 'text-mysql-teal', tables,
             (db, t) => renderTable(db, t))}
                 ${renderObjectCategory(db, 'views', 'Views', 'visibility', 'text-blue-400', views,
-                (db, v) => `<div class="flex items-center gap-2 text-[10px] text-gray-500 py-0.5">
+                (db, v) => `<div class="view-item flex items-center gap-2 text-[10px] text-gray-500 py-0.5 hover:text-white cursor-pointer" data-view="${v}" data-db="${db}">
                         <span class="material-symbols-outlined text-[12px] text-blue-400">visibility</span>
                         <span>${v}</span>
                     </div>`)}
@@ -229,6 +230,15 @@ export function ObjectExplorer() {
             });
         });
 
+        // View context menu
+        explorer.querySelectorAll('.view-item').forEach(item => {
+            item.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                showViewContextMenu(e.clientX, e.clientY, item.dataset.view, item.dataset.db);
+            });
+        });
+
         const refreshBtn = explorer.querySelector('#refresh-btn');
         if (refreshBtn) {
             refreshBtn.addEventListener('click', () => {
@@ -240,7 +250,58 @@ export function ObjectExplorer() {
         }
     };
 
-    // --- Context Menu ---
+    // --- View Context Menu ---
+    const showViewContextMenu = (x, y, viewName, dbName) => {
+        const existing = document.getElementById('explorer-context-menu');
+        if (existing) existing.remove();
+
+        const menu = document.createElement('div');
+        menu.id = 'explorer-context-menu';
+        menu.className = "fixed z-[9999] bg-[#1a1d23] border border-white/10 rounded-lg shadow-xl py-1 w-48";
+        menu.style.left = `${x}px`;
+        menu.style.top = `${y}px`;
+
+        menu.innerHTML = `
+            <div class="px-3 py-1.5 text-[10px] font-mono text-gray-500 border-b border-white/5 uppercase tracking-widest mb-1">
+                <span class="text-blue-400">VIEW</span> ${dbName}.${viewName}
+            </div>
+            <button class="w-full text-left px-3 py-2 text-[11px] font-bold text-gray-300 hover:bg-white/5 hover:text-white flex items-center gap-2" id="ctx-view-source">
+                <span class="material-symbols-outlined text-sm text-purple-400">code</span> View Source
+            </button>
+            <button class="w-full text-left px-3 py-2 text-[11px] font-bold text-gray-300 hover:bg-white/5 hover:text-white flex items-center gap-2" id="ctx-select-view">
+                <span class="material-symbols-outlined text-sm text-cyan-400">table_view</span> Select *
+            </button>
+            <button class="w-full text-left px-3 py-2 text-[11px] font-bold text-gray-300 hover:bg-white/5 hover:text-white flex items-center gap-2" id="ctx-copy-view">
+                <span class="material-symbols-outlined text-sm text-gray-500">content_copy</span> Copy Name
+            </button>
+        `;
+
+        document.body.appendChild(menu);
+
+        menu.querySelector('#ctx-view-source').onclick = () => {
+            showViewSourceModal(dbName, viewName);
+            menu.remove();
+        };
+        menu.querySelector('#ctx-select-view').onclick = () => {
+            // Dispatch event to query editor
+            window.dispatchEvent(new CustomEvent('tactilesql:run-query', {
+                detail: { query: `SELECT * FROM \`${dbName}\`.\`${viewName}\` LIMIT 1000;` }
+            }));
+            menu.remove();
+        };
+        menu.querySelector('#ctx-copy-view').onclick = () => {
+            navigator.clipboard.writeText(viewName);
+            menu.remove();
+        };
+
+        const closeMenu = () => {
+            menu.remove();
+            document.removeEventListener('click', closeMenu);
+        };
+        setTimeout(() => document.addEventListener('click', closeMenu), 0);
+    };
+
+    // --- Table Context Menu ---
     const showContextMenu = (x, y, tableName, dbName) => {
         const existing = document.getElementById('explorer-context-menu');
         if (existing) existing.remove();

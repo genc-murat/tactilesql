@@ -31,7 +31,9 @@ pub fn run() {
             db::get_triggers,
             db::get_procedures,
             db::get_functions,
-            db::get_events
+            db::get_events,
+            db::get_view_definition,
+            db::alter_view
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
