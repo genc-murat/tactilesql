@@ -297,9 +297,7 @@ export function QueryEditor() {
                 </div>
             </div>
             <div class="flex-1 neu-inset rounded-xl bg-[#08090c] overflow-hidden flex p-4 font-mono text-[14px] leading-relaxed relative focus-within:ring-1 focus-within:ring-mysql-teal/50 transition-all">
-                <div class="w-12 text-gray-700 text-right pr-6 border-r border-white/5 select-none text-xs leading-[22px] pt-1" id="line-numbers">
-                    1<br />2<br />3<br />4<br />5<br />6<br />7<br />8<br />9
-                </div>
+                <div class="w-12 text-gray-700 text-right pr-4 border-r border-white/5 select-none text-xs leading-[22px] pt-1 overflow-hidden" id="line-numbers"></div>
                 <div class="flex-1 relative pl-6">
                     <pre id="syntax-highlight" class="absolute inset-0 pl-6 pt-0 font-mono text-[14px] leading-[22px] pointer-events-none overflow-hidden whitespace-pre-wrap break-words" aria-hidden="true"></pre>
                     <textarea id="query-input" class="relative w-full h-full bg-transparent border-none text-transparent caret-white font-mono text-[14px] leading-[22px] focus:ring-0 resize-none outline-none custom-scrollbar p-0 z-10" spellcheck="false" placeholder="Enter your SQL query here... (Ctrl+Space for suggestions)">${activeTab ? activeTab.content : ''}</textarea>
@@ -358,6 +356,7 @@ export function QueryEditor() {
         // Input Handling with Autocomplete
         const textarea = container.querySelector('#query-input');
         const syntaxHighlight = container.querySelector('#syntax-highlight');
+        const lineNumbers = container.querySelector('#line-numbers');
 
         // Update syntax highlighting
         const updateSyntaxHighlight = () => {
@@ -366,9 +365,28 @@ export function QueryEditor() {
             }
         };
 
+        // Update line numbers
+        const updateLineNumbers = () => {
+            if (textarea && lineNumbers) {
+                const lines = textarea.value.split('\n').length;
+                const minContent = Math.max(lines, 20); // Minimum 20 lines
+                lineNumbers.innerHTML = Array.from({ length: minContent }, (_, i) => i + 1).join('<br>');
+            }
+        };
+
         if (textarea) {
-            // Initial syntax highlight
+            // Initial render
             updateSyntaxHighlight();
+            updateLineNumbers();
+
+            // Scroll Sync
+            textarea.addEventListener('scroll', () => {
+                if (lineNumbers) lineNumbers.scrollTop = textarea.scrollTop;
+                if (syntaxHighlight) {
+                    syntaxHighlight.scrollTop = textarea.scrollTop;
+                    syntaxHighlight.scrollLeft = textarea.scrollLeft;
+                }
+            });
 
             // Save content on input
             textarea.addEventListener('input', (e) => {
@@ -376,8 +394,10 @@ export function QueryEditor() {
                 if (activeTab) {
                     activeTab.content = e.target.value;
                 }
-                // Update syntax highlighting
+                // Update views
                 updateSyntaxHighlight();
+                updateLineNumbers();
+
                 // Trigger autocomplete on input
                 showAutocomplete(textarea);
             });
