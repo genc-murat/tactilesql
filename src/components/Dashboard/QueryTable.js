@@ -4,73 +4,24 @@ export function QueryTable() {
 
     section.innerHTML = `
         <div class="flex items-center justify-between px-1">
-            <h2 class="text-xs font-bold uppercase tracking-[0.2em] text-gray-500">Critical Queries</h2>
+            <h2 class="text-xs font-bold uppercase tracking-[0.2em] text-gray-500">Active Processes</h2>
         </div>
-        <div class="tactile-card rounded-2xl flex-1 flex flex-col overflow-hidden">
-            <div class="overflow-auto custom-scrollbar">
+        <div class="tactile-card rounded-2xl flex-1 flex flex-col overflow-hidden min-h-[300px]">
+            <div class="overflow-auto custom-scrollbar flex-1">
                 <table class="w-full text-left font-mono text-[11px]">
                     <thead class="sticky top-0 bg-[#16191e] border-b border-white/5 z-10">
                         <tr class="text-gray-500 uppercase tracking-tighter">
-                            <th class="p-5 font-bold">Query Origin</th>
-                            <th class="p-5 font-bold">Latency</th>
-                            <th class="p-5 font-bold">Load Indicator</th>
-                            <th class="p-5 font-bold">Execution Plan</th>
+                            <th class="p-4 font-bold">Id / User</th>
+                            <th class="p-4 font-bold">Database</th>
+                            <th class="p-4 font-bold">Command</th>
+                            <th class="p-4 font-bold">Time (s)</th>
+                            <th class="p-4 font-bold">State</th>
+                            <th class="p-4 font-bold">Info</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-white/5">
-                        <tr class="hover:bg-white/5 transition-colors group cursor-pointer">
-                            <td class="p-5">
-                                <div class="flex flex-col">
-                                    <span class="text-cyan-400 font-bold">SELECT * FROM orders_history...</span>
-                                    <span class="text-[10px] text-gray-600">Schema: sales_production</span>
-                                </div>
-                            </td>
-                            <td class="p-5 font-bold text-orange-400">184.2 ms</td>
-                            <td class="p-5">
-                                <div class="flex items-center gap-2">
-                                    <div class="w-20 h-1.5 bg-black/40 rounded-full overflow-hidden">
-                                        <div class="h-full bg-orange-400/60 w-[75%]"></div>
-                                    </div>
-                                    <span class="text-[9px] text-orange-400/80">WARN</span>
-                                </div>
-                            </td>
-                            <td class="p-5"><span class="px-2 py-1 rounded bg-white/5 border border-white/10 text-gray-400">INDEX_SCAN</span></td>
-                        </tr>
-                        <tr class="hover:bg-white/5 transition-colors group cursor-pointer">
-                            <td class="p-5">
-                                <div class="flex flex-col">
-                                    <span class="text-purple-400 font-bold">UPDATE users SET last_login =...</span>
-                                    <span class="text-[10px] text-gray-600">Schema: core_system</span>
-                                </div>
-                            </td>
-                            <td class="p-5 font-bold text-cyan-400">8.1 ms</td>
-                            <td class="p-5">
-                                <div class="flex items-center gap-2">
-                                    <div class="w-20 h-1.5 bg-black/40 rounded-full overflow-hidden">
-                                        <div class="h-full bg-cyan-400/60 w-[12%] shadow-[0_0_5px_rgba(34,211,238,0.3)]"></div>
-                                    </div>
-                                    <span class="text-[9px] text-cyan-400/80">OPTIMAL</span>
-                                </div>
-                            </td>
-                            <td class="p-5"><span class="px-2 py-1 rounded bg-white/5 border border-white/10 text-gray-400">KEY_LOOKUP</span></td>
-                        </tr>
-                        <tr class="hover:bg-white/5 transition-colors group cursor-pointer">
-                            <td class="p-5">
-                                <div class="flex flex-col">
-                                    <span class="text-red-400 font-bold">INSERT INTO audit_log (data)...</span>
-                                    <span class="text-[10px] text-gray-600">Schema: audit_logs</span>
-                                </div>
-                            </td>
-                            <td class="p-5 font-bold text-red-400">1.2 s</td>
-                            <td class="p-5">
-                                <div class="flex items-center gap-2">
-                                    <div class="w-20 h-1.5 bg-black/40 rounded-full overflow-hidden">
-                                        <div class="h-full bg-red-400/80 w-[94%] shadow-[0_0_8px_rgba(239,68,68,0.5)]"></div>
-                                    </div>
-                                    <span class="text-[9px] text-red-400/80">CRITICAL</span>
-                                </div>
-                            </td>
-                            <td class="p-5"><span class="px-2 py-1 rounded bg-red-500/10 border border-red-500/20 text-red-400">DISK_FULL_ERR</span></td>
+                    <tbody class="divide-y divide-white/5" id="process-list-body">
+                         <tr>
+                            <td colspan="6" class="p-8 text-center text-gray-500 italic">Connecting to active session...</td>
                         </tr>
                     </tbody>
                 </table>
@@ -78,5 +29,50 @@ export function QueryTable() {
         </div>
     `;
 
-    return section;
+    // --- Update Logic ---
+    const update = (rows) => {
+        // Rows: [[ID, USER, HOST, DB, COMMAND, TIME, STATE, INFO], ...]
+        // Note: Check if column mapping matches provided execute_query result which is typically row-based array
+        // The default `SHOW PROCESSLIST` or `SELECT * FROM information_schema.processlist` usually returns:
+        // ID, USER, HOST, DB, COMMAND, TIME, STATE, INFO.
+
+        const tbody = section.querySelector('#process-list-body');
+
+        if (!rows || rows.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="p-8 text-center text-gray-500 italic">No active processes found.</td>
+                </tr>`;
+            return;
+        }
+
+        tbody.innerHTML = rows.map(row => {
+            const [id, user, host, db, command, time, state, info] = row;
+            // Highlight long running queries
+            const timeVal = parseInt(time || 0);
+            let timeColor = 'text-gray-400';
+            if (timeVal > 1) timeColor = 'text-orange-400';
+            if (timeVal > 10) timeColor = 'text-red-400';
+
+            return `
+                <tr class="hover:bg-white/5 transition-colors group cursor-default">
+                    <td class="p-4 text-gray-300">
+                        <div class="flex flex-col">
+                            <span class="font-bold text-white">${id}</span>
+                            <span class="text-[9px] text-gray-500">${user}@${host ? host.split(':')[0] : ''}</span>
+                        </div>
+                    </td>
+                    <td class="p-4 text-cyan-400">${db || '<span class="text-gray-600">NULL</span>'}</td>
+                    <td class="p-4"><span class="px-2 py-1 rounded bg-white/5 border border-white/10 text-gray-400 text-[10px]">${command}</span></td>
+                    <td class="p-4 font-bold ${timeColor}">${timeVal}s</td>
+                    <td class="p-4 text-gray-400">${state || '-'}</td>
+                    <td class="p-4 text-gray-500 truncate max-w-xs" title="${info || ''}">
+                        ${info ? info.substring(0, 100) : '<span class="italic opacity-50">None</span>'}
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    };
+
+    return { element: section, update };
 }
