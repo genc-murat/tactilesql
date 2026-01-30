@@ -109,7 +109,7 @@ pub async fn test_connection(config: ConnectionConfig) -> Result<String, String>
         .map_err(|e| {
             let err_msg = e.to_string();
             if err_msg.contains("os error 111") {
-                return format!("Connection Refused ({})\n\nCheck if MySQL is running on {}:{}", err_msg, config.host, config.port);
+                return format!("Connection Refused ({})\\n\\nCheck if MySQL is running on {}:{}", err_msg, config.host, config.port);
             }
             format!("Connection failed: {}", e)
         })?;
@@ -149,10 +149,10 @@ pub async fn establish_connection(
         .map_err(|e| {
             let err_msg = e.to_string();
             if err_msg.contains("os error 111") {
-                return format!("Connection Refused ({})\n\nCheck if MySQL is running on {}:{}", err_msg, config.host, config.port);
+                return format!("Connection Refused ({})\\n\\nCheck if MySQL is running on {}:{}", err_msg, config.host, config.port);
             }
             if err_msg.contains("timed out") {
-                return format!("Connection Timed Out\n\nThe server at {}:{} did not respond within 5 seconds.\nPlease check if the server is running and reachable.", config.host, config.port);
+                return format!("Connection Timed Out\\n\\nThe server at {}:{} did not respond within 5 seconds.\\nPlease check if the server is running and reachable.", config.host, config.port);
             }
             format!("Failed to create pool: {}", e)
         })?;
@@ -262,4 +262,83 @@ pub async fn get_tables(state: State<'_, AppState>, database: String) -> Result<
         .collect();
 
     Ok(tables)
+}
+
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "snake_case")]
+pub struct ColumnSchema {
+    pub name: String,
+    pub data_type: String,
+    pub column_type: String, // Full type like VARCHAR(255)
+    pub is_nullable: bool,
+    pub column_key: String, // PRI, UNI, MUL, or empty
+    pub column_default: Option<String>,
+    pub extra: String, // auto_increment, etc.
+}
+
+#[tauri::command]
+pub async fn get_table_schema(
+    state: State<'_, AppState>,
+    database: String,
+    table: String
+) -> Result<Vec<ColumnSchema>, String> {
+    let pool = {
+        let pool_guard = state.pool.lock().unwrap();
+        pool_guard.clone().ok_or("No active connection")?
+    };
+
+    // Use SHOW COLUMNS which is more reliable than INFORMATION_SCHEMA
+    let query = format!("SHOW COLUMNS FROM `{}`.`{}`", database, table);
+
+    let rows = sqlx::query(&query)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("Failed to fetch table schema: {}", e))?;
+
+    println!("DEBUG: Fetched {} rows for {}.{}", rows.len(), database, table);
+
+    let mut columns = Vec::new();
+    for row in rows {
+        use sqlx::Row;
+        
+        // SHOW COLUMNS returns: Field, Type, Null, Key, Default, Extra
+        // Try getting Type as bytes first, then as String
+        let name: String = row.try_get("Field").unwrap_or_default();
+        
+        // Try multiple ways to get the Type column
+        let full_type: String = match row.try_get::<Vec<u8>, _>("Type") {
+            Ok(bytes) => String::from_utf8_lossy(&bytes).to_string(),
+            Err(_) => row.try_get::<String, _>("Type").unwrap_or_else(|_| {
+                // Try index 1 as bytes
+                match row.try_get::<Vec<u8>, _>(1) {
+                    Ok(bytes) => String::from_utf8_lossy(&bytes).to_string(),
+                    Err(_) => row.try_get::<String, _>(1).unwrap_or_default()
+                }
+            })
+        };
+        
+        let is_nullable_str: String = row.try_get("Null").unwrap_or_default();
+        let is_nullable = is_nullable_str == "YES";
+        let column_key: String = row.try_get("Key").unwrap_or_default();
+        let column_default: Option<String> = row.try_get("Default").ok();
+        let extra: String = row.try_get("Extra").unwrap_or_default();
+
+        // Extract base type from full_type (e.g., "varchar(255)" -> "varchar")
+        let data_type = full_type.split('(').next().unwrap_or(&full_type).to_string();
+
+        println!("DEBUG ROW: name={}, type={}, data_type={}, nullable={}, key={}, extra={}", 
+            name, full_type, data_type, is_nullable_str, column_key, extra);
+
+        columns.push(ColumnSchema {
+            name,
+            data_type,
+            column_type: full_type,
+            is_nullable,
+            column_key,
+            column_default,
+            extra,
+        });
+    }
+
+    Ok(columns)
 }

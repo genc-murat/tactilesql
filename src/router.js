@@ -10,9 +10,12 @@ export class Router {
 
     async handleRoute() {
         const hash = window.location.hash.slice(1) || '/';
-        this.currentPath = hash;
 
-        const route = this.routes[hash] || this.routes['/'];
+        // Split path and query parameters
+        const [path] = hash.split('?');
+        this.currentPath = path;
+
+        const route = this.routes[path] || this.routes['/'];
 
         if (route) {
             this.rootElement.innerHTML = '';

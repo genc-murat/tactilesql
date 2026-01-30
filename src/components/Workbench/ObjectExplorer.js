@@ -35,7 +35,7 @@ export function ObjectExplorer() {
                             <div class="pl-6 space-y-0.5 border-l border-white/5 ml-2.5">
                                 ${tables.length === 0 ? '<div class="pl-2 py-1 text-gray-700 italic">Loading tables...</div>' : ''}
                                 ${tables.map(table => `
-                                    <div class="flex items-center gap-2 text-gray-500 hover:text-white cursor-pointer py-1 group">
+                                    <div class="table-item flex items-center gap-2 text-gray-500 hover:text-white cursor-pointer py-1 group" data-table="${table}" data-db="${db}">
                                         <span class="material-symbols-outlined text-[14px] text-gray-700 group-hover:text-mysql-teal">table_rows</span>
                                         <span>${table}</span>
                                     </div>
@@ -64,6 +64,14 @@ export function ObjectExplorer() {
             });
         });
 
+        // Context Menu Handler
+        explorer.querySelectorAll('.table-item').forEach(item => {
+            item.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                showContextMenu(e.clientX, e.clientY, item.dataset.table, item.dataset.db);
+            });
+        });
+
         const refreshBtn = explorer.querySelector('#refresh-btn');
         if (refreshBtn) {
             refreshBtn.addEventListener('click', loadDatabases);
@@ -71,6 +79,63 @@ export function ObjectExplorer() {
     };
 
     // --- Logic ---
+    const showContextMenu = (x, y, tableName, dbName) => {
+        // Remove existing context menu
+        const existing = document.getElementById('explorer-context-menu');
+        if (existing) existing.remove();
+
+        const menu = document.createElement('div');
+        menu.id = 'explorer-context-menu';
+        menu.className = "fixed z-[9999] bg-[#1a1d23] border border-white/10 rounded-lg shadow-xl py-1 w-48";
+        menu.style.left = `${x}px`;
+        menu.style.top = `${y}px`;
+
+        menu.innerHTML = `
+            <div class="px-3 py-1.5 text-[10px] font-mono text-gray-500 border-b border-white/5 uppercase tracking-widest mb-1">
+                ${dbName}.${tableName}
+            </div>
+            <button class="w-full text-left px-3 py-2 text-[11px] font-bold text-gray-300 hover:bg-white/5 hover:text-white flex items-center gap-2 transition-colors" id="ctx-design">
+                <span class="material-symbols-outlined text-sm text-mysql-teal">schema</span>
+                Schema Design
+            </button>
+            <button class="w-full text-left px-3 py-2 text-[11px] font-bold text-gray-300 hover:bg-white/5 hover:text-white flex items-center gap-2 transition-colors" id="ctx-select">
+                <span class="material-symbols-outlined text-sm text-cyan-400">table_view</span>
+                Select Top 1000
+            </button>
+            <button class="w-full text-left px-3 py-2 text-[11px] font-bold text-gray-300 hover:bg-white/5 hover:text-white flex items-center gap-2 transition-colors" id="ctx-copy">
+                <span class="material-symbols-outlined text-sm text-gray-500">content_copy</span>
+                Copy Name
+            </button>
+        `;
+
+        document.body.appendChild(menu);
+
+        // Menu Actions
+        menu.querySelector('#ctx-design').onclick = () => {
+            window.location.hash = `/schema?db=${encodeURIComponent(dbName)}&table=${encodeURIComponent(tableName)}`;
+            menu.remove();
+        };
+
+        menu.querySelector('#ctx-select').onclick = () => {
+            // Placeholder: dispatch event or navigate to query editor
+            // For now, just remove
+            menu.remove();
+        };
+
+        menu.querySelector('#ctx-copy').onclick = () => {
+            navigator.clipboard.writeText(tableName);
+            menu.remove();
+        };
+
+        // Close on click outside
+        const closeMenu = () => {
+            menu.remove();
+            document.removeEventListener('click', closeMenu);
+        };
+        // Defer slightly to avoid immediate trigger
+        setTimeout(() => document.addEventListener('click', closeMenu), 0);
+    };
+
     const loadDatabases = async () => {
         try {
             databases = await invoke('get_databases');
