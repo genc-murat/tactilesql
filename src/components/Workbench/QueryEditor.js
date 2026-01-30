@@ -2,6 +2,8 @@
 import { Dialog } from '../UI/Dialog.js';
 
 export function QueryEditor() {
+    const container = document.createElement('div');
+    container.className = "flex flex-col h-[60%] border-b border-white/5";
     // ... existing ...
 
     // --- State ---

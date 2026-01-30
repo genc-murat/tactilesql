@@ -2,6 +2,8 @@
 import { Dialog } from '../UI/Dialog.js';
 
 export function ResultsTable() {
+    const container = document.createElement('div');
+    container.className = "flex flex-col flex-1 min-h-0";
     // ...
 
 
