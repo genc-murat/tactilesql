@@ -122,9 +122,30 @@ export function QueryEditor() {
                     executeBtn.classList.add('opacity-70', 'cursor-not-allowed');
                     const { invoke } = await import('@tauri-apps/api/core');
                     const result = await invoke('execute_query', { query: editorContent });
+
                     const event = new CustomEvent('tactilesql:query-result', { detail: result });
                     window.dispatchEvent(event);
+
+                    // Dispatch History Success
+                    window.dispatchEvent(new CustomEvent('tactilesql:history-update', {
+                        detail: {
+                            query: editorContent,
+                            timestamp: new Date().toISOString(),
+                            status: 'SUCCESS',
+                            duration: 0
+                        }
+                    }));
+
                 } catch (error) {
+                    // Dispatch History Error
+                    window.dispatchEvent(new CustomEvent('tactilesql:history-update', {
+                        detail: {
+                            query: editorContent,
+                            timestamp: new Date().toISOString(),
+                            status: 'ERROR',
+                            error: error.message || error.toString()
+                        }
+                    }));
                     alert('Query Execution Failed: ' + error);
                 } finally {
                     executeBtn.innerHTML = '<span class="material-symbols-outlined text-sm font-bold">play_arrow</span> EXECUTE';

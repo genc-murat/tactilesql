@@ -1,48 +1,162 @@
+import { Dialog } from '../UI/Dialog.js';
+
 export function SnippetLibrary() {
     const aside = document.createElement('aside');
     aside.className = "w-72 border-l border-white/5 bg-[#0b0d11] flex flex-col p-4 gap-6 overflow-hidden";
 
-    aside.innerHTML = `
+    // --- State ---
+    let snippets = JSON.parse(localStorage.getItem('tactile_snippets') || '[]');
+    let history = JSON.parse(localStorage.getItem('tactile_history') || '[]');
+
+    // --- Default Snippets if empty ---
+    if (snippets.length === 0) {
+        snippets = [
+            { id: '1', title: 'Row Count', type: 'SQL', code: 'SELECT COUNT(*) FROM table_name;' },
+            { id: '2', title: 'Show Indexes', type: 'SQL', code: 'SHOW INDEX FROM table_name;' }
+        ];
+    }
+
+    // --- Render ---
+    const render = () => {
+        aside.innerHTML = `
             <div class="flex flex-col gap-4">
                 <div class="flex items-center justify-between px-2">
                     <h2 class="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-500">Snippet Library</h2>
-                    <span class="material-symbols-outlined text-sm text-gray-600 cursor-pointer hover:text-mysql-teal">add_circle</span>
+                    <span id="add-snippet-btn" class="material-symbols-outlined text-sm text-gray-600 cursor-pointer hover:text-mysql-teal" title="Add Snippet">add_circle</span>
                 </div>
-                <div class="space-y-3">
-                    <div class="neu-card rounded-lg p-3 hover:border-mysql-teal/40 cursor-pointer transition-all border border-transparent">
-                        <div class="flex justify-between mb-1">
-                            <span class="text-[10px] font-bold text-gray-400 uppercase">Quarterly Growth</span>
-                            <span class="text-[9px] text-mysql-teal font-mono px-1 bg-mysql-teal/10 rounded">SQL</span>
+                <div class="space-y-3 max-h-[250px] overflow-y-auto custom-scrollbar pr-1">
+                    ${snippets.map(snippet => `
+                        <div class="neu-card rounded-lg p-3 hover:border-mysql-teal/40 cursor-pointer transition-all border border-transparent group snippet-item" data-id="${snippet.id}">
+                            <div class="flex justify-between mb-1">
+                                <span class="text-[10px] font-bold text-gray-400 uppercase">${snippet.title}</span>
+                                <div class="flex gap-2">
+                                    <span class="text-[9px] text-mysql-teal font-mono px-1 bg-mysql-teal/10 rounded">${snippet.type}</span>
+                                    <span class="material-symbols-outlined text-[10px] text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 delete-snippet-btn">delete</span>
+                                </div>
+                            </div>
+                            <p class="text-[11px] text-gray-600 font-mono truncate" title="${snippet.code}">${snippet.code}</p>
                         </div>
-                        <p class="text-[11px] text-gray-600 font-mono truncate">WITH quarterly_stats AS (SELECT...</p>
-                    </div>
-                    <div class="neu-card rounded-lg p-3 hover:border-mysql-teal/40 cursor-pointer transition-all border border-transparent">
-                        <div class="flex justify-between mb-1">
-                            <span class="text-[10px] font-bold text-gray-400 uppercase">Active Users</span>
-                            <span class="text-[9px] text-mysql-teal font-mono px-1 bg-mysql-teal/10 rounded">SQL</span>
-                        </div>
-                        <p class="text-[11px] text-gray-600 font-mono truncate">SELECT count(DISTINCT u.id) FROM...</p>
-                    </div>
+                    `).join('')}
+                    ${snippets.length === 0 ? '<div class="text-xs text-gray-600 italic px-2">No snippets saved.</div>' : ''}
                 </div>
             </div>
-            <div class="flex-1 flex flex-col gap-4 min-h-0">
-                <h2 class="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-500 px-2">History</h2>
-                <div class="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-1">
-                    <div class="text-[11px] font-mono text-gray-600 p-2.5 hover:bg-white/5 rounded-lg cursor-pointer border border-transparent hover:border-white/5">
-                        <div class="text-mysql-teal/70 text-[10px] mb-1 font-bold">15:42:01 — SUCCESS</div>
-                        <div class="truncate text-gray-400">SELECT * FROM orders WHERE status = 'PENDING';</div>
-                    </div>
-                    <div class="text-[11px] font-mono text-gray-600 p-2.5 hover:bg-white/5 rounded-lg cursor-pointer border border-transparent hover:border-white/5">
-                        <div class="text-red-400/70 text-[10px] mb-1 font-bold">15:38:12 — ERROR (1064)</div>
-                        <div class="truncate text-gray-500">UPDAT orders SET value = 0;</div>
-                    </div>
-                    <div class="text-[11px] font-mono text-gray-600 p-2.5 hover:bg-white/5 rounded-lg cursor-pointer border border-transparent hover:border-white/5">
-                        <div class="text-mysql-teal/70 text-[10px] mb-1 font-bold">15:30:45 — SUCCESS</div>
-                        <div class="truncate text-gray-400">SHOW INDEX FROM customers;</div>
-                    </div>
+            <div class="flex-1 flex flex-col gap-4 min-h-0 pt-4 border-t border-white/5">
+                <div class="flex items-center justify-between px-2">
+                    <h2 class="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-500">History</h2>
+                     <span id="clear-history-btn" class="material-symbols-outlined text-sm text-gray-600 cursor-pointer hover:text-red-400" title="Clear History">delete_sweep</span>
+                </div>
+                <div class="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-1" id="history-list">
+                    ${history.map((item, idx) => `
+                        <div class="text-[11px] font-mono text-gray-600 p-2.5 hover:bg-white/5 rounded-lg cursor-pointer border border-transparent hover:border-white/5 group history-item" data-idx="${idx}">
+                            <div class="${item.status === 'SUCCESS' ? 'text-mysql-teal/70' : 'text-red-400/70'} text-[10px] mb-1 font-bold flex justify-between">
+                                <span>${new Date(item.timestamp).toLocaleTimeString()} — ${item.status}</span>
+                                <span class="material-symbols-outlined text-[10px] opacity-0 group-hover:opacity-100 copy-btn" title="Copy to Clipboard">content_copy</span>
+                            </div>
+                            <div class="truncate text-gray-400" title="${item.query}">${item.query}</div>
+                        </div>
+                    `).join('')}
+                    ${history.length === 0 ? '<div class="text-xs text-gray-600 italic px-2">No query history.</div>' : ''}
                 </div>
             </div>
-    `;
+        `;
+        attachEvents();
+    };
+
+    const attachEvents = () => {
+        // Snippet Click (Copy)
+        aside.querySelectorAll('.snippet-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                if (e.target.closest('.delete-snippet-btn')) return;
+                const id = item.dataset.id;
+                const snippet = snippets.find(s => s.id === id);
+                if (snippet) {
+                    navigator.clipboard.writeText(snippet.code);
+                    Dialog.show({ title: 'Copied', message: 'Snippet copied to clipboard!', type: 'info' });
+                }
+            });
+        });
+
+        // Delete Snippet
+        aside.querySelectorAll('.delete-snippet-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const item = btn.closest('.snippet-item');
+                const id = item.dataset.id;
+                const confirmed = await Dialog.confirm('Delete this snippet?', 'Delete Snippet');
+                if (confirmed) {
+                    snippets = snippets.filter(s => s.id !== id);
+                    saveSnippets();
+                    render();
+                }
+            });
+        });
+
+        // Add Snippet
+        const addBtn = aside.querySelector('#add-snippet-btn');
+        if (addBtn) {
+            addBtn.addEventListener('click', async () => {
+                // Since we don't have a complex form dialog yet, let's use prompt or just save a dummy one for now
+                // ideally we open a modal. For V1 let's create a generic one.
+                // Or better, let's make it interactive.
+                // We'll stick to a simple placeholder for now or prompt
+                // Browsers prompt is ugly but functional for "implement it" request.
+                const title = prompt("Snippet Title:");
+                if (!title) return;
+                const code = prompt("SQL Code:");
+                if (!code) return;
+
+                snippets.push({
+                    id: Date.now().toString(),
+                    title,
+                    type: 'SQL',
+                    code
+                });
+                saveSnippets();
+                render();
+            });
+        }
+
+        // History Click (Copy)
+        aside.querySelectorAll('.history-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const idx = item.dataset.idx;
+                const historyItem = history[idx];
+                if (historyItem) {
+                    navigator.clipboard.writeText(historyItem.query);
+                    // Optional: toast notification
+                }
+            });
+        });
+
+        // Clear History
+        const clearBtn = aside.querySelector('#clear-history-btn');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', async () => {
+                if (await Dialog.confirm('Clear all history?', 'Clear History')) {
+                    history = [];
+                    saveHistory();
+                    render();
+                }
+            });
+        }
+    };
+
+    // --- Logic ---
+    const saveSnippets = () => localStorage.setItem('tactile_snippets', JSON.stringify(snippets));
+    const saveHistory = () => localStorage.setItem('tactile_history', JSON.stringify(history));
+
+    // Listen for History Updates
+    window.addEventListener('tactilesql:history-update', (e) => {
+        if (e.detail) {
+            // Add to top, limit to 50 items
+            history.unshift(e.detail);
+            if (history.length > 50) history.pop();
+            saveHistory();
+            render();
+        }
+    });
+
+    // Initial Render
+    render();
 
     return aside;
 }
