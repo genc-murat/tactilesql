@@ -147,13 +147,18 @@ export function SchemaDesigner() {
                         </div>
                     </div>
                 </main>
-                <aside class="w-[340px] ${isLight ? 'bg-white' : 'bg-[#121418]'} border-l ${isLight ? 'border-gray-200' : 'border-white/10'} flex flex-col relative z-30" id="sidebar-container"></aside>
+                <aside class="flex-shrink-0 ${isLight ? 'bg-white' : 'bg-[#121418]'} border-l ${isLight ? 'border-gray-200' : 'border-white/10'} flex flex-col relative z-30" id="sidebar-container" style="width: 340px;">
+                </aside>
             </div>
             
             <!-- SQL Draft Panel -->
             <div class="absolute bottom-6 left-6 right-[360px] z-50"> 
-                <div class="neu-card rounded-2xl ${isLight ? 'border-mysql-teal bg-white shadow-xl' : 'border-mysql-teal/40 glow-border-mysql bg-[#1a1d23] shadow-2xl'} overflow-hidden transition-all duration-300 transform translate-y-0" id="sql-panel">
-                     <div class="px-6 py-3 border-b ${isLight ? 'border-gray-100' : 'border-white/10'} flex items-center justify-between cursor-pointer" id="sql-panel-header">
+                <div class="neu-card rounded-2xl ${isLight ? 'border-mysql-teal bg-white shadow-xl' : 'border-mysql-teal/40 glow-border-mysql bg-[#1a1d23] shadow-2xl'} overflow-hidden transition-all duration-300 transform translate-y-0" id="sql-panel" style="height: 250px; display: flex; flex-direction: column;">
+                    <!-- Resize Handle -->
+                    <div class="absolute top-0 left-0 right-0 h-1 cursor-ns-resize hover:bg-mysql-teal/50 transition-colors z-10 group" id="sql-resize-handle">
+                        <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-12 h-1 rounded-full ${isLight ? 'bg-gray-300' : 'bg-white/20'} group-hover:bg-mysql-teal/70 transition-colors"></div>
+                    </div>
+                     <div class="px-6 py-3 border-b ${isLight ? 'border-gray-100' : 'border-white/10'} flex items-center justify-between cursor-pointer flex-shrink-0" id="sql-panel-header">
                         <div class="flex items-center gap-3">
                             <div class="flex items-center gap-1.5 px-2 py-0.5 rounded bg-mysql-teal/20 border border-mysql-teal/30">
                                 <span class="w-1.5 h-1.5 rounded-full bg-mysql-cyan animate-pulse"></span>
@@ -165,7 +170,7 @@ export function SchemaDesigner() {
                              <span class="material-symbols-outlined text-gray-500 text-sm transform transition-transform" id="sql-panel-toggle-icon">expand_more</span>
                         </div>
                     </div>
-                    <div class="p-6 code-overlay font-mono text-[13px] leading-relaxed max-h-56 overflow-y-auto custom-scrollbar" id="sql-content-area">
+                    <div class="p-6 code-overlay font-mono text-[13px] leading-relaxed overflow-y-auto custom-scrollbar flex-1" id="sql-content-area">
                         <code class="block whitespace-pre" id="sql-code-block"></code>
                     </div>
                 </div>
@@ -867,6 +872,7 @@ END"></textarea>
                     <p class="text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-600'}">Use the "Add Index" button to create new indexes on this table.</p>
                 </div>
         `;
+            addSidebarResizeHandle();
             return;
         }
 
@@ -878,6 +884,7 @@ END"></textarea>
                     <p class="text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-600'}">Define relationships with other tables.</p>
                 </div>
         `;
+            addSidebarResizeHandle();
             return;
         }
 
@@ -889,6 +896,7 @@ END"></textarea>
                     <p class="text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-600'}">View all table constraints including Primary Keys, Unique Keys, Foreign Keys, and Check constraints.</p>
                 </div>
         `;
+            addSidebarResizeHandle();
             return;
         }
 
@@ -900,12 +908,14 @@ END"></textarea>
                     <p class="text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-600'}">Triggers are special stored procedures that are run automatically when an event occurs in the database server.</p>
                 </div>
         `;
+            addSidebarResizeHandle();
             return;
         }
 
         const col = state.columns.find(c => c.id === state.selectedColumnId);
         if (!col) {
             sidebar.innerHTML = `<div class="p-6 text-gray-500 text-xs italic text-center mt-10"> No column selected</div>`;
+            addSidebarResizeHandle();
             return;
         }
 
@@ -1021,6 +1031,26 @@ END"></textarea>
         attachListener('chk-nullable', 'nullable', true, true);
         attachListener('chk-autoIncrement', 'autoIncrement', true);
         attachListener('chk-unique', 'unique', true);
+        
+        // Re-add resize handle after sidebar content update
+        addSidebarResizeHandle();
+    }
+
+    // Function to add/re-add sidebar resize handle
+    function addSidebarResizeHandle() {
+        const sidebar = container.querySelector('#sidebar-container');
+        if (!sidebar) return;
+        
+        // Remove existing handle if present
+        const existingHandle = sidebar.querySelector('#sidebar-resize-handle');
+        if (existingHandle) existingHandle.remove();
+        
+        // Create and add resize handle
+        const resizeHandle = document.createElement('div');
+        resizeHandle.id = 'sidebar-resize-handle';
+        resizeHandle.className = `absolute top-0 left-0 bottom-0 w-1 cursor-ew-resize hover:bg-mysql-teal/50 transition-colors z-10 group`;
+        resizeHandle.innerHTML = `<div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1 h-12 rounded-full ${isLight ? 'bg-gray-300' : 'bg-white/20'} group-hover:bg-mysql-teal/70 transition-colors"></div>`;
+        sidebar.insertBefore(resizeHandle, sidebar.firstChild);
     }
 
     // --- Modal Logic ---
@@ -1675,6 +1705,92 @@ END;\n`;
         render();
     };
     window.addEventListener('themechange', onThemeChange);
+
+    // --- SQL Panel Resize Logic ---
+    const sqlPanel = container.querySelector('#sql-panel');
+    const resizeHandle = container.querySelector('#sql-resize-handle');
+    
+    let isResizing = false;
+    let startY = 0;
+    let startHeight = 0;
+
+    resizeHandle.addEventListener('mousedown', (e) => {
+        isResizing = true;
+        startY = e.clientY;
+        startHeight = sqlPanel.offsetHeight;
+        e.preventDefault();
+        
+        // Add visual feedback
+        resizeHandle.style.backgroundColor = 'rgba(34, 211, 238, 0.5)';
+        document.body.style.cursor = 'ns-resize';
+        document.body.style.userSelect = 'none';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isResizing) return;
+        
+        const deltaY = startY - e.clientY; // Inverted because panel grows upward
+        const newHeight = Math.max(150, Math.min(window.innerHeight - 200, startHeight + deltaY));
+        
+        sqlPanel.style.height = `${newHeight}px`;
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (isResizing) {
+            isResizing = false;
+            resizeHandle.style.backgroundColor = '';
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        }
+    });
+
+    // --- Sidebar Resize Logic ---
+    const sidebar = container.querySelector('#sidebar-container');
+    
+    let isSidebarResizing = false;
+    let startX = 0;
+    let startWidth = 0;
+
+    // Use event delegation on sidebar since resize handle is dynamically added
+    sidebar.addEventListener('mousedown', (e) => {
+        const resizeHandle = e.target.closest('#sidebar-resize-handle');
+        if (!resizeHandle) return;
+        
+        isSidebarResizing = true;
+        startX = e.clientX;
+        startWidth = sidebar.offsetWidth;
+        e.preventDefault();
+        
+        // Add visual feedback
+        resizeHandle.style.backgroundColor = 'rgba(34, 211, 238, 0.5)';
+        document.body.style.cursor = 'ew-resize';
+        document.body.style.userSelect = 'none';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isSidebarResizing) return;
+        
+        const deltaX = startX - e.clientX; // Inverted because sidebar grows leftward
+        const newWidth = Math.max(280, Math.min(600, startWidth + deltaX));
+        
+        sidebar.style.width = `${newWidth}px`;
+        
+        // Update SQL panel right offset to match sidebar width
+        const sqlPanelContainer = container.querySelector('.absolute.bottom-6.left-6');
+        if (sqlPanelContainer) {
+            sqlPanelContainer.style.right = `${newWidth + 20}px`;
+        }
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (isSidebarResizing) {
+            isSidebarResizing = false;
+            const resizeHandle = sidebar.querySelector('#sidebar-resize-handle');
+            if (resizeHandle) resizeHandle.style.backgroundColor = '';
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        }
+    });
 
     return container;
 }
