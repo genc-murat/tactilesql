@@ -2,19 +2,85 @@ use sqlx::mysql::MySqlConnectOptions;
 use sqlx::{ConnectOptions, Pool, MySql, Row, Column};
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tauri::{AppHandle, Manager, State};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
+use aes_gcm::{
+    aead::{Aead, KeyInit},
+    Aes256Gcm, Nonce
+};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+use rand::Rng;
+
+// Encryption key - In production, this should be derived from user's master password or OS keychain
+const ENCRYPTION_KEY: &[u8; 32] = b"TactileSQL_SecretKey_32bytes!ok!";
+
+// --- Password Encryption ---
+fn encrypt_password(password: &str) -> Result<String, String> {
+    if password.is_empty() {
+        return Ok(String::new());
+    }
+    
+    let cipher = Aes256Gcm::new_from_slice(ENCRYPTION_KEY)
+        .map_err(|e| format!("Failed to create cipher: {}", e))?;
+    
+    let mut rng = rand::thread_rng();
+    let nonce_bytes: [u8; 12] = rng.gen();
+    let nonce = Nonce::from_slice(&nonce_bytes);
+    
+    let ciphertext = cipher.encrypt(nonce, password.as_bytes())
+        .map_err(|e| format!("Encryption failed: {}", e))?;
+    
+    // Combine nonce + ciphertext and encode as base64
+    let mut combined = nonce_bytes.to_vec();
+    combined.extend(ciphertext);
+    
+    Ok(BASE64.encode(combined))
+}
+
+fn decrypt_password(encrypted: &str) -> Result<String, String> {
+    if encrypted.is_empty() {
+        return Ok(String::new());
+    }
+    
+    let combined = BASE64.decode(encrypted)
+        .map_err(|e| format!("Base64 decode failed: {}", e))?;
+    
+    if combined.len() < 12 {
+        return Err("Invalid encrypted data".to_string());
+    }
+    
+    let cipher = Aes256Gcm::new_from_slice(ENCRYPTION_KEY)
+        .map_err(|e| format!("Failed to create cipher: {}", e))?;
+    
+    let nonce = Nonce::from_slice(&combined[..12]);
+    let ciphertext = &combined[12..];
+    
+    let plaintext = cipher.decrypt(nonce, ciphertext)
+        .map_err(|e| format!("Decryption failed: {}", e))?;
+    
+    String::from_utf8(plaintext)
+        .map_err(|e| format!("UTF-8 conversion failed: {}", e))
+}
 
 // --- State Management ---
 pub struct AppState {
-    pub pool: Mutex<Option<Pool<MySql>>>,
+    pub pool: Arc<Mutex<Option<Pool<MySql>>>>,
 }
 
 impl Default for AppState {
     fn default() -> Self {
         Self {
-            pool: Mutex::new(None),
+            pool: Arc::new(Mutex::new(None)),
+        }
+    }
+}
+
+impl Clone for AppState {
+    fn clone(&self) -> Self {
+        Self {
+            pool: Arc::clone(&self.pool),
         }
     }
 }
@@ -28,6 +94,8 @@ pub struct ConnectionConfig {
     pub username: String,
     pub password: Option<String>,
     pub database: Option<String>,
+    #[serde(default)]
+    pub password_encrypted: bool,
 }
 
 fn get_config_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -60,17 +128,38 @@ pub fn get_connections(app: AppHandle) -> Result<Vec<ConnectionConfig>, String> 
     let configs: Vec<ConnectionConfig> = serde_json::from_str(&content)
         .map_err(|e| format!("Failed to parse connections JSON: {}", e))?;
     
-    Ok(configs)
+    // Decrypt passwords before returning
+    let decrypted_configs: Vec<ConnectionConfig> = configs
+        .into_iter()
+        .map(|mut config| {
+            if config.password_encrypted {
+                if let Some(ref encrypted_pwd) = config.password {
+                    config.password = decrypt_password(encrypted_pwd).ok();
+                }
+            }
+            // Don't expose encryption flag to frontend
+            config.password_encrypted = false;
+            config
+        })
+        .collect();
+    
+    Ok(decrypted_configs)
 }
 
 #[tauri::command]
 pub fn save_connection(app: AppHandle, config: ConnectionConfig) -> Result<String, String> {
     let path = get_config_path(&app)?;
-    let mut configs = get_connections(app.clone())?;
+    let mut configs = get_connections_raw(app.clone())?;
     
     let mut config = config;
     if config.id.is_none() {
         config.id = Some(uuid::Uuid::new_v4().to_string());
+    }
+    
+    // Encrypt password before saving
+    if let Some(ref pwd) = config.password {
+        config.password = Some(encrypt_password(pwd)?);
+        config.password_encrypted = true;
     }
 
     if let Some(idx) = configs.iter().position(|c| c.id == config.id) {
@@ -88,11 +177,42 @@ pub fn save_connection(app: AppHandle, config: ConnectionConfig) -> Result<Strin
     Ok("Connection saved successfully".to_string())
 }
 
+// Internal function to get raw configs without decryption
+fn get_connections_raw(app: AppHandle) -> Result<Vec<ConnectionConfig>, String> {
+    let path = get_config_path(&app)?;
+    
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    
+    let content = fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read connections file at {:?}: {}", path, e))?;
+    
+    let configs: Vec<ConnectionConfig> = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse connections JSON: {}", e))?;
+    
+    Ok(configs)
+}
+
 #[tauri::command]
 pub fn save_connections(app: AppHandle, connections: Vec<ConnectionConfig>) -> Result<String, String> {
     let path = get_config_path(&app)?;
     
-    let content = serde_json::to_string_pretty(&connections)
+    // Encrypt passwords before saving
+    let encrypted_connections: Vec<ConnectionConfig> = connections
+        .into_iter()
+        .map(|mut config| {
+            if let Some(ref pwd) = config.password {
+                if !config.password_encrypted && !pwd.is_empty() {
+                    config.password = encrypt_password(pwd).ok();
+                    config.password_encrypted = true;
+                }
+            }
+            config
+        })
+        .collect();
+    
+    let content = serde_json::to_string_pretty(&encrypted_connections)
         .map_err(|e| format!("Failed to serialize connections: {}", e))?;
     
     fs::write(&path, &content)
@@ -104,7 +224,7 @@ pub fn save_connections(app: AppHandle, connections: Vec<ConnectionConfig>) -> R
 #[tauri::command]
 pub fn delete_connection(app: AppHandle, id: String) -> Result<String, String> {
     let path = get_config_path(&app)?;
-    let mut configs = get_connections(app.clone())?;
+    let mut configs = get_connections_raw(app.clone())?;
     
     configs.retain(|c| c.id.as_deref() != Some(&id));
     
@@ -174,8 +294,11 @@ pub async fn establish_connection(
     }
     
     let pool = sqlx::mysql::MySqlPoolOptions::new()
-        .max_connections(5)
-        .acquire_timeout(std::time::Duration::from_secs(5))
+        .max_connections(10)
+        .min_connections(2)
+        .acquire_timeout(std::time::Duration::from_secs(10))
+        .idle_timeout(std::time::Duration::from_secs(300))
+        .max_lifetime(std::time::Duration::from_secs(1800))
         .connect_with(options).await
         .map_err(|e| {
             let err_msg = e.to_string();
@@ -183,14 +306,22 @@ pub async fn establish_connection(
                 return format!("Connection Refused ({})\\n\\nCheck if MySQL is running on {}:{}", err_msg, config.host, config.port);
             }
             if err_msg.contains("timed out") {
-                return format!("Connection Timed Out\\n\\nThe server at {}:{} did not respond within 5 seconds.\\nPlease check if the server is running and reachable.", config.host, config.port);
+                return format!("Connection Timed Out\\n\\nThe server at {}:{} did not respond within 10 seconds.\\nPlease check if the server is running and reachable.", config.host, config.port);
             }
             format!("Failed to create pool: {}", e)
         })?;
 
-    *state.pool.lock().unwrap() = Some(pool);
+    // Use Arc for efficient cloning
+    let pool_arc = Arc::clone(&state.pool);
+    *pool_arc.lock().unwrap() = Some(pool);
 
     Ok("Connection established and pool created.".to_string())
+}
+
+// Helper function to get pool clone efficiently
+fn get_pool(state: &State<'_, AppState>) -> Result<Pool<MySql>, String> {
+    let pool_guard = state.pool.lock().unwrap();
+    pool_guard.clone().ok_or_else(|| "No active connection".to_string())
 }
 
 #[derive(Serialize)]
@@ -204,10 +335,7 @@ pub async fn execute_query(
     state: State<'_, AppState>,
     query: String
 ) -> Result<QueryResult, String> {
-    let pool = {
-        let pool_guard = state.pool.lock().unwrap();
-        pool_guard.clone().ok_or("No active connection")?
-    };
+    let pool = get_pool(&state)?;
 
     // Execute query with timeout to prevent UI blocking
     let rows = tokio::time::timeout(
@@ -258,10 +386,7 @@ pub async fn execute_query(
 
 #[tauri::command]
 pub async fn get_databases(state: State<'_, AppState>) -> Result<Vec<String>, String> {
-    let pool = {
-        let pool_guard = state.pool.lock().unwrap();
-        pool_guard.clone().ok_or("No active connection")?
-    };
+    let pool = get_pool(&state)?;
 
     let rows = sqlx::query("SHOW DATABASES")
         .fetch_all(&pool)
@@ -284,10 +409,7 @@ pub async fn get_databases(state: State<'_, AppState>) -> Result<Vec<String>, St
 
 #[tauri::command]
 pub async fn get_tables(state: State<'_, AppState>, database: String) -> Result<Vec<String>, String> {
-    let pool = {
-        let pool_guard = state.pool.lock().unwrap();
-        pool_guard.clone().ok_or("No active connection")?
-    };
+    let pool = get_pool(&state)?;
 
     // Note: This relies on the user having permissions to see tables in the given DB
     let query = format!("SHOW TABLES FROM `{}`", database);
@@ -327,10 +449,7 @@ pub async fn get_table_schema(
     database: String,
     table: String
 ) -> Result<Vec<ColumnSchema>, String> {
-    let pool = {
-        let pool_guard = state.pool.lock().unwrap();
-        pool_guard.clone().ok_or("No active connection")?
-    };
+    let pool = get_pool(&state)?;
 
     // Use SHOW COLUMNS which is more reliable than INFORMATION_SCHEMA
     let query = format!("SHOW COLUMNS FROM `{}`.`{}`", database, table);
@@ -402,10 +521,7 @@ pub struct MySqlUser {
 pub async fn get_mysql_users(
     state: State<'_, AppState>,
 ) -> Result<Vec<MySqlUser>, String> {
-    let pool = {
-        let pool_guard = state.pool.lock().unwrap();
-        pool_guard.clone().ok_or("No active connection")?
-    };
+    let pool = get_pool(&state)?;
 
     let query = "SELECT User, Host, account_locked, password_expired FROM mysql.user ORDER BY User, Host";
 
@@ -455,10 +571,7 @@ pub async fn get_user_privileges(
     user: String,
     host: String,
 ) -> Result<UserPrivileges, String> {
-    let pool = {
-        let pool_guard = state.pool.lock().unwrap();
-        pool_guard.clone().ok_or("No active connection")?
-    };
+    let pool = get_pool(&state)?;
 
     // Get global privileges using SHOW GRANTS
     let query = format!("SHOW GRANTS FOR '{}'@'{}'", user, host);
@@ -537,10 +650,7 @@ pub async fn get_table_indexes(
     database: String,
     table: String
 ) -> Result<Vec<TableIndex>, String> {
-    let pool = {
-        let pool_guard = state.pool.lock().unwrap();
-        pool_guard.clone().ok_or("No active connection")?
-    };
+    let pool = get_pool(&state)?;
 
     let query = format!("SHOW INDEX FROM `{}`.`{}`", database, table);
     
@@ -590,10 +700,7 @@ pub async fn get_table_foreign_keys(
     database: String,
     table: String
 ) -> Result<Vec<ForeignKey>, String> {
-    let pool = {
-        let pool_guard = state.pool.lock().unwrap();
-        pool_guard.clone().ok_or("No active connection")?
-    };
+    let pool = get_pool(&state)?;
 
     // Use lower case matching for robustness on Linux (case-sensitive FS)
     let query = format!(
@@ -637,10 +744,7 @@ pub async fn get_table_primary_keys(
     database: String,
     table: String
 ) -> Result<Vec<String>, String> {
-    let pool = {
-        let pool_guard = state.pool.lock().unwrap();
-        pool_guard.clone().ok_or("No active connection")?
-    };
+    let pool = get_pool(&state)?;
 
     let query = format!(
         "SELECT COLUMN_NAME \
@@ -680,10 +784,7 @@ pub async fn get_table_constraints(
     database: String,
     table: String
 ) -> Result<Vec<TableConstraint>, String> {
-    let pool = {
-        let pool_guard = state.pool.lock().unwrap();
-        pool_guard.clone().ok_or("No active connection")?
-    };
+    let pool = get_pool(&state)?;
 
     let query = format!(
         "SELECT CONSTRAINT_NAME, CONSTRAINT_TYPE 
@@ -735,10 +836,7 @@ pub async fn get_table_stats(
     database: String,
     table: String
 ) -> Result<TableStats, String> {
-    let pool = {
-        let pool_guard = state.pool.lock().unwrap();
-        pool_guard.clone().ok_or("No active connection")?
-    };
+    let pool = get_pool(&state)?;
 
     let query = format!("SHOW TABLE STATUS FROM `{}` WHERE Name = '{}'", database, table);
     
@@ -774,10 +872,7 @@ pub async fn get_table_ddl(
     database: String,
     table: String
 ) -> Result<String, String> {
-    let pool = {
-        let pool_guard = state.pool.lock().unwrap();
-        pool_guard.clone().ok_or("No active connection")?
-    };
+    let pool = get_pool(&state)?;
 
     let query = format!("SHOW CREATE TABLE `{}`.`{}`", database, table);
     
@@ -801,10 +896,7 @@ pub async fn get_views(
     state: State<'_, AppState>,
     database: String
 ) -> Result<Vec<String>, String> {
-    let pool = {
-        let pool_guard = state.pool.lock().unwrap();
-        pool_guard.clone().ok_or("No active connection")?
-    };
+    let pool = get_pool(&state)?;
 
     let query = format!("SHOW FULL TABLES FROM `{}` WHERE Table_type = 'VIEW'", database);
     
@@ -839,10 +931,7 @@ pub async fn get_triggers(
     state: State<'_, AppState>,
     database: String
 ) -> Result<Vec<TriggerInfo>, String> {
-    let pool = {
-        let pool_guard = state.pool.lock().unwrap();
-        pool_guard.clone().ok_or("No active connection")?
-    };
+    let pool = get_pool(&state)?;
 
     let query = format!("SHOW TRIGGERS FROM `{}`", database);
     
@@ -871,10 +960,7 @@ pub async fn get_table_triggers(
     database: String,
     table: String
 ) -> Result<Vec<TriggerInfo>, String> {
-    let pool = {
-        let pool_guard = state.pool.lock().unwrap();
-        pool_guard.clone().ok_or("No active connection")?
-    };
+    let pool = get_pool(&state)?;
 
     let query = format!("SHOW TRIGGERS FROM `{}` WHERE `Table` = '{}'", database, table);
     
@@ -908,10 +994,7 @@ pub async fn get_procedures(
     state: State<'_, AppState>,
     database: String
 ) -> Result<Vec<RoutineInfo>, String> {
-    let pool = {
-        let pool_guard = state.pool.lock().unwrap();
-        pool_guard.clone().ok_or("No active connection")?
-    };
+    let pool = get_pool(&state)?;
 
     let query = format!("SHOW PROCEDURE STATUS WHERE Db = '{}'", database);
     
@@ -937,10 +1020,7 @@ pub async fn get_functions(
     state: State<'_, AppState>,
     database: String
 ) -> Result<Vec<RoutineInfo>, String> {
-    let pool = {
-        let pool_guard = state.pool.lock().unwrap();
-        pool_guard.clone().ok_or("No active connection")?
-    };
+    let pool = get_pool(&state)?;
 
     let query = format!("SHOW FUNCTION STATUS WHERE Db = '{}'", database);
     
@@ -973,10 +1053,7 @@ pub async fn get_events(
     state: State<'_, AppState>,
     database: String
 ) -> Result<Vec<EventInfo>, String> {
-    let pool = {
-        let pool_guard = state.pool.lock().unwrap();
-        pool_guard.clone().ok_or("No active connection")?
-    };
+    let pool = get_pool(&state)?;
 
     let query = format!("SHOW EVENTS FROM `{}`", database);
     
@@ -1012,10 +1089,7 @@ pub async fn get_view_definition(
     database: String,
     view: String
 ) -> Result<ViewDefinition, String> {
-    let pool = {
-        let pool_guard = state.pool.lock().unwrap();
-        pool_guard.clone().ok_or("No active connection")?
-    };
+    let pool = get_pool(&state)?;
 
     let query = format!("SHOW CREATE VIEW `{}`.`{}`", database, view);
     
@@ -1042,10 +1116,7 @@ pub async fn alter_view(
     view: String,
     definition: String
 ) -> Result<String, String> {
-    let pool = {
-        let pool_guard = state.pool.lock().unwrap();
-        pool_guard.clone().ok_or("No active connection")?
-    };
+    let pool = get_pool(&state)?;
     
     // Silence unused variable warning
     let _ = view;

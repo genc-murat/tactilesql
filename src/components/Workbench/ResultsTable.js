@@ -2,6 +2,10 @@
 import { invoke } from '@tauri-apps/api/core';
 import { Dialog } from '../UI/Dialog.js';
 import { ThemeManager } from '../../utils/ThemeManager.js';
+import { LoadingStates } from '../UI/LoadingStates.js';
+
+// Virtual scrolling threshold - use virtual scroll for datasets larger than this
+const VIRTUAL_SCROLL_THRESHOLD = 500;
 
 export function ResultsTable() {
     let theme = ThemeManager.getCurrentTheme();
@@ -173,6 +177,16 @@ export function ResultsTable() {
     let selectedRows = new Set();
     let hiddenColumns = new Set();
     let showColumnMenu = false;
+    
+    // Virtual scrolling state
+    let useVirtualScroll = false;
+    let virtualScrollState = {
+        rowHeight: 36,
+        overscan: 10,
+        scrollTop: 0,
+        visibleStart: 0,
+        visibleEnd: 0
+    };
 
     // --- Result Tabs State ---
     let resultTabs = []; // Array of {id, title, query, data, timestamp, pinned}
@@ -566,44 +580,175 @@ export function ResultsTable() {
 
     // --- Dynamic Rendering Logic ---
     const showLoadingSkeleton = () => {
-        const table = container.querySelector('table');
-        if (!table) return;
+        const tableContainer = container.querySelector('.flex-1.overflow-auto');
+        if (!tableContainer) return;
 
-        const thead = table.querySelector('thead tr');
-        const tbody = table.querySelector('tbody');
+        // Create loading overlay
+        const overlay = LoadingStates.overlay('Executing query...');
+        overlay.id = 'query-loading-overlay';
+        
+        // Add to table container
+        tableContainer.style.position = 'relative';
+        tableContainer.appendChild(overlay);
 
-        // Show skeleton headers
-        if (thead) {
-            thead.innerHTML = Array(5).fill(0).map((_, i) => `
-                <th class="p-3 border-r ${isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5')} border-b ${isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5')}">
-                    <div class="h-3 ${isLight ? 'bg-gray-200/40' : (isOceanic ? 'bg-ocean-border/20' : 'bg-white/5')} rounded animate-pulse opacity-50" style="width: ${60 + Math.random() * 40}%; animation-delay: ${i * 100}ms"></div>
-                </th>
-            `).join('');
-        }
-
-        // Show skeleton rows
-        if (tbody) {
-            tbody.innerHTML = Array(8).fill(0).map((_, rowIdx) => `
-                <tr class="opacity-40">
-                    ${Array(5).fill(0).map((_, colIdx) => `
-                        <td class="p-3 border-r ${isLight ? 'border-gray-100' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5')}">
-                            <div class="h-3 ${isLight ? 'bg-gray-200/40' : (isOceanic ? 'bg-ocean-border/20' : 'bg-white/5')} rounded animate-pulse" style="width: ${40 + Math.random() * 50}%; animation-delay: ${(rowIdx * 5 + colIdx) * 50}ms"></div>
-                        </td>
-                    `).join('')}
-                </tr>
-            `).join('');
-        }
-
-        // Update badge to show loading state
+        // Also update badge
         const rowCountBadge = container.querySelector('#row-count-badge');
         if (rowCountBadge) {
-            rowCountBadge.innerHTML = '<span class="animate-pulse opacity-60">LOADING...</span>';
+            rowCountBadge.innerHTML = `<span class="flex items-center gap-2"><span class="material-symbols-outlined text-sm animate-spin">progress_activity</span> EXECUTING...</span>`;
         }
+    };
+
+    const hideLoadingSkeleton = () => {
+        const overlay = container.querySelector('#query-loading-overlay');
+        if (overlay) {
+            overlay.remove();
+        }
+    };
+
+    // Virtual scroll render function
+    const renderVirtualRows = () => {
+        if (!useVirtualScroll) return;
+        
+        const tbody = container.querySelector('tbody');
+        const tableWrapper = container.querySelector('.flex-1.overflow-auto');
+        if (!tbody || !tableWrapper) return;
+
+        const { rowHeight, overscan, scrollTop } = virtualScrollState;
+        const viewportHeight = tableWrapper.clientHeight;
+        const totalRows = currentData.rows.length;
+        const totalHeight = totalRows * rowHeight;
+
+        // Calculate visible range
+        const startIdx = Math.max(0, Math.floor(scrollTop / rowHeight) - overscan);
+        const endIdx = Math.min(totalRows - 1, Math.ceil((scrollTop + viewportHeight) / rowHeight) + overscan);
+        
+        virtualScrollState.visibleStart = startIdx;
+        virtualScrollState.visibleEnd = endIdx;
+
+        // Create spacer for total height
+        let spacer = tbody.querySelector('.virtual-spacer');
+        if (!spacer) {
+            spacer = document.createElement('tr');
+            spacer.className = 'virtual-spacer';
+            spacer.innerHTML = `<td colspan="100" style="height: 0; padding: 0; border: none;"></td>`;
+            tbody.insertBefore(spacer, tbody.firstChild);
+        }
+
+        // Build visible rows
+        const visibleRowsHtml = [];
+        
+        // Top spacer
+        if (startIdx > 0) {
+            visibleRowsHtml.push(`<tr class="virtual-top-spacer"><td colspan="100" style="height: ${startIdx * rowHeight}px; padding: 0; border: none;"></td></tr>`);
+        }
+
+        for (let idx = startIdx; idx <= endIdx; idx++) {
+            const row = currentData.rows[idx];
+            if (!row) continue;
+            
+            visibleRowsHtml.push(renderSingleRow(row, idx));
+        }
+
+        // Bottom spacer
+        if (endIdx < totalRows - 1) {
+            const bottomSpacerHeight = (totalRows - 1 - endIdx) * rowHeight;
+            visibleRowsHtml.push(`<tr class="virtual-bottom-spacer"><td colspan="100" style="height: ${bottomSpacerHeight}px; padding: 0; border: none;"></td></tr>`);
+        }
+
+        tbody.innerHTML = visibleRowsHtml.join('');
+        
+        // Reattach events for visible rows
+        attachRowEvents(tbody);
+    };
+
+    const renderSingleRow = (row, idx) => {
+        const isDeleted = pendingChanges.deletes.has(idx);
+        const isSelected = selectedRows.has(idx);
+
+        const cells = row.map((cell, colIdx) => {
+            if (hiddenColumns.has(colIdx)) return '';
+            const key = getCellKey(idx, colIdx);
+            const isModified = pendingChanges.updates.has(key);
+            const displayValue = isModified ? pendingChanges.updates.get(key) : cell;
+
+            return `<td class="p-3 border-r ${isLight ? 'border-gray-100' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5')} ${isLight ? 'text-gray-700' : (isOceanic ? 'text-ocean-text' : 'text-gray-300')} whitespace-nowrap overflow-hidden text-ellipsis max-w-xs ${isModified ? 'bg-yellow-500/10 border border-yellow-500/30' : ''} ${isEditable && !isDeleted ? 'cursor-pointer hover:bg-cyan-500/5' : ''}" 
+                title="${formatCellForTitle(cell)}" 
+                data-row-idx="${idx}" 
+                data-col-idx="${colIdx}">
+                ${formatCell(displayValue)}
+            </td>`;
+        }).join('');
+
+        return `<tr class="hover:bg-mysql-teal/10 transition-colors group ${isSelected ? (isLight ? 'bg-cyan-50' : (isOceanic ? 'bg-cyan-900/20' : 'bg-cyan-500/10')) : (idx % 2 === 1 ? (isLight ? 'bg-gray-50/50' : (isOceanic ? 'bg-[#2E3440]/30' : 'bg-white/[0.01]')) : '')} ${isDeleted ? (isLight ? 'bg-red-50' : (isOceanic ? 'bg-red-900/20' : 'bg-red-500/10')) : ''}" data-row-idx="${idx}" style="height: ${virtualScrollState.rowHeight}px;">
+            <td class="p-2 border-r ${isLight ? 'border-gray-100' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5')} text-center">
+                <input type="checkbox" class="row-checkbox w-3.5 h-3.5 rounded ${isLight ? 'border-gray-300 bg-white' : (isOceanic ? 'border-ocean-border bg-ocean-bg' : 'border-white/20 bg-white/5')} text-mysql-teal focus:ring-mysql-teal focus:ring-offset-0 cursor-pointer" 
+                       data-row-idx="${idx}" 
+                       ${isSelected ? 'checked' : ''}>
+            </td>
+            <td class="p-2 border-r ${isLight ? 'border-gray-100' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5')} text-center text-[10px] ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-500')} font-mono">${idx + 1}</td>
+            ${isEditable ? `<td class="p-2 border-r ${isLight ? 'border-gray-100' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5')} text-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <button class="delete-row-btn text-red-400 hover:text-red-300 p-1" data-row-idx="${idx}" ${isDeleted ? 'disabled' : ''}>
+                    <span class="material-symbols-outlined text-sm">delete</span>
+                </button>
+            </td>` : ''}
+            ${cells}
+        </tr>`;
+    };
+
+    const attachRowEvents = (tbody) => {
+        // Cell edit events
+        if (isEditable) {
+            tbody.querySelectorAll('td[data-row-idx][data-col-idx]').forEach(cell => {
+                cell.addEventListener('dblclick', () => {
+                    const rowIdx = parseInt(cell.dataset.rowIdx);
+                    const colIdx = parseInt(cell.dataset.colIdx);
+                    if (!pendingChanges.deletes.has(rowIdx)) {
+                        makeCellEditable(cell, rowIdx, colIdx);
+                    }
+                });
+            });
+
+            // Delete buttons
+            tbody.querySelectorAll('.delete-row-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const rowIdx = parseInt(btn.dataset.rowIdx);
+                    markRowForDeletion(rowIdx);
+                });
+            });
+        }
+
+        // Checkboxes
+        tbody.querySelectorAll('.row-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', (e) => {
+                const rowIdx = parseInt(e.target.dataset.rowIdx);
+                if (e.target.checked) {
+                    selectedRows.add(rowIdx);
+                } else {
+                    selectedRows.delete(rowIdx);
+                }
+                updateSelectionIndicator();
+
+                const row = e.target.closest('tr');
+                if (row) {
+                    if (e.target.checked) {
+                        row.classList.add(isLight ? 'bg-cyan-50' : (isOceanic ? 'bg-cyan-900/20' : 'bg-cyan-500/10'));
+                    } else {
+                        row.classList.remove('bg-cyan-50', 'bg-cyan-900/20', 'bg-cyan-500/10');
+                    }
+                }
+            });
+        });
     };
 
     const renderTable = async (data) => {
         currentData = data;
         const { columns, rows, query } = data;
+
+        // Hide loading overlay
+        hideLoadingSkeleton();
+
+        // Determine if we should use virtual scrolling
+        useVirtualScroll = rows.length > VIRTUAL_SCROLL_THRESHOLD;
 
         // Check if editable BEFORE rendering
         if (query) {
@@ -620,9 +765,12 @@ export function ResultsTable() {
             }
         }
 
-        // Update Metadata
+        // Update Metadata with performance indicator for large datasets
         const rowCountBadge = container.querySelector('#row-count-badge');
-        if (rowCountBadge) rowCountBadge.innerHTML = `${rows.length} ROWS <span class="${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500')} font-normal ml-1">• ${data.duration || '0ms'}</span>`;
+        if (rowCountBadge) {
+            const vsIndicator = useVirtualScroll ? '<span class="ml-1 px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 text-[8px] font-bold">VIRTUAL</span>' : '';
+            rowCountBadge.innerHTML = `${rows.length.toLocaleString()} ROWS ${vsIndicator}<span class="${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500')} font-normal ml-1">• ${data.duration || '0ms'}</span>`;
+        }
 
         const table = container.querySelector('table');
         if (!table) return;
@@ -665,6 +813,19 @@ export function ResultsTable() {
                         <span>No results returned</span>
                     </div>
                 </td></tr>`;
+            } else if (useVirtualScroll) {
+                // Use virtual scrolling for large datasets
+                renderVirtualRows();
+                
+                // Attach scroll listener for virtual scrolling
+                const tableWrapper = container.querySelector('.flex-1.overflow-auto');
+                if (tableWrapper && !tableWrapper._vsScrollAttached) {
+                    tableWrapper._vsScrollAttached = true;
+                    tableWrapper.addEventListener('scroll', () => {
+                        virtualScrollState.scrollTop = tableWrapper.scrollTop;
+                        requestAnimationFrame(renderVirtualRows);
+                    }, { passive: true });
+                }
             } else {
                 const insertRows = pendingChanges.inserts.map((insert, idx) => {
                     const cells = columns.map((col, colIdx) => {
@@ -723,9 +884,15 @@ export function ResultsTable() {
 
                 tbody.innerHTML = insertRows + dataRows;
             }
+            
+            // Attach row events (for non-virtual scroll mode)
+            if (!useVirtualScroll) {
+                attachRowEvents(tbody);
+            }
         }
 
-        // Bind cell edit events
+        // Bind cell edit events (legacy - now handled by attachRowEvents)
+        // Keeping for backward compatibility with insert rows
         if (isEditable) {
             tbody.querySelectorAll('td[data-row-idx][data-col-idx]').forEach(cell => {
                 cell.addEventListener('dblclick', () => {
