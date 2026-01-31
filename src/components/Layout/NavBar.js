@@ -13,7 +13,6 @@ export function NavBar() {
         const navItems = [
             { path: '/', label: 'DASHBOARD', icon: 'dashboard' },
             { path: '/workbench', label: 'EXPLORER', icon: 'code' },
-            { path: '/schema', label: 'DESIGNER', icon: 'table_chart' },
             { path: '/connections', label: 'CONNECTIONS', icon: 'cable' },
             { path: '/access-control', label: 'SECURITY', icon: 'shield' },
             { path: '/settings', label: 'SETTINGS', icon: 'settings' },
