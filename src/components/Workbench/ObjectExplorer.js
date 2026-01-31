@@ -410,6 +410,12 @@ export function ObjectExplorer() {
 
             // Load databases for the new connection
             await loadDatabases();
+            
+            // Auto-expand first user database after switching connection
+            await autoExpandFirstDatabase();
+            
+            // Notify other components about connection change
+            window.dispatchEvent(new CustomEvent('tactilesql:connection-changed'));
 
         } catch (error) {
             Dialog.alert(`Failed to connect to database: ${String(error).replace(/\n/g, '<br>')}`, 'Database Connection Error');
@@ -433,15 +439,14 @@ export function ObjectExplorer() {
             <div class="px-3 py-1.5 text-[10px] font-mono ${isLight ? 'text-gray-400 border-gray-100' : (isOceanic ? 'text-ocean-text/40 border-ocean-border/30' : 'text-gray-500 border-white/5')} border-b uppercase tracking-widest mb-1">
                 Connection Options
             </div>
-            ${!isCurrent ? `
-                <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5 hover:text-white'} flex items-center gap-2" id="ctx-conn-connect">
-                    <span class="material-symbols-outlined text-sm text-green-400">bolt</span> Connect
-                </button>
-            ` : `
-                 <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5 hover:text-white'} flex items-center gap-2" id="ctx-conn-refresh">
+            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5 hover:text-white'} flex items-center gap-2" id="ctx-conn-connect">
+                <span class="material-symbols-outlined text-sm text-green-400">bolt</span> ${isCurrent ? 'Reconnect' : 'Connect'}
+            </button>
+            ${isCurrent ? `
+                <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5 hover:text-white'} flex items-center gap-2" id="ctx-conn-refresh">
                     <span class="material-symbols-outlined text-sm text-blue-400">sync</span> Refresh Databases
                 </button>
-            `}
+            ` : ''}
             <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5 hover:text-white'} flex items-center gap-2" id="ctx-conn-edit">
                 <span class="material-symbols-outlined text-sm text-mysql-teal">edit</span> Edit Connection
             </button>
@@ -451,9 +456,9 @@ export function ObjectExplorer() {
 
         const btnConnect = menu.querySelector('#ctx-conn-connect');
         if (btnConnect) {
-            btnConnect.onclick = () => {
-                switchConnection(id);
+            btnConnect.onclick = async () => {
                 menu.remove();
+                await switchConnection(id);
             };
         }
 
@@ -703,9 +708,11 @@ export function ObjectExplorer() {
                 activeConnectionId = null;
             }
             render();
-            // If we have an active connection, load its dbs
+            // If we have an active connection, load its dbs and auto-expand first user database
             if (activeConnectionId) {
-                loadDatabases();
+                await loadDatabases();
+                // Auto-expand first user database after loading
+                await autoExpandFirstDatabase();
             }
         } catch (error) {
             console.error('Failed to load connections:', error);
@@ -722,6 +729,23 @@ export function ObjectExplorer() {
             console.error('Failed to load databases:', error);
             // It's possible the connection is dead, we could handle that by unsetting active status
             // but for now let's just log it.
+        }
+    };
+
+    // Auto-expand first user database when connection is established
+    const autoExpandFirstDatabase = async () => {
+        if (databases.length === 0) return;
+        
+        // Find first user database (non-system)
+        const userDbs = databases.filter(db => !systemDatabases.includes(db.toLowerCase()));
+        const firstDb = userDbs.length > 0 ? userDbs[0] : databases[0];
+        
+        if (firstDb && !expandedDbs.has(firstDb)) {
+            expandedDbs.add(firstDb);
+            if (!dbObjects[firstDb]) {
+                await loadDatabaseObjects(firstDb);
+            }
+            render();
         }
     };
 
@@ -772,9 +796,16 @@ export function ObjectExplorer() {
     };
     window.addEventListener('themechange', onThemeChange);
 
+    // Listen for connection changes
+    const onConnectionChanged = async () => {
+        await loadConnections();
+    };
+    window.addEventListener('tactilesql:connection-changed', onConnectionChanged);
+
     // Patch for cleanup
     explorer.onUnmount = () => {
         window.removeEventListener('themechange', onThemeChange);
+        window.removeEventListener('tactilesql:connection-changed', onConnectionChanged);
     };
 
     render();

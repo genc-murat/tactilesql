@@ -427,6 +427,10 @@ export function ConnectionManager() {
                     config: { ...config, id: config.id || null }
                 });
                 localStorage.setItem('activeConnection', JSON.stringify(config));
+                
+                // Notify other components about connection change
+                window.dispatchEvent(new CustomEvent('tactilesql:connection-changed'));
+                
                 window.location.hash = '/workbench';
             } catch (err) {
                 Dialog.alert(`Connection failed: ${String(err).replace(/\n/g, '<br>')}`, 'Connection Error');

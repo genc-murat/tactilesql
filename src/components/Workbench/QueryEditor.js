@@ -196,7 +196,8 @@ export function QueryEditor() {
         try {
             cachedDatabases = await invoke('get_databases');
         } catch (e) {
-            console.error('Failed to load databases for autocomplete', e);
+            // Silently fail if no connection - user might not be connected yet
+            cachedDatabases = [];
         }
     };
 
@@ -1060,6 +1061,38 @@ export function QueryEditor() {
 
         // Re-render to update the textarea
         render();
+    });
+
+    // Listen for connection changes to reload database list
+    window.addEventListener('tactilesql:connection-changed', async () => {
+        // Clear caches
+        cachedDatabases = [];
+        cachedTables = {};
+        cachedColumns = {};
+        
+        // Reload database list and autocomplete
+        await loadDatabasesForAutocomplete();
+        
+        // Update database selector if it exists
+        const dbSelector = container.querySelector('#db-selector');
+        if (dbSelector) {
+            try {
+                const dbs = await invoke('get_databases');
+                const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+                const currentDb = activeConfig.database || '';
+                
+                dbSelector.innerHTML = `
+                    <option value="">Select Database</option>
+                    ${dbs.map(db => `<option value="${db}" ${db === currentDb ? 'selected' : ''}>${db}</option>`).join('')}
+                `;
+                
+                if (currentDb) {
+                    loadTablesForAutocomplete(currentDb);
+                }
+            } catch (error) {
+                // Silently fail
+            }
+        }
     });
 
     return container;
