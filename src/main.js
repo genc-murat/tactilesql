@@ -9,10 +9,15 @@ import { ConnectionManager } from './pages/ConnectionManager.js';
 import { AccessControl } from './pages/AccessControl.js';
 import { Settings } from './pages/Settings.js';
 import { ThemeManager } from './utils/ThemeManager.js';
+import { initKeyboardShortcuts, registerHandler, showShortcutsHelp } from './utils/KeyboardShortcuts.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
     // Initialize theme from saved preference
     ThemeManager.init();
+
+    // Initialize keyboard shortcuts
+    initKeyboardShortcuts();
+
     const root = document.getElementById('root');
 
     // Layout

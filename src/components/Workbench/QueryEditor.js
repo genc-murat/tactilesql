@@ -3,6 +3,7 @@ import { Dialog } from '../UI/Dialog.js';
 import { invoke } from '@tauri-apps/api/core';
 import { showVisualExplainModal } from '../UI/VisualExplainModal.js';
 import { ThemeManager } from '../../utils/ThemeManager.js';
+import { registerHandler, unregisterHandler } from '../../utils/KeyboardShortcuts.js';
 
 // SQL Keywords for autocomplete
 const SQL_KEYWORDS = [
@@ -25,16 +26,16 @@ const SQL_KEYWORDS = [
 // SQL Formatter
 const formatSQL = (sql) => {
     if (!sql || !sql.trim()) return '';
-    
+
     let formatted = sql.trim();
     const keywords = ['SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'ORDER BY', 'GROUP BY', 'HAVING', 'JOIN', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'FULL JOIN', 'ON', 'LIMIT', 'OFFSET', 'INSERT INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE FROM', 'CREATE TABLE', 'ALTER TABLE', 'DROP TABLE', 'UNION', 'UNION ALL'];
-    
+
     // Add newlines before major keywords
     keywords.forEach(kw => {
         const regex = new RegExp(`\\b${kw}\\b`, 'gi');
         formatted = formatted.replace(regex, (match) => `\n${match}`);
     });
-    
+
     // Clean up and indent
     const lines = formatted.split('\n').map(line => line.trim()).filter(line => line);
     let indentLevel = 0;
@@ -49,7 +50,7 @@ const formatSQL = (sql) => {
         }
         return '  '.repeat(indentLevel) + line;
     });
-    
+
     return indented.join('\n');
 };
 
@@ -57,10 +58,10 @@ const formatSQL = (sql) => {
 const detectSyntaxErrors = (sql) => {
     const errors = [];
     const lines = sql.split('\n');
-    
+
     lines.forEach((line, idx) => {
         const trimmed = line.trim();
-        
+
         // Check for common errors
         if (trimmed && !trimmed.startsWith('--') && !trimmed.startsWith('/*')) {
             // Missing semicolon at end of statement (if it looks like end)
@@ -72,7 +73,7 @@ const detectSyntaxErrors = (sql) => {
                     }
                 }
             }
-            
+
             // Unmatched quotes
             const singleQuotes = (trimmed.match(/'/g) || []).length;
             const doubleQuotes = (trimmed.match(/"/g) || []).length;
@@ -82,7 +83,7 @@ const detectSyntaxErrors = (sql) => {
             if (doubleQuotes % 2 !== 0) {
                 errors.push({ line: idx + 1, message: 'Unmatched double quote', severity: 'error' });
             }
-            
+
             // Common typos
             if (/\bSELCT\b/i.test(trimmed)) {
                 errors.push({ line: idx + 1, message: 'Did you mean SELECT?', severity: 'error' });
@@ -92,7 +93,7 @@ const detectSyntaxErrors = (sql) => {
             }
         }
     });
-    
+
     return errors;
 };
 
@@ -515,7 +516,7 @@ export function QueryEditor() {
                 e.stopPropagation();
                 if (e.target.closest('.close-overflow-tab')) return;
                 const id = item.dataset.id;
-                
+
                 // Find the selected tab index
                 const selectedIndex = tabs.findIndex(t => t.id === id);
                 if (selectedIndex >= maxVisibleTabs) {
@@ -524,7 +525,7 @@ export function QueryEditor() {
                     tabs.splice(selectedIndex, 1); // Remove from current position
                     tabs.splice(maxVisibleTabs - 1, 0, selectedTab); // Insert at last visible position
                 }
-                
+
                 activeTabId = id;
                 // Close menu before render
                 if (overflowMenu) overflowMenu.classList.add('hidden');
@@ -571,7 +572,7 @@ export function QueryEditor() {
             if (syntaxHighlight && textarea) {
                 const errors = detectSyntaxErrors(textarea.value);
                 syntaxHighlight.innerHTML = highlightSQL(textarea.value, errors) + '\n';
-                
+
                 // Show error tooltip if any
                 if (errors.length > 0) {
                     const errorMsg = errors.map(e => `Line ${e.line}: ${e.message}`).join('\n');
@@ -665,7 +666,7 @@ export function QueryEditor() {
                     const end = textarea.selectionEnd;
                     const text = textarea.value;
                     const lines = text.split('\n');
-                    
+
                     // Find which lines are selected
                     let charCount = 0;
                     let startLine = 0, endLine = 0;
@@ -677,7 +678,7 @@ export function QueryEditor() {
                         }
                         charCount += lines[i].length + 1; // +1 for newline
                     }
-                    
+
                     // Toggle comments
                     for (let i = startLine; i <= endLine; i++) {
                         if (lines[i].trim().startsWith('--')) {
@@ -686,7 +687,7 @@ export function QueryEditor() {
                             lines[i] = '-- ' + lines[i];
                         }
                     }
-                    
+
                     const newText = lines.join('\n');
                     textarea.value = newText;
                     const activeTab = tabs.find(t => t.id === activeTabId);
@@ -700,7 +701,7 @@ export function QueryEditor() {
                     const start = textarea.selectionStart;
                     const text = textarea.value;
                     const lines = text.split('\n');
-                    
+
                     // Find current line
                     let charCount = 0;
                     let currentLine = 0;
@@ -711,7 +712,7 @@ export function QueryEditor() {
                         }
                         charCount += lines[i].length + 1;
                     }
-                    
+
                     // Duplicate line
                     lines.splice(currentLine + 1, 0, lines[currentLine]);
                     const newText = lines.join('\n');
@@ -728,7 +729,7 @@ export function QueryEditor() {
                     const start = textarea.selectionStart;
                     const text = textarea.value;
                     const lines = text.split('\n');
-                    
+
                     let charCount = 0;
                     let currentLine = 0;
                     for (let i = 0; i < lines.length; i++) {
@@ -738,7 +739,7 @@ export function QueryEditor() {
                         }
                         charCount += lines[i].length + 1;
                     }
-                    
+
                     if (currentLine > 0) {
                         [lines[currentLine - 1], lines[currentLine]] = [lines[currentLine], lines[currentLine - 1]];
                         const newText = lines.join('\n');
@@ -755,7 +756,7 @@ export function QueryEditor() {
                     const start = textarea.selectionStart;
                     const text = textarea.value;
                     const lines = text.split('\n');
-                    
+
                     let charCount = 0;
                     let currentLine = 0;
                     for (let i = 0; i < lines.length; i++) {
@@ -765,7 +766,7 @@ export function QueryEditor() {
                         }
                         charCount += lines[i].length + 1;
                     }
-                    
+
                     if (currentLine < lines.length - 1) {
                         [lines[currentLine], lines[currentLine + 1]] = [lines[currentLine + 1], lines[currentLine]];
                         const newText = lines.join('\n');
@@ -839,7 +840,7 @@ export function QueryEditor() {
         const executeBtn = container.querySelector('#execute-btn');
         if (executeBtn) {
             let isExecuting = false;
-            
+
             // Add ripple effect on click
             executeBtn.addEventListener('mousedown', (e) => {
                 const ripple = document.createElement('span');
@@ -847,30 +848,30 @@ export function QueryEditor() {
                 const size = Math.max(rect.width, rect.height);
                 const x = e.clientX - rect.left - size / 2;
                 const y = e.clientY - rect.top - size / 2;
-                
+
                 ripple.style.width = ripple.style.height = size + 'px';
                 ripple.style.left = x + 'px';
                 ripple.style.top = y + 'px';
                 ripple.className = 'absolute rounded-full bg-white/40 animate-ping pointer-events-none';
-                
+
                 executeBtn.appendChild(ripple);
                 setTimeout(() => ripple.remove(), 600);
             });
-            
+
             executeBtn.addEventListener('click', async () => {
                 if (isExecuting) return; // Prevent double-click
                 isExecuting = true;
-                
+
                 const editorContent = container.querySelector('#query-input').value;
                 const startTime = performance.now();
                 const originalHTML = executeBtn.innerHTML;
                 try {
                     executeBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span>';
                     executeBtn.classList.add('opacity-70', 'cursor-wait');
-                    
+
                     // Notify results table to show loading skeleton
                     window.dispatchEvent(new CustomEvent('tactilesql:query-executing'));
-                    
+
                     // Execute query - UI stays responsive due to async/await
                     const result = await invoke('execute_query', { query: editorContent });
                     const endTime = performance.now();
@@ -898,7 +899,7 @@ export function QueryEditor() {
                 } catch (error) {
                     const endTime = performance.now();
                     lastExecutionTime = Math.round(endTime - startTime);
-                    
+
                     // Dispatch History Error
                     window.dispatchEvent(new CustomEvent('tactilesql:history-update', {
                         detail: {
@@ -927,7 +928,7 @@ export function QueryEditor() {
             explainBtn.addEventListener('click', async () => {
                 if (isExplaining) return; // Prevent double-click
                 isExplaining = true;
-                
+
                 const textarea = container.querySelector('#query-input');
                 // Use selected text if available, otherwise use all content
                 const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
@@ -1032,9 +1033,133 @@ export function QueryEditor() {
     };
     window.addEventListener('themechange', onThemeChange);
 
+    // --- Register Keyboard Shortcut Handlers ---
+    const registerShortcutHandlers = () => {
+        // Execute query (Ctrl+Enter, F5)
+        registerHandler('executeQuery', () => {
+            const executeBtn = container.querySelector('#execute-btn');
+            if (executeBtn) executeBtn.click();
+        });
+
+        // New tab (Ctrl+N)
+        registerHandler('newTab', () => {
+            const newTabBtn = container.querySelector('#new-tab-btn');
+            if (newTabBtn) newTabBtn.click();
+        });
+
+        // Close tab (Ctrl+W)
+        registerHandler('closeTab', () => {
+            if (tabs.length > 1) {
+                const idx = tabs.findIndex(t => t.id === activeTabId);
+                tabs = tabs.filter(t => t.id !== activeTabId);
+                activeTabId = tabs[Math.max(0, idx - 1)].id;
+                render();
+            }
+        });
+
+        // Next tab (Ctrl+Tab)
+        registerHandler('nextTab', () => {
+            const idx = tabs.findIndex(t => t.id === activeTabId);
+            const nextIdx = (idx + 1) % tabs.length;
+            activeTabId = tabs[nextIdx].id;
+            render();
+        });
+
+        // Previous tab (Ctrl+Shift+Tab)
+        registerHandler('prevTab', () => {
+            const idx = tabs.findIndex(t => t.id === activeTabId);
+            const prevIdx = (idx - 1 + tabs.length) % tabs.length;
+            activeTabId = tabs[prevIdx].id;
+            render();
+        });
+
+        // Go to specific tabs (Ctrl+1 to Ctrl+5)
+        for (let i = 1; i <= 5; i++) {
+            registerHandler(`goToTab${i}`, () => {
+                if (tabs[i - 1]) {
+                    activeTabId = tabs[i - 1].id;
+                    render();
+                }
+            });
+        }
+
+        // Format SQL (Ctrl+Shift+F)
+        registerHandler('formatSQL', () => {
+            const textarea = container.querySelector('#query-input');
+            if (textarea) {
+                const formatted = formatSQL(textarea.value);
+                textarea.value = formatted;
+                const activeTab = tabs.find(t => t.id === activeTabId);
+                if (activeTab) activeTab.content = formatted;
+                // Trigger syntax highlighting update
+                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        });
+
+        // Save as snippet (Ctrl+S)
+        registerHandler('saveSnippet', async () => {
+            const textarea = container.querySelector('#query-input');
+            if (textarea && textarea.value.trim()) {
+                const name = await Dialog.prompt('Snippet adını girin:', 'Snippet Kaydet', 'Query Snippet');
+                if (name) {
+                    window.dispatchEvent(new CustomEvent('tactilesql:save-snippet', {
+                        detail: { name, content: textarea.value }
+                    }));
+                }
+            }
+        });
+
+        // Focus query editor (Ctrl+Shift+Q)
+        registerHandler('focusQuery', () => {
+            const textarea = container.querySelector('#query-input');
+            if (textarea) textarea.focus();
+        });
+
+        // Select line (Ctrl+L)
+        registerHandler('selectLine', () => {
+            const textarea = container.querySelector('#query-input');
+            if (textarea) {
+                const start = textarea.selectionStart;
+                const text = textarea.value;
+                const lineStart = text.lastIndexOf('\n', start - 1) + 1;
+                const lineEnd = text.indexOf('\n', start);
+                textarea.setSelectionRange(lineStart, lineEnd === -1 ? text.length : lineEnd);
+            }
+        });
+
+        // Go to line (Ctrl+G)
+        registerHandler('gotoLine', async () => {
+            const textarea = container.querySelector('#query-input');
+            if (textarea) {
+                const lineNum = await Dialog.prompt('Satır numarasını girin:', 'Satıra Git', '1');
+                if (lineNum) {
+                    const num = parseInt(lineNum, 10);
+                    if (!isNaN(num) && num > 0) {
+                        const lines = textarea.value.split('\n');
+                        let pos = 0;
+                        for (let i = 0; i < Math.min(num - 1, lines.length); i++) {
+                            pos += lines[i].length + 1;
+                        }
+                        textarea.setSelectionRange(pos, pos);
+                        textarea.focus();
+                    }
+                }
+            }
+        });
+    };
+
+    // Register handlers on mount
+    registerShortcutHandlers();
+
     // Patch for cleanup
     container.onUnmount = () => {
         window.removeEventListener('themechange', onThemeChange);
+        // Unregister handlers
+        ['executeQuery', 'newTab', 'closeTab', 'nextTab', 'prevTab',
+            'goToTab1', 'goToTab2', 'goToTab3', 'goToTab4', 'goToTab5',
+            'formatSQL', 'saveSnippet', 'focusQuery', 'selectLine', 'gotoLine'].forEach(action => {
+                unregisterHandler(action);
+            });
     };
 
     // Initial Render
@@ -1070,10 +1195,10 @@ export function QueryEditor() {
         cachedDatabases = [];
         cachedTables = {};
         cachedColumns = {};
-        
+
         // Reload database list and autocomplete
         await loadDatabasesForAutocomplete();
-        
+
         // Update database selector if it exists
         const dbSelector = container.querySelector('#db-selector');
         if (dbSelector) {
@@ -1081,12 +1206,12 @@ export function QueryEditor() {
                 const dbs = await invoke('get_databases');
                 const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
                 const currentDb = activeConfig.database || '';
-                
+
                 dbSelector.innerHTML = `
                     <option value="">Select Database</option>
                     ${dbs.map(db => `<option value="${db}" ${db === currentDb ? 'selected' : ''}>${db}</option>`).join('')}
                 `;
-                
+
                 if (currentDb) {
                     loadTablesForAutocomplete(currentDb);
                 }

@@ -169,10 +169,28 @@ export function SnippetLibrary() {
     };
     window.addEventListener('themechange', onThemeChange);
 
+    // Listen for Save Snippet from keyboard shortcut (Ctrl+S)
+    const onSaveSnippet = (e) => {
+        if (e.detail && e.detail.content) {
+            const title = e.detail.name || `Snippet ${snippets.length + 1}`;
+            snippets.push({
+                id: Date.now().toString(),
+                title,
+                type: 'SQL',
+                code: e.detail.content
+            });
+            saveSnippets();
+            render();
+            Dialog.show({ title: 'Saved', message: `Snippet "${title}" saved!`, type: 'info' });
+        }
+    };
+    window.addEventListener('tactilesql:save-snippet', onSaveSnippet);
+
     // Patch for cleanup
     aside.onUnmount = () => {
         window.removeEventListener('tactilesql:history-update', onHistoryUpdate);
         window.removeEventListener('themechange', onThemeChange);
+        window.removeEventListener('tactilesql:save-snippet', onSaveSnippet);
     };
 
     // Initial Render
