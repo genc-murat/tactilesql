@@ -446,8 +446,9 @@ export function QueryEditor() {
                         <button id="explain-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-gray-700 shadow-sm' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text' : 'bg-[#1a1d23] border-white/10 text-gray-300')} border rounded hover:opacity-80 active:scale-95 transition-all" title="Explain Query Plan">
                             <span class="material-symbols-outlined text-sm">analytics</span>
                         </button>
-                        <button id="execute-btn" class="flex items-center justify-center p-0.5 bg-mysql-teal text-black rounded shadow-[0_0_8px_rgba(0,200,255,0.15)] hover:brightness-110 active:scale-95 transition-all" title="Execute Query (Ctrl+Enter)">
-                            <span class="material-symbols-outlined text-sm">play_arrow</span>
+                        <button id="execute-btn" class="relative flex items-center justify-center p-0.5 bg-mysql-teal text-black rounded shadow-[0_0_8px_rgba(0,200,255,0.15)] hover:shadow-[0_0_20px_rgba(0,200,255,0.4)] hover:brightness-110 active:scale-95 transition-all duration-300 overflow-hidden group" title="Execute Query (Ctrl+Enter)">
+                            <span class="material-symbols-outlined text-sm relative z-10 group-hover:scale-110 transition-transform duration-200">play_arrow</span>
+                            <span class="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-out"></span>
                         </button>
                     </div>
                 </div>
@@ -837,6 +838,24 @@ export function QueryEditor() {
         const executeBtn = container.querySelector('#execute-btn');
         if (executeBtn) {
             let isExecuting = false;
+            
+            // Add ripple effect on click
+            executeBtn.addEventListener('mousedown', (e) => {
+                const ripple = document.createElement('span');
+                const rect = executeBtn.getBoundingClientRect();
+                const size = Math.max(rect.width, rect.height);
+                const x = e.clientX - rect.left - size / 2;
+                const y = e.clientY - rect.top - size / 2;
+                
+                ripple.style.width = ripple.style.height = size + 'px';
+                ripple.style.left = x + 'px';
+                ripple.style.top = y + 'px';
+                ripple.className = 'absolute rounded-full bg-white/40 animate-ping pointer-events-none';
+                
+                executeBtn.appendChild(ripple);
+                setTimeout(() => ripple.remove(), 600);
+            });
+            
             executeBtn.addEventListener('click', async () => {
                 if (isExecuting) return; // Prevent double-click
                 isExecuting = true;
@@ -845,8 +864,8 @@ export function QueryEditor() {
                 const startTime = performance.now();
                 const originalHTML = executeBtn.innerHTML;
                 try {
-                    executeBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span> RUNNING';
-                    executeBtn.classList.add('opacity-70');
+                    executeBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span>';
+                    executeBtn.classList.add('opacity-70', 'cursor-wait');
                     
                     // Execute query - UI stays responsive due to async/await
                     const result = await invoke('execute_query', { query: editorContent });
@@ -889,7 +908,7 @@ export function QueryEditor() {
                     render(); // Show execution time even on error
                 } finally {
                     executeBtn.innerHTML = originalHTML;
-                    executeBtn.classList.remove('opacity-70');
+                    executeBtn.classList.remove('opacity-70', 'cursor-wait');
                     isExecuting = false;
                     container.querySelector('#exec-time').textContent = `${lastExecutionTime}ms`;
                 }
