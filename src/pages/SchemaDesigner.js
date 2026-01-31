@@ -429,6 +429,10 @@ END"></textarea>
             statusDisplay.innerText = `TABLE STATISTICS`;
             thead.innerHTML = '';
             renderStatsView();
+        } else if (state.activeTab === 'diagram') {
+            statusDisplay.innerText = `ER DIAGRAM (Direct Relationships)`;
+            thead.innerHTML = '';
+            renderDiagramView();
         }
     }
 
@@ -1328,8 +1332,30 @@ END;\n`;
                 database: state.database,
                 table: state.tableName
             });
+            console.log("Foreign Keys fetched:", fks); // DEBUG
             state.foreignKeys = fks;
             state.originalForeignKeys = JSON.parse(JSON.stringify(fks));
+
+            // 4.5. Get Referenced Table Schemas (for Diagram)
+            state.referencedSchemas = {};
+            const uniqueRefTables = [...new Set(fks.map(fk => fk.referenced_table).filter(Boolean))];
+
+            for (const refTable of uniqueRefTables) {
+                try {
+                    const refSchema = await invoke('get_table_schema', {
+                        database: state.database,
+                        table: refTable
+                    });
+                    state.referencedSchemas[refTable] = refSchema.map(col => ({
+                        name: col.name,
+                        type: col.data_type.toUpperCase(),
+                        pk: col.column_key === 'PRI',
+                        fk: false // We could check this recursively but keeping it simple for now
+                    }));
+                } catch (e) {
+                    console.error(`Failed to load schema for ${refTable}`, e);
+                }
+            }
 
             // 5. Get Constraints
             const cons = await invoke('get_table_constraints', {

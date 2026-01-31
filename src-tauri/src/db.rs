@@ -547,10 +547,11 @@ pub async fn get_table_foreign_keys(
         pool_guard.clone().ok_or("No active connection")?
     };
 
+    // Use lower case matching for robustness on Linux (case-sensitive FS)
     let query = format!(
         "SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME 
          FROM information_schema.KEY_COLUMN_USAGE 
-         WHERE TABLE_SCHEMA = '{}' AND TABLE_NAME = '{}' AND REFERENCED_TABLE_NAME IS NOT NULL",
+         WHERE TABLE_SCHEMA = '{}' AND LOWER(TABLE_NAME) = LOWER('{}') AND REFERENCED_TABLE_NAME IS NOT NULL",
         database, table
     );
     
@@ -563,12 +564,20 @@ pub async fn get_table_foreign_keys(
     for row in rows {
         use sqlx::Row;
         
-        fks.push(ForeignKey {
-            constraint_name: row.try_get("CONSTRAINT_NAME").unwrap_or_default(),
-            column_name: row.try_get("COLUMN_NAME").unwrap_or_default(),
-            referenced_table: row.try_get("REFERENCED_TABLE_NAME").unwrap_or_default(),
-            referenced_column: row.try_get("REFERENCED_COLUMN_NAME").unwrap_or_default(),
-        });
+        // robust index-based access
+        let c_name: String = row.try_get(0).unwrap_or_default();
+        let col_name: String = row.try_get(1).unwrap_or_default();
+        let ref_table: String = row.try_get(2).unwrap_or_default();
+        let ref_col: String = row.try_get(3).unwrap_or_default();
+        
+        if !ref_table.is_empty() {
+             fks.push(ForeignKey {
+                constraint_name: c_name,
+                column_name: col_name,
+                referenced_table: ref_table,
+                referenced_column: ref_col,
+            });
+        }
     }
 
     Ok(fks)
