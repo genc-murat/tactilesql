@@ -7,7 +7,7 @@ export function SnippetLibrary() {
     const getAsideClass = (t) => {
         const isLight = t === 'light';
         const isOceanic = t === 'oceanic';
-        return `h-full border-l ${isLight ? 'bg-white border-gray-200' : (isOceanic ? 'bg-ocean-panel border-ocean-border' : 'bg-[#0b0d11] border-white/5')} flex flex-col p-4 gap-6 overflow-hidden transition-all duration-300`;
+        return `h-full border-l ${isLight ? 'bg-white border-gray-200' : (isOceanic ? 'bg-ocean-panel border-ocean-border' : 'bg-[#0f1115] border-white/5')} flex flex-col p-4 gap-6 overflow-hidden transition-all duration-300`;
     };
     aside.className = getAsideClass(theme);
 

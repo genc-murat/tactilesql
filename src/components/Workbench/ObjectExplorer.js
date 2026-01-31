@@ -12,7 +12,7 @@ export function ObjectExplorer() {
     const getExplorerClass = (t) => {
         const isL = t === 'light';
         const isO = t === 'oceanic';
-        return `h-full border-r ${isL ? 'bg-white border-gray-200' : (isO ? 'bg-ocean-panel border-ocean-border' : 'bg-[#0b0d11] border-white/5')} flex flex-col p-3 gap-4 overflow-hidden`;
+        return `h-full border-r ${isL ? 'bg-white border-gray-200' : (isO ? 'bg-ocean-panel border-ocean-border' : 'bg-[#0f1115] border-white/5')} flex flex-col p-3 gap-4 overflow-hidden`;
     };
     explorer.className = getExplorerClass(theme);
 

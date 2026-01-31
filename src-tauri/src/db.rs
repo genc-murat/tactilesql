@@ -196,7 +196,7 @@ pub async fn establish_connection(
 #[derive(Serialize)]
 pub struct QueryResult {
     pub columns: Vec<String>,
-    pub rows: Vec<Vec<String>>, // formatting everything as string for simplicity for now
+    pub rows: Vec<Vec<serde_json::Value>>, // Use JSON values to preserve types
 }
 
 #[tauri::command]
@@ -228,16 +228,26 @@ pub async fn execute_query(
     for row in rows {
         let mut row_data = Vec::new();
         for (i, _) in columns.iter().enumerate() {
-            // Very naive string conversion for generic result display
-            let val: String = row.try_get_unchecked::<String, _>(i)
-                .or_else(|_| row.try_get_unchecked::<i64, _>(i).map(|v| v.to_string()))
-                .or_else(|_| row.try_get_unchecked::<f64, _>(i).map(|v| v.to_string()))
+            // Try to extract value as proper JSON type
+            let val: serde_json::Value = row.try_get_unchecked::<i64, _>(i)
+                .map(|v| serde_json::json!(v))
+                .or_else(|_| row.try_get_unchecked::<i32, _>(i).map(|v| serde_json::json!(v)))
+                .or_else(|_| row.try_get_unchecked::<i16, _>(i).map(|v| serde_json::json!(v)))
+                .or_else(|_| row.try_get_unchecked::<i8, _>(i).map(|v| serde_json::json!(v)))
+                .or_else(|_| row.try_get_unchecked::<u64, _>(i).map(|v| serde_json::json!(v)))
+                .or_else(|_| row.try_get_unchecked::<u32, _>(i).map(|v| serde_json::json!(v)))
+                .or_else(|_| row.try_get_unchecked::<u16, _>(i).map(|v| serde_json::json!(v)))
+                .or_else(|_| row.try_get_unchecked::<u8, _>(i).map(|v| serde_json::json!(v)))
+                .or_else(|_| row.try_get_unchecked::<f64, _>(i).map(|v| serde_json::json!(v)))
+                .or_else(|_| row.try_get_unchecked::<f32, _>(i).map(|v| serde_json::json!(v)))
+                .or_else(|_| row.try_get_unchecked::<bool, _>(i).map(|v| serde_json::json!(v)))
+                .or_else(|_| row.try_get_unchecked::<String, _>(i).map(|v| serde_json::json!(v)))
                 .or_else(|_| {
-                     // Try getting as bytes solely to check null/existence or generic display
-                     // Ideally we check type_info
-                     Ok("...".to_string()) 
+                    // Try getting as bytes and convert to string
+                    row.try_get_unchecked::<Vec<u8>, _>(i)
+                        .map(|bytes| serde_json::json!(String::from_utf8_lossy(&bytes).to_string()))
                 })
-                .unwrap_or_else(|_: sqlx::Error| "NULL".to_string());
+                .unwrap_or(serde_json::Value::Null);
             row_data.push(val);
         }
         result_rows.push(row_data);

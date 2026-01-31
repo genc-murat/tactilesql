@@ -12,13 +12,13 @@ export function ResultsTable() {
 
     const renderControls = () => {
         container.innerHTML = `
-            <div class="flex items-center justify-between px-6 h-12 ${isLight ? 'bg-gray-50 border-gray-200' : (isOceanic ? 'bg-[#3B4252] border-ocean-border/30' : 'bg-[#1a1d23]/50 border-white/5')} border-b">
+            <div class="flex items-center justify-between px-6 h-12 ${isLight ? 'bg-gray-50 border-gray-200' : (isOceanic ? 'bg-[#3B4252] border-ocean-border/30' : 'bg-[#16191e] border-white/5')} border-b">
                 <div class="flex items-center gap-6">
                     <div class="flex items-center gap-2">
                         <h2 class="text-[10px] font-black uppercase tracking-[0.2em] text-mysql-teal/80">Result Set</h2>
                         <span id="row-count-badge" class="px-1.5 py-0.5 rounded ${isLight ? 'bg-mysql-teal/10 text-mysql-teal' : 'bg-mysql-teal/10 text-mysql-teal'} text-[9px] font-bold">0 ROWS</span>
                     </div>
-                    <div class="flex items-center ${isLight ? 'bg-white border-gray-200' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50' : 'bg-black/30 border-white/5')} border rounded px-2 py-1">
+                    <div class="flex items-center ${isLight ? 'bg-white border-gray-200' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50' : 'bg-[#0f1115] border-white/5')} border rounded px-2 py-1">
                         <span class="material-symbols-outlined text-xs text-gray-500 mr-2">filter_alt</span>
                         <input id="filter-input" class="bg-transparent border-none focus:ring-0 text-[10px] ${isLight ? 'text-gray-700' : (isOceanic ? 'text-ocean-text' : 'text-gray-400')} w-48 p-0 placeholder:text-gray-400" placeholder="Quick filter results..." type="text" />
                     </div>
@@ -46,7 +46,7 @@ export function ResultsTable() {
                     </button>
                 </div>
             </div>
-            <div class="flex-1 overflow-auto custom-scrollbar">
+            <div class="flex-1 overflow-auto custom-scrollbar ${isLight ? 'bg-white' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0f1115]')}">
                 <table id="results-table" class="w-full text-left font-mono text-[11px] border-collapse">
                     <thead class="sticky top-0 ${isLight ? 'bg-gray-100' : (isOceanic ? 'bg-ocean-panel' : 'bg-[#16191e]')} z-10 transition-colors">
                         <tr class="text-gray-500 uppercase tracking-tighter">
@@ -82,6 +82,13 @@ export function ResultsTable() {
     let databaseName = '';
 
     // --- Helpers ---
+    const formatCellForTitle = (cell) => {
+        if (cell === null || cell === undefined) return 'NULL';
+        if (typeof cell === 'boolean') return cell ? 'TRUE' : 'FALSE';
+        if (typeof cell === 'number') return String(cell);
+        return String(cell);
+    };
+
     const formatCell = (cell) => {
         if (cell === null || cell === undefined) return `<span class="${isLight ? 'text-gray-300' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-600')} italic">NULL</span>`;
         if (typeof cell === 'boolean') return cell ? '<span class="text-green-400 font-bold">TRUE</span>' : '<span class="text-red-400 font-bold">FALSE</span>';
@@ -449,7 +456,7 @@ export function ResultsTable() {
                         const displayValue = isModified ? pendingChanges.updates.get(key) : cell;
 
                         return `<td class="p-3 border-r ${isLight ? 'border-gray-100' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5')} ${isLight ? 'text-gray-700' : (isOceanic ? 'text-ocean-text' : 'text-gray-300')} whitespace-nowrap overflow-hidden text-ellipsis max-w-xs ${isModified ? 'bg-yellow-500/10 border border-yellow-500/30' : ''} ${isEditable && !isDeleted ? 'cursor-pointer hover:bg-cyan-500/5' : ''}" 
-                            title="${cell}" 
+                            title="${formatCellForTitle(cell)}" 
                             data-row-idx="${idx}" 
                             data-col-idx="${colIdx}">
                             ${formatCell(displayValue)}
