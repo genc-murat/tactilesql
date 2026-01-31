@@ -616,6 +616,32 @@ pub async fn get_table_constraints(
     Ok(constraints)
 }
 
+#[tauri::command]
+pub async fn get_table_ddl(
+    state: State<'_, AppState>,
+    database: String,
+    table: String
+) -> Result<String, String> {
+    let pool = {
+        let pool_guard = state.pool.lock().unwrap();
+        pool_guard.clone().ok_or("No active connection")?
+    };
+
+    let query = format!("SHOW CREATE TABLE `{}`.`{}`", database, table);
+    
+    let row = sqlx::query(&query)
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| format!("Failed to fetch DDL: {}", e))?;
+
+    use sqlx::Row;
+    let ddl: String = row.try_get("Create Table").unwrap_or_else(|_| {
+        row.try_get::<String, _>(1).unwrap_or_default()
+    });
+
+    Ok(ddl)
+}
+
 // --- Database Object Commands ---
 
 #[tauri::command]

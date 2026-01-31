@@ -27,6 +27,7 @@ pub fn run() {
             db::get_table_indexes,
             db::get_table_foreign_keys,
             db::get_table_constraints,
+            db::get_table_ddl,
             db::get_views,
             db::get_triggers,
             db::get_table_triggers,

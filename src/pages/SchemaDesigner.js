@@ -33,8 +33,11 @@ export function SchemaDesigner() {
         triggers: [],
         originalTriggers: [],
 
+        // DDL
+        ddl: '',
+
         // UI
-        activeTab: 'columns', // columns, indexes, foreign_keys, constraints, triggers
+        activeTab: 'columns', // columns, indexes, foreign_keys, constraints, triggers, ddl
         isLoading: true,
         error: null,
         tablesList: [], // For FK reference dropdown
@@ -100,6 +103,9 @@ export function SchemaDesigner() {
                                 </button>
                                 <button class="px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all" id="tab-triggers">
                                     Triggers
+                                </button>
+                                <button class="px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all" id="tab-ddl">
+                                    DDL
                                 </button>
                             </div>
                             
@@ -325,6 +331,8 @@ END"></textarea>
                 state.newTrigger = { name: '', timing: 'BEFORE', event: 'INSERT', body: '' };
                 renderTriggerModal();
             };
+        } else if (state.activeTab === 'ddl') {
+            actionsContainer.innerHTML = '';
         }
     }
 
@@ -383,7 +391,7 @@ END"></textarea>
                 </tr>
             `;
             renderConstraintsTable();
-        } else { // activeTab === 'triggers'
+        } else if (state.activeTab === 'triggers') {
             statusDisplay.innerText = `${state.triggers.length} TRIGGERS`;
             thead.innerHTML = `
                 <tr class="text-gray-500 uppercase text-[10px] tracking-widest">
@@ -395,6 +403,10 @@ END"></textarea>
                 </tr>
              `;
             renderTriggersTable();
+        } else if (state.activeTab === 'ddl') {
+            statusDisplay.innerText = `CREATE STATEMENT`;
+            thead.innerHTML = '';
+            renderDDLView();
         }
     }
 
@@ -610,6 +622,28 @@ END"></textarea>
            `;
             tbody.appendChild(tr);
         });
+    }
+
+    function renderDDLView() {
+        const tbody = container.querySelector('#table-body');
+        tbody.innerHTML = '';
+
+        if (state.isLoading) { renderLoading(tbody); return; }
+        if (!state.ddl) { renderEmpty(tbody, 'No DDL available.'); return; }
+
+        // Single row with code block
+        const row = document.createElement('tr');
+        const cell = document.createElement('td');
+        cell.colSpan = 7;
+        cell.className = 'p-0';
+
+        const codeContainer = document.createElement('div');
+        codeContainer.className = "w-full p-6 bg-[#0b0d11] font-mono text-xs text-blue-300 whitespace-pre overflow-x-auto custom-scrollbar";
+        codeContainer.innerText = state.ddl;
+
+        cell.appendChild(codeContainer);
+        row.appendChild(cell);
+        tbody.appendChild(row);
     }
 
     function renderLoading(tbody) {
@@ -1223,12 +1257,28 @@ END;\n`;
             state.constraints = cons;
 
             // 6. Get Triggers
-            const triggers = await invoke('get_table_triggers', {
-                database: state.database,
-                table: state.tableName
-            });
-            state.triggers = triggers;
-            state.originalTriggers = JSON.parse(JSON.stringify(triggers));
+            try {
+                const triggers = await invoke('get_table_triggers', {
+                    database: state.database,
+                    table: state.tableName
+                });
+                state.triggers = triggers.map(t => ({ ...t, body: '' })); // Note: body might not be full definition yet
+                state.originalTriggers = JSON.parse(JSON.stringify(state.triggers));
+            } catch (e) {
+                console.error("Failed to load triggers", e);
+            }
+
+            // 7. Get DDL
+            try {
+                const ddl = await invoke('get_table_ddl', {
+                    database: state.database,
+                    table: state.tableName
+                });
+                state.ddl = ddl;
+            } catch (e) {
+                console.error("Failed to load DDL", e);
+                state.ddl = `-- Failed to load DDL: ${e}`;
+            }
 
         } catch (err) {
             console.error('Failed to load schema:', err);
@@ -1265,6 +1315,7 @@ END;\n`;
     container.querySelector('#tab-fks').onclick = () => { state.activeTab = 'foreign_keys'; updateAll(); };
     container.querySelector('#tab-constraints').onclick = () => { state.activeTab = 'constraints'; updateAll(); };
     container.querySelector('#tab-triggers').onclick = () => { state.activeTab = 'triggers'; updateAll(); };
+    container.querySelector('#tab-ddl').onclick = () => { state.activeTab = 'ddl'; updateAll(); };
 
     // Push Changes
     const btnPush = container.querySelector('#btn-push-changes');
