@@ -22,8 +22,82 @@ const SQL_KEYWORDS = [
     'TEXT', 'BLOB', 'DATE', 'DATETIME', 'TIMESTAMP', 'BOOLEAN', 'BOOL'
 ];
 
+// SQL Formatter
+const formatSQL = (sql) => {
+    if (!sql || !sql.trim()) return '';
+    
+    let formatted = sql.trim();
+    const keywords = ['SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'ORDER BY', 'GROUP BY', 'HAVING', 'JOIN', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'FULL JOIN', 'ON', 'LIMIT', 'OFFSET', 'INSERT INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE FROM', 'CREATE TABLE', 'ALTER TABLE', 'DROP TABLE', 'UNION', 'UNION ALL'];
+    
+    // Add newlines before major keywords
+    keywords.forEach(kw => {
+        const regex = new RegExp(`\\b${kw}\\b`, 'gi');
+        formatted = formatted.replace(regex, (match) => `\n${match}`);
+    });
+    
+    // Clean up and indent
+    const lines = formatted.split('\n').map(line => line.trim()).filter(line => line);
+    let indentLevel = 0;
+    const indented = lines.map(line => {
+        const upper = line.toUpperCase();
+        if (upper.startsWith('FROM') || upper.startsWith('WHERE') || upper.startsWith('GROUP BY') || upper.startsWith('ORDER BY') || upper.startsWith('HAVING') || upper.startsWith('LIMIT')) {
+            return '  '.repeat(Math.max(0, indentLevel - 1)) + line;
+        } else if (upper.startsWith('AND') || upper.startsWith('OR')) {
+            return '  '.repeat(indentLevel) + line;
+        } else if (upper.includes('JOIN') || upper.startsWith('ON')) {
+            return '  '.repeat(indentLevel) + line;
+        }
+        return '  '.repeat(indentLevel) + line;
+    });
+    
+    return indented.join('\n');
+};
+
+// SQL Syntax Error Detection
+const detectSyntaxErrors = (sql) => {
+    const errors = [];
+    const lines = sql.split('\n');
+    
+    lines.forEach((line, idx) => {
+        const trimmed = line.trim();
+        
+        // Check for common errors
+        if (trimmed && !trimmed.startsWith('--') && !trimmed.startsWith('/*')) {
+            // Missing semicolon at end of statement (if it looks like end)
+            if (/^(SELECT|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER)\b/i.test(trimmed)) {
+                const nextLine = lines[idx + 1];
+                if (nextLine && /^(SELECT|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER)\b/i.test(nextLine.trim())) {
+                    if (!trimmed.endsWith(';') && !line.endsWith(';')) {
+                        errors.push({ line: idx + 1, message: 'Missing semicolon', severity: 'warning' });
+                    }
+                }
+            }
+            
+            // Unmatched quotes
+            const singleQuotes = (trimmed.match(/'/g) || []).length;
+            const doubleQuotes = (trimmed.match(/"/g) || []).length;
+            if (singleQuotes % 2 !== 0) {
+                errors.push({ line: idx + 1, message: 'Unmatched single quote', severity: 'error' });
+            }
+            if (doubleQuotes % 2 !== 0) {
+                errors.push({ line: idx + 1, message: 'Unmatched double quote', severity: 'error' });
+            }
+            
+            // Common typos
+            if (/\bSELCT\b/i.test(trimmed)) {
+                errors.push({ line: idx + 1, message: 'Did you mean SELECT?', severity: 'error' });
+            }
+            if (/\bWHERE\s+FROM\b/i.test(trimmed)) {
+                errors.push({ line: idx + 1, message: 'WHERE should come after FROM', severity: 'error' });
+            }
+        }
+    });
+    
+    return errors;
+};
+
 // SQL Syntax Highlighting
-const highlightSQL = (code) => {
+const highlightSQL = (code, errors = []) => {
     if (!code) return '';
 
     // Escape HTML
@@ -54,6 +128,19 @@ const highlightSQL = (code) => {
     // Functions (word followed by parenthesis)
     html = html.replace(/\b([a-zA-Z_][a-zA-Z0-9_]*)\s*(?=\()/g, '<span class="sql-function">$1</span>');
 
+    // Add error underlines
+    if (errors.length > 0) {
+        const lines = html.split('\n');
+        errors.forEach(err => {
+            const lineIdx = err.line - 1;
+            if (lines[lineIdx]) {
+                const color = err.severity === 'error' ? 'border-red-500' : 'border-yellow-500';
+                lines[lineIdx] = `<span class="border-b-2 ${color} border-dotted">${lines[lineIdx]}</span>`;
+            }
+        });
+        html = lines.join('\n');
+    }
+
     return html;
 };
 
@@ -69,6 +156,8 @@ export function QueryEditor() {
         { id: '1', title: 'Query 1', content: 'SELECT * FROM information_schema.tables;' }
     ];
     let activeTabId = '1';
+    let lastExecutionTime = null;
+    let multiCursors = []; // {line, col} array for multi-cursor positions
 
     // Autocomplete state
     let suggestions = [];
@@ -326,12 +415,19 @@ export function QueryEditor() {
                     </select>
                 </div>
                 <div class="h-6 w-px ${isLight ? 'bg-gray-200' : (isOceanic ? 'bg-ocean-border/30' : 'bg-white/10')} mx-1"></div>
+                    <button id="format-btn" class="flex items-center justify-center p-1.5 ${isLight ? 'bg-white border-gray-200 text-gray-700 shadow-sm' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text' : 'bg-[#1a1d23] border-white/10 text-gray-300')} border rounded hover:opacity-80 active:scale-95 transition-all" title="Format SQL (Ctrl+Shift+F)">
+                        <span class="material-symbols-outlined text-lg">format_align_left</span>
+                    </button>
                     <button id="execute-btn" class="flex items-center justify-center p-1.5 bg-mysql-teal text-black rounded shadow-[0_0_10px_rgba(0,200,255,0.2)] hover:brightness-110 active:scale-95 transition-all" title="Execute Query (Ctrl+Enter)">
                         <span class="material-symbols-outlined text-lg">play_arrow</span>
                     </button>
                     <button id="explain-btn" class="flex items-center justify-center p-1.5 ${isLight ? 'bg-white border-gray-200 text-gray-700 shadow-sm' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text' : 'bg-[#1a1d23] border-white/10 text-gray-300')} border rounded hover:opacity-80 active:scale-95 transition-all" title="Explain Query Plan">
                         <span class="material-symbols-outlined text-lg">analytics</span>
                     </button>
+                    ${lastExecutionTime ? `<div class="px-2 py-1 text-[10px] ${isLight ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-green-900/20 text-green-400 border border-green-500/30'} rounded font-mono flex items-center gap-1">
+                        <span class="material-symbols-outlined text-xs">schedule</span>
+                        ${lastExecutionTime}ms
+                    </div>` : ''}
                 </div>
             </div>
             <div class="flex-1 neu-inset rounded-xl ${isLight ? 'bg-white' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#08090c]')} overflow-hidden flex p-4 font-mono text-[14px] leading-relaxed relative focus-within:ring-1 focus-within:ring-mysql-teal/50 transition-all">
@@ -399,7 +495,16 @@ export function QueryEditor() {
         // Update syntax highlighting
         const updateSyntaxHighlight = () => {
             if (syntaxHighlight && textarea) {
-                syntaxHighlight.innerHTML = highlightSQL(textarea.value) + '\n';
+                const errors = detectSyntaxErrors(textarea.value);
+                syntaxHighlight.innerHTML = highlightSQL(textarea.value, errors) + '\n';
+                
+                // Show error tooltip if any
+                if (errors.length > 0) {
+                    const errorMsg = errors.map(e => `Line ${e.line}: ${e.message}`).join('\n');
+                    textarea.title = errorMsg;
+                } else {
+                    textarea.title = 'Enter your SQL query here... (Ctrl+Space for suggestions)';
+                }
             }
         };
 
@@ -467,6 +572,145 @@ export function QueryEditor() {
                     e.preventDefault();
                     showAutocomplete(textarea);
                 }
+
+                // Ctrl+Shift+F to format SQL
+                if (e.ctrlKey && e.shiftKey && e.key === 'F') {
+                    e.preventDefault();
+                    const formatted = formatSQL(textarea.value);
+                    textarea.value = formatted;
+                    const activeTab = tabs.find(t => t.id === activeTabId);
+                    if (activeTab) activeTab.content = formatted;
+                    updateSyntaxHighlight();
+                    updateLineNumbers();
+                }
+
+                // Ctrl+/ to toggle comment
+                if (e.ctrlKey && e.key === '/') {
+                    e.preventDefault();
+                    const start = textarea.selectionStart;
+                    const end = textarea.selectionEnd;
+                    const text = textarea.value;
+                    const lines = text.split('\n');
+                    
+                    // Find which lines are selected
+                    let charCount = 0;
+                    let startLine = 0, endLine = 0;
+                    for (let i = 0; i < lines.length; i++) {
+                        if (charCount + lines[i].length >= start && startLine === 0) startLine = i;
+                        if (charCount + lines[i].length >= end) {
+                            endLine = i;
+                            break;
+                        }
+                        charCount += lines[i].length + 1; // +1 for newline
+                    }
+                    
+                    // Toggle comments
+                    for (let i = startLine; i <= endLine; i++) {
+                        if (lines[i].trim().startsWith('--')) {
+                            lines[i] = lines[i].replace(/^(\s*)--\s?/, '$1');
+                        } else {
+                            lines[i] = '-- ' + lines[i];
+                        }
+                    }
+                    
+                    const newText = lines.join('\n');
+                    textarea.value = newText;
+                    const activeTab = tabs.find(t => t.id === activeTabId);
+                    if (activeTab) activeTab.content = newText;
+                    updateSyntaxHighlight();
+                }
+
+                // Ctrl+D to duplicate line
+                if (e.ctrlKey && e.key === 'd') {
+                    e.preventDefault();
+                    const start = textarea.selectionStart;
+                    const text = textarea.value;
+                    const lines = text.split('\n');
+                    
+                    // Find current line
+                    let charCount = 0;
+                    let currentLine = 0;
+                    for (let i = 0; i < lines.length; i++) {
+                        if (charCount + lines[i].length >= start) {
+                            currentLine = i;
+                            break;
+                        }
+                        charCount += lines[i].length + 1;
+                    }
+                    
+                    // Duplicate line
+                    lines.splice(currentLine + 1, 0, lines[currentLine]);
+                    const newText = lines.join('\n');
+                    textarea.value = newText;
+                    const activeTab = tabs.find(t => t.id === activeTabId);
+                    if (activeTab) activeTab.content = newText;
+                    updateSyntaxHighlight();
+                    updateLineNumbers();
+                }
+
+                // Alt+↑ to move line up
+                if (e.altKey && e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    const start = textarea.selectionStart;
+                    const text = textarea.value;
+                    const lines = text.split('\n');
+                    
+                    let charCount = 0;
+                    let currentLine = 0;
+                    for (let i = 0; i < lines.length; i++) {
+                        if (charCount + lines[i].length >= start) {
+                            currentLine = i;
+                            break;
+                        }
+                        charCount += lines[i].length + 1;
+                    }
+                    
+                    if (currentLine > 0) {
+                        [lines[currentLine - 1], lines[currentLine]] = [lines[currentLine], lines[currentLine - 1]];
+                        const newText = lines.join('\n');
+                        textarea.value = newText;
+                        const activeTab = tabs.find(t => t.id === activeTabId);
+                        if (activeTab) activeTab.content = newText;
+                        updateSyntaxHighlight();
+                    }
+                }
+
+                // Alt+↓ to move line down
+                if (e.altKey && e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    const start = textarea.selectionStart;
+                    const text = textarea.value;
+                    const lines = text.split('\n');
+                    
+                    let charCount = 0;
+                    let currentLine = 0;
+                    for (let i = 0; i < lines.length; i++) {
+                        if (charCount + lines[i].length >= start) {
+                            currentLine = i;
+                            break;
+                        }
+                        charCount += lines[i].length + 1;
+                    }
+                    
+                    if (currentLine < lines.length - 1) {
+                        [lines[currentLine], lines[currentLine + 1]] = [lines[currentLine + 1], lines[currentLine]];
+                        const newText = lines.join('\n');
+                        textarea.value = newText;
+                        const activeTab = tabs.find(t => t.id === activeTabId);
+                        if (activeTab) activeTab.content = newText;
+                        updateSyntaxHighlight();
+                    }
+                }
+            });
+
+            // Multi-cursor support with Ctrl+Click
+            textarea.addEventListener('click', (e) => {
+                if (e.ctrlKey) {
+                    e.preventDefault();
+                    const pos = textarea.selectionStart;
+                    multiCursors.push(pos);
+                    // Visual feedback can be added here
+                }
             });
 
             // Handlers for Drag and Drop
@@ -511,15 +755,34 @@ export function QueryEditor() {
             });
         }
 
+        // Format Button Logic
+        const formatBtn = container.querySelector('#format-btn');
+        if (formatBtn) {
+            formatBtn.addEventListener('click', () => {
+                const textarea = container.querySelector('#query-input');
+                if (textarea) {
+                    const formatted = formatSQL(textarea.value);
+                    textarea.value = formatted;
+                    const activeTab = tabs.find(t => t.id === activeTabId);
+                    if (activeTab) activeTab.content = formatted;
+                    updateSyntaxHighlight();
+                    updateLineNumbers();
+                }
+            });
+        }
+
         // Execute Logic
         const executeBtn = container.querySelector('#execute-btn');
         if (executeBtn) {
             executeBtn.addEventListener('click', async () => {
                 const editorContent = container.querySelector('#query-input').value;
+                const startTime = performance.now();
                 try {
                     executeBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span> RUNNING';
                     executeBtn.classList.add('opacity-70', 'cursor-not-allowed');
                     const result = await invoke('execute_query', { query: editorContent });
+                    const endTime = performance.now();
+                    lastExecutionTime = Math.round(endTime - startTime);
 
                     // Add query to result for editability detection
                     result.query = editorContent;
@@ -533,11 +796,17 @@ export function QueryEditor() {
                             query: editorContent,
                             timestamp: new Date().toISOString(),
                             status: 'SUCCESS',
-                            duration: 0
+                            duration: lastExecutionTime
                         }
                     }));
 
+                    // Re-render to show execution time badge
+                    render();
+
                 } catch (error) {
+                    const endTime = performance.now();
+                    lastExecutionTime = Math.round(endTime - startTime);
+                    
                     // Dispatch History Error
                     window.dispatchEvent(new CustomEvent('tactilesql:history-update', {
                         detail: {
@@ -548,6 +817,7 @@ export function QueryEditor() {
                         }
                     }));
                     Dialog.alert('Query Execution Failed: ' + error, 'Execution Error');
+                    render(); // Show execution time even on error
                 } finally {
                     executeBtn.innerHTML = '<span class="material-symbols-outlined text-lg">play_arrow</span>';
                     executeBtn.classList.remove('opacity-70', 'cursor-not-allowed');
