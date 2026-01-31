@@ -4,55 +4,13 @@ import { invoke } from '@tauri-apps/api/core';
 import { showVisualExplainModal } from '../UI/VisualExplainModal.js';
 import { ThemeManager } from '../../utils/ThemeManager.js';
 import { registerHandler, unregisterHandler } from '../../utils/KeyboardShortcuts.js';
+import { highlightSQL, formatSQL, SQL_KEYWORDS } from '../../utils/SqlHighlighter.js';
 
 // SQL Keywords for autocomplete
-const SQL_KEYWORDS = [
-    'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'NOT', 'IN', 'LIKE', 'BETWEEN',
-    'JOIN', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'FULL JOIN', 'CROSS JOIN',
-    'ON', 'AS', 'ORDER BY', 'GROUP BY', 'HAVING', 'LIMIT', 'OFFSET',
-    'INSERT INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE FROM',
-    'CREATE TABLE', 'ALTER TABLE', 'DROP TABLE', 'TRUNCATE TABLE',
-    'CREATE INDEX', 'DROP INDEX', 'CREATE DATABASE', 'DROP DATABASE',
-    'PRIMARY KEY', 'FOREIGN KEY', 'REFERENCES', 'UNIQUE', 'NOT NULL', 'DEFAULT',
-    'AUTO_INCREMENT', 'CONSTRAINT', 'CHECK', 'INDEX',
-    'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'DISTINCT',
-    'UNION', 'UNION ALL', 'INTERSECT', 'EXCEPT',
-    'CASE', 'WHEN', 'THEN', 'ELSE', 'END',
-    'NULL', 'IS NULL', 'IS NOT NULL', 'ASC', 'DESC',
-    'VARCHAR', 'INT', 'INTEGER', 'BIGINT', 'DECIMAL', 'FLOAT', 'DOUBLE',
-    'TEXT', 'BLOB', 'DATE', 'DATETIME', 'TIMESTAMP', 'BOOLEAN', 'BOOL'
-];
+// Imported from SqlHighlighter.js
 
-// SQL Formatter
-const formatSQL = (sql) => {
-    if (!sql || !sql.trim()) return '';
 
-    let formatted = sql.trim();
-    const keywords = ['SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'ORDER BY', 'GROUP BY', 'HAVING', 'JOIN', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'FULL JOIN', 'ON', 'LIMIT', 'OFFSET', 'INSERT INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE FROM', 'CREATE TABLE', 'ALTER TABLE', 'DROP TABLE', 'UNION', 'UNION ALL'];
 
-    // Add newlines before major keywords
-    keywords.forEach(kw => {
-        const regex = new RegExp(`\\b${kw}\\b`, 'gi');
-        formatted = formatted.replace(regex, (match) => `\n${match}`);
-    });
-
-    // Clean up and indent
-    const lines = formatted.split('\n').map(line => line.trim()).filter(line => line);
-    let indentLevel = 0;
-    const indented = lines.map(line => {
-        const upper = line.toUpperCase();
-        if (upper.startsWith('FROM') || upper.startsWith('WHERE') || upper.startsWith('GROUP BY') || upper.startsWith('ORDER BY') || upper.startsWith('HAVING') || upper.startsWith('LIMIT')) {
-            return '  '.repeat(Math.max(0, indentLevel - 1)) + line;
-        } else if (upper.startsWith('AND') || upper.startsWith('OR')) {
-            return '  '.repeat(indentLevel) + line;
-        } else if (upper.includes('JOIN') || upper.startsWith('ON')) {
-            return '  '.repeat(indentLevel) + line;
-        }
-        return '  '.repeat(indentLevel) + line;
-    });
-
-    return indented.join('\n');
-};
 
 // SQL Syntax Error Detection
 const detectSyntaxErrors = (sql) => {
@@ -98,52 +56,7 @@ const detectSyntaxErrors = (sql) => {
 };
 
 // SQL Syntax Highlighting
-const highlightSQL = (code, errors = []) => {
-    if (!code) return '';
-
-    // Escape HTML
-    let html = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-    // Comments (-- and /* */)
-    html = html.replace(/(--.*$)/gm, '<span class="sql-comment">$1</span>');
-    html = html.replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="sql-comment">$1</span>');
-
-    // Strings ('...' and "...")
-    html = html.replace(/('(?:[^'\\]|\\.)*')/g, '<span class="sql-string">$1</span>');
-    html = html.replace(/("(?:[^"\\]|\\.)*")/g, '<span class="sql-string">$1</span>');
-
-    // Numbers
-    html = html.replace(/\b(\d+\.?\d*)\b/g, '<span class="sql-number">$1</span>');
-
-    // Keywords
-    const keywordPattern = SQL_KEYWORDS
-        .sort((a, b) => b.length - a.length) // Longer keywords first
-        .map(k => k.replace(/\s+/g, '\\s+'))
-        .join('|');
-    const keywordRegex = new RegExp(`\\b(${keywordPattern})\\b`, 'gi');
-    html = html.replace(keywordRegex, '<span class="sql-keyword">$1</span>');
-
-    // Backtick identifiers
-    html = html.replace(/(`[^`]+`)/g, '<span class="sql-identifier">$1</span>');
-
-    // Functions (word followed by parenthesis)
-    html = html.replace(/\b([a-zA-Z_][a-zA-Z0-9_]*)\s*(?=\()/g, '<span class="sql-function">$1</span>');
-
-    // Add error underlines
-    if (errors.length > 0) {
-        const lines = html.split('\n');
-        errors.forEach(err => {
-            const lineIdx = err.line - 1;
-            if (lines[lineIdx]) {
-                const color = err.severity === 'error' ? 'border-red-500' : 'border-yellow-500';
-                lines[lineIdx] = `<span class="border-b-2 ${color} border-dotted">${lines[lineIdx]}</span>`;
-            }
-        });
-        html = lines.join('\n');
-    }
-
-    return html;
-};
+// Imported from SqlHighlighter.js
 
 export function QueryEditor() {
     let theme = ThemeManager.getCurrentTheme();

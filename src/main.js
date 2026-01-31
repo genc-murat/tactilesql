@@ -5,6 +5,7 @@ import { NavBar } from './components/Layout/NavBar.js';
 import { Dashboard } from './pages/Dashboard.js';
 import { SqlWorkbench } from './pages/SqlWorkbench.js';
 import { SchemaDesigner } from './pages/SchemaDesigner.js';
+import { SchemaDiff } from './pages/SchemaDiff.js';
 import { ConnectionManager } from './pages/ConnectionManager.js';
 import { AccessControl } from './pages/AccessControl.js';
 import { Settings } from './pages/Settings.js';
@@ -37,6 +38,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         '/': { component: Dashboard },
         '/workbench': { component: SqlWorkbench },
         '/schema': { component: SchemaDesigner },
+        '/diff': { component: SchemaDiff },
         '/connections': { component: ConnectionManager },
         '/access-control': { component: AccessControl },
         '/settings': { component: Settings },
