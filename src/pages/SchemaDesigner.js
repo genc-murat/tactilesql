@@ -920,10 +920,10 @@ END"></textarea>
         }
 
         const renderSwitch = (label, propName, code) => `
-        <div class="flex items-center justify-between p-3 rounded-xl ${isLight ? 'bg-gray-50 border-gray-200' : 'bg-white/[0.02] border-white/5'} border hover:${isLight ? 'border-mysql-teal/30' : 'border-white/10'} transition-all cursor-pointer" onclick="document.getElementById('chk-${propName}').click()">
+        <div class="flex items-center justify-between p-2 rounded-lg ${isLight ? 'bg-gray-50 border-gray-200' : 'bg-white/[0.02] border-white/5'} border hover:${isLight ? 'border-mysql-teal/30' : 'border-white/10'} transition-all cursor-pointer" onclick="document.getElementById('chk-${propName}').click()">
                 <div class="flex flex-col">
-                    <span class="text-xs font-bold ${isLight ? 'text-gray-700' : 'text-gray-300'}">${label}</span>
-                    <span class="text-[9px] ${isLight ? 'text-gray-400' : 'text-gray-600'} font-mono uppercase tracking-tighter">${code}</span>
+                    <span class="text-[11px] font-bold ${isLight ? 'text-gray-700' : 'text-gray-300'}">${label}</span>
+                    <span class="text-[8px] ${isLight ? 'text-gray-400' : 'text-gray-600'} font-mono uppercase tracking-tighter">${code}</span>
                 </div>
                 <input type="checkbox" id="chk-${propName}" class="hidden" ${col[propName] ? 'checked' : ''} />
                 <div class="pointer-events-none tactile-switch ${col[propName] ? (isLight ? '' : 'tactile-switch-on') : 'tactile-switch-off'} ${isLight && col[propName] ? 'bg-mysql-teal/20' : ''}">
@@ -933,31 +933,31 @@ END"></textarea>
         `;
 
         sidebar.innerHTML = `
-        <div class="p-6 border-b ${isLight ? 'border-gray-100 bg-gray-50/50' : 'border-white/5 bg-white/[0.02]'}">
-                <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-xs font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-900' : 'text-white'}">Column Properties</h2>
-                    <span class="text-[10px] font-mono text-mysql-teal">ID: ${col.id}</span>
+        <div class="p-3 border-b ${isLight ? 'border-gray-100 bg-gray-50/50' : 'border-white/5 bg-white/[0.02]'}">
+                <div class="flex items-center justify-between mb-2">
+                    <h2 class="text-[10px] font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-900' : 'text-white'}">Column Properties</h2>
+                    <span class="text-[9px] font-mono text-mysql-teal">ID: ${col.id}</span>
                 </div>
-                <div class="flex items-center gap-3 p-3 ${isLight ? 'bg-white' : 'bg-black/40'} rounded-lg border ${isLight ? 'border-gray-200 shadow-sm' : 'border-white/5 neu-inset'}">
-                    <div class="w-10 h-10 rounded ${isLight ? 'bg-mysql-teal/10' : 'bg-mysql-teal/20'} flex items-center justify-center">
-                        <span class="material-symbols-outlined text-mysql-teal">edit_square</span>
+                <div class="flex items-center gap-2 p-2 ${isLight ? 'bg-white' : 'bg-black/40'} rounded-lg border ${isLight ? 'border-gray-200 shadow-sm' : 'border-white/5 neu-inset'}">
+                    <div class="w-8 h-8 rounded ${isLight ? 'bg-mysql-teal/10' : 'bg-mysql-teal/20'} flex items-center justify-center flex-shrink-0">
+                        <span class="material-symbols-outlined text-mysql-teal text-base">edit_square</span>
                     </div>
-                    <div>
-                        <div class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Selected Field</div>
-                        <div class="text-sm font-mono ${isLight ? 'text-gray-900' : 'text-white'} font-bold truncate max-w-[180px]">${col.name}</div>
+                    <div class="min-w-0 flex-1">
+                        <div class="text-[9px] text-gray-500 font-bold uppercase tracking-widest">Selected Field</div>
+                        <div class="text-xs font-mono ${isLight ? 'text-gray-900' : 'text-white'} font-bold truncate">${col.name}</div>
                     </div>
                 </div>
             </div>
-        <div class="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-8">
-            <section class="space-y-4">
-                <div class="space-y-2">
-                    <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Internal Name</label>
-                    <input id="inp-name" class="tactile-input w-full" type="text" value="${col.name}" />
+        <div class="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-4">
+            <section class="space-y-2">
+                <div class="space-y-1">
+                    <label class="text-[9px] uppercase font-black tracking-widest text-gray-500">Internal Name</label>
+                    <input id="inp-name" class="tactile-input w-full text-[11px] py-1 px-2" type="text" value="${col.name}" />
                 </div>
-                <div class="grid grid-cols-2 gap-3">
-                    <div class="space-y-2">
-                        <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Data Type</label>
-                        <select id="sel-type" class="tactile-input w-full outline-none">
+                <div class="grid grid-cols-2 gap-2">
+                    <div class="space-y-1">
+                        <label class="text-[9px] uppercase font-black tracking-widest text-gray-500">Data Type</label>
+                        <select id="sel-type" class="tactile-input w-full outline-none text-[11px] py-1 px-2">
                             <optgroup label="Numeric">
                                 ${['TINYINT', 'SMALLINT', 'MEDIUMINT', 'INT', 'BIGINT', 'DECIMAL', 'NUMERIC', 'FLOAT', 'DOUBLE', 'BIT'].map(t => `<option ${t === col.type ? 'selected' : ''}>${t}</option>`).join('')}
                             </optgroup>
@@ -975,19 +975,19 @@ END"></textarea>
                             </optgroup>
                         </select>
                     </div>
-                    <div class="space-y-2">
-                        <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Length</label>
-                        <input id="inp-length" class="tactile-input w-full" type="text" value="${col.length}" placeholder="N/A" />
+                    <div class="space-y-1">
+                        <label class="text-[9px] uppercase font-black tracking-widest text-gray-500">Length</label>
+                        <input id="inp-length" class="tactile-input w-full text-[11px] py-1 px-2" type="text" value="${col.length}" placeholder="N/A" />
                     </div>
                 </div>
-                <div class="space-y-2">
-                    <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Default Value</label>
-                    <input id="inp-default" class="tactile-input w-full" type="text" value="${col.defaultVal}" placeholder="NULL" />
+                <div class="space-y-1">
+                    <label class="text-[9px] uppercase font-black tracking-widest text-gray-500">Default Value</label>
+                    <input id="inp-default" class="tactile-input w-full text-[11px] py-1 px-2" type="text" value="${col.defaultVal}" placeholder="NULL" />
                 </div>
             </section>
-            <section class="space-y-4">
-                <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Constraints & Flags</label>
-                <div class="space-y-3">
+            <section class="space-y-2">
+                <label class="text-[9px] uppercase font-black tracking-widest text-gray-500">Constraints & Flags</label>
+                <div class="space-y-1.5">
                     ${renderSwitch('Primary Key', 'primaryKey', 'PRIMARY_KEY_FLAG')}
                     ${renderSwitch('Not Null', 'nullable', 'NOT_NULL_FLAG')}
                     ${renderSwitch('Auto Increment', 'autoIncrement', 'AUTO_INCREMENT_FLAG')}
