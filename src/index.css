@@ -3,8 +3,36 @@
 @tailwind utilities;
 
 @layer base {
+
+    /* Dark theme (default) */
     body {
         @apply bg-[#0a0c10] text-gray-400 font-['Inter'] antialiased;
+    }
+
+    /* Light theme */
+    .light body,
+    html.light body {
+        @apply bg-gray-50 text-gray-700;
+    }
+
+    /* Light theme specific overrides */
+    html.light {
+        --bg-primary: #f9fafb;
+        --bg-secondary: #ffffff;
+        --bg-tertiary: #f3f4f6;
+        --text-primary: #111827;
+        --text-secondary: #4b5563;
+        --border-color: #e5e7eb;
+    }
+
+    html.dark,
+    html:not(.light) {
+        --bg-primary: #0a0c10;
+        --bg-secondary: #16191e;
+        --bg-tertiary: #0f1115;
+        --text-primary: #f3f4f6;
+        --text-secondary: #9ca3af;
+        --border-color: rgba(255, 255, 255, 0.05);
     }
 }
 
@@ -15,6 +43,11 @@
         border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     }
 
+    .light .glass-header {
+        background: rgba(255, 255, 255, 0.8);
+        border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    }
+
     .tactile-card {
         background: linear-gradient(145deg, #16191e, #111418);
         border: 1px solid rgba(255, 255, 255, 0.03);
@@ -22,10 +55,22 @@
             -1px -1px 2px rgba(255, 255, 255, 0.02);
     }
 
+    .light .tactile-card {
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1),
+            0 1px 2px -1px rgba(0, 0, 0, 0.1);
+    }
+
     .tactile-card-inset {
         background: #0f1115;
         box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.5),
             inset -1px -1px 2px rgba(255, 255, 255, 0.02);
+    }
+
+    .light .tactile-card-inset {
+        background: #f3f4f6;
+        box-shadow: inset 1px 1px 2px rgba(0, 0, 0, 0.05);
     }
 
     .neon-cyan {
@@ -67,10 +112,18 @@
         border-radius: 10px;
     }
 
+    .light .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: rgba(0, 0, 0, 0.2);
+    }
+
     /* Workbench Utilities */
     .neu-inset {
         box-shadow: inset 4px 4px 10px rgba(0, 0, 0, 0.5),
             inset -1px -1px 3px rgba(255, 255, 255, 0.03);
+    }
+
+    .light .neu-inset {
+        box-shadow: inset 1px 1px 3px rgba(0, 0, 0, 0.08);
     }
 
     .neu-flat {
@@ -79,10 +132,21 @@
             -1px -1px 4px rgba(255, 255, 255, 0.05);
     }
 
+    .light .neu-flat {
+        background: #ffffff;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
     .neu-card {
         background: #16191e;
         border: 1px solid rgba(255, 255, 255, 0.05);
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+
+    .light .neu-card {
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     }
 
     .glow-cyan {

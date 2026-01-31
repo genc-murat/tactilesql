@@ -1,8 +1,11 @@
 import { invoke } from '@tauri-apps/api/core';
+import { ThemeManager } from '../../utils/ThemeManager.js';
 
 export function Footer() {
+    const isLight = ThemeManager.getCurrentTheme() === 'light';
+
     const footer = document.createElement('footer');
-    footer.className = "h-8 bg-[#16191e] border-t border-white/5 px-4 flex items-center justify-between text-[10px] font-mono text-gray-500 select-none z-50 relative shrink-0 transition-all";
+    footer.className = `h-8 ${isLight ? 'bg-gray-100 border-gray-200' : 'bg-[#16191e] border-white/5'} border-t px-4 flex items-center justify-between text-[10px] font-mono ${isLight ? 'text-gray-600' : 'text-gray-500'} select-none z-50 relative shrink-0 transition-all`;
 
     const update = async () => {
         const config = JSON.parse(localStorage.getItem('activeConnection') || 'null');

@@ -1,8 +1,10 @@
 import { invoke } from '@tauri-apps/api/core';
+import { ThemeManager } from '../../utils/ThemeManager.js';
 
 export function WorkbenchFooter() {
+    let isLight = ThemeManager.getCurrentTheme() === 'light';
     const footer = document.createElement('footer');
-    footer.className = "h-8 bg-[#16191e] border-t border-white/5 px-4 flex items-center justify-between text-[10px] font-mono text-gray-500 select-none z-50 relative shrink-0 transition-all";
+    footer.className = `h-8 ${isLight ? 'bg-white border-gray-200 text-gray-500' : 'bg-[#16191e] border-white/5 text-gray-500'} border-t px-4 flex items-center justify-between text-[10px] font-mono select-none z-50 relative shrink-0 transition-all`;
 
     const update = async () => {
         const config = JSON.parse(localStorage.getItem('activeConnection') || 'null');
@@ -12,10 +14,10 @@ export function WorkbenchFooter() {
                 <div class="flex items-center gap-8 opacity-50">
                     <div class="flex items-center gap-2">
                         <div class="w-2 h-2 rounded-full bg-red-500"></div>
-                        <span class="text-gray-400">DISCONNECTED</span>
+                        <span class="${isLight ? 'text-gray-400' : 'text-gray-400'}">DISCONNECTED</span>
                     </div>
                 </div>
-                <div class="px-3 py-0.5 rounded-full bg-gray-500/10 text-gray-500 font-bold border border-gray-500/20 tracking-widest uppercase text-[9px]">
+                <div class="px-3 py-0.5 rounded-full ${isLight ? 'bg-gray-100 text-gray-400 border-gray-200' : 'bg-gray-500/10 text-gray-500 border-gray-500/20'} font-bold border tracking-widest uppercase text-[9px]">
                     OFFLINE
                 </div>
              `;
@@ -66,27 +68,39 @@ export function WorkbenchFooter() {
             <div class="flex items-center gap-8">
                 <div class="flex items-center gap-2">
                     <div class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.4)]"></div>
-                    <span class="text-gray-300 uppercase font-bold tracking-wide">${dbName}</span>
+                    <span class="${isLight ? 'text-gray-700' : 'text-gray-300'} uppercase font-bold tracking-wide">${dbName}</span>
                 </div>
                 <div class="flex items-center gap-4">
-                    <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[14px] text-gray-400">lock</span> SECURE</span>
-                    <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[14px] text-gray-400">memory</span> ${version}</span>
+                    <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[14px] ${isLight ? 'text-gray-400' : 'text-gray-400'}">lock</span> SECURE</span>
+                    <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[14px] ${isLight ? 'text-gray-400' : 'text-gray-400'}">memory</span> ${version}</span>
                 </div>
             </div>
             <div class="flex items-center gap-6">
                 <div class="flex items-center gap-4">
-                    <span>TIME: <span class="text-cyan-400 font-bold">${latencyStr}</span></span>
-                    <span>MEMORY: <span class="text-cyan-400 font-bold">${memStr}</span></span>
+                    <span>TIME: <span class="${isLight ? 'text-mysql-teal' : 'text-cyan-400'} font-bold">${latencyStr}</span></span>
+                    <span>MEMORY: <span class="${isLight ? 'text-mysql-teal' : 'text-cyan-400'} font-bold">${memStr}</span></span>
                 </div>
-                <div class="px-3 py-0.5 rounded-full bg-green-500/10 text-green-500 font-bold border border-green-500/20 tracking-widest uppercase text-[9px]">
+                <div class="px-3 py-0.5 rounded-full ${isLight ? 'bg-green-50 text-green-600 border-green-200' : 'bg-green-500/10 text-green-500 border-green-500/20'} font-bold border tracking-widest uppercase text-[9px]">
                     CONNECTED
                 </div>
             </div>
         `;
     };
 
-    update();
-    setInterval(update, 2000);
+    // --- Theme Change Handling ---
+    const onThemeChange = (e) => {
+        isLight = e.detail.theme === 'light';
+        footer.className = `h-8 ${isLight ? 'bg-white border-gray-200 text-gray-500' : 'bg-[#16191e] border-white/5 text-gray-500'} border-t px-4 flex items-center justify-between text-[10px] font-mono select-none z-50 relative shrink-0 transition-all`;
+        update();
+    };
+    window.addEventListener('themechange', onThemeChange);
+
+    const intervalId = setInterval(update, 2000);
+
+    footer.onUnmount = () => {
+        clearInterval(intervalId);
+        window.removeEventListener('themechange', onThemeChange);
+    };
 
     return footer;
 }

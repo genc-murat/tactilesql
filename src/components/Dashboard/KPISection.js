@@ -1,27 +1,30 @@
+import { ThemeManager } from '../../utils/ThemeManager.js';
+
 export function KPISection() {
+    let isLight = ThemeManager.getCurrentTheme() === 'light';
     const section = document.createElement('div');
     section.className = "grid grid-cols-3 gap-6";
 
-    // Initial Static Structure (Skeleton)
-    section.innerHTML = `
+    const render = () => {
+        section.innerHTML = `
             <div id="card-cpu" class="tactile-card rounded-2xl p-6 flex flex-col gap-4 relative overflow-hidden">
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center">
-                            <span class="material-symbols-outlined text-cyan-400 text-lg">memory</span>
+                        <div class="w-8 h-8 rounded-lg ${isLight ? 'bg-cyan-50' : 'bg-cyan-500/10'} flex items-center justify-center">
+                            <span class="material-symbols-outlined text-cyan-500 text-lg">memory</span>
                         </div>
-                        <span class="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-400">THREADS</span>
+                        <span class="text-[10px] font-bold uppercase tracking-[0.15em] ${isLight ? 'text-gray-500' : 'text-gray-400'}">THREADS</span>
                     </div>
-                    <span class="value-display text-xl font-mono text-cyan-400 font-bold neon-cyan">--</span>
+                    <span class="value-display text-xl font-mono text-cyan-500 font-bold ${isLight ? '' : 'neon-cyan'}">--</span>
                 </div>
-                <!-- Visual Bars (Static for now, can be made dynamic later) -->
+                <!-- Visual Bars -->
                 <div class="h-20 w-full flex items-end gap-1.5 tactile-card-inset p-2 rounded-xl">
                     <div class="flex-1 bg-cyan-400/20 rounded-sm h-[30%]"></div>
                     <div class="flex-1 bg-cyan-400/20 rounded-sm h-[45%]"></div>
                     <div class="flex-1 bg-cyan-400/30 rounded-sm h-[35%]"></div>
                     <div class="flex-1 bg-cyan-400/40 rounded-sm h-[60%]"></div>
                     <div class="flex-1 bg-cyan-400/50 rounded-sm h-[55%]"></div>
-                    <div class="flex-1 bg-cyan-400/70 rounded-sm h-[75%] neon-cyan shadow-[0_0_10px_rgba(34,211,238,0.4)]"></div>
+                    <div class="flex-1 bg-cyan-400/70 rounded-sm h-[75%] ${isLight ? '' : 'neon-cyan shadow-[0_0_10px_rgba(34,211,238,0.4)]'}"></div>
                     <div class="flex-1 bg-cyan-400/40 rounded-sm h-[40%]"></div>
                 </div>
             </div>
@@ -29,19 +32,19 @@ export function KPISection() {
             <div id="card-ram" class="tactile-card rounded-2xl p-6 flex flex-col gap-4 relative overflow-hidden">
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center">
-                            <span class="material-symbols-outlined text-purple-400 text-lg">account_tree</span>
+                        <div class="w-8 h-8 rounded-lg ${isLight ? 'bg-purple-50' : 'bg-purple-500/10'} flex items-center justify-center">
+                            <span class="material-symbols-outlined text-purple-500 text-lg">account_tree</span>
                         </div>
-                        <span class="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-400">BUFFER POOL</span>
+                        <span class="text-[10px] font-bold uppercase tracking-[0.15em] ${isLight ? 'text-gray-500' : 'text-gray-400'}">BUFFER POOL</span>
                     </div>
-                    <span class="value-display text-xl font-mono text-purple-400 font-bold neon-purple">--</span>
+                    <span class="value-display text-xl font-mono text-purple-500 font-bold ${isLight ? '' : 'neon-purple'}">--</span>
                 </div>
                 <div class="h-20 w-full flex items-end gap-1.5 tactile-card-inset p-2 rounded-xl">
                     <div class="flex-1 bg-purple-400/20 rounded-sm h-[60%]"></div>
                     <div class="flex-1 bg-purple-400/20 rounded-sm h-[62%]"></div>
                     <div class="flex-1 bg-purple-400/30 rounded-sm h-[64%]"></div>
                     <div class="flex-1 bg-purple-400/50 rounded-sm h-[68%]"></div>
-                    <div class="flex-1 bg-purple-400/70 rounded-sm h-[72%] neon-purple shadow-[0_0_10px_rgba(192,132,252,0.4)]"></div>
+                    <div class="flex-1 bg-purple-400/70 rounded-sm h-[72%] ${isLight ? '' : 'neon-purple shadow-[0_0_10px_rgba(192,132,252,0.4)]'}"></div>
                     <div class="flex-1 bg-purple-400/40 rounded-sm h-[65%]"></div>
                     <div class="flex-1 bg-purple-400/20 rounded-sm h-[63%]"></div>
                 </div>
@@ -50,12 +53,12 @@ export function KPISection() {
             <div id="card-net" class="tactile-card rounded-2xl p-6 flex flex-col gap-4 relative overflow-hidden">
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-                            <span class="material-symbols-outlined text-emerald-400 text-lg">sensors</span>
+                        <div class="w-8 h-8 rounded-lg ${isLight ? 'bg-emerald-50' : 'bg-emerald-500/10'} flex items-center justify-center">
+                            <span class="material-symbols-outlined text-emerald-500 text-lg">sensors</span>
                         </div>
-                        <span class="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-400">TRAFFIC</span>
+                        <span class="text-[10px] font-bold uppercase tracking-[0.15em] ${isLight ? 'text-gray-500' : 'text-gray-400'}">TRAFFIC</span>
                     </div>
-                    <span class="value-display text-xl font-mono text-emerald-400 font-bold">--</span>
+                    <span class="value-display text-xl font-mono text-emerald-500 font-bold">--</span>
                 </div>
                 <div class="h-20 w-full flex items-end gap-1.5 tactile-card-inset p-2 rounded-xl">
                      <div class="flex-1 bg-emerald-400/10 rounded-sm h-[15%]"></div>
@@ -67,26 +70,22 @@ export function KPISection() {
                     <div class="flex-1 bg-emerald-400/10 rounded-sm h-[10%]"></div>
                 </div>
             </div>
-    `;
+        `;
+    };
 
     // --- Update Logic ---
-    // data is rows from SHOW GLOBAL STATUS: [[VarName, Value], ...]
     const update = (rows) => {
         const stats = {};
         rows.forEach(row => stats[row[0]] = row[1]);
 
-        // 1. Threads (Use Threads_connected)
         const threads = stats['Threads_connected'] || 0;
-        section.querySelector('#card-cpu .value-display').innerText = threads;
+        const threadEl = section.querySelector('#card-cpu .value-display');
+        if (threadEl) threadEl.innerText = threads;
 
-        // 2. Buffer Pool (Innodb_buffer_pool_bytes_data)
         const bufferBytes = parseInt(stats['Innodb_buffer_pool_bytes_data'] || 0);
-        section.querySelector('#card-ram .value-display').innerText = formatBytes(bufferBytes);
+        const bufferEl = section.querySelector('#card-ram .value-display');
+        if (bufferEl) bufferEl.innerText = formatBytes(bufferBytes);
 
-        // 3. Traffic (Bytes_received + Bytes_sent). 
-        // Note: SHOW GLOBAL STATUS gives total since start. To show rate, we need previous value. 
-        // For simplicity v1, we'll just show Uptime or just total traffic, OR 0KB/s (placeholder logic needs state).
-        // Let's implement a simple rate calculator in the closure.
         calculateTrafficRate(parseInt(stats['Bytes_received'] || 0) + parseInt(stats['Bytes_sent'] || 0));
     };
 
@@ -95,12 +94,13 @@ export function KPISection() {
 
     const calculateTrafficRate = (currentTotalBytes) => {
         const now = Date.now();
-        const diffTime = (now - lastTime) / 1000; // seconds
+        const diffTime = (now - lastTime) / 1000;
 
         if (diffTime > 0 && lastTotalBytes > 0) {
             const diffBytes = currentTotalBytes - lastTotalBytes;
             const rate = diffBytes / diffTime;
-            section.querySelector('#card-net .value-display').innerText = formatBytes(rate) + '/s';
+            const netEl = section.querySelector('#card-net .value-display');
+            if (netEl) netEl.innerText = formatBytes(rate) + '/s';
         }
 
         lastTotalBytes = currentTotalBytes;
@@ -115,5 +115,19 @@ export function KPISection() {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
     };
 
+    // --- Theme Change Handling ---
+    const onThemeChange = (e) => {
+        isLight = e.detail.theme === 'light';
+        render();
+    };
+    window.addEventListener('themechange', onThemeChange);
+
+    section.onUnmount = () => {
+        window.removeEventListener('themechange', onThemeChange);
+    };
+
+    render();
+
     return { element: section, update };
 }
+

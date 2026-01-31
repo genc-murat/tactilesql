@@ -2,6 +2,7 @@ import { MainLayout } from '../components/Layout/MainLayout.js';
 import { KPISection } from '../components/Dashboard/KPISection.js';
 import { ClusterOverview } from '../components/Dashboard/ClusterOverview.js';
 import { QueryTable } from '../components/Dashboard/QueryTable.js';
+import { ThemeManager } from '../utils/ThemeManager.js';
 
 export function Dashboard() {
     // Check connection first
@@ -71,18 +72,22 @@ export function Dashboard() {
         }
     };
 
+    // --- Theme Handling ---
+    let isLight = ThemeManager.getCurrentTheme() === 'light';
+    const onThemeChange = (e) => {
+        isLight = e.detail.theme === 'light';
+        container.className = `flex flex-col gap-6 p-6 h-full overflow-y-auto custom-scrollbar transition-all duration-300 ${isLight ? 'bg-gray-50' : 'bg-[#0a0c10]'}`;
+    };
+    window.addEventListener('themechange', onThemeChange);
+
     // Lifecycle
     setTimeout(fetchData, 100); // Initial fetch
     intervalId = setInterval(fetchData, 5000); // Poll every 5s
 
-    // Cleanup on remove (Observer would be better, but basic for now)
-    // In a vanilla JS app, we rely on the router to tear down or manual cleanup. 
-    // Since we return a DOM node, we can attach a disconnect observer if needed.
-    // For now, we'll attach the interval ID to the container for manual cleanup if the router supports it.
-    container.dataset.intervalId = intervalId;
-
-    // Monkey patch unmount for our router to call
-    container.onUnmount = () => clearInterval(intervalId);
+    container.onUnmount = () => {
+        clearInterval(intervalId);
+        window.removeEventListener('themechange', onThemeChange);
+    };
 
     return container;
 }

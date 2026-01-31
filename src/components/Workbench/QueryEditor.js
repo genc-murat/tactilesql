@@ -2,6 +2,7 @@
 import { Dialog } from '../UI/Dialog.js';
 import { invoke } from '@tauri-apps/api/core';
 import { showVisualExplainModal } from '../UI/VisualExplainModal.js';
+import { ThemeManager } from '../../utils/ThemeManager.js';
 
 // SQL Keywords for autocomplete
 const SQL_KEYWORDS = [
@@ -57,8 +58,9 @@ const highlightSQL = (code) => {
 };
 
 export function QueryEditor() {
+    let isLight = ThemeManager.getCurrentTheme() === 'light';
     const container = document.createElement('div');
-    container.className = "flex flex-col h-full border-b border-white/5";
+    container.className = `flex flex-col h-full border-b ${isLight ? 'border-gray-200' : 'border-white/5'}`;
 
     // --- State ---
     let tabs = [
@@ -220,7 +222,7 @@ export function QueryEditor() {
         if (!popup) {
             popup = document.createElement('div');
             popup.id = 'autocomplete-popup';
-            popup.className = 'absolute z-[100] bg-[#1a1d23] border border-white/10 rounded-lg shadow-2xl py-1 min-w-[200px] max-h-[200px] overflow-y-auto custom-scrollbar';
+            popup.className = `absolute z-[100] ${isLight ? 'bg-white border-gray-200 shadow-xl' : 'bg-[#1a1d23] border border-white/10 shadow-2xl'} rounded-lg py-1 min-w-[200px] max-h-[200px] overflow-y-auto custom-scrollbar transition-all duration-200`;
             const editorContainer = container.querySelector('.neu-inset');
             if (editorContainer) {
                 editorContainer.style.position = 'relative';
@@ -233,10 +235,10 @@ export function QueryEditor() {
         popup.style.left = `${Math.min(coords.left, 300)}px`;
 
         popup.innerHTML = suggestions.map((s, i) => `
-            <div class="autocomplete-item px-3 py-1.5 flex items-center gap-2 cursor-pointer transition-colors ${i === selectedIndex ? 'bg-mysql-teal/20 text-white' : 'text-gray-400 hover:bg-white/5'}" data-index="${i}">
+            <div class="autocomplete-item px-3 py-1.5 flex items-center gap-2 cursor-pointer transition-colors ${i === selectedIndex ? (isLight ? 'bg-mysql-teal/10 text-mysql-teal' : 'bg-mysql-teal/20 text-white') : (isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-400 hover:bg-white/5')}" data-index="${i}">
                 <span class="material-symbols-outlined text-sm ${s.color}">${s.icon}</span>
                 <span class="font-mono text-[12px]">${s.display || s.value}</span>
-                <span class="text-[9px] text-gray-600 uppercase ml-auto">${s.type}</span>
+                <span class="text-[9px] ${isLight ? 'text-gray-400' : 'text-gray-600'} uppercase ml-auto">${s.type}</span>
             </div>
         `).join('');
 
@@ -298,12 +300,12 @@ export function QueryEditor() {
         const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0];
 
         container.innerHTML = `
-            <div class="flex items-end justify-between border-b border-white/5">
+            <div class="flex items-end justify-between border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
                 <div class="flex gap-1" id="tabs-container">
                     ${tabs.map(tab => {
             const isActive = tab.id === activeTabId;
             return `
-                            <div data-id="${tab.id}" class="tab-item px-4 py-2 border-t border-x rounded-t-md flex items-center gap-3 relative top-[1px] cursor-pointer select-none transition-colors group ${isActive ? 'bg-[#1a1d23] border-mysql-teal/40 text-mysql-teal' : 'bg-transparent border-transparent text-gray-500 hover:bg-white/5'}">
+                            <div data-id="${tab.id}" class="tab-item px-4 py-2 border-t border-x rounded-t-md flex items-center gap-3 relative top-[1px] cursor-pointer select-none transition-colors group ${isActive ? (isLight ? 'bg-white border-gray-200 text-mysql-teal' : 'bg-[#1a1d23] border-mysql-teal/40 text-mysql-teal') : (isLight ? 'bg-gray-100/50 border-transparent text-gray-500 hover:bg-gray-100' : 'bg-transparent border-transparent text-gray-500 hover:bg-white/5')}">
                                 <span class="material-symbols-outlined text-sm">${isActive ? 'edit_document' : 'description'}</span>
                                 <span class="font-mono text-[11px]">${tab.title}</span>
                                 <span class="close-tab-btn material-symbols-outlined text-[14px] hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">close</span>
@@ -317,26 +319,26 @@ export function QueryEditor() {
                 <div class="pb-2 flex items-center gap-4">
                 <div class="flex items-center gap-2" title="Select Active Database">
                     <span class="material-symbols-outlined text-gray-600 text-sm">database</span>
-                    <select id="db-selector" class="bg-[#1a1d23] border border-white/10 text-[10px] text-gray-300 rounded px-2 py-1.5 outline-none focus:border-mysql-teal/50 min-w-[120px] cursor-pointer">
+                    <select id="db-selector" class="${isLight ? 'bg-gray-100 border-gray-200 text-gray-700' : 'bg-[#1a1d23] border-white/10 text-gray-300'} border text-[10px] rounded px-2 py-1.5 outline-none focus:border-mysql-teal/50 min-w-[120px] cursor-pointer">
                          <option value="" disabled selected>Loading...</option>
                     </select>
                 </div>
-                <div class="h-6 w-px bg-white/10 mx-1"></div>
+                <div class="h-6 w-px ${isLight ? 'bg-gray-200' : 'bg-white/10'} mx-1"></div>
                     <button id="execute-btn" class="flex items-center justify-center p-1.5 bg-mysql-teal text-black rounded shadow-[0_0_10px_rgba(0,200,255,0.2)] hover:brightness-110 active:scale-95 transition-all" title="Execute Query (Ctrl+Enter)">
                         <span class="material-symbols-outlined text-lg">play_arrow</span>
                     </button>
-                    <button id="explain-btn" class="flex items-center justify-center p-1.5 bg-[#1a1d23] border border-white/10 text-gray-300 rounded hover:bg-white/5 active:scale-95 transition-all shadow-lg" title="Explain Query Plan">
+                    <button id="explain-btn" class="flex items-center justify-center p-1.5 ${isLight ? 'bg-white border-gray-200 text-gray-700 shadow-sm' : 'bg-[#1a1d23] border-white/10 text-gray-300'} border rounded hover:opacity-80 active:scale-95 transition-all" title="Explain Query Plan">
                         <span class="material-symbols-outlined text-lg">analytics</span>
                     </button>
                 </div>
             </div>
-            <div class="flex-1 neu-inset rounded-xl bg-[#08090c] overflow-hidden flex p-4 font-mono text-[14px] leading-relaxed relative focus-within:ring-1 focus-within:ring-mysql-teal/50 transition-all">
-                <div class="w-12 text-gray-700 text-right pr-4 border-r border-white/5 select-none text-xs leading-[22px] pt-1 overflow-hidden" id="line-numbers"></div>
+            <div class="flex-1 neu-inset rounded-xl ${isLight ? 'bg-white' : 'bg-[#08090c]'} overflow-hidden flex p-4 font-mono text-[14px] leading-relaxed relative focus-within:ring-1 focus-within:ring-mysql-teal/50 transition-all">
+                <div class="w-12 ${isLight ? 'text-gray-300 border-gray-100' : 'text-gray-700 border-white/5'} text-right pr-4 border-r select-none text-xs leading-[22px] pt-1 overflow-hidden" id="line-numbers"></div>
                 <div class="flex-1 relative pl-6">
                     <pre id="syntax-highlight" class="absolute inset-0 pl-6 pt-0 font-mono text-[14px] leading-[22px] pointer-events-none overflow-hidden whitespace-pre-wrap break-words" aria-hidden="true"></pre>
-                    <textarea id="query-input" class="relative w-full h-full bg-transparent border-none text-transparent caret-white font-mono text-[14px] leading-[22px] focus:ring-0 resize-none outline-none custom-scrollbar p-0 z-10" spellcheck="false" placeholder="Enter your SQL query here... (Ctrl+Space for suggestions)">${activeTab ? activeTab.content : ''}</textarea>
+                    <textarea id="query-input" class="relative w-full h-full bg-transparent border-none ${isLight ? 'text-transparent' : 'text-transparent'} ${isLight ? 'caret-gray-800' : 'caret-white'} font-mono text-[14px] leading-[22px] focus:ring-0 resize-none outline-none custom-scrollbar p-0 z-10" spellcheck="false" placeholder="Enter your SQL query here... (Ctrl+Space for suggestions)">${activeTab ? activeTab.content : ''}</textarea>
                 </div>
-                <div class="absolute bottom-4 right-4 text-[10px] text-gray-700 font-bold uppercase tracking-widest">
+                <div class="absolute bottom-4 right-4 text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-700'} font-bold uppercase tracking-widest">
                     MySQL 8.0 • UTF-8 • <span class="text-mysql-teal/50">Ctrl+Space</span>
                 </div>
             </div>
@@ -643,6 +645,19 @@ export function QueryEditor() {
         }
     };
 
+    // --- Theme Change Handling ---
+    const onThemeChange = (e) => {
+        isLight = e.detail.theme === 'light';
+        container.className = `flex flex-col h-full border-b ${isLight ? 'border-gray-200' : 'border-white/5'}`;
+        render();
+    };
+    window.addEventListener('themechange', onThemeChange);
+
+    // Patch for cleanup
+    container.onUnmount = () => {
+        window.removeEventListener('themechange', onThemeChange);
+    };
+
     // Initial Render
     render();
     loadDatabasesForAutocomplete();
@@ -672,3 +687,4 @@ export function QueryEditor() {
 
     return container;
 }
+

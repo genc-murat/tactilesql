@@ -7,28 +7,22 @@ import { SqlWorkbench } from './pages/SqlWorkbench.js';
 import { SchemaDesigner } from './pages/SchemaDesigner.js';
 import { ConnectionManager } from './pages/ConnectionManager.js';
 import { AccessControl } from './pages/AccessControl.js';
+import { Settings } from './pages/Settings.js';
+import { ThemeManager } from './utils/ThemeManager.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
+    // Initialize theme from saved preference
+    ThemeManager.init();
     const root = document.getElementById('root');
 
-    // Create Layout
-    const header = TitleBar();
-    root.appendChild(header);
+    // Layout
+    root.appendChild(TitleBar());
+    root.appendChild(NavBar());
 
-    // Create NavBar container (will be updated on route change)
-    const navBarContainer = document.createElement('div');
-    navBarContainer.id = 'navbar-container';
-    root.appendChild(navBarContainer);
-
-    // Render NavBar
-    const renderNavBar = () => {
-        navBarContainer.innerHTML = '';
-        navBarContainer.appendChild(NavBar());
-    };
-    renderNavBar();
-
-    // Re-render NavBar on route change
-    window.addEventListener('hashchange', renderNavBar);
+    // Re-render UI on theme change
+    window.addEventListener('themechange', () => {
+        // Any global tasks that don't belong to specific components
+    });
 
     const mainContent = document.createElement('div');
     mainContent.className = 'flex-1 overflow-hidden relative';
@@ -40,6 +34,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         '/schema': { component: SchemaDesigner },
         '/connections': { component: ConnectionManager },
         '/access-control': { component: AccessControl },
+        '/settings': { component: Settings },
     };
 
     const router = new Router(routes, mainContent);

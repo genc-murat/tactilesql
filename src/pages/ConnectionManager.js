@@ -1,9 +1,11 @@
 import { invoke } from '@tauri-apps/api/core';
 import { Dialog } from '../components/UI/Dialog.js';
+import { ThemeManager } from '../utils/ThemeManager.js';
 
 export function ConnectionManager() {
+    let isLight = ThemeManager.getCurrentTheme() === 'light';
     const container = document.createElement('div');
-    container.className = "flex-1 flex flex-col h-full overflow-hidden bg-[#0b0d10] selection:bg-cyan-500/30 relative";
+    container.className = `flex-1 flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : 'bg-[#0a0c10]'} selection:bg-mysql-cyan/30 transition-all duration-300`;
 
     const DEFAULT_CONFIG = {
         id: null,
@@ -53,8 +55,8 @@ export function ConnectionManager() {
             <div class="max-w-7xl mx-auto w-full h-full flex flex-col p-10">
                 <header class="flex items-center justify-between mb-10 shrink-0">
                     <div>
-                        <h1 class="text-3xl font-black text-white tracking-tight mb-2">Connections</h1>
-                        <p class="text-gray-500 font-medium">Select a database cluster to launch workspace.</p>
+                        <h1 class="text-3xl font-black ${isLight ? 'text-gray-900' : 'text-white'} tracking-tight mb-2">Connections</h1>
+                        <p class="${isLight ? 'text-gray-500' : 'text-gray-400'} font-medium">Select a database cluster to launch workspace.</p>
                     </div>
                     <button id="create-btn" class="gloss-btn-cyan px-6 py-3 rounded-xl text-white text-xs font-bold uppercase tracking-widest flex items-center gap-2 hover:scale-105 transition-transform">
                         <span class="material-symbols-outlined text-lg">add</span> New Connection
@@ -68,7 +70,7 @@ export function ConnectionManager() {
             const timeAgo = lastConnected ? formatTimeAgo(lastConnected) : 'Never';
 
             return `
-                        <div class="neu-card group relative p-6 rounded-3xl border ${isActive ? 'border-green-500/30 shadow-[0_0_20px_rgba(34,197,94,0.1)]' : 'border-white/5'} hover:border-cyan-500/50 transition-all duration-300 bg-[#13161b] hover:scale-[1.02]">
+                        <div class="neu-card group relative p-6 rounded-3xl border ${isActive ? 'border-green-500/30' : (isLight ? 'border-gray-200' : 'border-white/5')} hover:border-mysql-teal/50 transition-all duration-300 ${isLight ? 'bg-white' : 'bg-[#13161b]'} hover:scale-[1.02]">
                             
                             ${isActive ? `
                                 <div class="absolute top-4 left-4 z-10">
@@ -80,7 +82,7 @@ export function ConnectionManager() {
                             ` : ''}
 
                             <div class="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                                <button data-id="${conn.id}" class="edit-btn p-2 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 hover:text-cyan-400 transition-all duration-200" title="Edit Configuration">
+                                <button data-id="${conn.id}" class="edit-btn p-2 rounded-lg ${isLight ? 'bg-gray-100' : 'bg-white/5'} hover:${isLight ? 'bg-gray-200' : 'bg-white/10'} ${isLight ? 'text-gray-600' : 'text-gray-400'} hover:text-mysql-teal transition-all duration-200" title="Edit Configuration">
                                     <span class="material-symbols-outlined text-sm">settings</span>
                                 </button>
                                 <button data-id="${conn.id}" class="delete-btn p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/10 hover:border-red-500/30 transition-all duration-200" title="Delete">
@@ -89,39 +91,39 @@ export function ConnectionManager() {
                             </div>
 
                             <div class="mb-6 mt-8">
-                                <div class="w-14 h-14 rounded-2xl ${isActive ? 'bg-green-500/10 border-green-500/30' : 'bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border-white/10'} border flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
-                                    <span class="material-symbols-outlined ${isActive ? 'text-green-400' : 'text-cyan-400'} text-2xl">database</span>
+                                <div class="w-14 h-14 rounded-2xl ${isActive ? 'bg-green-500/10 border-green-500/30' : (isLight ? 'bg-mysql-teal/5 border-mysql-teal/20' : 'bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border-white/10')} border flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
+                                    <span class="material-symbols-outlined ${isActive ? 'text-green-500' : 'text-mysql-teal'} text-2xl">database</span>
                                 </div>
-                                <h3 class="text-lg font-bold text-white mb-2 truncate group-hover:text-cyan-400 transition-colors" title="${conn.name}">${conn.name}</h3>
-                                <div class="flex items-center gap-2 text-xs text-gray-500 font-mono mb-3">
-                                    <span class="bg-white/5 px-2 py-1 rounded text-gray-400">${conn.username}</span>
-                                    <span>@</span>
-                                    <span class="text-gray-400">${conn.host}:${conn.port}</span>
+                                <h3 class="text-lg font-bold ${isLight ? 'text-gray-800' : 'text-white'} mb-2 truncate group-hover:text-mysql-teal transition-colors" title="${conn.name}">${conn.name}</h3>
+                                <div class="flex items-center gap-2 text-xs font-mono mb-3">
+                                    <span class="${isLight ? 'bg-gray-100 text-gray-700' : 'bg-white/5 text-gray-400'} px-2 py-1 rounded">${conn.username}</span>
+                                    <span class="text-gray-500">@</span>
+                                    <span class="${isLight ? 'text-gray-600' : 'text-gray-400'}">${conn.host}:${conn.port}</span>
                                 </div>
                                 ${conn.database ? `
-                                    <div class="flex items-center gap-1.5 text-xs text-gray-600 mb-2">
+                                    <div class="flex items-center gap-1.5 text-xs ${isLight ? 'text-gray-500' : 'text-gray-600'} mb-2">
                                         <span class="material-symbols-outlined text-xs">folder</span>
                                         <span class="truncate" title="${conn.database}">${conn.database}</span>
                                     </div>
                                 ` : ''}
-                                <div class="flex items-center gap-1.5 text-[10px] text-gray-600">
+                                <div class="flex items-center gap-1.5 text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-600'}">
                                     <span class="material-symbols-outlined text-xs">schedule</span>
                                     <span>Last: ${timeAgo}</span>
                                 </div>
                             </div>
 
-                            <button data-id="${conn.id}" class="connect-btn w-full py-3 rounded-xl ${isActive ? 'bg-green-500/10 hover:bg-green-500/20 text-green-400 border border-green-500/20' : 'bg-white/5 hover:bg-cyan-500 hover:text-white text-gray-300 border border-white/5'} font-bold text-xs uppercase tracking-wider transition-all duration-300 flex items-center justify-center gap-2 group-hover:shadow-lg overflow-hidden relative">
+                            <button data-id="${conn.id}" class="connect-btn w-full py-3 rounded-xl ${isActive ? 'bg-green-500/10 hover:bg-green-500/20 text-green-500 border border-green-500/20' : (isLight ? 'bg-gray-100 hover:bg-mysql-teal hover:text-white text-gray-700 border border-gray-200' : 'bg-white/5 hover:bg-mysql-teal hover:text-white text-gray-300 border border-white/5')} font-bold text-xs uppercase tracking-wider transition-all duration-300 flex items-center justify-center gap-2 group-hover:shadow-lg overflow-hidden relative">
                                 <span class="material-symbols-outlined">bolt</span> ${isActive ? 'Open Workspace' : 'Connect'}
                             </button>
                         </div>
                     `}).join('')}
                     
                     ${connections.length === 0 ? `
-                        <div class="col-span-full py-20 text-center flex flex-col items-center justify-center border-2 border-dashed border-white/10 rounded-3xl hover:border-cyan-500/30 transition-all duration-300">
-                             <div class="mb-6 w-20 h-20 rounded-full bg-gradient-to-br from-cyan-500/10 to-blue-600/10 flex items-center justify-center">
-                                <span class="material-symbols-outlined text-5xl text-cyan-500/50">dns</span>
+                        <div class="col-span-full py-20 text-center flex flex-col items-center justify-center border-2 border-dashed ${isLight ? 'border-gray-200 bg-gray-50' : 'border-white/10'} rounded-3xl hover:border-mysql-teal/30 transition-all duration-300">
+                             <div class="mb-6 w-20 h-20 rounded-full bg-gradient-to-br from-mysql-teal/10 to-blue-600/10 flex items-center justify-center">
+                                <span class="material-symbols-outlined text-5xl text-mysql-teal/50">dns</span>
                              </div>
-                             <h3 class="text-xl font-bold text-white mb-2">No Connections Yet</h3>
+                             <h3 class="text-xl font-bold ${isLight ? 'text-gray-800' : 'text-white'} mb-2">No Connections Yet</h3>
                              <p class="text-gray-500 font-medium mb-6 max-w-md">Create your first database connection to get started with TactileSQL.</p>
                              <button id="empty-create-btn" class="gloss-btn-cyan px-6 py-3 rounded-xl text-white text-xs font-bold uppercase tracking-widest flex items-center gap-2 hover:scale-105 transition-transform">
                                 <span class="material-symbols-outlined text-lg">add</span> Create Connection
@@ -178,15 +180,15 @@ export function ConnectionManager() {
     const renderEditView = () => {
         container.innerHTML = `
              <div class="max-w-3xl mx-auto w-full h-full flex flex-col p-6 justify-center">
-                <button id="back-btn" class="self-start mb-4 flex items-center gap-2 text-gray-500 hover:text-white transition-colors text-xs font-bold uppercase tracking-wider">
+                <button id="back-btn" class="self-start mb-4 flex items-center gap-2 text-gray-500 hover:${isLight ? 'text-gray-800' : 'text-white'} transition-colors text-xs font-bold uppercase tracking-wider">
                     <span class="material-symbols-outlined text-sm">arrow_back</span> Back to Connections
                 </button>
 
-                <div class="neu-card rounded-2xl p-6 relative overflow-hidden bg-[#13161b] shadow-2xl border border-white/5">
-                    <div class="absolute top-0 right-0 -mt-20 -mr-20 size-96 bg-neon-cyan/5 blur-[120px] rounded-full pointer-events-none"></div>
+                <div class="neu-card rounded-2xl p-6 relative overflow-hidden ${isLight ? 'bg-white' : 'bg-[#13161b]'} shadow-2xl border ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                    <div class="absolute top-0 right-0 -mt-20 -mr-20 size-96 bg-mysql-cyan/5 blur-[120px] rounded-full pointer-events-none"></div>
                     
-                    <h2 class="text-xl font-black text-white mb-6 tracking-tight flex items-center gap-3">
-                        <span class="material-symbols-outlined text-neon-cyan">settings_input_component</span>
+                    <h2 class="text-xl font-black ${isLight ? 'text-gray-900' : 'text-white'} mb-6 tracking-tight flex items-center gap-3">
+                        <span class="material-symbols-outlined text-mysql-teal">settings_input_component</span>
                         ${config.id ? 'Edit Connection' : 'New Connection'}
                     </h2>
                     
@@ -226,7 +228,7 @@ export function ConnectionManager() {
                                 </label>
                                 <div class="relative">
                                     <input name="password" id="password-input" class="tactile-input w-full pr-12" placeholder="••••••••" type="password" value="${config.password}" />
-                                    <button type="button" id="toggle-password" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-cyan-400 transition-colors" title="Show/Hide Password">
+                                    <button type="button" id="toggle-password" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-mysql-teal transition-colors" title="Show/Hide Password">
                                         <span class="material-symbols-outlined text-lg">visibility</span>
                                     </button>
                                 </div>
@@ -235,21 +237,21 @@ export function ConnectionManager() {
 
                         <div class="space-y-2">
                             <label class="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] flex items-center gap-2">
-                                <span class="material-symbols-outlined text-xs">storage</span> Default Database <span class="text-gray-700">(Optional)</span>
+                                <span class="material-symbols-outlined text-xs">storage</span> Default Database <span class="text-gray-400 font-normal">(Optional)</span>
                             </label>
                             <input name="database" class="tactile-input w-full" placeholder="my_database" type="text" value="${config.database}" />
                         </div>
                     </div>
 
-                    <div class="mt-6 pt-6 border-t border-white/5 flex items-center justify-between relative z-10">
-                        <button id="test-btn" class="text-gray-400 hover:text-white text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-colors">
+                    <div class="mt-6 pt-6 border-t ${isLight ? 'border-gray-100' : 'border-white/5'} flex items-center justify-between relative z-10">
+                        <button id="test-btn" class="text-gray-500 hover:${isLight ? 'text-gray-800' : 'text-white'} text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-colors">
                             <span class="material-symbols-outlined text-base">wifi_tethering</span> Test Connection
                         </button>
                         <div class="flex gap-3">
-                            <button id="save-btn" class="px-6 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-bold uppercase tracking-wider transition-all">
+                            <button id="save-btn" class="${isLight ? 'bg-gray-100 border-gray-200 text-gray-700 hover:bg-gray-200' : 'bg-white/5 border-white/10 text-white hover:bg-white/10'} px-6 py-2.5 rounded-xl border text-xs font-bold uppercase tracking-wider transition-all">
                                 Save
                             </button>
-                            <button id="connect-now-btn" class="gloss-btn-cyan px-6 py-2.5 rounded-xl text-white text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-cyan-500/20">
+                            <button id="connect-now-btn" class="gloss-btn-cyan px-6 py-2.5 rounded-xl text-white text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-mysql-cyan/20">
                                 <span class="material-symbols-outlined text-base">bolt</span> Connect
                             </button>
                         </div>
@@ -433,6 +435,14 @@ export function ConnectionManager() {
             localStorage.removeItem('activeConnection');
         }
     };
+
+    // --- Theme Handling ---
+    const onThemeChange = (e) => {
+        isLight = e.detail.theme === 'light';
+        container.className = `flex-1 flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : 'bg-[#0a0c10]'} selection:bg-mysql-cyan/30 relative transition-all duration-300`;
+        render();
+    };
+    window.addEventListener('themechange', onThemeChange);
 
     // --- INIT ---
     // Load connections and verify active state in parallel before rendering

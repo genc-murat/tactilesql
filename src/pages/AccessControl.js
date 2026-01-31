@@ -1,9 +1,11 @@
 import { invoke } from '@tauri-apps/api/core';
 import { Dialog } from '../components/UI/Dialog.js';
+import { ThemeManager } from '../utils/ThemeManager.js';
 
 export function AccessControl() {
+    let isLight = ThemeManager.getCurrentTheme() === 'light';
     const container = document.createElement('div');
-    container.className = "flex-1 flex flex-col h-full overflow-hidden bg-[#0b0d11] selection:bg-mysql-cyan/30";
+    container.className = `flex-1 flex flex-col h-full overflow-hidden bg-background-main selection:bg-mysql-cyan/30 transition-colors duration-300`;
 
     // State
     let users = [];
@@ -77,18 +79,18 @@ export function AccessControl() {
             return `
                 <button class="user-item w-full flex items-center gap-3 p-3 rounded-lg transition-all group text-left
                     ${isSelected
-                    ? 'bg-gradient-to-r from-mysql-cyan/10 to-transparent border-l-2 border-mysql-cyan'
-                    : 'hover:bg-white/5 border-l-2 border-transparent'
+                    ? (isLight ? 'bg-blue-50 border-l-2 border-mysql-cyan' : 'bg-gradient-to-r from-mysql-cyan/10 to-transparent border-l-2 border-mysql-cyan')
+                    : `hover:${isLight ? 'bg-gray-100' : 'bg-white/5'} border-l-2 border-transparent`
                 }"
                     data-user="${user.user}" data-host="${user.host}">
-                    <div class="size-8 rounded-md bg-[#1a1d23] border ${isSelected ? 'border-mysql-cyan/30' : 'border-white/10'} flex items-center justify-center ${isSelected ? 'text-mysql-cyan shadow-[0_0_10px_rgba(0,243,255,0.1)]' : 'text-gray-500 group-hover:text-mysql-purple'}">
+                    <div class="size-8 rounded-md ${isLight ? 'bg-white border-gray-200' : 'bg-[#1a1d23] border-white/10'} border flex items-center justify-center ${isSelected ? 'text-mysql-cyan' : 'text-gray-500'}">
                         <span class="material-symbols-outlined text-lg">${isRoot ? 'admin_panel_settings' : 'account_circle'}</span>
                     </div>
                     <div class="flex-1 min-w-0">
-                        <div class="text-[11px] font-bold ${isSelected ? 'text-white' : 'text-gray-400 group-hover:text-white'} tracking-wide truncate uppercase">${user.user}</div>
+                        <div class="text-[11px] font-bold ${isSelected ? (isLight ? 'text-gray-900' : 'text-white') : (isLight ? 'text-gray-500 group-hover:text-gray-900' : 'text-gray-400 group-hover:text-white')} tracking-wide truncate uppercase">${user.user}</div>
                         <div class="text-[9px] font-mono ${isSelected ? 'text-mysql-cyan/60' : 'text-gray-600'} truncate">${user.host}</div>
                     </div>
-                    <div class="size-1.5 rounded-full ${statusColor} ${!user.account_locked ? 'glow-cyan animate-pulse' : ''}"></div>
+                    <div class="size-1.5 rounded-full ${statusColor} ${!user.account_locked ? (isLight ? 'shadow-[0_0_8px_rgba(0,243,255,0.4)]' : 'glow-cyan animate-pulse') : ''}"></div>
                 </button>
             `;
         }).join('');
@@ -109,14 +111,14 @@ export function AccessControl() {
             const isGranted = privData ? privData.granted : false;
 
             return `
-                <div class="neu-inset bg-[#111418] p-4 rounded-lg flex items-center justify-between border border-white/5 group hover:border-mysql-cyan/20 transition-colors">
+                <div class="neu-inset ${isLight ? 'bg-white' : 'bg-[#111418]'} p-4 rounded-lg flex items-center justify-between border ${isLight ? 'border-gray-200' : 'border-white/5'} group hover:border-mysql-cyan/20 transition-colors">
                     <div class="flex flex-col">
-                        <span class="text-xs font-black text-white uppercase">${priv.replace(' ', '_')}</span>
-                        <span class="text-[10px] text-gray-600 font-mono mt-0.5 uppercase tracking-tighter">${getPrivDescription(priv)}</span>
+                        <span class="text-xs font-black ${isLight ? 'text-gray-900' : 'text-white'} uppercase">${priv.replace(' ', '_')}</span>
+                        <span class="text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-600'} font-mono mt-0.5 uppercase tracking-tighter">${getPrivDescription(priv)}</span>
                     </div>
-                    <div class="w-12 h-6 rounded-full ${isGranted ? 'bg-[#0b0d11]' : 'bg-[#1a1d23]'} p-1 relative cursor-pointer border border-white/5">
-                        ${isGranted ? '<div class="absolute inset-0 rounded-full tactile-switch-on"></div>' : ''}
-                        <div class="size-4 ${isGranted ? 'bg-white' : 'bg-gray-600'} rounded-sm shadow-xl absolute ${isGranted ? 'right-1' : 'left-1'} top-1"></div>
+                    <div class="w-12 h-6 rounded-full ${isLight ? (isGranted ? 'bg-mysql-cyan/10' : 'bg-gray-100') : (isGranted ? 'bg-[#0b0d11]' : 'bg-[#1a1d23]')} p-1 relative cursor-pointer border ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                        ${isGranted ? `<div class="absolute inset-0 rounded-full ${isLight ? '' : 'tactile-switch-on'}"></div>` : ''}
+                        <div class="size-4 ${isGranted ? (isLight ? 'bg-mysql-cyan' : 'bg-white') : 'bg-gray-400'} rounded-sm shadow-xl absolute ${isGranted ? 'right-1' : 'left-1'} top-1 transition-all"></div>
                     </div>
                 </div>
             `;
@@ -124,27 +126,27 @@ export function AccessControl() {
 
         return `
             <div class="space-y-4">
-                <div class="flex items-center gap-3 border-b border-white/5 pb-2">
+                <div class="flex items-center gap-3 border-b ${isLight ? 'border-gray-100' : 'border-white/5'} pb-2">
                     <span class="material-symbols-outlined text-mysql-cyan text-lg">dataset</span>
-                    <h3 class="text-[10px] font-black text-white uppercase tracking-[0.3em]">Data Access Control</h3>
+                    <h3 class="text-[10px] font-black ${isLight ? 'text-gray-900' : 'text-white'} uppercase tracking-[0.3em]">Data Access Control</h3>
                 </div>
                 <div class="grid grid-cols-2 gap-4">
                     ${dataPrivs.map(renderToggle).join('')}
                 </div>
             </div>
             <div class="space-y-4 mt-8">
-                <div class="flex items-center gap-3 border-b border-white/5 pb-2">
+                <div class="flex items-center gap-3 border-b ${isLight ? 'border-gray-100' : 'border-white/5'} pb-2">
                     <span class="material-symbols-outlined text-mysql-purple text-lg">table_chart</span>
-                    <h3 class="text-[10px] font-black text-white uppercase tracking-[0.3em]">Schema Privileges</h3>
+                    <h3 class="text-[10px] font-black ${isLight ? 'text-gray-900' : 'text-white'} uppercase tracking-[0.3em]">Schema Privileges</h3>
                 </div>
                 <div class="grid grid-cols-2 gap-4">
                     ${schemaPrivs.map(renderToggle).join('')}
                 </div>
             </div>
             <div class="space-y-4 mt-8">
-                <div class="flex items-center gap-3 border-b border-white/5 pb-2">
+                <div class="flex items-center gap-3 border-b ${isLight ? 'border-gray-100' : 'border-white/5'} pb-2">
                     <span class="material-symbols-outlined text-yellow-500 text-lg">terminal</span>
-                    <h3 class="text-[10px] font-black text-white uppercase tracking-[0.3em]">Admin Privileges</h3>
+                    <h3 class="text-[10px] font-black ${isLight ? 'text-gray-900' : 'text-white'} uppercase tracking-[0.3em]">Admin Privileges</h3>
                 </div>
                 <div class="grid grid-cols-2 gap-4">
                     ${adminPrivs.map(renderToggle).join('')}
@@ -188,11 +190,11 @@ export function AccessControl() {
                             <span class="text-[9px] font-bold uppercase">Refresh</span>
                         </button>
                     </div>
-                    <div class="neu-inset bg-[#090b0e] rounded-xl flex-1 overflow-hidden flex flex-col border border-white/5">
-                        <div class="p-3 bg-[#111418]">
+                    <div class="neu-inset ${isLight ? 'bg-white' : 'bg-[#090b0e]'} rounded-xl flex-1 overflow-hidden flex flex-col border ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                        <div class="p-3 ${isLight ? 'bg-gray-50' : 'bg-[#111418]'}">
                             <div class="relative group">
-                                <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-600 text-sm group-focus-within:text-mysql-cyan">search</span>
-                                <input id="user-search" class="w-full bg-[#0b0d11] border border-white/5 rounded-md py-1.5 pl-9 pr-4 text-[11px] font-mono text-gray-400 focus:ring-1 focus:ring-mysql-cyan/30 focus:border-mysql-cyan/30 placeholder:text-gray-700 outline-none transition-all" placeholder="SEARCH USERS..." type="text" />
+                                <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm group-focus-within:text-mysql-cyan">search</span>
+                                <input id="user-search" class="w-full ${isLight ? 'bg-white border-gray-200 text-gray-700' : 'bg-[#0b0d11] border-white/5 text-gray-400'} rounded-md py-1.5 pl-9 pr-4 text-[11px] font-mono focus:ring-1 focus:ring-mysql-cyan/30 focus:border-mysql-cyan/30 placeholder:text-gray-400 outline-none transition-all" placeholder="SEARCH USERS..." type="text" />
                             </div>
                         </div>
                         <div class="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1.5" id="user-list">
@@ -203,17 +205,17 @@ export function AccessControl() {
 
                 <!-- Main Content -->
                 <main class="flex-1 flex flex-col gap-5 overflow-hidden">
-                    <div class="neu-card rounded-xl flex-1 flex flex-col overflow-hidden">
+                    <div class="neu-card rounded-xl flex-1 flex flex-col overflow-hidden ${isLight ? 'bg-white border-gray-200' : 'bg-[#13161b] border-white/5'}">
                         <!-- Header -->
-                        <div class="h-24 bg-gradient-to-r from-mysql-purple/5 via-mysql-cyan/5 to-transparent border-b border-white/5 flex items-center justify-between px-8">
+                        <div class="h-24 bg-gradient-to-r from-mysql-purple/5 via-mysql-cyan/5 to-transparent border-b ${isLight ? 'border-gray-100' : 'border-white/5'} flex items-center justify-between px-8">
                             <div class="flex items-center gap-6">
-                                <div class="size-14 rounded-lg bg-[#0b0d11] border border-mysql-cyan/20 flex items-center justify-center shadow-xl relative overflow-hidden">
+                                <div class="size-14 rounded-lg ${isLight ? 'bg-white border-mysql-cyan/30 shadow-md' : 'bg-[#0b0d11] border-mysql-cyan/20 shadow-xl'} flex items-center justify-center relative overflow-hidden">
                                     <div class="absolute inset-0 bg-gradient-to-tr from-mysql-cyan/10 to-mysql-purple/10"></div>
                                     <span class="material-symbols-outlined text-mysql-cyan text-4xl relative z-10">verified_user</span>
                                 </div>
                                 <div>
                                     <div class="flex items-center gap-4">
-                                        <h2 class="text-xl font-black text-white tracking-tight uppercase">Permissions Inspector</h2>
+                                        <h2 class="text-xl font-black ${isLight ? 'text-gray-900' : 'text-white'} tracking-tight uppercase">Permissions Inspector</h2>
                                         ${selectedUser ? `
                                             <span class="px-3 py-1 rounded bg-mysql-purple/10 text-mysql-purple text-[9px] font-black border border-mysql-purple/30 tracking-widest">
                                                 ${selectedUser.user === 'root' ? 'SYSTEM_ADMIN' : 'USER'}
@@ -231,13 +233,13 @@ export function AccessControl() {
                         </div>
 
                         <!-- Privileges Grid -->
-                        <div class="flex-1 overflow-y-auto custom-scrollbar p-8 bg-[#0d0f14]">
+                        <div class="flex-1 overflow-y-auto custom-scrollbar p-8 ${isLight ? 'bg-gray-50/50' : 'bg-[#0d0f14]'}">
                             <div class="max-w-4xl">
                                 ${renderPrivileges()}
                             </div>
                             
                             ${userPrivileges && userPrivileges.databases && userPrivileges.databases.length > 0 ? `
-                                <div class="mt-10 p-5 bg-[#0b0d11] border border-mysql-cyan/20 rounded-lg">
+                                <div class="mt-10 p-5 ${isLight ? 'bg-white border-gray-200 shadow-sm' : 'bg-[#0b0d11] border-mysql-cyan/20'} rounded-lg border">
                                     <div class="flex items-center gap-2 mb-3 text-mysql-cyan">
                                         <span class="material-symbols-outlined text-sm font-bold">database</span>
                                         <span class="text-[10px] font-black uppercase tracking-widest">Database Access</span>
@@ -255,18 +257,18 @@ export function AccessControl() {
             </div>
 
             <!-- Footer -->
-            <footer class="h-10 bg-[#14171c] border-t border-white/5 px-6 flex items-center justify-between text-[10px] font-mono text-gray-600">
+            <footer class="h-10 ${isLight ? 'bg-white border-gray-100' : 'bg-[#14171c] border-white/5'} border-t px-6 flex items-center justify-between text-[10px] font-mono text-gray-600">
                 <div class="flex items-center gap-8">
                     <div class="flex items-center gap-2">
-                        <div class="w-2 h-2 rounded-sm bg-mysql-cyan glow-cyan"></div>
-                        <span class="font-bold text-gray-400">USERS: <span class="text-mysql-cyan">${users.length}</span></span>
+                        <div class="w-2 h-2 rounded-sm bg-mysql-cyan ${isLight ? 'shadow-[0_0_8px_rgba(0,243,255,0.4)]' : 'glow-cyan'}"></div>
+                        <span class="font-bold ${isLight ? 'text-gray-500' : 'text-gray-400'}">USERS: <span class="text-mysql-cyan">${users.length}</span></span>
                     </div>
-                    <div class="flex items-center gap-4 border-l border-white/5 pl-4">
+                    <div class="flex items-center gap-4 border-l ${isLight ? 'border-gray-100' : 'border-white/5'} pl-4">
                         <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-xs">fingerprint</span> SECURITY_MODE: ACTIVE</span>
                     </div>
                 </div>
                 <div class="flex items-center gap-6">
-                    <span>UAC_POLICIES: <span class="text-gray-300">STRICT</span></span>
+                    <span>UAC_POLICIES: <span class="text-gray-400">STRICT</span></span>
                 </div>
             </footer>
         `;
@@ -313,6 +315,14 @@ export function AccessControl() {
             });
         }
     }
+
+    // --- Theme Handling ---
+    const onThemeChange = (e) => {
+        isLight = e.detail.theme === 'light';
+        container.className = `flex-1 flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : 'bg-[#0a0c10]'} selection:bg-mysql-cyan/30 transition-all duration-300`;
+        render();
+    };
+    window.addEventListener('themechange', onThemeChange);
 
     // Initial render and load
     render();

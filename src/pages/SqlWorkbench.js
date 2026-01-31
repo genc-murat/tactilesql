@@ -3,10 +3,12 @@ import { ResultsTable } from '../components/Workbench/ResultsTable.js';
 import { ObjectExplorer } from '../components/Workbench/ObjectExplorer.js';
 import { SnippetLibrary } from '../components/Workbench/SnippetLibrary.js';
 import { WorkbenchFooter } from '../components/Workbench/WorkbenchFooter.js';
+import { ThemeManager } from '../utils/ThemeManager.js';
 
 export function SqlWorkbench() {
+    const isLight = ThemeManager.getCurrentTheme() === 'light';
     const container = document.createElement('div');
-    container.className = "flex-1 flex flex-col h-full overflow-hidden";
+    container.className = `flex-1 flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : ''}`;
 
     // Main Content Area
     const mainContent = document.createElement('div');
@@ -21,9 +23,9 @@ export function SqlWorkbench() {
 
     // Sidebar Resizer (horizontal)
     const sidebarResizer = document.createElement('div');
-    sidebarResizer.className = "w-1.5 bg-[#0b0d11] hover:bg-mysql-teal/50 cursor-col-resize flex items-center justify-center group transition-colors";
+    sidebarResizer.className = `w-1.5 ${isLight ? 'bg-gray-200 hover:bg-mysql-teal/30' : 'bg-[#0b0d11] hover:bg-mysql-teal/50'} cursor-col-resize flex items-center justify-center group transition-colors`;
     sidebarResizer.innerHTML = `
-        <div class="h-12 w-0.5 bg-white/10 group-hover:bg-mysql-teal/70 rounded-full transition-colors"></div>
+        <div class="h-12 w-0.5 ${isLight ? 'bg-gray-400' : 'bg-white/10'} group-hover:bg-mysql-teal/70 rounded-full transition-colors"></div>
     `;
     mainContent.appendChild(sidebarResizer);
 
@@ -43,7 +45,7 @@ export function SqlWorkbench() {
 
     // Query + Results Area
     const queryResults = document.createElement('main');
-    queryResults.className = "flex-1 flex flex-col overflow-hidden bg-[#0f1115]";
+    queryResults.className = `flex-1 flex flex-col overflow-hidden ${isLight ? 'bg-white' : 'bg-[#0f1115]'}`;
 
     const queryEditor = QueryEditor();
     queryEditor.style.height = '50%';
@@ -52,9 +54,9 @@ export function SqlWorkbench() {
 
     // Vertical Resizer (between query editor and results)
     const verticalResizer = document.createElement('div');
-    verticalResizer.className = "h-1.5 bg-[#1a1d23] hover:bg-mysql-teal/50 cursor-row-resize flex items-center justify-center group transition-colors";
+    verticalResizer.className = `h-1.5 ${isLight ? 'bg-gray-100 hover:bg-mysql-teal/30' : 'bg-[#1a1d23] hover:bg-mysql-teal/50'} cursor-row-resize flex items-center justify-center group transition-colors`;
     verticalResizer.innerHTML = `
-        <div class="w-12 h-0.5 bg-white/10 group-hover:bg-mysql-teal/70 rounded-full transition-colors"></div>
+        <div class="w-12 h-0.5 ${isLight ? 'bg-gray-400' : 'bg-white/10'} group-hover:bg-mysql-teal/70 rounded-full transition-colors"></div>
     `;
     queryResults.appendChild(verticalResizer);
 
@@ -77,13 +79,45 @@ export function SqlWorkbench() {
         e.preventDefault();
     });
 
+    // Combined mousemove handler
+    const onMouseMove = (e) => {
+        if (isVerticalResizing) {
+            const delta = e.clientY - verticalStartY;
+            const newHeight = Math.max(100, Math.min(verticalStartHeight + delta, queryResults.offsetHeight - 150));
+            queryEditor.style.height = `${newHeight}px`;
+        }
+        if (isSidebarResizing) {
+            const delta = e.clientX - sidebarStartX;
+            const newWidth = Math.max(180, Math.min(sidebarStartWidth + delta, 500));
+            sidebar.style.width = `${newWidth}px`;
+        }
+        if (isSnippetResizing) {
+            const delta = snippetStartX - e.clientX;
+            const newWidth = Math.max(200, Math.min(snippetStartWidth + delta, 450));
+            snippets.style.width = `${newWidth}px`;
+        }
+    };
+
+    const onMouseUp = () => {
+        if (isVerticalResizing || isSidebarResizing || isSnippetResizing) {
+            isVerticalResizing = false;
+            isSidebarResizing = false;
+            isSnippetResizing = false;
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        }
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+
     mainContent.appendChild(queryResults);
 
     // Snippet Library Resizer (horizontal)
     const snippetResizer = document.createElement('div');
-    snippetResizer.className = "w-1.5 bg-[#0b0d11] hover:bg-mysql-teal/50 cursor-col-resize flex items-center justify-center group transition-colors";
+    snippetResizer.className = `w-1.5 ${isLight ? 'bg-gray-200 hover:bg-mysql-teal/30' : 'bg-[#0b0d11] hover:bg-mysql-teal/50'} cursor-col-resize flex items-center justify-center group transition-colors`;
     snippetResizer.innerHTML = `
-        <div class="h-12 w-0.5 bg-white/10 group-hover:bg-mysql-teal/70 rounded-full transition-colors"></div>
+        <div class="h-12 w-0.5 ${isLight ? 'bg-gray-400' : 'bg-white/10'} group-hover:bg-mysql-teal/70 rounded-full transition-colors"></div>
     `;
     mainContent.appendChild(snippetResizer);
 
@@ -108,42 +142,37 @@ export function SqlWorkbench() {
         e.preventDefault();
     });
 
-    // Combined mousemove handler
-    document.addEventListener('mousemove', (e) => {
-        if (isVerticalResizing) {
-            const delta = e.clientY - verticalStartY;
-            const newHeight = Math.max(100, Math.min(verticalStartHeight + delta, queryResults.offsetHeight - 150));
-            queryEditor.style.height = `${newHeight}px`;
-        }
-        if (isSidebarResizing) {
-            const delta = e.clientX - sidebarStartX;
-            const newWidth = Math.max(180, Math.min(sidebarStartWidth + delta, 500));
-            sidebar.style.width = `${newWidth}px`;
-        }
-        if (isSnippetResizing) {
-            // Note: Snippet panel resizes from left, so delta is negative for expanding
-            const delta = snippetStartX - e.clientX;
-            const newWidth = Math.max(200, Math.min(snippetStartWidth + delta, 450));
-            snippets.style.width = `${newWidth}px`;
-        }
-    });
-
-    // Combined mouseup handler
-    document.addEventListener('mouseup', () => {
-        if (isVerticalResizing || isSidebarResizing || isSnippetResizing) {
-            isVerticalResizing = false;
-            isSidebarResizing = false;
-            isSnippetResizing = false;
-            document.body.style.cursor = '';
-            document.body.style.userSelect = '';
-        }
-    });
-
     container.appendChild(mainContent);
 
     // Footer
     const footer = WorkbenchFooter();
     container.appendChild(footer);
 
+    // --- Theme Handling ---
+    const onThemeChange = (e) => {
+        const isLightNew = e.detail.theme === 'light';
+        container.className = `flex-1 flex flex-col h-full overflow-hidden transition-all duration-300 ${isLightNew ? 'bg-gray-50' : ''}`;
+
+        // Update resizers and areas
+        sidebarResizer.className = `w-1.5 ${isLightNew ? 'bg-gray-200 hover:bg-mysql-teal/30' : 'bg-[#0b0d11] hover:bg-mysql-teal/50'} cursor-col-resize flex items-center justify-center group transition-colors`;
+        sidebarResizer.querySelector('div').className = `h-12 w-0.5 ${isLightNew ? 'bg-gray-400' : 'bg-white/10'} group-hover:bg-mysql-teal/70 rounded-full transition-colors`;
+
+        queryResults.className = `flex-1 flex flex-col overflow-hidden ${isLightNew ? 'bg-white' : 'bg-[#0f1115]'}`;
+        verticalResizer.className = `h-1.5 ${isLightNew ? 'bg-gray-100 hover:bg-mysql-teal/30' : 'bg-[#1a1d23] hover:bg-mysql-teal/50'} cursor-row-resize flex items-center justify-center group transition-colors`;
+        verticalResizer.querySelector('div').className = `w-12 h-0.5 ${isLightNew ? 'bg-gray-400' : 'bg-white/10'} group-hover:bg-mysql-teal/70 rounded-full transition-colors`;
+
+        snippetResizer.className = `w-1.5 ${isLightNew ? 'bg-gray-200 hover:bg-mysql-teal/30' : 'bg-[#0b0d11] hover:bg-mysql-teal/50'} cursor-col-resize flex items-center justify-center group transition-colors`;
+        snippetResizer.querySelector('div').className = `h-12 w-0.5 ${isLightNew ? 'bg-gray-400' : 'bg-white/10'} group-hover:bg-mysql-teal/70 rounded-full transition-colors`;
+    };
+    window.addEventListener('themechange', onThemeChange);
+
+    // Cleanup logic
+    container.onUnmount = () => {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+        window.removeEventListener('themechange', onThemeChange);
+    };
+
     return container;
 }
+
