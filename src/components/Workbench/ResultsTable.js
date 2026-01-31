@@ -347,6 +347,42 @@ export function ResultsTable() {
     };
 
     // --- Dynamic Rendering Logic ---
+    const showLoadingSkeleton = () => {
+        const table = container.querySelector('table');
+        if (!table) return;
+
+        const thead = table.querySelector('thead tr');
+        const tbody = table.querySelector('tbody');
+        
+        // Show skeleton headers
+        if (thead) {
+            thead.innerHTML = Array(5).fill(0).map((_, i) => `
+                <th class="p-3 border-r ${isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5')} border-b ${isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5')}">
+                    <div class="h-3 ${isLight ? 'bg-gray-200/40' : (isOceanic ? 'bg-ocean-border/20' : 'bg-white/5')} rounded animate-pulse opacity-50" style="width: ${60 + Math.random() * 40}%; animation-delay: ${i * 100}ms"></div>
+                </th>
+            `).join('');
+        }
+
+        // Show skeleton rows
+        if (tbody) {
+            tbody.innerHTML = Array(8).fill(0).map((_, rowIdx) => `
+                <tr class="opacity-40">
+                    ${Array(5).fill(0).map((_, colIdx) => `
+                        <td class="p-3 border-r ${isLight ? 'border-gray-100' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5')}">
+                            <div class="h-3 ${isLight ? 'bg-gray-200/40' : (isOceanic ? 'bg-ocean-border/20' : 'bg-white/5')} rounded animate-pulse" style="width: ${40 + Math.random() * 50}%; animation-delay: ${(rowIdx * 5 + colIdx) * 50}ms"></div>
+                        </td>
+                    `).join('')}
+                </tr>
+            `).join('');
+        }
+
+        // Update badge to show loading state
+        const rowCountBadge = container.querySelector('#row-count-badge');
+        if (rowCountBadge) {
+            rowCountBadge.innerHTML = '<span class="animate-pulse opacity-60">LOADING...</span>';
+        }
+    };
+
     const renderTable = async (data) => {
         currentData = data;
         const { columns, rows, query } = data;
@@ -570,6 +606,11 @@ export function ResultsTable() {
             clearPendingChanges(); // Clear on new query
             renderTable(e.detail);
         }
+    });
+
+    // Listen for query execution start
+    window.addEventListener('tactilesql:query-executing', () => {
+        showLoadingSkeleton();
     });
 
     renderControls();

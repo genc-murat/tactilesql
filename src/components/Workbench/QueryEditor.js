@@ -867,6 +867,9 @@ export function QueryEditor() {
                     executeBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span>';
                     executeBtn.classList.add('opacity-70', 'cursor-wait');
                     
+                    // Notify results table to show loading skeleton
+                    window.dispatchEvent(new CustomEvent('tactilesql:query-executing'));
+                    
                     // Execute query - UI stays responsive due to async/await
                     const result = await invoke('execute_query', { query: editorContent });
                     const endTime = performance.now();
@@ -941,6 +944,9 @@ export function QueryEditor() {
                 try {
                     explainBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span> ANALYZING';
                     explainBtn.classList.add('opacity-70');
+
+                    // Notify results table to show loading skeleton
+                    window.dispatchEvent(new CustomEvent('tactilesql:query-executing'));
 
                     const result = await invoke('execute_query', { query: explainQuery });
 
