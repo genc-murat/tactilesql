@@ -153,7 +153,7 @@ export function QueryEditor() {
 
     // --- State ---
     let tabs = [
-        { id: '1', title: 'Query 1', content: 'SELECT * FROM information_schema.tables;' }
+        { id: '1', title: 'Query 1', content: '' }
     ];
     let activeTabId = '1';
     let lastExecutionTime = null;
