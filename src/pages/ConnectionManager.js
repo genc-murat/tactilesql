@@ -31,6 +31,8 @@ export function ConnectionManager() {
     };
 
     const renderGridView = () => {
+        const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+
         container.innerHTML = `
             <div class="max-w-7xl mx-auto w-full h-full flex flex-col p-10">
                 <header class="flex items-center justify-between mb-10 shrink-0">
@@ -44,9 +46,22 @@ export function ConnectionManager() {
                 </header>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 overflow-y-auto custom-scrollbar pb-10">
-                    ${connections.map(conn => `
-                        <div class="neu-card group relative p-6 rounded-3xl border border-white/5 hover:border-cyan-500/50 transition-all hover:shadow-[0_0_30px_rgba(6,182,212,0.1)] bg-[#13161b]">
-                            <div class="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    ${connections.map(conn => {
+            const isActive = activeConfig && String(activeConfig.id) === String(conn.id);
+
+            return `
+                        <div class="neu-card group relative p-6 rounded-3xl border ${isActive ? 'border-green-500/30 shadow-[0_0_20px_rgba(34,197,94,0.1)]' : 'border-white/5'} hover:border-cyan-500/50 transition-all bg-[#13161b]">
+                            
+                            ${isActive ? `
+                                <div class="absolute top-4 left-4 z-10">
+                                    <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-500/10 border border-green-500/20">
+                                        <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                                        <span class="text-[10px] font-mono text-green-400">Connected</span>
+                                    </div>
+                                </div>
+                            ` : ''}
+
+                            <div class="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                                 <button data-id="${conn.id}" class="edit-btn p-2 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="Edit Configuration">
                                     <span class="material-symbols-outlined text-sm">settings</span>
                                 </button>
@@ -55,9 +70,9 @@ export function ConnectionManager() {
                                 </button>
                             </div>
 
-                            <div class="mb-6">
-                                <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border border-white/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
-                                    <span class="material-symbols-outlined text-cyan-400 text-2xl">database</span>
+                            <div class="mb-6 mt-8">
+                                <div class="w-14 h-14 rounded-2xl ${isActive ? 'bg-green-500/10 border-green-500/30' : 'bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border-white/10'} border flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
+                                    <span class="material-symbols-outlined ${isActive ? 'text-green-400' : 'text-cyan-400'} text-2xl">database</span>
                                 </div>
                                 <h3 class="text-lg font-bold text-white mb-1 truncate" title="${conn.name}">${conn.name}</h3>
                                 <div class="flex items-center gap-2 text-xs text-gray-500 font-mono">
@@ -68,10 +83,10 @@ export function ConnectionManager() {
                             </div>
 
                             <button data-id="${conn.id}" class="connect-btn w-full py-3 rounded-xl bg-white/5 hover:bg-cyan-500 hover:text-white text-gray-300 font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 group-hover:bg-cyan-500/20 group-hover:text-cyan-400 overflow-hidden relative">
-                                <span class="material-symbols-outlined">bolt</span> Connect
+                                <span class="material-symbols-outlined">bolt</span> ${isActive ? 'Open Workspace' : 'Connect'}
                             </button>
                         </div>
-                    `).join('')}
+                    `}).join('')}
                     
                     ${connections.length === 0 ? `
                         <div class="col-span-full py-20 text-center flex flex-col items-center justify-center border-2 border-dashed border-white/10 rounded-3xl">
@@ -299,9 +314,24 @@ export function ConnectionManager() {
         }
     };
 
+    const verifyActiveConnection = async () => {
+        const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || 'null');
+        if (!activeConfig) return;
+
+        try {
+            // Check if backend really has this connection alive
+            await invoke('execute_query', { query: 'SELECT 1' });
+        } catch (error) {
+            // Backend memory cleared (restart?) or connection dead
+            console.warn("Cleared stale active connection:", error);
+            localStorage.removeItem('activeConnection');
+        }
+    };
+
     // --- INIT ---
-    loadConnections().then(() => {
-        render(); // Initial Render
+    // Load connections and verify active state in parallel before rendering
+    Promise.all([loadConnections(), verifyActiveConnection()]).then(() => {
+        render();
     });
 
     return container;
