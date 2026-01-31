@@ -433,7 +433,7 @@ export function ObjectExplorer() {
                 <span class="material-symbols-outlined text-sm text-mysql-teal">schema</span> Schema Design
             </button>
             <button class="w-full text-left px-3 py-2 text-[11px] font-bold text-gray-300 hover:bg-white/5 hover:text-white flex items-center gap-2" id="ctx-select">
-                <span class="material-symbols-outlined text-sm text-cyan-400">table_view</span> Select Top 1000
+                <span class="material-symbols-outlined text-sm text-cyan-400">table_view</span> Select Top 200
             </button>
             <button class="w-full text-left px-3 py-2 text-[11px] font-bold text-gray-300 hover:bg-white/5 hover:text-white flex items-center gap-2" id="ctx-copy">
                 <span class="material-symbols-outlined text-sm text-gray-500">content_copy</span> Copy Name
@@ -452,7 +452,22 @@ export function ObjectExplorer() {
             window.location.hash = `/schema?db=${encodeURIComponent(dbName)}&table=${encodeURIComponent(tableName)}`;
             menu.remove();
         };
-        menu.querySelector('#ctx-select').onclick = () => menu.remove();
+        menu.querySelector('#ctx-select').onclick = async () => {
+            menu.remove();
+            const query = `SELECT * FROM \`${dbName}\`.\`${tableName}\` LIMIT 200`;
+
+            // Update query editor content
+            window.dispatchEvent(new CustomEvent('tactilesql:set-query', { detail: { query } }));
+
+            try {
+                const result = await invoke('execute_query', { query });
+                // Dispatch result directly to results table
+                result.query = query;
+                window.dispatchEvent(new CustomEvent('tactilesql:query-result', { detail: result }));
+            } catch (error) {
+                Dialog.alert('Query failed: ' + error, 'Error');
+            }
+        };
         menu.querySelector('#ctx-copy').onclick = () => {
             navigator.clipboard.writeText(tableName);
             menu.remove();

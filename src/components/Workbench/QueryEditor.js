@@ -655,5 +655,20 @@ export function QueryEditor() {
         }
     });
 
+    // Listen for set-query requests (from ObjectExplorer context menu)
+    window.addEventListener('tactilesql:set-query', (e) => {
+        const query = e.detail?.query;
+        if (!query) return;
+
+        // Update active tab content
+        const activeTab = tabs.find(t => t.id === activeTabId);
+        if (activeTab) {
+            activeTab.content = query;
+        }
+
+        // Re-render to update the textarea
+        render();
+    });
+
     return container;
 }
