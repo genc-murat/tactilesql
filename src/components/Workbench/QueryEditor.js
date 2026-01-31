@@ -259,16 +259,34 @@ export function QueryEditor() {
         const word = getCurrentWord(textarea);
         const wordStart = cursorPos - word.length;
 
-        const newText = text.substring(0, wordStart) + suggestion.value + text.substring(cursorPos);
+        // Determine what to insert based on the suggestion type and current word
+        let insertValue = suggestion.value;
+
+        // If user typed a dot pattern (e.g., "db." or "table."), and suggestion has a prefix,
+        // only insert the part after the dot if the suggestion display differs from value
+        if (word.includes('.') && suggestion.display) {
+            // User already typed the prefix, so just add the suffix part
+            const dotIndex = word.lastIndexOf('.');
+            const prefix = word.substring(0, dotIndex + 1); // includes the dot
+            insertValue = prefix + suggestion.display;
+        }
+
+        const newText = text.substring(0, wordStart) + insertValue + text.substring(cursorPos);
         textarea.value = newText;
 
-        const newCursorPos = wordStart + suggestion.value.length;
+        const newCursorPos = wordStart + insertValue.length;
         textarea.setSelectionRange(newCursorPos, newCursorPos);
 
         // Update tab content
         const activeTab = tabs.find(t => t.id === activeTabId);
         if (activeTab) {
             activeTab.content = newText;
+        }
+
+        // Update syntax highlighting immediately
+        const syntaxHighlight = container.querySelector('#syntax-highlight');
+        if (syntaxHighlight) {
+            syntaxHighlight.innerHTML = highlightSQL(newText) + '\n';
         }
 
         hideAutocomplete();
