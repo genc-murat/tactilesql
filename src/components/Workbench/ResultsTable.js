@@ -66,6 +66,30 @@ export function ResultsTable() {
                     </button>
                 </div>
             </div>
+            ${resultTabs.length > 0 ? `
+            <div class="flex items-center gap-1 px-4 py-1.5 ${isLight ? 'bg-gray-100 border-gray-200' : (isOceanic ? 'bg-[#2E3440] border-ocean-border/20' : 'bg-[#13161b] border-white/5')} border-b overflow-x-auto custom-scrollbar">
+                <span class="material-symbols-outlined text-xs text-gray-500 mr-1">tab</span>
+                ${resultTabs.map(tab => `
+                    <div class="result-tab flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium cursor-pointer transition-all ${tab.id === activeTabId
+                ? (isLight ? 'bg-white border-gray-200 text-gray-700 shadow-sm' : (isOceanic ? 'bg-ocean-bg border-ocean-frost/30 text-ocean-text' : 'bg-[#1a1d23] border-mysql-teal/30 text-white'))
+                : (isLight ? 'bg-gray-50 border-transparent text-gray-500 hover:bg-gray-100' : (isOceanic ? 'bg-ocean-bg/50 border-transparent text-ocean-text/60 hover:bg-ocean-bg' : 'bg-white/5 border-transparent text-gray-400 hover:bg-white/10'))
+            } border group" data-tab-id="${tab.id}" title="${tab.query}">
+                        ${tab.pinned ? '<span class="material-symbols-outlined text-[10px] text-yellow-500">push_pin</span>' : ''}
+                        <span class="truncate max-w-[120px]">${tab.title}</span>
+                        <span class="px-1 py-0.5 rounded text-[8px] ${isLight ? 'bg-gray-100 text-gray-500' : 'bg-white/10 text-gray-400'}">${tab.data.rows?.length || 0}</span>
+                        <button class="tab-pin-btn opacity-0 group-hover:opacity-100 transition-opacity ${tab.pinned ? 'text-yellow-500' : 'text-gray-400 hover:text-yellow-500'}" data-tab-id="${tab.id}" title="${tab.pinned ? 'Unpin' : 'Pin'}">
+                            <span class="material-symbols-outlined text-[10px]">push_pin</span>
+                        </button>
+                        <button class="tab-close-btn opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-400" data-tab-id="${tab.id}" title="Close">
+                            <span class="material-symbols-outlined text-[10px]">close</span>
+                        </button>
+                    </div>
+                `).join('')}
+                <button id="clear-all-tabs-btn" class="flex items-center gap-1 px-2 py-1 text-[9px] text-gray-500 hover:text-red-400 transition-colors" title="Close All Tabs">
+                    <span class="material-symbols-outlined text-[10px]">close_all</span>
+                </button>
+            </div>
+            ` : ''}
             <div class="flex-1 overflow-auto custom-scrollbar ${isLight ? 'bg-white' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0f1115]')}">
                 <table id="results-table" class="w-full text-left font-mono text-[11px] border-collapse">
                     <thead class="sticky top-0 ${isLight ? 'bg-gray-100' : (isOceanic ? 'bg-ocean-panel' : 'bg-[#16191e]')} z-10 transition-colors">
@@ -105,6 +129,77 @@ export function ResultsTable() {
     let selectedRows = new Set();
     let hiddenColumns = new Set();
     let showColumnMenu = false;
+
+    // --- Result Tabs State ---
+    let resultTabs = []; // Array of {id, title, query, data, timestamp, pinned}
+    let activeTabId = null;
+    const MAX_TABS = 10;
+
+    const generateTabId = () => `tab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    const addResultTab = (query, data) => {
+        const id = generateTabId();
+        const title = query.trim().substring(0, 30) + (query.length > 30 ? '...' : '');
+
+        // Remove oldest unpinned tab if at max
+        if (resultTabs.length >= MAX_TABS) {
+            const unpinnedIdx = resultTabs.findIndex(t => !t.pinned);
+            if (unpinnedIdx !== -1) {
+                resultTabs.splice(unpinnedIdx, 1);
+            }
+        }
+
+        resultTabs.push({
+            id,
+            title,
+            query,
+            data: { ...data },
+            timestamp: Date.now(),
+            pinned: false
+        });
+
+        activeTabId = id;
+        return id;
+    };
+
+    const removeResultTab = (tabId) => {
+        const idx = resultTabs.findIndex(t => t.id === tabId);
+        if (idx === -1) return;
+
+        resultTabs.splice(idx, 1);
+
+        if (activeTabId === tabId) {
+            // Switch to adjacent tab or newest
+            if (resultTabs.length > 0) {
+                const newIdx = Math.min(idx, resultTabs.length - 1);
+                activeTabId = resultTabs[newIdx].id;
+                currentData = resultTabs[newIdx].data;
+            } else {
+                activeTabId = null;
+                currentData = { columns: [], rows: [], metadata: {} };
+            }
+        }
+    };
+
+    const pinResultTab = (tabId) => {
+        const tab = resultTabs.find(t => t.id === tabId);
+        if (tab) {
+            tab.pinned = !tab.pinned;
+        }
+    };
+
+    const setActiveTab = (tabId) => {
+        const tab = resultTabs.find(t => t.id === tabId);
+        if (tab) {
+            activeTabId = tabId;
+            currentData = tab.data;
+            clearPendingChanges();
+            selectedRows.clear();
+            hiddenColumns.clear();
+        }
+    };
+
+    const getActiveTab = () => resultTabs.find(t => t.id === activeTabId);
 
     // --- Helpers ---
     const formatCellForTitle = (cell) => {
@@ -819,6 +914,48 @@ export function ResultsTable() {
                 }, 150); // 150ms debounce delay
             });
         }
+
+        // --- Result Tabs Events ---
+        container.querySelectorAll('.result-tab').forEach(tab => {
+            tab.addEventListener('click', (e) => {
+                if (e.target.closest('.tab-pin-btn') || e.target.closest('.tab-close-btn')) return;
+                const tabId = tab.dataset.tabId;
+                setActiveTab(tabId);
+                renderTable(currentData);
+            });
+        });
+
+        container.querySelectorAll('.tab-pin-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const tabId = btn.dataset.tabId;
+                pinResultTab(tabId);
+                renderControls();
+                if (currentData.rows.length) renderTable(currentData);
+            });
+        });
+
+        container.querySelectorAll('.tab-close-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const tabId = btn.dataset.tabId;
+                removeResultTab(tabId);
+                renderControls();
+                if (currentData.rows.length) renderTable(currentData);
+            });
+        });
+
+        const clearAllTabsBtn = container.querySelector('#clear-all-tabs-btn');
+        if (clearAllTabsBtn) {
+            clearAllTabsBtn.addEventListener('click', async () => {
+                if (await Dialog.confirm('Close all result tabs?', 'Clear Results')) {
+                    resultTabs = [];
+                    activeTabId = null;
+                    currentData = { columns: [], rows: [], metadata: {} };
+                    renderControls();
+                }
+            });
+        }
     }
 
     // --- Theme Change Handling ---
@@ -845,6 +982,12 @@ export function ResultsTable() {
             selectedRows.clear(); // Clear selection on new query
             hiddenColumns.clear(); // Reset column visibility on new query
             updateSelectionIndicator();
+
+            // Add to result tabs
+            const query = e.detail.query || e.detail.metadata?.query || 'Query Result';
+            addResultTab(query, e.detail);
+
+            renderControls(); // Re-render to show new tab
             renderTable(e.detail);
         }
     });
