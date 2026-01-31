@@ -34,6 +34,9 @@ export function TitleBar() {
     controlsDiv.appendChild(WindowControls());
     content.appendChild(controlsDiv);
 
+    // Add content to container
+    container.appendChild(content);
+
     // --- Theme Handling ---
     const onThemeChange = (e) => {
         theme = e.detail.theme;
