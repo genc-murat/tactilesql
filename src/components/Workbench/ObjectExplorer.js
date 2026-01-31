@@ -17,11 +17,13 @@ export function ObjectExplorer() {
     explorer.className = getExplorerClass(theme);
 
     // --- State ---
-    let databases = [];
+    let connections = [];
+    let activeConnectionId = null; // ID of the currently active connection
+    let databases = []; // Databases for the ACTIVE connection only
     let expandedDbs = new Set();
     let expandedTables = new Set();
-    let dbObjects = {}; // cache: { dbName: { tables, views, triggers, procedures, functions, events } }
-    let tableDetails = {}; // cache: { "db.table": { columns, indexes, fks, constraints } }
+    let dbObjects = {}; // cache for active connection
+    let tableDetails = {}; // cache for active connection
 
     const systemDatabases = ['mysql', 'information_schema', 'performance_schema', 'sys'];
 
@@ -165,40 +167,121 @@ export function ObjectExplorer() {
         `;
     };
 
-    // --- Render ---
-    const render = () => {
+    // --- Render all databases for active connection ---
+    const renderActiveConnectionData = () => {
         const userDbs = databases.filter(db => !systemDatabases.includes(db.toLowerCase()));
         const systemDbs = databases.filter(db => systemDatabases.includes(db.toLowerCase()));
 
-        explorer.innerHTML = `
-            <div class="flex items-center justify-between px-2">
-                <h2 class="text-[10px] font-bold uppercase tracking-[0.15em] ${isLight ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500')}">Object Explorer</h2>
-                <div class="flex gap-2">
-                    <span id="refresh-btn" class="material-symbols-outlined text-[16px] ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-600')} cursor-pointer hover:text-mysql-teal" title="Refresh">sync</span>
-                </div>
-            </div>
-            <div id="explorer-tree" class="flex-1 overflow-y-auto custom-scrollbar font-mono text-[11px] space-y-1">
-                ${databases.length === 0 ? `<div class="p-4 ${isLight ? 'text-gray-400' : 'text-gray-600'} italic">No databases found</div>` : ''}
-                ${userDbs.length > 0 ? `
-                    <div class="mb-3">
-                        <div class="px-2 py-1.5 text-[9px] font-bold uppercase tracking-[0.2em] ${isLight ? 'text-gray-400' : 'text-gray-600'} flex items-center gap-2">
+        if (databases.length === 0) {
+            return `<div class="pl-6 py-1 ${isLight ? 'text-gray-400' : 'text-gray-600'} italic text-[10px]">No databases found</div>`;
+        }
+
+        return `
+            <div class="pl-3 border-l ${isLight ? 'border-gray-200' : 'border-white/5'} ml-3 space-y-1 mt-1">
+                 ${userDbs.length > 0 ? `
+                    <div class="mb-2">
+                         <div class="px-2 py-1 text-[9px] font-bold uppercase tracking-[0.2em] ${isLight ? 'text-gray-400' : 'text-gray-600'} flex items-center gap-2">
                             <span class="material-symbols-outlined text-[12px] text-mysql-teal">database</span>
                             User Databases
                         </div>
-                        <div class="space-y-0.5">${userDbs.map(db => renderDatabase(db)).join('')}</div>
+                        <div class="space-y-0.5 pl-1">${userDbs.map(db => renderDatabase(db)).join('')}</div>
                     </div>
                 ` : ''}
                 ${systemDbs.length > 0 ? `
                     <div class="mt-2 pt-2 border-t ${isLight ? 'border-gray-100' : 'border-white/5'}">
-                        <div class="px-2 py-1.5 text-[9px] font-bold uppercase tracking-[0.2em] ${isLight ? 'text-gray-400' : 'text-gray-600'} flex items-center gap-2">
-                            <span class="material-symbols-outlined text-[12px] text-amber-500">settings</span>
-                            System Databases
+                        <div class="px-2 py-1 text-[9px] font-bold uppercase tracking-[0.2em] ${isLight ? 'text-gray-400' : 'text-gray-600'} flex items-center gap-2">
+                             <span class="material-symbols-outlined text-[12px] text-amber-500">settings</span>
+                             System Databases
                         </div>
-                        <div class="space-y-0.5 opacity-70">${systemDbs.map(db => renderDatabase(db)).join('')}</div>
+                        <div class="space-y-0.5 opacity-70 pl-1">${systemDbs.map(db => renderDatabase(db)).join('')}</div>
                     </div>
                 ` : ''}
             </div>
         `;
+    };
+
+    // --- Render Connection Node ---
+    const renderConnectionNode = (conn) => {
+        const isActive = conn.id === activeConnectionId;
+        // Logic: Only active connection is expanded to show DBs
+        // Inactive connections are collapsed. Clicking them triggers switch.
+
+        return `
+            <div class="connection-node">
+                <div class="conn-item flex items-center gap-2 py-1.5 px-2 rounded-md ${isActive ? (isLight ? 'bg-blue-50' : 'bg-white/5') : (isLight ? 'hover:bg-gray-100' : 'hover:bg-white/5')} cursor-pointer transition-colors group" data-id="${conn.id}">
+                    <span class="material-symbols-outlined text-xs transition-transform ${isActive ? 'rotate-90' : ''} ${isLight ? 'text-gray-400' : 'text-gray-600'}">arrow_right</span>
+                    
+                    <div class="relative">
+                        <span class="material-symbols-outlined ${isActive ? 'text-green-400' : (isLight ? 'text-gray-400' : 'text-gray-600')} text-base">dns</span>
+                        ${isActive ? '<div class="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-green-500 border-2 border-[#0b0d11]"></div>' : ''}
+                    </div>
+
+                    <div class="flex-1 min-w-0">
+                        <div class="text-[11px] font-bold ${isActive ? (isLight ? 'text-gray-800' : 'text-white') : (isLight ? 'text-gray-500' : 'text-gray-400')} truncate">${conn.name || 'Unnamed Connection'}</div>
+                        <div class="text-[9px] ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-600')} truncate">${conn.username}@${conn.host}</div>
+                    </div>
+
+                    ${!isActive ? `
+                        <button class="conn-connect-btn opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-green-500/20 text-green-400 transition-all" title="Connect" data-id="${conn.id}">
+                            <span class="material-symbols-outlined text-sm">bolt</span>
+                        </button>
+                    ` : ''}
+                </div>
+                ${isActive ? renderActiveConnectionData() : ''}
+            </div>
+        `;
+    };
+
+    // --- Render ---
+    const render = () => {
+        explorer.innerHTML = `
+            <div class="flex items-center justify-between px-2">
+                <h2 class="text-[10px] font-bold uppercase tracking-[0.15em] ${isLight ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500')}">Explorer</h2>
+                <div class="flex gap-2">
+                    <span id="refresh-btn" class="material-symbols-outlined text-[16px] ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-600')} cursor-pointer hover:text-mysql-teal" title="Reload Connections">sync</span>
+                    <a href="#/connections" class="material-symbols-outlined text-[16px] ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-600')} cursor-pointer hover:text-mysql-teal" title="Manage Connections">settings</a>
+                </div>
+            </div>
+            
+            <div id="explorer-tree" class="flex-1 overflow-y-auto custom-scrollbar font-mono text-[11px] space-y-2 mt-2">
+                ${connections.length === 0 ?
+                `<div class="p-4 ${isLight ? 'text-gray-400' : 'text-gray-600'} italic text-center">
+                        <div>No connections</div>
+                        <a href="#/connections" class="text-mysql-teal hover:underline text-[10px] mt-1 inline-block">Add Connection</a>
+                    </div>`
+                : ''}
+                ${connections.map(conn => renderConnectionNode(conn)).join('')}
+            </div>
+        `;
+
+        // Connection Interaction
+        explorer.querySelectorAll('.conn-item').forEach(item => {
+            item.addEventListener('click', async (e) => {
+                // Ignore if clicked on the connect button specifically (handled separately, though logic is similar)
+                if (e.target.closest('.conn-connect-btn')) return;
+
+                const id = item.dataset.id;
+                if (id !== activeConnectionId) {
+                    // Try to switch connection
+                    await switchConnection(id);
+                } else {
+                    // Toggle collapse? For now, we always keep active expanded.
+                    // Maybe we can support collapsing active connection too, but keeping it simple.
+                }
+            });
+
+            item.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                showConnectionContextMenu(e.clientX, e.clientY, item.dataset.id);
+            });
+        });
+
+        explorer.querySelectorAll('.conn-connect-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                await switchConnection(btn.dataset.id);
+            });
+        });
 
         // Database expand/collapse
         explorer.querySelectorAll('.db-item').forEach(item => {
@@ -270,12 +353,104 @@ export function ObjectExplorer() {
         const refreshBtn = explorer.querySelector('#refresh-btn');
         if (refreshBtn) {
             refreshBtn.addEventListener('click', () => {
-                dbObjects = {};
-                tableDetails = {};
-                expandedTables.clear();
-                loadDatabases();
+                loadConnections();
             });
         }
+    };
+
+    // --- Switch Connection ---
+    const switchConnection = async (id) => {
+        const connConfig = connections.find(c => c.id === id);
+        if (!connConfig) return;
+
+        try {
+            // Visual feedback could be added here (spinner etc)
+            await invoke('establish_connection', {
+                config: connConfig
+            });
+
+            // Persist as active
+            localStorage.setItem('activeConnection', JSON.stringify(connConfig));
+            activeConnectionId = id;
+
+            // Reset state for new connection
+            databases = [];
+            expandedDbs.clear();
+            expandedTables.clear();
+            dbObjects = {};
+            tableDetails = {};
+
+            render(); // Re-render to show active state immediately
+
+            // Load databases for the new connection
+            await loadDatabases();
+
+        } catch (error) {
+            Dialog.alert('Failed to connect: ' + error, 'Connection Error');
+        }
+    };
+
+    // --- Context Menus ---
+    const showConnectionContextMenu = (x, y, id) => {
+        const existing = document.getElementById('explorer-context-menu');
+        if (existing) existing.remove();
+
+        const menu = document.createElement('div');
+        menu.id = 'explorer-context-menu';
+        menu.className = `fixed z-[9999] ${isLight ? 'bg-white border-gray-200 shadow-lg' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50 shadow-xl' : 'bg-[#1a1d23] border border-white/10 shadow-xl')} rounded-lg py-1 w-48`;
+        menu.style.left = `${x}px`;
+        menu.style.top = `${y}px`;
+
+        const isCurrent = id === activeConnectionId;
+
+        menu.innerHTML = `
+            <div class="px-3 py-1.5 text-[10px] font-mono ${isLight ? 'text-gray-400 border-gray-100' : (isOceanic ? 'text-ocean-text/40 border-ocean-border/30' : 'text-gray-500 border-white/5')} border-b uppercase tracking-widest mb-1">
+                Connection Options
+            </div>
+            ${!isCurrent ? `
+                <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5 hover:text-white'} flex items-center gap-2" id="ctx-conn-connect">
+                    <span class="material-symbols-outlined text-sm text-green-400">bolt</span> Connect
+                </button>
+            ` : `
+                 <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5 hover:text-white'} flex items-center gap-2" id="ctx-conn-refresh">
+                    <span class="material-symbols-outlined text-sm text-blue-400">sync</span> Refresh Databases
+                </button>
+            `}
+            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5 hover:text-white'} flex items-center gap-2" id="ctx-conn-edit">
+                <span class="material-symbols-outlined text-sm text-mysql-teal">edit</span> Edit Connection
+            </button>
+        `;
+
+        document.body.appendChild(menu);
+
+        const btnConnect = menu.querySelector('#ctx-conn-connect');
+        if (btnConnect) {
+            btnConnect.onclick = () => {
+                switchConnection(id);
+                menu.remove();
+            };
+        }
+
+        const btnRefresh = menu.querySelector('#ctx-conn-refresh');
+        if (btnRefresh) {
+            btnRefresh.onclick = () => {
+                loadDatabases();
+                menu.remove();
+            };
+        }
+
+        menu.querySelector('#ctx-conn-edit').onclick = () => {
+            // Navigate to connection manager with this ID
+            // We can do this by setting hash and filtering, but for now simple nav
+            window.location.hash = '/connections';
+            menu.remove();
+        };
+
+        const closeMenu = () => {
+            menu.remove();
+            document.removeEventListener('click', closeMenu);
+        };
+        setTimeout(() => document.addEventListener('click', closeMenu), 0);
     };
 
     // --- View Context Menu ---
@@ -491,12 +666,36 @@ export function ObjectExplorer() {
     };
 
     // --- Data Loading ---
+    const loadConnections = async () => {
+        try {
+            connections = await invoke('get_connections');
+            // Try to resolve active connection ID
+            const stored = JSON.parse(localStorage.getItem('activeConnection') || 'null');
+            if (stored && stored.id) {
+                activeConnectionId = stored.id;
+            } else {
+                activeConnectionId = null;
+            }
+            render();
+            // If we have an active connection, load its dbs
+            if (activeConnectionId) {
+                loadDatabases();
+            }
+        } catch (error) {
+            console.error('Failed to load connections:', error);
+            // Fallback render
+            render();
+        }
+    };
+
     const loadDatabases = async () => {
         try {
             databases = await invoke('get_databases');
             render();
         } catch (error) {
             console.error('Failed to load databases:', error);
+            // It's possible the connection is dead, we could handle that by unsetting active status
+            // but for now let's just log it.
         }
     };
 
@@ -553,8 +752,7 @@ export function ObjectExplorer() {
     };
 
     render();
-    loadDatabases();
+    loadConnections(); // Initialize by loading connections
 
     return explorer;
 }
-
