@@ -178,10 +178,14 @@ pub async fn execute_query(
         pool_guard.clone().ok_or("No active connection")?
     };
 
-    let rows = sqlx::query(&query)
-        .fetch_all(&pool)
-        .await
-        .map_err(|e| format!("Execution failed: {}", e))?;
+    // Execute query with timeout to prevent UI blocking
+    let rows = tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        sqlx::query(&query).fetch_all(&pool)
+    )
+    .await
+    .map_err(|_| "Query timed out after 30 seconds".to_string())?
+    .map_err(|e| format!("Execution failed: {}", e))?;
 
     if rows.is_empty() {
         return Ok(QueryResult { columns: vec![], rows: vec![] });

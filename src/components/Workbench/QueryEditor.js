@@ -836,12 +836,19 @@ export function QueryEditor() {
         // Execute Logic
         const executeBtn = container.querySelector('#execute-btn');
         if (executeBtn) {
+            let isExecuting = false;
             executeBtn.addEventListener('click', async () => {
+                if (isExecuting) return; // Prevent double-click
+                isExecuting = true;
+                
                 const editorContent = container.querySelector('#query-input').value;
                 const startTime = performance.now();
+                const originalHTML = executeBtn.innerHTML;
                 try {
                     executeBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span> RUNNING';
-                    executeBtn.classList.add('opacity-70', 'cursor-not-allowed');
+                    executeBtn.classList.add('opacity-70');
+                    
+                    // Execute query - UI stays responsive due to async/await
                     const result = await invoke('execute_query', { query: editorContent });
                     const endTime = performance.now();
                     lastExecutionTime = Math.round(endTime - startTime);
@@ -881,8 +888,10 @@ export function QueryEditor() {
                     Dialog.alert('Query Execution Failed: ' + error, 'Execution Error');
                     render(); // Show execution time even on error
                 } finally {
-                    executeBtn.innerHTML = '<span class="material-symbols-outlined text-lg">play_arrow</span>';
-                    executeBtn.classList.remove('opacity-70', 'cursor-not-allowed');
+                    executeBtn.innerHTML = originalHTML;
+                    executeBtn.classList.remove('opacity-70');
+                    isExecuting = false;
+                    container.querySelector('#exec-time').textContent = `${lastExecutionTime}ms`;
                 }
             });
         }
@@ -890,23 +899,29 @@ export function QueryEditor() {
         // Explain Logic
         const explainBtn = container.querySelector('#explain-btn');
         if (explainBtn) {
+            let isExplaining = false;
             explainBtn.addEventListener('click', async () => {
+                if (isExplaining) return; // Prevent double-click
+                isExplaining = true;
+                
                 const textarea = container.querySelector('#query-input');
                 // Use selected text if available, otherwise use all content
                 const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
                 const queryToRun = selectedText.trim() ? selectedText : textarea.value;
 
                 if (!queryToRun.trim()) {
+                    isExplaining = false;
                     Dialog.alert('Please enter a query to explain.', 'Info');
                     return;
                 }
 
                 // Force TRADITIONAL format (tabular) for visual explain compatibility
                 const explainQuery = `EXPLAIN FORMAT=TRADITIONAL ${queryToRun}`;
+                const originalHTML = explainBtn.innerHTML;
 
                 try {
                     explainBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span> ANALYZING';
-                    explainBtn.classList.add('opacity-70', 'cursor-not-allowed');
+                    explainBtn.classList.add('opacity-70');
 
                     const result = await invoke('execute_query', { query: explainQuery });
 
@@ -920,8 +935,9 @@ export function QueryEditor() {
                 } catch (error) {
                     Dialog.alert('Explain Failed: ' + error, 'Analysis Error');
                 } finally {
-                    explainBtn.innerHTML = '<span class="material-symbols-outlined text-lg">analytics</span>';
-                    explainBtn.classList.remove('opacity-70', 'cursor-not-allowed');
+                    explainBtn.innerHTML = originalHTML;
+                    explainBtn.classList.remove('opacity-70');
+                    isExplaining = false;
                 }
             });
         }
