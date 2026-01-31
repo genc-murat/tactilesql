@@ -155,19 +155,35 @@ export function QueryEditor() {
             results.push(...tableMatches.map(t => ({ type: 'table', value: t, icon: 'table_rows', color: 'text-cyan-400' })));
         }
 
-        // Column names - check if word contains a dot (table.column)
+        // Check for database.table pattern or table.column pattern
         if (word.includes('.')) {
-            const [tablePart, colPart] = word.split('.');
-            const colLower = (colPart || '').toLowerCase();
+            const [part1, part2] = word.split('.');
+            const filterLower = (part2 || '').toLowerCase();
 
-            // Try to find columns for this table
+            // 1. Check if part1 is a known database
+            // We find the exact db name match (case-sensitive or insensitive depending on DB, but usually exact from cache)
+            const matchedDb = cachedDatabases.find(db => db === part1);
+            if (matchedDb) {
+                const tables = await loadTablesForAutocomplete(matchedDb);
+                const tableMatches = tables.filter(t => t.toLowerCase().startsWith(filterLower));
+                results.push(...tableMatches.map(t => ({
+                    type: 'table',
+                    value: `${matchedDb}.${t}`,
+                    display: t,
+                    icon: 'table_rows',
+                    color: 'text-cyan-400'
+                })));
+            }
+
+            // 2. Check if part1 is a known table (for columns)
+            // Try to find columns for this table in any loaded database
             for (const db of Object.keys(cachedTables)) {
-                if (cachedTables[db].includes(tablePart)) {
-                    const columns = await loadColumnsForAutocomplete(db, tablePart);
-                    const colMatches = columns.filter(c => c.toLowerCase().startsWith(colLower));
+                if (cachedTables[db].includes(part1)) {
+                    const columns = await loadColumnsForAutocomplete(db, part1);
+                    const colMatches = columns.filter(c => c.toLowerCase().startsWith(filterLower));
                     results.push(...colMatches.map(c => ({
                         type: 'column',
-                        value: `${tablePart}.${c}`,
+                        value: `${part1}.${c}`,
                         display: c,
                         icon: 'view_column',
                         color: 'text-orange-400'
