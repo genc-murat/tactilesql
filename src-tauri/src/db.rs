@@ -687,6 +687,38 @@ pub async fn get_triggers(
     Ok(triggers)
 }
 
+#[tauri::command]
+pub async fn get_table_triggers(
+    state: State<'_, AppState>,
+    database: String,
+    table: String
+) -> Result<Vec<TriggerInfo>, String> {
+    let pool = {
+        let pool_guard = state.pool.lock().unwrap();
+        pool_guard.clone().ok_or("No active connection")?
+    };
+
+    let query = format!("SHOW TRIGGERS FROM `{}` WHERE `Table` = '{}'", database, table);
+    
+    let rows = sqlx::query(&query)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("Failed to fetch table triggers: {}", e))?;
+
+    let mut triggers = Vec::new();
+    for row in rows {
+        use sqlx::Row;
+        triggers.push(TriggerInfo {
+            name: row.try_get("Trigger").unwrap_or_default(),
+            event: row.try_get("Event").unwrap_or_default(),
+            timing: row.try_get("Timing").unwrap_or_default(),
+            table_name: row.try_get("Table").unwrap_or_default(),
+        });
+    }
+
+    Ok(triggers)
+}
+
 #[derive(Serialize, Debug)]
 pub struct RoutineInfo {
     pub name: String,

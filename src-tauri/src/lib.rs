@@ -29,6 +29,7 @@ pub fn run() {
             db::get_table_constraints,
             db::get_views,
             db::get_triggers,
+            db::get_table_triggers,
             db::get_procedures,
             db::get_functions,
             db::get_events,

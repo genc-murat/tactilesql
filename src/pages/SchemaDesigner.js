@@ -29,8 +29,12 @@ export function SchemaDesigner() {
         // Constraints
         constraints: [],
 
+        // Triggers
+        triggers: [],
+        originalTriggers: [],
+
         // UI
-        activeTab: 'columns', // columns, indexes, foreign_keys, constraints
+        activeTab: 'columns', // columns, indexes, foreign_keys, constraints, triggers
         isLoading: true,
         error: null,
         tablesList: [], // For FK reference dropdown
@@ -41,7 +45,10 @@ export function SchemaDesigner() {
 
         showFKModal: false,
         newFK: { name: '', column: '', refTable: '', refColumn: '' },
-        refTableColumns: [] // Columns of the selected referenced table
+        refTableColumns: [], // Columns of the selected referenced table
+
+        showTriggerModal: false,
+        newTrigger: { name: '', timing: 'BEFORE', event: 'INSERT', body: '' }
     };
 
     const container = document.createElement('div');
@@ -90,6 +97,9 @@ export function SchemaDesigner() {
                                 </button>
                                 <button class="px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all" id="tab-constraints">
                                     Constraints
+                                </button>
+                                <button class="px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all" id="tab-triggers">
+                                    Triggers
                                 </button>
                             </div>
                             
@@ -203,6 +213,49 @@ export function SchemaDesigner() {
                     </div>
                 </div>
             </div>
+
+            <!-- ADD TRIGGER MODAL -->
+            <div id="modal-trigger-container" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] hidden items-center justify-center opacity-0 transition-opacity duration-200">
+                <div class="neu-card w-[600px] bg-[#1a1d23] border border-white/10 rounded-2xl shadow-2xl transform scale-95 transition-transform duration-200" id="modal-trigger-content">
+                    <div class="p-6 border-b border-white/5 flex items-center justify-between">
+                         <h2 class="text-sm font-black uppercase tracking-[0.2em] text-white">Create Trigger</h2>
+                         <button id="btn-modal-trigger-close" class="text-gray-500 hover:text-white transition-colors"><span class="material-symbols-outlined">close</span></button>
+                    </div>
+                    <div class="p-6 space-y-6">
+                        <div class="space-y-2">
+                            <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Trigger Name</label>
+                            <input type="text" id="inp-trigger-name" class="w-full bg-[#0b0d11] border border-white/10 rounded-lg px-3 py-2 text-xs font-mono text-white focus:border-mysql-teal outline-none" placeholder="trg_before_insert" />
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                             <div class="space-y-2">
+                                <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Timing</label>
+                                <select id="sel-trigger-timing" class="w-full bg-[#0b0d11] border border-white/10 rounded-lg px-3 py-2 text-xs font-mono text-white outline-none">
+                                    <option value="BEFORE">BEFORE</option>
+                                    <option value="AFTER">AFTER</option>
+                                </select>
+                            </div>
+                            <div class="space-y-2">
+                                <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Event</label>
+                                <select id="sel-trigger-event" class="w-full bg-[#0b0d11] border border-white/10 rounded-lg px-3 py-2 text-xs font-mono text-white outline-none">
+                                    <option value="INSERT">INSERT</option>
+                                    <option value="UPDATE">UPDATE</option>
+                                    <option value="DELETE">DELETE</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="space-y-2">
+                            <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Trigger Body (SQL)</label>
+                            <textarea id="txt-trigger-body" class="w-full h-32 bg-[#0b0d11] border border-white/10 rounded-lg px-3 py-2 text-xs font-mono text-white focus:border-mysql-teal outline-none resize-none custom-scrollbar" placeholder="BEGIN
+    -- Your SQL here
+END"></textarea>
+                        </div>
+                    </div>
+                    <div class="p-6 border-t border-white/5 flex justify-end gap-3 bg-[#121418] rounded-b-2xl">
+                         <button id="btn-modal-trigger-cancel" class="px-4 py-2 rounded text-xs font-bold text-gray-400 hover:text-white transition-colors">Cancel</button>
+                         <button id="btn-modal-trigger-save" class="px-5 py-2 rounded bg-mysql-teal text-white text-xs font-bold hover:brightness-110 shadow-lg shadow-mysql-teal/20">Create Trigger</button>
+                    </div>
+                </div>
+            </div>
     `;
 
     container.innerHTML = renderMainTemplate();
@@ -214,6 +267,7 @@ export function SchemaDesigner() {
         const tabIdx = container.querySelector('#tab-indexes');
         const tabFks = container.querySelector('#tab-fks');
         const tabCons = container.querySelector('#tab-constraints');
+        const tabTriggers = container.querySelector('#tab-triggers');
 
         const activeClass = 'bg-mysql-teal text-white shadow-lg';
         const inactiveClass = 'text-gray-500 hover:text-gray-300';
@@ -222,6 +276,7 @@ export function SchemaDesigner() {
         tabIdx.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'indexes' ? activeClass : inactiveClass}`;
         tabFks.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'foreign_keys' ? activeClass : inactiveClass}`;
         tabCons.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'constraints' ? activeClass : inactiveClass}`;
+        tabTriggers.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'triggers' ? activeClass : inactiveClass}`;
 
         // Render actions
         const actionsContainer = container.querySelector('#tab-actions');
@@ -259,6 +314,17 @@ export function SchemaDesigner() {
         } else if (state.activeTab === 'constraints') {
             actionsContainer.innerHTML = '';
             // Read-only view for now
+        } else if (state.activeTab === 'triggers') {
+            actionsContainer.innerHTML = `
+                <button class="h-7 px-3 flex items-center gap-2 rounded bg-white/5 border border-white/10 text-[10px] font-bold text-gray-400 hover:bg-white/10" id="btn-add-trigger">
+                    <span class="material-symbols-outlined text-sm">add</span> Add Trigger
+                </button>
+            `;
+            container.querySelector('#btn-add-trigger').onclick = () => {
+                state.showTriggerModal = true;
+                state.newTrigger = { name: '', timing: 'BEFORE', event: 'INSERT', body: '' };
+                renderTriggerModal();
+            };
         }
     }
 
@@ -306,7 +372,7 @@ export function SchemaDesigner() {
                 </tr>
             `;
             renderFKTable();
-        } else { // activeTab === 'constraints'
+        } else if (state.activeTab === 'constraints') {
             statusDisplay.innerText = `${state.constraints.length} CONSTRAINTS`;
             thead.innerHTML = `
                 <tr class="text-gray-500 uppercase text-[10px] tracking-widest">
@@ -317,6 +383,18 @@ export function SchemaDesigner() {
                 </tr>
             `;
             renderConstraintsTable();
+        } else { // activeTab === 'triggers'
+            statusDisplay.innerText = `${state.triggers.length} TRIGGERS`;
+            thead.innerHTML = `
+                <tr class="text-gray-500 uppercase text-[10px] tracking-widest">
+                     <th class="p-4 w-12 text-center">#</th>
+                     <th class="p-4 min-w-[150px]">Trigger Name</th>
+                     <th class="p-4">Event</th>
+                     <th class="p-4">Timing</th>
+                     <th class="p-4 w-10"></th>
+                </tr>
+             `;
+            renderTriggersTable();
         }
     }
 
@@ -501,6 +579,39 @@ export function SchemaDesigner() {
         });
     }
 
+    function renderTriggersTable() {
+        const tbody = container.querySelector('#table-body');
+        tbody.innerHTML = '';
+
+        if (state.isLoading) { renderLoading(tbody); return; }
+        if (state.triggers.length === 0) { renderEmpty(tbody, 'No triggers found for this table.'); return; }
+
+        state.triggers.forEach((trig, i) => {
+            const tr = document.createElement('tr');
+            tr.className = `group transition-colors hover:bg-white/[0.03] border-l-2 border-l-transparent`;
+
+            // Color code events (INSERT, UPDATE, DELETE)
+            let eventColor = 'text-gray-400';
+            if (trig.event === 'INSERT') eventColor = 'text-green-400';
+            if (trig.event === 'UPDATE') eventColor = 'text-blue-400';
+            if (trig.event === 'DELETE') eventColor = 'text-red-400';
+
+            tr.innerHTML = `
+                <td class="p-4 text-center text-gray-700 italic">${i + 1}</td>
+                <td class="p-4">
+                    <div class="flex items-center gap-2">
+                         <span class="material-symbols-outlined text-gray-500 text-sm">bolt</span>
+                         <span class="text-gray-200 font-bold font-mono text-xs">${trig.name}</span>
+                    </div>
+                </td>
+                <td class="p-4 ${eventColor} font-mono text-xs font-bold">${trig.event}</td>
+                <td class="p-4 text-purple-300 font-mono text-xs">${trig.timing}</td>
+                <td class="p-4"></td>
+           `;
+            tbody.appendChild(tr);
+        });
+    }
+
     function renderLoading(tbody) {
         tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center"><div class="flex items-center justify-center gap-3 text-gray-500"><span class="material-symbols-outlined animate-spin">progress_activity</span><span class="text-sm">Loading...</span></div></td></tr>`;
     }
@@ -544,6 +655,17 @@ export function SchemaDesigner() {
                     <span class="material-symbols-outlined text-4xl opacity-20">lock</span>
                     <p class="text-xs">Constraints</p>
                     <p class="text-[10px] text-gray-600">View all table constraints including Primary Keys, Unique Keys, Foreign Keys, and Check constraints.</p>
+                </div>
+            `;
+            return;
+        }
+
+        if (state.activeTab === 'triggers') {
+            sidebar.innerHTML = `
+                <div class="p-6 text-center text-gray-500 space-y-4 mt-10">
+                    <span class="material-symbols-outlined text-4xl opacity-20">bolt</span>
+                    <p class="text-xs">Triggers</p>
+                    <p class="text-[10px] text-gray-600">Triggers are special stored procedures that are run automatically when an event occurs in the database server.</p>
                 </div>
             `;
             return;
@@ -787,6 +909,39 @@ export function SchemaDesigner() {
         }
     }
 
+    function renderTriggerModal() {
+        const modal = container.querySelector('#modal-trigger-container');
+        const content = container.querySelector('#modal-trigger-content');
+
+        const inpName = container.querySelector('#inp-trigger-name');
+        const selTiming = container.querySelector('#sel-trigger-timing');
+        const selEvent = container.querySelector('#sel-trigger-event');
+        const txtBody = container.querySelector('#txt-trigger-body');
+
+        if (state.showTriggerModal) {
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            setTimeout(() => { modal.classList.remove('opacity-0'); content.classList.remove('scale-95'); content.classList.add('scale-100'); }, 10);
+
+            inpName.value = state.newTrigger.name;
+            selTiming.value = state.newTrigger.timing;
+            selEvent.value = state.newTrigger.event;
+            txtBody.value = state.newTrigger.body;
+
+            if (!state.newTrigger.name) inpName.focus();
+
+            // Bind Events
+            inpName.oninput = (e) => state.newTrigger.name = e.target.value;
+            selTiming.onchange = (e) => state.newTrigger.timing = e.target.value;
+            selEvent.onchange = (e) => state.newTrigger.event = e.target.value;
+            txtBody.oninput = (e) => state.newTrigger.body = e.target.value;
+
+        } else {
+            modal.classList.add('opacity-0'); content.classList.remove('scale-100'); content.classList.add('scale-95');
+            setTimeout(() => { modal.classList.add('hidden'); modal.classList.remove('flex'); }, 200);
+        }
+    }
+
 
     // --- Core Logic ---
 
@@ -883,6 +1038,28 @@ export function SchemaDesigner() {
                 sql += `ALTER TABLE \`${state.tableName}\` DROP FOREIGN KEY \`${fk.constraint_name}\`;\n`;
             }
         });
+
+        // Triggers
+        if (state.triggers) {
+            state.triggers.forEach(trig => {
+                const original = state.originalTriggers.find(t => t.name === trig.name);
+                if (!original) {
+                    hasChanges = true;
+                    // Create Trigger
+                    sql += `CREATE TRIGGER \`${trig.name}\` ${trig.timing} ${trig.event} ON \`${state.tableName}\` FOR EACH ROW
+BEGIN
+${trig.body}
+END;\n`;
+                }
+            });
+
+            state.originalTriggers.forEach(trig => {
+                if (!state.triggers.find(t => t.name === trig.name)) {
+                    hasChanges = true;
+                    sql += `DROP TRIGGER IF EXISTS \`${trig.name}\`;\n`;
+                }
+            });
+        }
 
         if (!hasChanges) {
             codeBlock.innerHTML = `<span class="text-gray-500 italic">-- No changes detected.</span>`;
@@ -1045,6 +1222,14 @@ export function SchemaDesigner() {
             });
             state.constraints = cons;
 
+            // 6. Get Triggers
+            const triggers = await invoke('get_table_triggers', {
+                database: state.database,
+                table: state.tableName
+            });
+            state.triggers = triggers;
+            state.originalTriggers = JSON.parse(JSON.stringify(triggers));
+
         } catch (err) {
             console.error('Failed to load schema:', err);
             state.error = typeof err === 'string' ? err : JSON.stringify(err);
@@ -1079,6 +1264,7 @@ export function SchemaDesigner() {
     container.querySelector('#tab-indexes').onclick = () => { state.activeTab = 'indexes'; updateAll(); };
     container.querySelector('#tab-fks').onclick = () => { state.activeTab = 'foreign_keys'; updateAll(); };
     container.querySelector('#tab-constraints').onclick = () => { state.activeTab = 'constraints'; updateAll(); };
+    container.querySelector('#tab-triggers').onclick = () => { state.activeTab = 'triggers'; updateAll(); };
 
     // Push Changes
     const btnPush = container.querySelector('#btn-push-changes');
@@ -1123,6 +1309,19 @@ export function SchemaDesigner() {
             btnPush.disabled = false;
             btnPush.innerHTML = `<span class="material-symbols-outlined text-sm">publish</span> Push Changes`;
         }
+    };
+
+    // Trigger Modal Events
+    container.querySelector('#btn-modal-trigger-close').onclick = () => { state.showTriggerModal = false; renderTriggerModal(); };
+    container.querySelector('#btn-modal-trigger-cancel').onclick = () => { state.showTriggerModal = false; renderTriggerModal(); };
+    container.querySelector('#btn-modal-trigger-save').onclick = () => {
+        if (!state.newTrigger.name) { Dialog.alert('Please enter a trigger name'); return; }
+        if (!state.newTrigger.body) { Dialog.alert('Please enter trigger body SQL'); return; }
+
+        state.triggers.push({ ...state.newTrigger });
+        state.showTriggerModal = false;
+        renderTriggerModal();
+        updateAll();
     };
 
     return container;
