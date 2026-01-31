@@ -36,8 +36,11 @@ export function SchemaDesigner() {
         // DDL
         ddl: '',
 
+        // Stats
+        stats: null,
+
         // UI
-        activeTab: 'columns', // columns, indexes, foreign_keys, constraints, triggers, ddl
+        activeTab: 'columns', // columns, indexes, foreign_keys, constraints, triggers, ddl, stats
         isLoading: true,
         error: null,
         tablesList: [], // For FK reference dropdown
@@ -106,6 +109,9 @@ export function SchemaDesigner() {
                                 </button>
                                 <button class="px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all" id="tab-ddl">
                                     DDL
+                                </button>
+                                <button class="px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all" id="tab-stats">
+                                    Stats
                                 </button>
                             </div>
                             
@@ -274,9 +280,19 @@ END"></textarea>
         const tabFks = container.querySelector('#tab-fks');
         const tabCons = container.querySelector('#tab-constraints');
         const tabTriggers = container.querySelector('#tab-triggers');
+        const tabDdl = container.querySelector('#tab-ddl');
+        const tabStats = container.querySelector('#tab-stats');
 
         const activeClass = 'bg-mysql-teal text-white shadow-lg';
         const inactiveClass = 'text-gray-500 hover:text-gray-300';
+
+        tabCols.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'columns' ? activeClass : inactiveClass}`;
+        tabIdx.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'indexes' ? activeClass : inactiveClass}`;
+        tabFks.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'foreign_keys' ? activeClass : inactiveClass}`;
+        tabCons.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'constraints' ? activeClass : inactiveClass}`;
+        tabTriggers.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'triggers' ? activeClass : inactiveClass}`;
+        tabDdl.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'ddl' ? activeClass : inactiveClass}`;
+        tabStats.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'stats' ? activeClass : inactiveClass}`;
 
         tabCols.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'columns' ? activeClass : inactiveClass}`;
         tabIdx.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'indexes' ? activeClass : inactiveClass}`;
@@ -332,6 +348,8 @@ END"></textarea>
                 renderTriggerModal();
             };
         } else if (state.activeTab === 'ddl') {
+            actionsContainer.innerHTML = '';
+        } else if (state.activeTab === 'stats') {
             actionsContainer.innerHTML = '';
         }
     }
@@ -407,6 +425,10 @@ END"></textarea>
             statusDisplay.innerText = `CREATE STATEMENT`;
             thead.innerHTML = '';
             renderDDLView();
+        } else if (state.activeTab === 'stats') {
+            statusDisplay.innerText = `TABLE STATISTICS`;
+            thead.innerHTML = '';
+            renderStatsView();
         }
     }
 
@@ -644,6 +666,66 @@ END"></textarea>
         cell.appendChild(codeContainer);
         row.appendChild(cell);
         tbody.appendChild(row);
+    }
+
+    function renderStatsView() {
+        const tbody = container.querySelector('#table-body');
+        tbody.innerHTML = '';
+
+        if (state.isLoading) { renderLoading(tbody); return; }
+        if (!state.stats) { renderEmpty(tbody, 'No statistics available.'); return; }
+
+        // Helper for grid items
+        const renderItem = (label, value) => `
+            <div class="bg-white/5 border border-white/5 rounded p-4 flex flex-col gap-1">
+                <span class="text-[10px] uppercase font-bold tracking-widest text-gray-500">${label}</span>
+                <span class="text-sm font-mono text-white truncate" title="${value}">${value !== null && value !== undefined ? value : '-'}</span>
+            </div>
+        `;
+
+        // Available stats: rows, avg_row_length, data_length, max_data_length, index_length, data_free,
+        // row_format, create_time, update_time, check_time, engine, collation, auto_increment, checksum, table_comment
+
+        const stats = state.stats;
+
+        const gridHtml = `
+            <div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-6">
+                ${renderItem('Rows', stats.rows)}
+                ${renderItem('Engine', stats.engine)}
+                ${renderItem('Collation', stats.collation)}
+                ${renderItem('Auto Increment', stats.auto_increment)}
+                ${renderItem('Data Size', formatBytes(stats.data_length))}
+                ${renderItem('Index Size', formatBytes(stats.index_length))}
+                ${renderItem('Avg Row Length', stats.avg_row_length)}
+                ${renderItem('Max Data Length', formatBytes(stats.max_data_length))}
+                ${renderItem('Data Free', formatBytes(stats.data_free))}
+                ${renderItem('Row Format', stats.row_format)}
+                ${renderItem('Create Time', stats.create_time)}
+                ${renderItem('Update Time', stats.update_time)}
+                ${renderItem('Check Time', stats.check_time)}
+                ${renderItem('Checksum', stats.checksum)}
+                <div class="col-span-2 lg:col-span-3 xl:col-span-4 bg-white/5 border border-white/5 rounded p-4 flex flex-col gap-1">
+                    <span class="text-[10px] uppercase font-bold tracking-widest text-gray-500">Comment</span>
+                    <span class="text-sm text-white italic">${stats.table_comment || '-'}</span>
+                </div>
+            </div>
+        `;
+
+        const row = document.createElement('tr');
+        const cell = document.createElement('td');
+        cell.colSpan = 7;
+        cell.className = 'p-0 align-top';
+        cell.innerHTML = gridHtml;
+
+        row.appendChild(cell);
+        tbody.appendChild(row);
+    }
+
+    function formatBytes(bytes) {
+        if (!bytes) return '0 B';
+        const k = 1024;
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + ['B', 'KB', 'MB', 'GB', 'TB'][i];
     }
 
     function renderLoading(tbody) {
@@ -1280,6 +1362,18 @@ END;\n`;
                 state.ddl = `-- Failed to load DDL: ${e}`;
             }
 
+            // 8. Get Stats
+            try {
+                const stats = await invoke('get_table_stats', {
+                    database: state.database,
+                    table: state.tableName
+                });
+                state.stats = stats;
+            } catch (e) {
+                console.error("Failed to load Stats", e);
+                state.stats = null;
+            }
+
         } catch (err) {
             console.error('Failed to load schema:', err);
             state.error = typeof err === 'string' ? err : JSON.stringify(err);
@@ -1316,6 +1410,7 @@ END;\n`;
     container.querySelector('#tab-constraints').onclick = () => { state.activeTab = 'constraints'; updateAll(); };
     container.querySelector('#tab-triggers').onclick = () => { state.activeTab = 'triggers'; updateAll(); };
     container.querySelector('#tab-ddl').onclick = () => { state.activeTab = 'ddl'; updateAll(); };
+    container.querySelector('#tab-stats').onclick = () => { state.activeTab = 'stats'; updateAll(); };
 
     // Push Changes
     const btnPush = container.querySelector('#btn-push-changes');

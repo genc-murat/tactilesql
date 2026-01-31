@@ -616,6 +616,64 @@ pub async fn get_table_constraints(
     Ok(constraints)
 }
 
+#[derive(Serialize, Debug)]
+pub struct TableStats {
+    pub rows: Option<u64>,
+    pub avg_row_length: Option<u64>,
+    pub data_length: Option<u64>,
+    pub max_data_length: Option<u64>,
+    pub index_length: Option<u64>,
+    pub data_free: Option<u64>,
+    pub row_format: Option<String>,
+    pub create_time: Option<String>,
+    pub update_time: Option<String>,
+    pub check_time: Option<String>,
+    pub engine: Option<String>,
+    pub collation: Option<String>,
+    pub auto_increment: Option<u64>,
+    pub checksum: Option<u64>,
+    pub table_comment: Option<String>,
+}
+
+#[tauri::command]
+pub async fn get_table_stats(
+    state: State<'_, AppState>,
+    database: String,
+    table: String
+) -> Result<TableStats, String> {
+    let pool = {
+        let pool_guard = state.pool.lock().unwrap();
+        pool_guard.clone().ok_or("No active connection")?
+    };
+
+    let query = format!("SHOW TABLE STATUS FROM `{}` WHERE Name = '{}'", database, table);
+    
+    let row = sqlx::query(&query)
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| format!("Failed to fetch stats: {}", e))?;
+
+    use sqlx::Row;
+    Ok(TableStats {
+        rows: row.try_get("Rows").ok(),
+        avg_row_length: row.try_get("Avg_row_length").ok(),
+        data_length: row.try_get("Data_length").ok(),
+        max_data_length: row.try_get("Max_data_length").ok(),
+        index_length: row.try_get("Index_length").ok(),
+        data_free: row.try_get("Data_free").ok(),
+        row_format: row.try_get("Row_format").ok(),
+        // Dates might come as DateTime, formatting as string for simplicity
+        create_time: row.try_get::<sqlx::types::chrono::NaiveDateTime, _>("Create_time").ok().map(|d| d.to_string()),
+        update_time: row.try_get::<sqlx::types::chrono::NaiveDateTime, _>("Update_time").ok().map(|d| d.to_string()),
+        check_time: row.try_get::<sqlx::types::chrono::NaiveDateTime, _>("Check_time").ok().map(|d| d.to_string()),
+        engine: row.try_get("Engine").ok(),
+        collation: row.try_get("Collation").ok(),
+        auto_increment: row.try_get("Auto_increment").ok(),
+        checksum: row.try_get("Checksum").ok(),
+        table_comment: row.try_get("Comment").ok(),
+    })
+}
+
 #[tauri::command]
 pub async fn get_table_ddl(
     state: State<'_, AppState>,
