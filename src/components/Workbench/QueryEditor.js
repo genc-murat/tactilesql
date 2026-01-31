@@ -157,7 +157,6 @@ export function QueryEditor() {
     ];
     let activeTabId = '1';
     let lastExecutionTime = null;
-    let multiCursors = []; // {line, col} array for multi-cursor positions
 
     // Autocomplete state
     let suggestions = [];
@@ -700,16 +699,6 @@ export function QueryEditor() {
                         if (activeTab) activeTab.content = newText;
                         updateSyntaxHighlight();
                     }
-                }
-            });
-
-            // Multi-cursor support with Ctrl+Click
-            textarea.addEventListener('click', (e) => {
-                if (e.ctrlKey) {
-                    e.preventDefault();
-                    const pos = textarea.selectionStart;
-                    multiCursors.push(pos);
-                    // Visual feedback can be added here
                 }
             });
 
