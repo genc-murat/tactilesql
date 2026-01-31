@@ -24,6 +24,17 @@ export function ResultsTable() {
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
+                    <div id="selection-indicator" class="hidden flex items-center gap-2 mr-2">
+                        <span class="px-2 py-1 rounded bg-cyan-500/10 text-cyan-400 text-[9px] font-bold border border-cyan-500/20">
+                            <span id="selection-count">0</span> SELECTED
+                        </span>
+                        <button id="delete-selected-btn" class="flex items-center gap-1 px-2 py-1 bg-red-500/10 border border-red-500/30 text-[10px] font-bold text-red-400 hover:bg-red-500/20 rounded transition-all">
+                            <span class="material-symbols-outlined text-xs">delete</span> Delete
+                        </button>
+                        <button id="clear-selection-btn" class="flex items-center gap-1 px-2 py-1 ${isLight ? 'bg-gray-100 border-gray-200 text-gray-600' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text' : 'bg-white/5 border-white/10 text-gray-400')} border text-[10px] font-bold rounded transition-all">
+                            <span class="material-symbols-outlined text-xs">close</span> Clear
+                        </button>
+                    </div>
                     <div id="pending-indicator" class="hidden flex items-center gap-2 mr-4">
                         <span class="px-2 py-1 rounded bg-yellow-500/10 text-yellow-500 text-[9px] font-bold border border-yellow-500/20">
                             <span id="pending-count">0</span> CHANGES
@@ -38,6 +49,15 @@ export function ResultsTable() {
                     <button id="insert-row-btn" class="hidden flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/10 border border-cyan-500/30 text-[10px] font-bold uppercase tracking-wider text-cyan-400 hover:bg-cyan-500/20 rounded transition-all">
                         <span class="material-symbols-outlined text-sm">add</span> Insert Row
                     </button>
+                    <div class="relative">
+                        <button id="column-toggle-btn" class="flex items-center gap-1.5 px-3 py-1.5 ${isLight ? 'bg-white border-gray-200 text-gray-600' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50 text-ocean-text' : 'bg-white/5 border-white/10 text-gray-400')} border text-[10px] font-bold uppercase tracking-wider hover:bg-opacity-80 rounded transition-all shadow-sm">
+                            <span class="material-symbols-outlined text-sm">view_column</span> Columns
+                        </button>
+                        <div id="column-menu" class="hidden absolute right-0 top-full mt-1 ${isLight ? 'bg-white border-gray-200 shadow-lg' : (isOceanic ? 'bg-ocean-panel border-ocean-border shadow-xl' : 'bg-[#1a1d23] border-white/10 shadow-xl')} border rounded-lg py-2 z-50 min-w-[180px] max-h-[300px] overflow-y-auto custom-scrollbar">
+                            <div class="px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-500')} border-b ${isLight ? 'border-gray-100' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5')} mb-1">Toggle Columns</div>
+                            <div id="column-list"></div>
+                        </div>
+                    </div>
                     <button id="export-csv-btn" class="flex items-center gap-1.5 px-3 py-1.5 ${isLight ? 'bg-white border-gray-200 text-gray-600' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50 text-ocean-text' : 'bg-white/5 border-white/10 text-gray-400')} border text-[10px] font-bold uppercase tracking-wider hover:bg-opacity-80 rounded transition-all shadow-sm">
                         <span class="material-symbols-outlined text-sm">download</span> Export CSV
                     </button>
@@ -81,6 +101,11 @@ export function ResultsTable() {
     let tableName = '';
     let databaseName = '';
 
+    // Multi-select and column visibility state
+    let selectedRows = new Set();
+    let hiddenColumns = new Set();
+    let showColumnMenu = false;
+
     // --- Helpers ---
     const formatCellForTitle = (cell) => {
         if (cell === null || cell === undefined) return 'NULL';
@@ -90,7 +115,7 @@ export function ResultsTable() {
     };
 
     const formatCell = (cell) => {
-        if (cell === null || cell === undefined) return `<span class="${isLight ? 'text-gray-300' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-600')} italic">NULL</span>`;
+        if (cell === null || cell === undefined) return `<span class="px-1.5 py-0.5 rounded text-[10px] font-mono ${isLight ? 'bg-gray-100 text-gray-400' : (isOceanic ? 'bg-ocean-border/30 text-ocean-text/50' : 'bg-white/5 text-gray-500')} italic">NULL</span>`;
         if (typeof cell === 'boolean') return cell ? '<span class="text-green-400 font-bold">TRUE</span>' : '<span class="text-red-400 font-bold">FALSE</span>';
         if (typeof cell === 'number') return `<span class="text-mysql-teal">${cell}</span>`;
         return String(cell).replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -134,6 +159,48 @@ export function ResultsTable() {
         } else {
             indicator.classList.add('hidden');
         }
+    };
+
+    const updateSelectionIndicator = () => {
+        const indicator = container.querySelector('#selection-indicator');
+        if (!indicator) return;
+
+        if (selectedRows.size > 0) {
+            indicator.classList.remove('hidden');
+            container.querySelector('#selection-count').textContent = selectedRows.size;
+        } else {
+            indicator.classList.add('hidden');
+        }
+    };
+
+    const renderColumnMenu = () => {
+        const columnList = container.querySelector('#column-list');
+        if (!columnList || !currentData.columns.length) return;
+
+        columnList.innerHTML = currentData.columns.map((col, idx) => {
+            const isHidden = hiddenColumns.has(idx);
+            return `
+                <label class="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:${isLight ? 'bg-gray-50' : (isOceanic ? 'bg-ocean-bg' : 'bg-white/5')} transition-colors">
+                    <input type="checkbox" class="column-toggle-checkbox w-3.5 h-3.5 rounded border ${isLight ? 'border-gray-300 bg-white' : (isOceanic ? 'border-ocean-border bg-ocean-bg' : 'border-white/20 bg-white/5')} text-mysql-teal focus:ring-mysql-teal focus:ring-offset-0" 
+                           data-col-idx="${idx}" 
+                           ${!isHidden ? 'checked' : ''}>
+                    <span class="text-[11px] ${isLight ? 'text-gray-700' : (isOceanic ? 'text-ocean-text' : 'text-gray-300')} ${isHidden ? 'line-through opacity-50' : ''}">${col}</span>
+                </label>
+            `;
+        }).join('');
+
+        // Attach column toggle events
+        columnList.querySelectorAll('.column-toggle-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', (e) => {
+                const colIdx = parseInt(e.target.dataset.colIdx);
+                if (e.target.checked) {
+                    hiddenColumns.delete(colIdx);
+                } else {
+                    hiddenColumns.add(colIdx);
+                }
+                renderTable(currentData);
+            });
+        });
     };
 
     const clearPendingChanges = () => {
@@ -360,7 +427,7 @@ export function ResultsTable() {
 
         const thead = table.querySelector('thead tr');
         const tbody = table.querySelector('tbody');
-        
+
         // Show skeleton headers
         if (thead) {
             thead.innerHTML = Array(5).fill(0).map((_, i) => `
@@ -412,18 +479,37 @@ export function ResultsTable() {
 
         // Render Head (now with correct isEditable value)
         const thead = table.querySelector('thead tr');
+        const visibleColumns = columns.filter((_, idx) => !hiddenColumns.has(idx));
+
         if (thead && columns.length > 0) {
-            const actionCol = isEditable ? `<th class="p-3 font-bold border-r ${isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5')} border-b ${isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5')} w-24 text-xs ${isLight ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/70' : 'text-gray-400')}">Actions</th>` : '';
-            thead.innerHTML = actionCol + columns.map(col => `
-                <th class="p-3 font-bold border-r ${isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5')} border-b ${isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5')} whitespace-nowrap text-xs ${isLight ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/70' : 'text-gray-400')} select-none">${col}</th>
-            `).join('');
+            // Checkbox header for select all
+            const selectAllCol = `<th class="p-2 border-r ${isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5')} border-b ${isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5')} w-10 text-center">
+                <input type="checkbox" id="select-all-checkbox" class="w-3.5 h-3.5 rounded ${isLight ? 'border-gray-300 bg-white' : (isOceanic ? 'border-ocean-border bg-ocean-bg' : 'border-white/20 bg-white/5')} text-mysql-teal focus:ring-mysql-teal focus:ring-offset-0 cursor-pointer">
+            </th>`;
+
+            // Row number header
+            const rowNumCol = `<th class="p-2 border-r ${isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5')} border-b ${isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5')} w-12 text-center text-[10px] ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-500')}">#</th>`;
+
+            const actionCol = isEditable ? `<th class="p-3 font-bold border-r ${isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5')} border-b ${isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5')} w-20 text-xs ${isLight ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/70' : 'text-gray-400')}"></th>` : '';
+
+            const columnHeaders = columns.map((col, colIdx) => {
+                if (hiddenColumns.has(colIdx)) return '';
+                return `<th class="p-3 font-bold border-r ${isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5')} border-b ${isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5')} whitespace-nowrap text-xs ${isLight ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/70' : 'text-gray-400')} select-none">${col}</th>`;
+            }).join('');
+
+            thead.innerHTML = selectAllCol + rowNumCol + actionCol + columnHeaders;
         }
+
+        // Update column menu
+        renderColumnMenu();
 
         // Render Body
         const tbody = table.querySelector('tbody');
         if (tbody) {
+            const totalCols = 2 + (isEditable ? 1 : 0) + columns.filter((_, idx) => !hiddenColumns.has(idx)).length;
+
             if (rows.length === 0 && pendingChanges.inserts.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="${columns.length + (isEditable ? 1 : 0)}" class="p-8 text-center text-gray-500 italic">
+                tbody.innerHTML = `<tr><td colspan="${totalCols}" class="p-8 text-center text-gray-500 italic">
                     <div class="flex flex-col items-center gap-2">
                         <span class="material-symbols-outlined text-4xl opacity-20">dataset</span>
                         <span>No results returned</span>
@@ -431,7 +517,8 @@ export function ResultsTable() {
                 </td></tr>`;
             } else {
                 const insertRows = pendingChanges.inserts.map((insert, idx) => {
-                    const cells = columns.map(col => {
+                    const cells = columns.map((col, colIdx) => {
+                        if (hiddenColumns.has(colIdx)) return '';
                         const value = insert.data[col];
                         return `<td class="p-3 border-r ${isLight ? 'border-gray-100' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5')} ${isLight ? 'text-gray-700' : (isOceanic ? 'text-ocean-text' : 'text-gray-300')} bg-cyan-500/10 border border-cyan-500/20 cursor-pointer" data-insert-idx="${idx}" data-col="${col}">
                             ${formatCell(value)}
@@ -439,6 +526,8 @@ export function ResultsTable() {
                     }).join('');
 
                     return `<tr class="bg-cyan-500/10 border border-cyan-500/30">
+                        <td class="p-2 border-r ${isLight ? 'border-gray-100' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5')} text-center"></td>
+                        <td class="p-2 border-r ${isLight ? 'border-gray-100' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5')} text-center text-[10px] ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-500')}">NEW</td>
                         ${isEditable ? `<td class="p-2 border-r ${isLight ? 'border-gray-100' : 'border-white/5'} text-center">
                             <button class="delete-insert-btn text-red-400 hover:text-red-300 p-1" data-insert-idx="${idx}">
                                 <span class="material-symbols-outlined text-sm">delete</span>
@@ -450,7 +539,10 @@ export function ResultsTable() {
 
                 const dataRows = rows.map((row, idx) => {
                     const isDeleted = pendingChanges.deletes.has(idx);
+                    const isSelected = selectedRows.has(idx);
+
                     const cells = row.map((cell, colIdx) => {
+                        if (hiddenColumns.has(colIdx)) return '';
                         const key = getCellKey(idx, colIdx);
                         const isModified = pendingChanges.updates.has(key);
                         const displayValue = isModified ? pendingChanges.updates.get(key) : cell;
@@ -463,7 +555,13 @@ export function ResultsTable() {
                         </td>`;
                     }).join('');
 
-                    return `<tr class="hover:bg-mysql-teal/10 transition-colors group ${idx % 2 === 1 ? (isLight ? 'bg-gray-50/50' : (isOceanic ? 'bg-[#2E3440]/30' : 'bg-white/[0.01]')) : ''} ${isDeleted ? (isLight ? 'bg-red-50' : (isOceanic ? 'bg-red-900/20' : 'bg-red-500/10')) : ''}" data-row-idx="${idx}">
+                    return `<tr class="hover:bg-mysql-teal/10 transition-colors group ${isSelected ? (isLight ? 'bg-cyan-50' : (isOceanic ? 'bg-cyan-900/20' : 'bg-cyan-500/10')) : (idx % 2 === 1 ? (isLight ? 'bg-gray-50/50' : (isOceanic ? 'bg-[#2E3440]/30' : 'bg-white/[0.01]')) : '')} ${isDeleted ? (isLight ? 'bg-red-50' : (isOceanic ? 'bg-red-900/20' : 'bg-red-500/10')) : ''}" data-row-idx="${idx}">
+                        <td class="p-2 border-r ${isLight ? 'border-gray-100' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5')} text-center">
+                            <input type="checkbox" class="row-checkbox w-3.5 h-3.5 rounded ${isLight ? 'border-gray-300 bg-white' : (isOceanic ? 'border-ocean-border bg-ocean-bg' : 'border-white/20 bg-white/5')} text-mysql-teal focus:ring-mysql-teal focus:ring-offset-0 cursor-pointer" 
+                                   data-row-idx="${idx}" 
+                                   ${isSelected ? 'checked' : ''}>
+                        </td>
+                        <td class="p-2 border-r ${isLight ? 'border-gray-100' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5')} text-center text-[10px] ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-500')} font-mono">${idx + 1}</td>
                         ${isEditable ? `<td class="p-2 border-r ${isLight ? 'border-gray-100' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5')} text-center opacity-0 group-hover:opacity-100 transition-opacity">
                             <button class="delete-row-btn text-red-400 hover:text-red-300 p-1" data-row-idx="${idx}" ${isDeleted ? 'disabled' : ''}>
                                 <span class="material-symbols-outlined text-sm">delete</span>
@@ -542,6 +640,43 @@ export function ResultsTable() {
                 });
             });
         }
+
+        // Bind row checkboxes for selection
+        tbody.querySelectorAll('.row-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', (e) => {
+                const rowIdx = parseInt(e.target.dataset.rowIdx);
+                if (e.target.checked) {
+                    selectedRows.add(rowIdx);
+                } else {
+                    selectedRows.delete(rowIdx);
+                }
+                updateSelectionIndicator();
+
+                // Update row highlight
+                const row = e.target.closest('tr');
+                if (row) {
+                    if (e.target.checked) {
+                        row.classList.add(isLight ? 'bg-cyan-50' : (isOceanic ? 'bg-cyan-900/20' : 'bg-cyan-500/10'));
+                    } else {
+                        row.classList.remove('bg-cyan-50', 'bg-cyan-900/20', 'bg-cyan-500/10');
+                    }
+                }
+            });
+        });
+
+        // Bind select-all checkbox
+        const selectAllCheckbox = container.querySelector('#select-all-checkbox');
+        if (selectAllCheckbox) {
+            selectAllCheckbox.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    currentData.rows.forEach((_, idx) => selectedRows.add(idx));
+                } else {
+                    selectedRows.clear();
+                }
+                updateSelectionIndicator();
+                renderTable(currentData);
+            });
+        }
     };
 
     const attachEvents = () => {
@@ -551,6 +686,10 @@ export function ResultsTable() {
         const discardBtn = container.querySelector('#discard-btn');
         const insertRowBtn = container.querySelector('#insert-row-btn');
         const filterInput = container.querySelector('#filter-input');
+        const deleteSelectedBtn = container.querySelector('#delete-selected-btn');
+        const clearSelectionBtn = container.querySelector('#clear-selection-btn');
+        const columnToggleBtn = container.querySelector('#column-toggle-btn');
+        const columnMenu = container.querySelector('#column-menu');
 
         if (exportCsvBtn) {
             exportCsvBtn.addEventListener('click', () => {
@@ -578,47 +717,95 @@ export function ResultsTable() {
             insertRowBtn.addEventListener('click', insertNewRow);
         }
 
+        // Delete selected rows
+        if (deleteSelectedBtn) {
+            deleteSelectedBtn.addEventListener('click', async () => {
+                if (selectedRows.size === 0) return;
+
+                const confirmed = await Dialog.confirm(
+                    `Mark ${selectedRows.size} row(s) for deletion?`,
+                    'Bulk Delete'
+                );
+
+                if (confirmed) {
+                    selectedRows.forEach(rowIdx => {
+                        pendingChanges.deletes.add(rowIdx);
+                    });
+                    selectedRows.clear();
+                    updateSelectionIndicator();
+                    updatePendingIndicator();
+                    renderTable(currentData);
+                }
+            });
+        }
+
+        // Clear selection
+        if (clearSelectionBtn) {
+            clearSelectionBtn.addEventListener('click', () => {
+                selectedRows.clear();
+                updateSelectionIndicator();
+                renderTable(currentData);
+            });
+        }
+
+        // Column visibility toggle
+        if (columnToggleBtn && columnMenu) {
+            columnToggleBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showColumnMenu = !showColumnMenu;
+                columnMenu.classList.toggle('hidden', !showColumnMenu);
+            });
+
+            // Close menu when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!columnMenu.contains(e.target) && e.target !== columnToggleBtn) {
+                    showColumnMenu = false;
+                    columnMenu.classList.add('hidden');
+                }
+            });
+        }
+
         if (filterInput) {
             let debounceTimer;
             let filterRequestId;
-            
+
             filterInput.addEventListener('input', (e) => {
                 const term = e.target.value.toLowerCase();
-                
+
                 // Cancel any pending filter operation
                 if (filterRequestId) {
                     cancelAnimationFrame(filterRequestId);
                 }
-                
+
                 // Clear previous debounce timer
                 clearTimeout(debounceTimer);
-                
+
                 // Debounce the filter operation
                 debounceTimer = setTimeout(() => {
                     const rows = container.querySelectorAll('tbody tr');
                     const totalRows = rows.length;
-                    
+
                     // If no filter term, show all rows immediately
                     if (!term) {
                         rows.forEach(row => row.style.display = '');
                         return;
                     }
-                    
+
                     // Batch process rows to avoid blocking the UI
                     const BATCH_SIZE = 100;
                     let currentIndex = 0;
-                    
+
                     function processBatch() {
                         const endIndex = Math.min(currentIndex + BATCH_SIZE, totalRows);
-                        
+
                         for (let i = currentIndex; i < endIndex; i++) {
                             const row = rows[i];
                             const text = row.innerText.toLowerCase();
                             row.style.display = text.includes(term) ? '' : 'none';
                         }
-                        
+
                         currentIndex = endIndex;
-                        
+
                         // If there are more rows to process, schedule next batch
                         if (currentIndex < totalRows) {
                             filterRequestId = requestAnimationFrame(processBatch);
@@ -626,7 +813,7 @@ export function ResultsTable() {
                             filterRequestId = null;
                         }
                     }
-                    
+
                     // Start processing
                     filterRequestId = requestAnimationFrame(processBatch);
                 }, 150); // 150ms debounce delay
@@ -655,6 +842,9 @@ export function ResultsTable() {
     window.addEventListener('tactilesql:query-result', (e) => {
         if (e.detail) {
             clearPendingChanges(); // Clear on new query
+            selectedRows.clear(); // Clear selection on new query
+            hiddenColumns.clear(); // Reset column visibility on new query
+            updateSelectionIndicator();
             renderTable(e.detail);
         }
     });
