@@ -4,7 +4,7 @@ import { Dialog } from '../UI/Dialog.js';
 
 export function ObjectExplorer() {
     const explorer = document.createElement('aside');
-    explorer.className = "w-64 border-r border-white/5 bg-[#0b0d11] flex flex-col p-3 gap-4 overflow-hidden";
+    explorer.className = "h-full border-r border-white/5 bg-[#0b0d11] flex flex-col p-3 gap-4 overflow-hidden";
 
     // --- State ---
     let databases = [];
