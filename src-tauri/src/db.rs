@@ -30,58 +30,93 @@ pub struct ConnectionConfig {
     pub database: Option<String>,
 }
 
-fn get_config_path(app: &AppHandle) -> PathBuf {
-    let mut path = app.path().app_data_dir().expect("failed to get app data dir");
-    fs::create_dir_all(&path).expect("failed to create app data dir");
+fn get_config_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let mut path = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+    
+    // Ensure directory exists with better error handling
+    if !path.exists() {
+        fs::create_dir_all(&path)
+            .map_err(|e| format!("Failed to create app data dir at {:?}: {}", path, e))?;
+    }
+    
     path.push("connections.json");
-    path
+    eprintln!("[DEBUG] Config path: {:?}", path);
+    Ok(path)
 }
 
 // --- Commands ---
 
 #[tauri::command]
 pub fn get_connections(app: AppHandle) -> Result<Vec<ConnectionConfig>, String> {
-    let path = get_config_path(&app);
+    let path = get_config_path(&app)?;
+    eprintln!("[DEBUG] Reading connections from: {:?}", path);
+    
     if !path.exists() {
+        eprintln!("[DEBUG] Connections file doesn't exist yet, returning empty list");
         return Ok(Vec::new());
     }
     
-    let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
-    let configs: Vec<ConnectionConfig> = serde_json::from_str(&content).unwrap_or_default();
+    let content = fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read connections file at {:?}: {}", path, e))?;
+    
+    let configs: Vec<ConnectionConfig> = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse connections JSON: {}", e))?;
+    
+    eprintln!("[DEBUG] Loaded {} connections", configs.len());
     Ok(configs)
 }
 
 #[tauri::command]
 pub fn save_connection(app: AppHandle, config: ConnectionConfig) -> Result<String, String> {
-    let path = get_config_path(&app);
+    let path = get_config_path(&app)?;
+    eprintln!("[DEBUG] Saving connection to: {:?}", path);
+    
     let mut configs = get_connections(app.clone())?;
+    eprintln!("[DEBUG] Current connections count: {}", configs.len());
     
     let mut config = config;
     if config.id.is_none() {
         config.id = Some(uuid::Uuid::new_v4().to_string());
+        eprintln!("[DEBUG] Generated new ID: {:?}", config.id);
     }
 
     if let Some(idx) = configs.iter().position(|c| c.id == config.id) {
+        eprintln!("[DEBUG] Updating existing connection at index {}", idx);
         configs[idx] = config;
     } else {
+        eprintln!("[DEBUG] Adding new connection");
         configs.push(config);
     }
     
-    let content = serde_json::to_string_pretty(&configs).map_err(|e| e.to_string())?;
-    fs::write(path, content).map_err(|e| e.to_string())?;
+    let content = serde_json::to_string_pretty(&configs)
+        .map_err(|e| format!("Failed to serialize connections: {}", e))?;
     
+    eprintln!("[DEBUG] Writing {} bytes to file", content.len());
+    fs::write(&path, &content)
+        .map_err(|e| format!("Failed to write connections file at {:?}: {}", path, e))?;
+    
+    eprintln!("[DEBUG] Connection saved successfully");
     Ok("Connection saved successfully".to_string())
 }
 
 #[tauri::command]
 pub fn delete_connection(app: AppHandle, id: String) -> Result<String, String> {
-    let path = get_config_path(&app);
+    let path = get_config_path(&app)?;
+    eprintln!("[DEBUG] Deleting connection {} from: {:?}", id, path);
+    
     let mut configs = get_connections(app.clone())?;
+    let before_count = configs.len();
     
     configs.retain(|c| c.id.as_deref() != Some(&id));
     
-    let content = serde_json::to_string_pretty(&configs).map_err(|e| e.to_string())?;
-    fs::write(path, content).map_err(|e| e.to_string())?;
+    eprintln!("[DEBUG] Removed {} connections", before_count - configs.len());
+    
+    let content = serde_json::to_string_pretty(&configs)
+        .map_err(|e| format!("Failed to serialize connections: {}", e))?;
+    
+    fs::write(&path, &content)
+        .map_err(|e| format!("Failed to write connections file at {:?}: {}", path, e))?;
     
     Ok("Connection deleted".to_string())
 }

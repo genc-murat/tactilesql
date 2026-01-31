@@ -352,11 +352,15 @@ export function ConnectionManager() {
             return false;
         }
         try {
-            await invoke('save_connection', { config });
+            console.log('[DEBUG] Saving connection:', config);
+            const result = await invoke('save_connection', { config });
+            console.log('[DEBUG] Save result:', result);
             await loadConnections();
+            console.log('[DEBUG] Connections reloaded after save');
             return true;
         } catch (error) {
-            Dialog.alert('Failed to save: ' + error, 'Error');
+            console.error('[ERROR] Failed to save connection:', error);
+            Dialog.alert('Failed to save connection:\\n\\n' + error + '\\n\\nPlease check the console for details.', 'Save Error');
             return false;
         }
     };
