@@ -89,6 +89,19 @@ pub fn save_connection(app: AppHandle, config: ConnectionConfig) -> Result<Strin
 }
 
 #[tauri::command]
+pub fn save_connections(app: AppHandle, connections: Vec<ConnectionConfig>) -> Result<String, String> {
+    let path = get_config_path(&app)?;
+    
+    let content = serde_json::to_string_pretty(&connections)
+        .map_err(|e| format!("Failed to serialize connections: {}", e))?;
+    
+    fs::write(&path, &content)
+        .map_err(|e| format!("Failed to write connections file at {:?}: {}", path, e))?;
+    
+    Ok("Connections saved successfully".to_string())
+}
+
+#[tauri::command]
 pub fn delete_connection(app: AppHandle, id: String) -> Result<String, String> {
     let path = get_config_path(&app)?;
     let mut configs = get_connections(app.clone())?;

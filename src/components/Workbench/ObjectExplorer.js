@@ -213,8 +213,9 @@ export function ObjectExplorer() {
         // Inactive connections are collapsed. Clicking them triggers switch.
 
         return `
-            <div class="connection-node">
-                <div class="conn-item flex items-center gap-2 py-1.5 px-2 rounded-md ${isActive ? (isLight ? 'bg-blue-50' : 'bg-white/5') : (isLight ? 'hover:bg-gray-100' : 'hover:bg-white/5')} cursor-pointer transition-colors group" data-id="${conn.id}">
+            <div class="connection-node cursor-move" data-conn-id="${conn.id}" draggable="true">
+                <div class="conn-item flex items-center gap-2 py-1.5 px-2 rounded-md ${isActive ? (isLight ? 'bg-blue-50' : 'bg-white/5') : (isLight ? 'hover:bg-gray-100' : 'hover:bg-white/5')} transition-colors group" data-id="${conn.id}">
+                    <span class="drag-handle material-symbols-outlined text-xs ${isLight ? 'text-gray-400' : 'text-gray-600'} cursor-grab">drag_indicator</span>
                     <span class="material-symbols-outlined text-xs transition-transform ${isActive ? 'rotate-90' : ''} ${isLight ? 'text-gray-400' : 'text-gray-600'}">arrow_right</span>
                     
                     <div class="relative">
@@ -261,24 +262,145 @@ export function ObjectExplorer() {
         `;
 
         // Connection Interaction
-        explorer.querySelectorAll('.conn-item').forEach(item => {
-            item.addEventListener('click', async (e) => {
-                // Ignore if clicked on the connect button specifically (handled separately, though logic is similar)
-                if (e.target.closest('.conn-connect-btn')) return;
+        let draggedConnId = null;
+        let draggedNode = null;
 
-                const id = item.dataset.id;
+        // Setup drag and drop on connection nodes
+        explorer.querySelectorAll('.connection-node').forEach(connNode => {
+            const connItem = connNode.querySelector('.conn-item');
+            
+            // Click handler on conn-item
+            connItem.addEventListener('click', async (e) => {
+                // Ignore if clicked on the connect button or drag handle
+                if (e.target.closest('.conn-connect-btn') || e.target.closest('.drag-handle')) return;
+
+                const id = connItem.dataset.id;
                 if (id !== activeConnectionId) {
-                    // Try to switch connection
                     await switchConnection(id);
-                } else {
-                    // Toggle collapse? For now, we always keep active expanded.
-                    // Maybe we can support collapsing active connection too, but keeping it simple.
                 }
             });
 
-            item.addEventListener('contextmenu', (e) => {
+            connItem.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
-                showConnectionContextMenu(e.clientX, e.clientY, item.dataset.id);
+                showConnectionContextMenu(e.clientX, e.clientY, connItem.dataset.id);
+            });
+
+            // Drag handlers on connection-node
+            connNode.addEventListener('dragstart', (e) => {
+                draggedConnId = connNode.dataset.connId;
+                draggedNode = connNode;
+                console.log('🔵 DRAGSTART - draggedConnId:', draggedConnId);
+                connNode.style.opacity = '0.5';
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', draggedConnId);
+            });
+
+            connNode.addEventListener('dragend', (e) => {
+                console.log('🔴 DRAGEND');
+                connNode.style.opacity = '1';
+                draggedConnId = null;
+                draggedNode = null;
+                // Remove all drag-over visual indicators
+                explorer.querySelectorAll('.connection-node').forEach(node => {
+                    node.style.borderTop = '';
+                    node.style.borderBottom = '';
+                });
+            });
+        });
+
+        // Handle drag over, drop on connection nodes
+        explorer.querySelectorAll('.connection-node').forEach(connNode => {
+            connNode.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                console.log('🟡 DRAGOVER - draggedConnId:', draggedConnId, 'targetConnId:', connNode.dataset.connId);
+                if (!draggedConnId) return;
+                
+                const targetConnId = connNode.dataset.connId;
+                if (draggedConnId === targetConnId) return;
+                
+                e.dataTransfer.dropEffect = 'move';
+                
+                // Visual feedback
+                const rect = connNode.getBoundingClientRect();
+                const midpoint = rect.top + rect.height / 2;
+                
+                // Remove previous indicators
+                explorer.querySelectorAll('.connection-node').forEach(node => {
+                    node.style.borderTop = '';
+                    node.style.borderBottom = '';
+                });
+                
+                if (e.clientY < midpoint) {
+                    connNode.style.borderTop = `2px solid ${isLight ? '#0ea5e9' : '#06b6d4'}`;
+                    connNode.style.borderBottom = '';
+                } else {
+                    connNode.style.borderBottom = `2px solid ${isLight ? '#0ea5e9' : '#06b6d4'}`;
+                    connNode.style.borderTop = '';
+                }
+            });
+
+            connNode.addEventListener('dragleave', (e) => {
+                if (!connNode.contains(e.relatedTarget)) {
+                    connNode.style.borderTop = '';
+                    connNode.style.borderBottom = '';
+                }
+            });
+
+            connNode.addEventListener('drop', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                console.log('🟢 DROP EVENT');
+                
+                // Remove visual indicators
+                explorer.querySelectorAll('.connection-node').forEach(node => {
+                    node.style.borderTop = '';
+                    node.style.borderBottom = '';
+                });
+
+                const targetConnId = connNode.dataset.connId;
+                console.log('🟢 DROP - draggedConnId:', draggedConnId, 'targetConnId:', targetConnId);
+                
+                if (draggedConnId && targetConnId && draggedConnId !== targetConnId) {
+                    // Find indices
+                    const draggedIndex = connections.findIndex(c => c.id === draggedConnId);
+                    const targetIndex = connections.findIndex(c => c.id === targetConnId);
+                    
+                    console.log('🟢 DROP - draggedIndex:', draggedIndex, 'targetIndex:', targetIndex);
+                    console.log('🟢 DROP - connections before:', connections.map(c => c.name));
+                    
+                    if (draggedIndex !== -1 && targetIndex !== -1) {
+                        // Determine if we should insert before or after
+                        const rect = connNode.getBoundingClientRect();
+                        const midpoint = rect.top + rect.height / 2;
+                        const insertBefore = e.clientY < midpoint;
+                        
+                        console.log('🟢 DROP - insertBefore:', insertBefore);
+                        
+                        // Reorder array
+                        const [removed] = connections.splice(draggedIndex, 1);
+                        let newIndex = connections.findIndex(c => c.id === targetConnId);
+                        if (!insertBefore) newIndex++;
+                        connections.splice(newIndex, 0, removed);
+                        
+                        console.log('🟢 DROP - connections after:', connections.map(c => c.name));
+                        
+                        // Save to backend
+                        try {
+                            console.log('🟢 DROP - Saving to backend...');
+                            await invoke('save_connections', { connections });
+                            console.log('🟢 DROP - Saved successfully, re-rendering...');
+                            render();
+                        } catch (error) {
+                            console.error('❌ Failed to save connection order:', error);
+                            // Revert on error
+                            await loadConnections();
+                        }
+                    }
+                }
+                
+                draggedConnId = null;
+                draggedNode = null;
             });
         });
 
