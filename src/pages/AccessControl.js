@@ -25,8 +25,13 @@ export function AccessControl() {
 
         try {
             users = await invoke('get_mysql_users');
+            console.log('Loaded users:', users);
+            console.log('User count:', users.length);
             if (users.length > 0) {
+                console.log('Selecting first user:', users[0]);
                 await selectUser(users[0]);
+            } else {
+                console.warn('No users returned from backend');
             }
         } catch (error) {
             console.error('Failed to load users:', error);
@@ -41,6 +46,14 @@ export function AccessControl() {
     async function selectUser(user) {
         selectedUser = user;
         render();
+
+        // Validate user data before making the request
+        if (!user || !user.user || !user.host) {
+            console.error('Invalid user data:', user);
+            userPrivileges = { global: [], databases: [] };
+            render();
+            return;
+        }
 
         try {
             userPrivileges = await invoke('get_user_privileges', {

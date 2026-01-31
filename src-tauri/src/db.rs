@@ -378,6 +378,8 @@ pub async fn get_mysql_users(
         let account_locked_str: String = row.try_get("account_locked").unwrap_or_default();
         let password_expired_str: String = row.try_get("password_expired").unwrap_or_default();
         
+        println!("DEBUG: Found user: '{}' @ '{}' (empty: {})", user, host, user.trim().is_empty());
+        
         users.push(MySqlUser {
             user,
             host,
@@ -386,6 +388,7 @@ pub async fn get_mysql_users(
         });
     }
 
+    println!("DEBUG: Total users: {}", users.len());
     Ok(users)
 }
 
