@@ -19,7 +19,7 @@ export function SchemaDiff() {
     let sourceDb = '';
     let targetDb = '';
 
-    // New State for Table Mode
+    // Mode State
     let comparisonMode = 'full'; // 'full' | 'table'
     let sourceTablesList = [];
     let targetTablesList = [];
@@ -49,13 +49,11 @@ export function SchemaDiff() {
             const tables = await invoke('get_tables', { database: dbName });
             if (type === 'source') {
                 sourceTablesList = tables;
-                // Auto-select target table if it matches source table
                 if (selectedSourceTable && targetTablesList.includes(selectedSourceTable)) {
                     selectedTargetTable = selectedSourceTable;
                 }
             } else {
                 targetTablesList = tables;
-                // Auto-select match
                 if (selectedSourceTable && targetTablesList.includes(selectedSourceTable)) {
                     selectedTargetTable = selectedSourceTable;
                 }
@@ -93,12 +91,10 @@ export function SchemaDiff() {
             sqlCommands.push(`-- Start sync process for target database: '${targetDb}'`);
 
             if (comparisonMode === 'full') {
-                // FULL DATABASE COMPARISON
                 const [sourceTables, targetTables] = await Promise.all([
                     invoke('get_tables', { database: sourceDb }),
                     invoke('get_tables', { database: targetDb })
                 ]);
-                // Update cached lists while we are at it
                 sourceTablesList = sourceTables;
                 targetTablesList = targetTables;
 
@@ -112,7 +108,7 @@ export function SchemaDiff() {
                 // 1. Missing In Target (CREATE)
                 for (const table of missingInTarget) {
                     const ddl = await invoke('get_table_ddl', { database: sourceDb, table });
-                    diffs.push({ type: 'create', table, reason: 'Table missing in target' });
+                    diffs.push({ type: 'create', table, reason: 'Missing in Target' });
                     sqlCommands.push(`-- Creating missing table: ${table}\n${ddl};\n`);
                     cCreate++;
                 }
@@ -120,14 +116,14 @@ export function SchemaDiff() {
                 // 2. Missing In Source (DROP)
                 if (missingInSource.length > 0) sqlCommands.push(`-- Dropping obsolete tables`);
                 for (const table of missingInSource) {
-                    diffs.push({ type: 'drop', table, reason: 'Table extra in target' });
+                    diffs.push({ type: 'drop', table, reason: 'Extra in Target' });
                     sqlCommands.push(`DROP TABLE \`${targetDb}\`.\`${table}\`;`);
                     cDrop++;
                 }
 
                 // 3. Common (ALTER)
                 for (const table of commonTables) {
-                    const changes = await compareTableSchemas(table, table); // Compare same table name
+                    const changes = await compareTableSchemas(table, table);
                     if (changes.diffs.length > 0) {
                         diffs.push({ type: 'alter', table, changes: changes.diffs });
                         sqlCommands.push(`-- Altering table structure for: ${table}`);
@@ -136,20 +132,13 @@ export function SchemaDiff() {
                     }
                 }
             } else {
-                // SINGLE TABLE COMPARISON
-                // We compare selectedSourceTable vs selectedTargetTable
-                // Conceptually we treat them as "matched".
-                const tableAlias = selectedTargetTable; // The table being modified is the target one
-
+                const tableAlias = selectedTargetTable;
                 const changes = await compareTableSchemas(selectedSourceTable, selectedTargetTable);
-
                 if (changes.diffs.length > 0) {
-                    diffs.push({ type: 'alter', table: tableAlias, changes: changes.diffs, reason: `Compared with source: ${selectedSourceTable}` });
+                    diffs.push({ type: 'alter', table: tableAlias, changes: changes.diffs, reason: `Match with ${selectedSourceTable}` });
                     sqlCommands.push(`-- Altering table structure for: ${tableAlias} (match with ${selectedSourceTable})`);
                     sqlCommands.push(`ALTER TABLE \`${targetDb}\`.\`${tableAlias}\` \n    ${changes.alters.join(',\n    ')};`);
                     cAlter++;
-                } else {
-                    // No diffs found
                 }
             }
 
@@ -168,7 +157,7 @@ export function SchemaDiff() {
         }
     };
 
-    // Helper to compare schema of two tables (names can differ)
+    // Helper to compare schema of two tables
     const compareTableSchemas = async (sTable, tTable) => {
         const [sourceSchema, targetSchema] = await Promise.all([
             invoke('get_table_schema', { database: sourceDb, table: sTable }),
@@ -181,15 +170,13 @@ export function SchemaDiff() {
         const colDiffs = [];
         const tableAlters = [];
 
-        // Columns in Source (Add/Modify)
+        // Columns in Source
         for (const [name, sCol] of sCols) {
             const tCol = tCols.get(name);
             if (!tCol) {
-                // Add column to target
                 colDiffs.push({ type: 'add_col', column: name, details: `${sCol.column_type}` });
                 tableAlters.push(`ADD COLUMN \`${name}\` ${sCol.column_type} ${sCol.is_nullable ? 'NULL' : 'NOT NULL'} ${sCol.column_default ? `DEFAULT '${sCol.column_default}'` : ''} ${sCol.extra}`);
             } else {
-                // Check diff
                 if (sCol.column_type !== tCol.column_type || sCol.is_nullable !== tCol.is_nullable) {
                     colDiffs.push({ type: 'mod_col', column: name, details: `${tCol.column_type} -> ${sCol.column_type}` });
                     tableAlters.push(`MODIFY COLUMN \`${name}\` ${sCol.column_type} ${sCol.is_nullable ? 'NULL' : 'NOT NULL'} ${sCol.column_default ? `DEFAULT '${sCol.column_default}'` : ''} ${sCol.extra}`);
@@ -197,10 +184,9 @@ export function SchemaDiff() {
             }
         }
 
-        // Columns in Target only (Drop)
+        // Columns in Target only
         for (const name of tCols.keys()) {
             if (!sCols.has(name)) {
-                // Drop column from target
                 colDiffs.push({ type: 'drop_col', column: name });
                 tableAlters.push(`DROP COLUMN \`${name}\``);
             }
@@ -212,30 +198,28 @@ export function SchemaDiff() {
     // --- Render Helpers ---
     const getDiffIcon = (type) => {
         if (type === 'create') return 'add_circle';
-        if (type === 'drop') return 'delete_outline';
+        if (type === 'drop') return 'delete';
         return 'edit';
     };
 
     const getDiffColorClass = (type) => {
         if (isLight) {
-            if (type === 'create') return 'bg-emerald-100 text-emerald-600';
-            if (type === 'drop') return 'bg-red-100 text-red-600';
-            return 'bg-amber-100 text-amber-600';
+            if (type === 'create') return 'text-emerald-600';
+            if (type === 'drop') return 'text-red-600';
+            return 'text-amber-600';
         }
         if (isOceanic) {
-            if (type === 'create') return 'bg-ocean-mint/20 text-ocean-mint';
-            if (type === 'drop') return 'bg-red-500/20 text-red-400';
-            return 'bg-yellow-500/20 text-yellow-400';
+            if (type === 'create') return 'text-ocean-mint';
+            if (type === 'drop') return 'text-red-400';
+            return 'text-yellow-400';
         }
         // Dark
-        if (type === 'create') return 'bg-green-500/10 text-green-400';
-        if (type === 'drop') return 'bg-red-500/10 text-red-400';
-        return 'bg-amber-500/10 text-amber-400';
+        if (type === 'create') return 'text-green-400';
+        if (type === 'drop') return 'text-red-400';
+        return 'text-amber-400';
     };
 
     const getClasses = () => {
-        // ... (Same theme content but extracted for brevity or kept same)
-        // I'll inline the previous strict theme logic to be safe
         if (isLight) return {
             panel: 'bg-white border-gray-200',
             border: 'border-gray-200',
@@ -245,6 +229,7 @@ export function SchemaDiff() {
             textMuted: 'text-gray-500',
             selectBg: 'bg-gray-100',
             card: 'bg-white border-gray-200 shadow-sm hover:border-gray-300',
+            itemHover: 'hover:bg-gray-50',
             codeBg: 'bg-white',
             codeText: 'text-gray-800',
             badgeNeutral: 'bg-gray-100 text-gray-600',
@@ -259,7 +244,8 @@ export function SchemaDiff() {
             textMain: 'text-ocean-text',
             textMuted: 'text-ocean-text/60',
             selectBg: 'bg-ocean-bg',
-            card: 'bg-ocean-panel border-ocean-border hover:border-ocean-mint/30',
+            card: 'bg-ocean-panel border-ocean-border',
+            itemHover: 'hover:bg-ocean-bg/50',
             codeBg: 'bg-ocean-bg',
             codeText: 'text-ocean-text',
             badgeNeutral: 'bg-ocean-bg text-ocean-text/70',
@@ -275,7 +261,8 @@ export function SchemaDiff() {
             textMain: 'text-gray-200',
             textMuted: 'text-gray-500',
             selectBg: 'bg-[#0f1115]',
-            card: 'bg-panel-dark border-white/5 hover:border-white/10 shadow-sm',
+            card: 'bg-panel-dark border-white/5',
+            itemHover: 'hover:bg-white/5',
             codeBg: 'bg-[#0b0d10]',
             codeText: 'text-gray-300',
             badgeNeutral: 'bg-white/5 text-gray-400',
@@ -289,182 +276,177 @@ export function SchemaDiff() {
 
         container.innerHTML = `
             <!-- Header -->
-            <header class="border-b ${themeClasses.border} ${themeClasses.headerBg} px-6 py-4 flex flex-col gap-4 sticky top-0 z-10 shrink-0 shadow-sm">
+            <header class="border-b ${themeClasses.border} ${themeClasses.headerBg} px-4 py-3 flex flex-col gap-3 sticky top-0 z-10 shrink-0 shadow-sm">
                 
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-3">
-                        <div class="p-2 rounded-lg ${isLight || isOceanic ? themeClasses.iconPrimary : 'bg-mysql-teal/10 border border-mysql-teal/20'}">
-                            <span class="material-symbols-outlined text-2xl ${isLight ? 'text-white' : (isOceanic ? '' : 'text-mysql-teal')}">compare_arrows</span>
+                        <div class="p-1.5 rounded-lg ${isLight || isOceanic ? themeClasses.iconPrimary : 'bg-mysql-teal/10 border border-mysql-teal/20'}">
+                            <span class="material-symbols-outlined text-xl ${isLight ? 'text-white' : (isOceanic ? '' : 'text-mysql-teal')}">compare_arrows</span>
                         </div>
                         <div>
-                            <h1 class="font-bold text-lg leading-tight ${themeClasses.textMain}">Schema Diff</h1>
-                            <p class="text-xs ${themeClasses.textMuted}">Compare databases and sync changes</p>
+                            <h1 class="font-bold text-base leading-tight ${themeClasses.textMain}">Schema Diff</h1>
                         </div>
                     </div>
                     
                      <!-- Mode Toggle -->
-                     <div class="flex items-center gap-2 bg-black/5 dark:bg-white/5 p-1 rounded-lg">
-                        <button id="mode-full" class="px-3 py-1 text-xs font-bold rounded-md transition-all ${comparisonMode === 'full' ? (isLight ? 'bg-white shadow text-indigo-600' : 'bg-mysql-teal text-black') : themeClasses.textMuted}">
-                            Full Database
+                     <div class="flex items-center gap-1 bg-black/5 dark:bg-white/5 p-0.5 rounded-md">
+                        <button id="mode-full" class="px-2.5 py-1 text-[11px] font-bold rounded transition-all ${comparisonMode === 'full' ? (isLight ? 'bg-white shadow text-indigo-600' : 'bg-mysql-teal text-black') : themeClasses.textMuted}">
+                            Full DB
                         </button>
-                        <button id="mode-table" class="px-3 py-1 text-xs font-bold rounded-md transition-all ${comparisonMode === 'table' ? (isLight ? 'bg-white shadow text-indigo-600' : 'bg-mysql-teal text-black') : themeClasses.textMuted}">
+                        <button id="mode-table" class="px-2.5 py-1 text-[11px] font-bold rounded transition-all ${comparisonMode === 'table' ? (isLight ? 'bg-white shadow text-indigo-600' : 'bg-mysql-teal text-black') : themeClasses.textMuted}">
                             Single Table
                         </button>
                     </div>
 
-                    <button id="compare-btn" class="${themeClasses.buttonPrimary} px-6 py-2.5 rounded-lg font-semibold flex items-center gap-2 transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-wait" ${isComparing ? 'disabled' : ''}>
-                        <span class="material-symbols-outlined text-sm ${isComparing ? 'animate-spin' : ''}">${isComparing ? 'refresh' : 'play_arrow'}</span>
+                    <button id="compare-btn" class="${themeClasses.buttonPrimary} px-4 py-2 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-wait" ${isComparing ? 'disabled' : ''}>
+                        <span class="material-symbols-outlined text-xs ${isComparing ? 'animate-spin' : ''}">${isComparing ? 'refresh' : 'play_arrow'}</span>
                         ${isComparing ? 'Comparing...' : 'Compare'}
                     </button>
                 </div>
                 
                 <!-- Controls Row -->
-                <div class="flex items-center gap-6 pb-2">
-                    <div class="flex items-center gap-4">
-                        <!-- Source Group -->
-                        <div class="space-y-1">
-                            <div class="flex items-center justify-between">
-                                <label class="text-[10px] uppercase tracking-wider font-bold ${themeClasses.textMuted}">Source DB</label>
-                            </div>
-                            <div class="relative">
-                                <select id="source-db-select" class="${themeClasses.selectBg} ${themeClasses.textMain} border-none rounded-lg py-2 pl-3 pr-10 text-sm focus:ring-1 focus:ring-mysql-teal/50 w-48 appearance-none outline-none cursor-pointer">
-                                    <option value="" disabled ${!sourceDb ? 'selected' : ''}>Select Source</option>
-                                    ${databases.map(db => `<option value="${db}" ${sourceDb === db ? 'selected' : ''}>${db}</option>`).join('')}
-                                </select>
-                                <span class="material-symbols-outlined absolute right-2 top-2 ${themeClasses.textMuted} pointer-events-none text-base">expand_more</span>
-                            </div>
-                            <!-- Source Table (visible if table mode) -->
-                            ${comparisonMode === 'table' ? `
-                                <div class="relative mt-2">
-                                     <select id="source-table-select" class="${themeClasses.selectBg} ${themeClasses.textMain} border-none rounded-lg py-2 pl-3 pr-10 text-sm focus:ring-1 focus:ring-mysql-teal/50 w-48 appearance-none outline-none cursor-pointer">
-                                        <option value="" disabled ${!selectedSourceTable ? 'selected' : ''}>Select Table</option>
-                                        ${sourceTablesList.map(t => `<option value="${t}" ${selectedSourceTable === t ? 'selected' : ''}>${t}</option>`).join('')}
-                                    </select>
-                                    <span class="material-symbols-outlined absolute right-2 top-2 ${themeClasses.textMuted} pointer-events-none text-base">table_chart</span>
-                                </div>
-                            ` : ''}
+                <div class="flex items-center gap-4 pb-1">
+                     <!-- Source Group -->
+                    <div class="flex items-center gap-2">
+                        <span class="text-[10px] bg-red-500/10 text-red-500 px-1.5 py-0.5 rounded font-bold uppercase">Source</span>
+                        <div class="relative">
+                            <select id="source-db-select" class="${themeClasses.selectBg} ${themeClasses.textMain} border-none rounded py-1 pl-2 pr-6 text-xs w-36 appearance-none outline-none cursor-pointer hover:bg-opacity-80 transition-colors">
+                                <option value="" disabled ${!sourceDb ? 'selected' : ''}>Select Source</option>
+                                ${databases.map(db => `<option value="${db}" ${sourceDb === db ? 'selected' : ''}>${db}</option>`).join('')}
+                            </select>
                         </div>
-                        
-                        <span class="material-symbols-outlined ${themeClasses.textMuted} self-center">arrow_forward</span>
-                        
-                        <!-- Target Group -->
-                        <div class="space-y-1">
-                           <div class="flex items-center justify-between">
-                                <label class="text-[10px] uppercase tracking-wider font-bold ${themeClasses.textMuted}">Target DB</label>
-                            </div>
+                        ${comparisonMode === 'table' ? `
+                           <span class="text-slate-400 text-xs">/</span>
                             <div class="relative">
-                                <select id="target-db-select" class="${themeClasses.selectBg} ${themeClasses.textMain} border-none rounded-lg py-2 pl-3 pr-10 text-sm focus:ring-1 focus:ring-mysql-teal/50 w-48 appearance-none outline-none cursor-pointer">
-                                    <option value="" disabled ${!targetDb ? 'selected' : ''}>Select Target</option>
-                                    ${databases.map(db => `<option value="${db}" ${targetDb === db ? 'selected' : ''}>${db}</option>`).join('')}
+                                 <select id="source-table-select" class="${themeClasses.selectBg} ${themeClasses.textMain} border-none rounded py-1 pl-2 pr-6 text-xs w-36 appearance-none outline-none cursor-pointer hover:bg-opacity-80 transition-colors">
+                                    <option value="" disabled ${!selectedSourceTable ? 'selected' : ''}>Table</option>
+                                    ${sourceTablesList.map(t => `<option value="${t}" ${selectedSourceTable === t ? 'selected' : ''}>${t}</option>`).join('')}
                                 </select>
-                                <span class="material-symbols-outlined absolute right-2 top-2 ${themeClasses.textMuted} pointer-events-none text-base">expand_more</span>
                             </div>
-                             <!-- Target Table (visible if table mode) -->
-                            ${comparisonMode === 'table' ? `
-                                <div class="relative mt-2">
-                                     <select id="target-table-select" class="${themeClasses.selectBg} ${themeClasses.textMain} border-none rounded-lg py-2 pl-3 pr-10 text-sm focus:ring-1 focus:ring-mysql-teal/50 w-48 appearance-none outline-none cursor-pointer">
-                                        <option value="" disabled ${!selectedTargetTable ? 'selected' : ''}>Select Table</option>
-                                        ${targetTablesList.map(t => `<option value="${t}" ${selectedTargetTable === t ? 'selected' : ''}>${t}</option>`).join('')}
-                                    </select>
-                                    <span class="material-symbols-outlined absolute right-2 top-2 ${themeClasses.textMuted} pointer-events-none text-base">table_chart</span>
-                                </div>
-                            ` : ''}
+                        ` : ''}
+                    </div>
+                    
+                    <span class="material-symbols-outlined ${themeClasses.textMuted} text-sm">arrow_forward</span>
+                    
+                    <!-- Target Group -->
+                    <div class="flex items-center gap-2">
+                        <span class="text-[10px] bg-emerald-500/10 text-emerald-500 px-1.5 py-0.5 rounded font-bold uppercase">Target</span>
+                        <div class="relative">
+                            <select id="target-db-select" class="${themeClasses.selectBg} ${themeClasses.textMain} border-none rounded py-1 pl-2 pr-6 text-xs w-36 appearance-none outline-none cursor-pointer hover:bg-opacity-80 transition-colors">
+                                <option value="" disabled ${!targetDb ? 'selected' : ''}>Select Target</option>
+                                ${databases.map(db => `<option value="${db}" ${targetDb === db ? 'selected' : ''}>${db}</option>`).join('')}
+                            </select>
                         </div>
+                         ${comparisonMode === 'table' ? `
+                           <span class="text-slate-400 text-xs">/</span>
+                            <div class="relative">
+                                 <select id="target-table-select" class="${themeClasses.selectBg} ${themeClasses.textMain} border-none rounded py-1 pl-2 pr-6 text-xs w-36 appearance-none outline-none cursor-pointer hover:bg-opacity-80 transition-colors">
+                                    <option value="" disabled ${!selectedTargetTable ? 'selected' : ''}>Table</option>
+                                    ${targetTablesList.map(t => `<option value="${t}" ${selectedTargetTable === t ? 'selected' : ''}>${t}</option>`).join('')}
+                                </select>
+                            </div>
+                        ` : ''}
                     </div>
                 </div>
             </header>
             
             <!-- Main Content -->
             <main class="flex-1 flex overflow-hidden">
-                <!-- Sidebar: Diff List -->
-                <aside class="w-[450px] border-r ${themeClasses.border} flex flex-col ${themeClasses.panel}">
-                    <div class="p-6 border-b ${themeClasses.border} flex items-center justify-between ${isLight ? 'bg-gray-50/50' : 'bg-black/10'}">
-                        <div class="flex items-center gap-2">
-                            <h2 class="font-bold text-sm tracking-wide ${themeClasses.textMuted}">DIFFERENCES</h2>
-                            <span class="${themeClasses.badgeNeutral} px-2 py-0.5 rounded-full text-[10px] font-bold">${counts.total}</span>
-                        </div>
-                        <div class="flex items-center gap-4 text-[10px] font-bold tracking-tight">
-                            <span class="flex items-center gap-1 ${themeClasses.textMuted}"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> CREATE</span>
-                            <span class="flex items-center gap-1 ${themeClasses.textMuted}"><span class="w-2 h-2 rounded-full bg-amber-500"></span> ALTER</span>
-                            <span class="flex items-center gap-1 ${themeClasses.textMuted}"><span class="w-2 h-2 rounded-full bg-red-500"></span> DROP</span>
+                <!-- Compact Sidebar: Diff List -->
+                <aside class="w-[350px] border-r ${themeClasses.border} flex flex-col ${themeClasses.panel}">
+                    <div class="px-4 py-3 border-b ${themeClasses.border} flex items-center justify-between ${isLight ? 'bg-gray-50/50' : 'bg-black/10'}">
+                        <h2 class="font-bold text-xs tracking-wide ${themeClasses.textMuted}">DIFFERENCES (${counts.total})</h2>
+                        <div class="flex items-center gap-2 text-[10px]">
+                            <span class="font-bold ${themeClasses.textMuted} opacity-80">
+                                <span class="text-emerald-500">${counts.create}</span> C
+                            </span>
+                             <span class="font-bold ${themeClasses.textMuted} opacity-80">
+                                <span class="text-amber-500">${counts.alter}</span> A
+                            </span>
+                             <span class="font-bold ${themeClasses.textMuted} opacity-80">
+                                <span class="text-red-500">${counts.drop}</span> D
+                            </span>
                         </div>
                     </div>
                     
                     <!-- Diffs List Container -->
-                    <div class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+                    <div class="flex-1 overflow-y-auto custom-scrollbar">
                         ${!diffResults ? `
-                            <div class="flex flex-col items-center justify-center h-48 opacity-40">
-                                <span class="material-symbols-outlined text-5xl ${themeClasses.textMuted} mb-2">difference</span>
-                                <p class="text-sm ${themeClasses.textMuted}">Select tables and compare</p>
+                            <div class="flex flex-col items-center justify-center h-32 opacity-40 mt-10">
+                                <span class="material-symbols-outlined text-4xl ${themeClasses.textMuted} mb-2">difference</span>
+                                <p class="text-xs ${themeClasses.textMuted}">Ready to compare</p>
                             </div>
                         ` : diffResults.length === 0 ? `
-                             <div class="flex flex-col items-center justify-center h-48 text-emerald-500">
-                                <span class="material-symbols-outlined text-5xl mb-2">check_circle</span>
-                                <p class="font-bold">Fully Synced</p>
-                                <p class="text-xs opacity-70">No schema differences found.</p>
+                             <div class="flex flex-col items-center justify-center h-32 text-emerald-500 mt-10">
+                                <span class="material-symbols-outlined text-4xl mb-2">check_circle</span>
+                                <p class="font-bold text-sm">Fully Synced</p>
                             </div>
-                        ` : diffResults.map(diff => `
-                            <div class="group ${themeClasses.card} border rounded-xl p-4 transition-all">
-                                <div class="flex items-start justify-between mb-2">
-                                    <div class="flex items-center gap-3">
-                                        <div class="w-10 h-10 rounded-lg ${getDiffColorClass(diff.type)} flex items-center justify-center">
-                                            <span class="material-symbols-outlined text-xl">${getDiffIcon(diff.type)}</span>
+                        ` : `
+                            <div class="divide-y ${themeClasses.border}">
+                            ${diffResults.map(diff => `
+                                <div class="group px-4 py-2.5 ${themeClasses.itemHover} transition-colors cursor-pointer border-l-2 ${diff.type === 'create' ? 'border-l-emerald-500' :
+                diff.type === 'drop' ? 'border-l-red-500' :
+                    'border-l-amber-500'
+            }">
+                                    <div class="flex items-start justify-between mb-1">
+                                        <div class="flex items-center gap-2 min-w-0">
+                                            <span class="material-symbols-outlined text-base ${getDiffColorClass(diff.type)}">${getDiffIcon(diff.type)}</span>
+                                            <h3 class="font-semibold text-sm truncate ${themeClasses.textMain}">${diff.table}</h3>
                                         </div>
-                                        <div>
-                                            <h3 class="font-semibold ${themeClasses.textMain}">${diff.table}</h3>
-                                            <p class="text-xs ${themeClasses.textMuted}">${diff.reason || (diff.changes ? 'Schema mismatch' : '')}</p>
-                                        </div>
+                                         <span class="text-[9px] font-bold uppercase tracking-wider opacity-70 ${getDiffColorClass(diff.type)}">${diff.type}</span>
                                     </div>
-                                    <span class="text-[10px] font-bold px-2 py-1 ${getDiffColorClass(diff.type)} bg-opacity-10 rounded uppercase tracking-wider">${diff.type}</span>
+                                    <p class="text-[10px] ${themeClasses.textMuted} pl-6 truncate">${diff.reason || (diff.changes ? `${diff.changes.length} columns changed` : '')}</p>
+                                    
+                                    ${diff.changes ? `
+                                        <div class="mt-2 pl-6 space-y-1">
+                                            ${diff.changes.map(c => `
+                                                <div class="flex items-center gap-1.5 text-[11px]">
+                                                    <span class="material-symbols-outlined text-[10px] ${c.type === 'add_col' ? 'text-emerald-500' : (c.type === 'drop_col' ? 'text-red-500' : 'text-amber-500')}">
+                                                        ${c.type === 'add_col' ? 'add' : (c.type === 'drop_col' ? 'remove' : 'edit')}
+                                                    </span>
+                                                    <span class="font-mono ${themeClasses.textMuted} text-[10px] truncate max-w-[120px]">${c.column}</span>
+                                                    ${c.details ? `<span class="text-[9px] px-1 py-0.5 rounded ${themeClasses.badgeNeutral} font-mono truncate max-w-[80px]">${c.details}</span>` : ''}
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                    ` : ''}
                                 </div>
-                                ${diff.changes ? `
-                                    <div class="space-y-2 pl-2 border-l-2 border-amber-500/20 ml-5 mt-3">
-                                        ${diff.changes.map(c => `
-                                            <div class="flex items-center gap-2 text-sm">
-                                                <span class="material-symbols-outlined text-xs ${c.type === 'add_col' ? 'text-emerald-500' : (c.type === 'drop_col' ? 'text-red-500' : 'text-amber-500')}">
-                                                    ${c.type === 'add_col' ? 'add' : (c.type === 'drop_col' ? 'remove' : 'edit')}
-                                                </span>
-                                                <span class="font-mono ${themeClasses.textMuted} text-xs">${c.column}</span>
-                                                ${c.details ? `<span class="text-[10px] px-1.5 py-0.5 rounded ${themeClasses.badgeNeutral} font-mono">${c.details}</span>` : ''}
-                                            </div>
-                                        `).join('')}
-                                    </div>
-                                ` : ''}
+                            `).join('')}
                             </div>
-                        `).join('')}
+                        `}
                     </div>
                 </aside>
                 
                 <!-- Right Panel: SQL Sync Script -->
                 <div class="flex-1 flex flex-col ${themeClasses.sectionBg}">
-                    <div class="p-6 border-b ${themeClasses.border} flex items-center justify-between ${themeClasses.panel}">
+                    <div class="px-5 py-3 border-b ${themeClasses.border} flex items-center justify-between ${themeClasses.panel}">
                         <div class="flex items-center gap-2">
-                            <span class="material-symbols-outlined ${themeClasses.textMuted}">terminal</span>
-                            <h2 class="font-bold text-sm tracking-wide ${themeClasses.textMain}">SYNC SCRIPT (SQL)</h2>
+                            <span class="material-symbols-outlined ${themeClasses.textMuted} text-base">terminal</span>
+                            <h2 class="font-bold text-xs tracking-wide ${themeClasses.textMain}">SYNC SCRIPT (SQL)</h2>
                         </div>
-                        <button id="copy-sql-btn" class="flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded ${themeClasses.badgeNeutral} hover:opacity-80 transition-opacity">
-                            <span class="material-symbols-outlined text-sm">content_copy</span>
-                            Copy to clipboard
+                        <button id="copy-sql-btn" class="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded ${themeClasses.badgeNeutral} hover:opacity-80 transition-opacity">
+                            <span class="material-symbols-outlined text-xs">content_copy</span>
+                            Copy
                         </button>
                     </div>
                     
-                    <div class="flex-1 p-8 font-mono text-sm leading-relaxed overflow-y-auto custom-scrollbar ${themeClasses.codeBg}">
+                    <div class="flex-1 p-6 font-mono text-xs leading-relaxed overflow-y-auto custom-scrollbar ${themeClasses.codeBg}">
                         <div class="max-w-4xl mx-auto">
                             <pre class="whitespace-pre-wrap select-text ${themeClasses.codeText}">${highlightSQL(generatedSql)}</pre>
                         </div>
                     </div>
                     
-                    <div class="px-6 py-3 border-t ${themeClasses.border} ${themeClasses.panel} flex items-center justify-between text-[11px] ${themeClasses.textMuted}">
+                    <div class="px-5 py-2 border-t ${themeClasses.border} ${themeClasses.panel} flex items-center justify-between text-[10px] ${themeClasses.textMuted}">
                         <div class="flex gap-4">
-                            <span>Rows Affected: <span class="${themeClasses.textMain} font-bold">-</span></span>
-                            <span>Tables Modified: <span class="${themeClasses.textMain} font-bold">${counts.total}</span></span>
+                            <span>Rows: <span class="${themeClasses.textMain} font-bold">-</span></span>
+                            <span>Tables: <span class="${themeClasses.textMain} font-bold">${counts.total}</span></span>
                         </div>
-                        <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-1.5">
                              ${sourceDb && targetDb ? `
-                                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                                Connected to Local Agent
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                Connected
                              ` : `
-                                <span class="w-2 h-2 rounded-full bg-gray-500"></span>
+                                <span class="w-1.5 h-1.5 rounded-full bg-gray-500"></span>
                                 Ready
                              `}
                         </div>
@@ -473,40 +455,32 @@ export function SchemaDiff() {
             </main>
         `;
 
-        // Event Listeners
-        // Mode Toggles
+        // Event Listeners (Same as before)
         container.querySelector('#mode-full')?.addEventListener('click', () => {
             comparisonMode = 'full';
             render();
         });
         container.querySelector('#mode-table')?.addEventListener('click', () => {
             comparisonMode = 'table';
-            // Trigger load tables if needed
             if (sourceDb && sourceTablesList.length === 0) loadTables('source', sourceDb);
             if (targetDb && targetTablesList.length === 0) loadTables('target', targetDb);
             render();
         });
-
         container.querySelector('#source-db-select')?.addEventListener('change', (e) => {
             sourceDb = e.target.value;
-            selectedSourceTable = ''; // Reset table
+            selectedSourceTable = '';
             if (comparisonMode === 'table') loadTables('source', sourceDb);
         });
-
         container.querySelector('#target-db-select')?.addEventListener('change', (e) => {
             targetDb = e.target.value;
-            selectedTargetTable = ''; // Reset table
+            selectedTargetTable = '';
             if (comparisonMode === 'table') loadTables('target', targetDb);
         });
-
-        // Table Select Listeners
         if (comparisonMode === 'table') {
             container.querySelector('#source-table-select')?.addEventListener('change', (e) => {
                 selectedSourceTable = e.target.value;
-                // Auto-select match logic
                 if (targetTablesList.includes(selectedSourceTable)) {
                     selectedTargetTable = selectedSourceTable;
-                    // We must re-render to update the Target select
                     render();
                 }
             });
@@ -514,9 +488,7 @@ export function SchemaDiff() {
                 selectedTargetTable = e.target.value;
             });
         }
-
         container.querySelector('#compare-btn')?.addEventListener('click', runComparison);
-
         container.querySelector('#copy-sql-btn')?.addEventListener('click', () => {
             if (!generatedSql) return;
             navigator.clipboard.writeText(generatedSql);
