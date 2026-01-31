@@ -26,8 +26,11 @@ export function SchemaDesigner() {
         foreignKeys: [],
         originalForeignKeys: [],
 
+        // Constraints
+        constraints: [],
+
         // UI
-        activeTab: 'columns', // columns, indexes, foreign_keys
+        activeTab: 'columns', // columns, indexes, foreign_keys, constraints
         isLoading: true,
         error: null,
         tablesList: [], // For FK reference dropdown
@@ -84,6 +87,9 @@ export function SchemaDesigner() {
                                 </button>
                                 <button class="px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all" id="tab-fks">
                                     Foreign Keys
+                                </button>
+                                <button class="px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all" id="tab-constraints">
+                                    Constraints
                                 </button>
                             </div>
                             
@@ -207,6 +213,7 @@ export function SchemaDesigner() {
         const tabCols = container.querySelector('#tab-columns');
         const tabIdx = container.querySelector('#tab-indexes');
         const tabFks = container.querySelector('#tab-fks');
+        const tabCons = container.querySelector('#tab-constraints');
 
         const activeClass = 'bg-mysql-teal text-white shadow-lg';
         const inactiveClass = 'text-gray-500 hover:text-gray-300';
@@ -214,9 +221,12 @@ export function SchemaDesigner() {
         tabCols.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'columns' ? activeClass : inactiveClass}`;
         tabIdx.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'indexes' ? activeClass : inactiveClass}`;
         tabFks.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'foreign_keys' ? activeClass : inactiveClass}`;
+        tabCons.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'constraints' ? activeClass : inactiveClass}`;
 
         // Render actions
         const actionsContainer = container.querySelector('#tab-actions');
+        actionsContainer.innerHTML = ''; // Clear defaults
+
         if (state.activeTab === 'columns') {
             actionsContainer.innerHTML = `
                 <button class="h-7 px-3 flex items-center gap-2 rounded bg-white/5 border border-white/10 text-[10px] font-bold text-gray-400 hover:bg-white/10" id="btn-add-column">
@@ -235,7 +245,7 @@ export function SchemaDesigner() {
                 state.newIndex = { name: '', type: 'INDEX', columns: [] }; // Reset
                 renderIndexModal();
             };
-        } else {
+        } else if (state.activeTab === 'foreign_keys') {
             actionsContainer.innerHTML = `
                 <button class="h-7 px-3 flex items-center gap-2 rounded bg-white/5 border border-white/10 text-[10px] font-bold text-gray-400 hover:bg-white/10" id="btn-add-fk">
                     <span class="material-symbols-outlined text-sm">add</span> Add Foreign Key
@@ -246,6 +256,9 @@ export function SchemaDesigner() {
                 state.newFK = { name: '', column: '', refTable: '', refColumn: '' };
                 renderFKModal();
             };
+        } else if (state.activeTab === 'constraints') {
+            actionsContainer.innerHTML = '';
+            // Read-only view for now
         }
     }
 
@@ -280,7 +293,7 @@ export function SchemaDesigner() {
                 </tr>
             `;
             renderIndexesTable();
-        } else {
+        } else if (state.activeTab === 'foreign_keys') {
             statusDisplay.innerText = `${state.foreignKeys.length} FOREIGN KEYS`;
             thead.innerHTML = `
                 <tr class="text-gray-500 uppercase text-[10px] tracking-widest">
@@ -293,6 +306,17 @@ export function SchemaDesigner() {
                 </tr>
             `;
             renderFKTable();
+        } else { // activeTab === 'constraints'
+            statusDisplay.innerText = `${state.constraints.length} CONSTRAINTS`;
+            thead.innerHTML = `
+                <tr class="text-gray-500 uppercase text-[10px] tracking-widest">
+                    <th class="p-4 w-12 text-center">#</th>
+                    <th class="p-4 min-w-[150px]">Constraint Name</th>
+                    <th class="p-4">Type</th>
+                    <th class="p-4"></th>
+                </tr>
+            `;
+            renderConstraintsTable();
         }
     }
 
@@ -446,6 +470,37 @@ export function SchemaDesigner() {
         });
     }
 
+    function renderConstraintsTable() {
+        const tbody = container.querySelector('#table-body');
+        tbody.innerHTML = '';
+
+        if (state.isLoading) { renderLoading(tbody); return; }
+        if (state.constraints.length === 0) { renderEmpty(tbody, 'No constraints found.'); return; }
+
+        state.constraints.forEach((cons, i) => {
+            const tr = document.createElement('tr');
+            tr.className = `group transition-colors hover:bg-white/[0.03] border-l-2 border-l-transparent`;
+
+            let typeColor = 'text-gray-400';
+            if (cons.constraint_type === 'PRIMARY KEY') typeColor = 'text-mysql-cyan font-bold';
+            if (cons.constraint_type === 'FOREIGN KEY') typeColor = 'text-purple-400';
+            if (cons.constraint_type === 'UNIQUE') typeColor = 'text-orange-400';
+
+            tr.innerHTML = `
+                <td class="p-4 text-center text-gray-700 italic">${i + 1}</td>
+                <td class="p-4">
+                    <div class="flex items-center gap-2">
+                         <span class="material-symbols-outlined text-gray-500 text-sm">lock</span>
+                         <span class="text-gray-200 font-bold font-mono text-xs">${cons.name}</span>
+                    </div>
+                </td>
+                <td class="p-4 ${typeColor} font-mono text-xs">${cons.constraint_type}</td>
+                <td class="p-4"></td>
+           `;
+            tbody.appendChild(tr);
+        });
+    }
+
     function renderLoading(tbody) {
         tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center"><div class="flex items-center justify-center gap-3 text-gray-500"><span class="material-symbols-outlined animate-spin">progress_activity</span><span class="text-sm">Loading...</span></div></td></tr>`;
     }
@@ -478,6 +533,17 @@ export function SchemaDesigner() {
                     <span class="material-symbols-outlined text-4xl opacity-20">link</span>
                     <p class="text-xs">Foreign Keys</p>
                     <p class="text-[10px] text-gray-600">Define relationships with other tables.</p>
+                </div>
+            `;
+            return;
+        }
+
+        if (state.activeTab === 'constraints') {
+            sidebar.innerHTML = `
+                <div class="p-6 text-center text-gray-500 space-y-4 mt-10">
+                    <span class="material-symbols-outlined text-4xl opacity-20">lock</span>
+                    <p class="text-xs">Constraints</p>
+                    <p class="text-[10px] text-gray-600">View all table constraints including Primary Keys, Unique Keys, Foreign Keys, and Check constraints.</p>
                 </div>
             `;
             return;
@@ -905,61 +971,89 @@ export function SchemaDesigner() {
         updateAll();
     };
 
-    // --- Helper: Load Schema ---
+    // --- Helper:    // --- Logic ---
+
     async function loadData() {
+        state.isLoading = true;
+        state.error = null;
+        renderContent();
+
         try {
-            state.isLoading = true;
-            updateAll();
-
-            const [schema, indexes, fks, tables] = await Promise.all([
-                invoke('get_table_schema', { database: state.database, table: state.tableName }),
-                invoke('get_table_indexes', { database: state.database, table: state.tableName }),
-                invoke('get_table_foreign_keys', { database: state.database, table: state.tableName }),
-                invoke('get_tables', { database: state.database })
-            ]);
-
-            state.columns = schema.map((col, index) => {
-                const lengthMatch = col.column_type.match(/\((.*?)\)/);
-                const length = lengthMatch ? lengthMatch[1] : '';
-                let dataType = col.data_type.toUpperCase().trim();
-                if (dataType === 'BOOL') dataType = 'BOOLEAN';
-
-                return {
-                    id: index + 1,
-                    name: col.name,
-                    type: dataType,
-                    length: length,
-                    defaultVal: col.column_default || '',
-                    nullable: col.is_nullable,
-                    primaryKey: col.column_key === 'PRI',
-                    autoIncrement: col.extra.toLowerCase().includes('auto_increment'),
-                    unique: col.column_key === 'UNI',
-                    comment: ''
-                };
+            // 1. Get Tables List (for FK dropdown)
+            const tables = await invoke('get_tables', {
+                database: state.database
             });
-            state.originalColumns = JSON.parse(JSON.stringify(state.columns));
-            if (state.columns.length > 0) state.selectedColumnId = state.columns[0].id;
-
-            state.indexes = indexes;
-            state.originalIndexes = JSON.parse(JSON.stringify(state.indexes));
-
-            state.foreignKeys = fks;
-            state.originalForeignKeys = JSON.parse(JSON.stringify(state.foreignKeys));
-
             state.tablesList = tables;
 
-            state.isLoading = false;
-            updateAll();
-        } catch (error) {
-            console.error('Failed to load schema:', error);
-            state.error = error.toString();
-            state.isLoading = false;
-            updateAll();
-        }
-    }
+            // 2. Get Columns
+            const schema = await invoke('get_table_schema', {
+                database: state.database,
+                table: state.tableName
+            });
 
-    // --- Initial Setup ---
-    loadData();
+            // Map Rust schema to our internal format
+            state.columns = schema.map((col, idx) => ({
+                id: crypto.randomUUID(),
+                name: col.name,
+                type: col.data_type.toUpperCase(),
+                length: col.character_maximum_length || col.numeric_precision || '',
+                defaultVal: col.column_default || '',
+                primaryKey: col.column_key === 'PRI',
+                nullable: col.is_nullable === 'YES',
+                autoIncrement: col.extra && col.extra.includes('auto_increment'),
+                unique: col.column_key === 'UNI',
+                originalName: col.name // Track original name for renames
+            }));
+            state.originalColumns = JSON.parse(JSON.stringify(state.columns));
+
+            // 3. Get Indexes
+            const indexes = await invoke('get_table_indexes', {
+                database: state.database,
+                table: state.tableName
+            });
+
+            // Transform indexes from flat rows (one per col) to structured objects
+            // The backend returns: { index_name, column_name, seq_in_index, non_unique, ... }
+            const indexMap = {};
+            indexes.forEach(idx => {
+                if (!indexMap[idx.index_name]) {
+                    indexMap[idx.index_name] = {
+                        name: idx.index_name,
+                        type: idx.non_unique === 0 ? 'UNIQUE' : 'INDEX',
+                        unique: idx.non_unique === 0,
+                        columns: []
+                    };
+                    if (idx.index_type === 'FULLTEXT') indexMap[idx.index_name].type = 'FULLTEXT';
+                }
+                indexMap[idx.index_name].columns.push(idx.column_name);
+            });
+            state.indexes = Object.values(indexMap);
+            state.originalIndexes = JSON.parse(JSON.stringify(state.indexes));
+
+            // 4. Get Foreign Keys
+            const fks = await invoke('get_table_foreign_keys', {
+                database: state.database,
+                table: state.tableName
+            });
+            state.foreignKeys = fks;
+            state.originalForeignKeys = JSON.parse(JSON.stringify(fks));
+
+            // 5. Get Constraints
+            const cons = await invoke('get_table_constraints', {
+                database: state.database,
+                table: state.tableName
+            });
+            state.constraints = cons;
+
+        } catch (err) {
+            console.error('Failed to load schema:', err);
+            state.error = typeof err === 'string' ? err : JSON.stringify(err);
+        } finally {
+            state.isLoading = false;
+            renderContent();
+            renderTabs(); // Update counts
+        }
+    } loadData();
 
     // Collapse/Expand SQL Panel
     const sqlPanelToggle = container.querySelector('#sql-panel-header');
@@ -984,6 +1078,7 @@ export function SchemaDesigner() {
     container.querySelector('#tab-columns').onclick = () => { state.activeTab = 'columns'; updateAll(); };
     container.querySelector('#tab-indexes').onclick = () => { state.activeTab = 'indexes'; updateAll(); };
     container.querySelector('#tab-fks').onclick = () => { state.activeTab = 'foreign_keys'; updateAll(); };
+    container.querySelector('#tab-constraints').onclick = () => { state.activeTab = 'constraints'; updateAll(); };
 
     // Push Changes
     const btnPush = container.querySelector('#btn-push-changes');
