@@ -572,13 +572,57 @@ export function ResultsTable() {
         }
 
         if (filterInput) {
+            let debounceTimer;
+            let filterRequestId;
+            
             filterInput.addEventListener('input', (e) => {
                 const term = e.target.value.toLowerCase();
-                const rows = container.querySelectorAll('tbody tr');
-                rows.forEach(row => {
-                    const text = row.innerText.toLowerCase();
-                    row.style.display = text.includes(term) ? '' : 'none';
-                });
+                
+                // Cancel any pending filter operation
+                if (filterRequestId) {
+                    cancelAnimationFrame(filterRequestId);
+                }
+                
+                // Clear previous debounce timer
+                clearTimeout(debounceTimer);
+                
+                // Debounce the filter operation
+                debounceTimer = setTimeout(() => {
+                    const rows = container.querySelectorAll('tbody tr');
+                    const totalRows = rows.length;
+                    
+                    // If no filter term, show all rows immediately
+                    if (!term) {
+                        rows.forEach(row => row.style.display = '');
+                        return;
+                    }
+                    
+                    // Batch process rows to avoid blocking the UI
+                    const BATCH_SIZE = 100;
+                    let currentIndex = 0;
+                    
+                    function processBatch() {
+                        const endIndex = Math.min(currentIndex + BATCH_SIZE, totalRows);
+                        
+                        for (let i = currentIndex; i < endIndex; i++) {
+                            const row = rows[i];
+                            const text = row.innerText.toLowerCase();
+                            row.style.display = text.includes(term) ? '' : 'none';
+                        }
+                        
+                        currentIndex = endIndex;
+                        
+                        // If there are more rows to process, schedule next batch
+                        if (currentIndex < totalRows) {
+                            filterRequestId = requestAnimationFrame(processBatch);
+                        } else {
+                            filterRequestId = null;
+                        }
+                    }
+                    
+                    // Start processing
+                    filterRequestId = requestAnimationFrame(processBatch);
+                }, 150); // 150ms debounce delay
             });
         }
     }
