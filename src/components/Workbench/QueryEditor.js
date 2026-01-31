@@ -428,7 +428,7 @@ export function QueryEditor() {
                         </div>
                     </div>
                 </div>
-                <div class="px-2 py-0.5 flex items-center justify-end gap-2 ${isLight ? 'bg-gray-50' : (isOceanic ? 'bg-ocean-bg/50' : 'bg-[#0f1115]')}">
+                <div class="px-2 py-0.5 flex items-center justify-end gap-2 ${isLight ? 'bg-gray-50' : (isOceanic ? 'bg-ocean-bg/50' : 'bg-[#23262b]')}">
                     <div class="flex items-center gap-1" title="Select Active Database">
                         <span class="material-symbols-outlined text-gray-600" style="font-size: 14px;">database</span>
                         <select id="db-selector" class="${isLight ? 'bg-gray-100 border-gray-200 text-gray-700' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50 text-ocean-text' : 'bg-[#1a1d23] border-white/10 text-gray-300')} border text-[9px] rounded px-1.5 py-0.5 outline-none focus:border-mysql-teal/50 min-w-[90px] cursor-pointer">
@@ -452,7 +452,7 @@ export function QueryEditor() {
                     </div>
                 </div>
             </div>
-            <div class="flex-1 neu-inset rounded-xl ${isLight ? 'bg-white' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#08090c]')} overflow-hidden flex p-4 font-mono text-[14px] leading-relaxed relative focus-within:ring-1 focus-within:ring-mysql-teal/50 transition-all">
+            <div class="flex-1 neu-inset rounded-xl ${isLight ? 'bg-white' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#2a2d33]')} overflow-hidden flex p-4 font-mono text-[14px] leading-relaxed relative focus-within:ring-1 focus-within:ring-mysql-teal/50 transition-all">
                 <div class="w-12 ${isLight ? 'text-gray-300 border-gray-100' : (isOceanic ? 'text-ocean-text/30 border-ocean-border/30' : 'text-gray-700 border-white/5')} text-right pr-4 border-r select-none text-xs leading-[22px] pt-1 overflow-hidden" id="line-numbers"></div>
                 <div class="flex-1 relative pl-6">
                     <pre id="syntax-highlight" class="absolute inset-0 pl-6 pt-0 font-mono text-[14px] leading-[22px] pointer-events-none overflow-hidden whitespace-pre-wrap break-words" aria-hidden="true"></pre>

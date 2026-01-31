@@ -45,7 +45,7 @@ export function SqlWorkbench() {
 
     // Query + Results Area
     const queryResults = document.createElement('main');
-    queryResults.className = `flex-1 flex flex-col overflow-hidden ${isLight ? 'bg-white' : 'bg-[#0f1115]'}`;
+    queryResults.className = `flex-1 flex flex-col overflow-hidden ${isLight ? 'bg-white' : 'bg-[#2a2d33]'}`;
 
     const queryEditor = QueryEditor();
     queryEditor.style.height = '50%';
@@ -163,7 +163,7 @@ export function SqlWorkbench() {
         sidebarResizer.className = `w-1.5 ${resizerBg} cursor-col-resize flex items-center justify-center group transition-colors`;
         sidebarResizer.querySelector('div').className = `h-12 w-0.5 ${resizerHandle} group-hover:bg-mysql-teal/70 rounded-full transition-colors`;
 
-        const contentBg = isLightNew ? 'bg-white' : (isOceanicNew ? 'bg-ocean-bg' : 'bg-[#0f1115]');
+        const contentBg = isLightNew ? 'bg-white' : (isOceanicNew ? 'bg-ocean-bg' : 'bg-[#2a2d33]');
         queryResults.className = `flex-1 flex flex-col overflow-hidden ${contentBg}`;
 
         const vResizerBg = isLightNew ? 'bg-gray-100 hover:bg-mysql-teal/30' : (isOceanicNew ? 'bg-ocean-border/30 hover:bg-ocean-frost/30' : 'bg-[#1a1d23] hover:bg-mysql-teal/50');
