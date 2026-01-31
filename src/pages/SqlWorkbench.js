@@ -3,6 +3,7 @@ import { ResultsTable } from '../components/Workbench/ResultsTable.js';
 import { ObjectExplorer } from '../components/Workbench/ObjectExplorer.js';
 import { SnippetLibrary } from '../components/Workbench/SnippetLibrary.js';
 import { WorkbenchFooter } from '../components/Workbench/WorkbenchFooter.js';
+import { QueryProfiler } from '../components/Workbench/QueryProfiler.js';
 import { ThemeManager } from '../utils/ThemeManager.js';
 
 export function SqlWorkbench() {
@@ -143,6 +144,10 @@ export function SqlWorkbench() {
     });
 
     container.appendChild(mainContent);
+
+    // Query Profiler (floating panel)
+    const profiler = QueryProfiler();
+    container.appendChild(profiler.element);
 
     // Footer
     const footer = WorkbenchFooter();

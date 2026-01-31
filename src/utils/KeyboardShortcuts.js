@@ -51,6 +51,9 @@ const SHORTCUTS = {
     // Data operations
     'ctrl+shift+c': { action: 'copyAsSQL', description: 'SQL olarak kopyala', category: 'Data' },
     'ctrl+shift+x': { action: 'exportCSV', description: 'CSV olarak dışa aktar', category: 'Data' },
+
+    // Tools
+    'ctrl+shift+p': { action: 'toggleProfiler', description: 'Query Profiler aç/kapat', category: 'Tools' },
 };
 
 // Action handlers - will be set by components
@@ -116,7 +119,7 @@ function handleKeydown(e) {
     const globalShortcuts = ['executeQuery', 'newTab', 'closeTab', 'nextTab', 'prevTab',
         'showHelp', 'closeModal', 'focusExplorer', 'focusQuery',
         'focusResults', 'focusSnippets', 'goToTab1', 'goToTab2',
-        'goToTab3', 'goToTab4', 'goToTab5'];
+        'goToTab3', 'goToTab4', 'goToTab5', 'toggleProfiler'];
 
     // Editor shortcuts should work even when editing
     const editorShortcuts = ['formatSQL', 'toggleComment', 'duplicateLine', 'selectLine',
@@ -140,6 +143,9 @@ function handleKeydown(e) {
     } else if (shortcut.action === 'closeModal') {
         e.preventDefault();
         closeActiveModal();
+    } else if (shortcut.action === 'toggleProfiler') {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent('tactilesql:toggle-profiler'));
     }
 }
 
@@ -245,7 +251,8 @@ function getCategoryIcon(category) {
         'Search': 'search',
         'Navigation': 'explore',
         'General': 'settings',
-        'Data': 'table_chart'
+        'Data': 'table_chart',
+        'Tools': 'build'
     };
     return icons[category] || 'keyboard';
 }
