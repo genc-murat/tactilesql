@@ -6,54 +6,54 @@
 // Shortcut definitions with descriptions
 const SHORTCUTS = {
     // Query execution
-    'ctrl+enter': { action: 'executeQuery', description: 'Sorguyu çalıştır', category: 'Query' },
-    'f5': { action: 'executeQuery', description: 'Sorguyu çalıştır', category: 'Query' },
+    'ctrl+enter': { action: 'executeQuery', description: 'Execute query', category: 'Query' },
+    'f5': { action: 'executeQuery', description: 'Execute query', category: 'Query' },
 
     // Tab management
-    'ctrl+n': { action: 'newTab', description: 'Yeni sekme', category: 'Tabs' },
-    'ctrl+w': { action: 'closeTab', description: 'Sekmeyi kapat', category: 'Tabs' },
-    'ctrl+tab': { action: 'nextTab', description: 'Sonraki sekme', category: 'Tabs' },
-    'ctrl+shift+tab': { action: 'prevTab', description: 'Önceki sekme', category: 'Tabs' },
-    'ctrl+1': { action: 'goToTab1', description: 'Sekme 1', category: 'Tabs' },
-    'ctrl+2': { action: 'goToTab2', description: 'Sekme 2', category: 'Tabs' },
-    'ctrl+3': { action: 'goToTab3', description: 'Sekme 3', category: 'Tabs' },
-    'ctrl+4': { action: 'goToTab4', description: 'Sekme 4', category: 'Tabs' },
-    'ctrl+5': { action: 'goToTab5', description: 'Sekme 5', category: 'Tabs' },
+    'ctrl+n': { action: 'newTab', description: 'New tab', category: 'Tabs' },
+    'ctrl+w': { action: 'closeTab', description: 'Close tab', category: 'Tabs' },
+    'ctrl+tab': { action: 'nextTab', description: 'Next tab', category: 'Tabs' },
+    'ctrl+shift+tab': { action: 'prevTab', description: 'Previous tab', category: 'Tabs' },
+    'ctrl+1': { action: 'goToTab1', description: 'Tab 1', category: 'Tabs' },
+    'ctrl+2': { action: 'goToTab2', description: 'Tab 2', category: 'Tabs' },
+    'ctrl+3': { action: 'goToTab3', description: 'Tab 3', category: 'Tabs' },
+    'ctrl+4': { action: 'goToTab4', description: 'Tab 4', category: 'Tabs' },
+    'ctrl+5': { action: 'goToTab5', description: 'Tab 5', category: 'Tabs' },
 
     // Editor actions
-    'ctrl+s': { action: 'saveSnippet', description: 'Snippet olarak kaydet', category: 'Editor' },
-    'ctrl+shift+f': { action: 'formatSQL', description: 'SQL formatla', category: 'Editor' },
-    'ctrl+/': { action: 'toggleComment', description: 'Yorum ekle/kaldır', category: 'Editor' },
-    'ctrl+d': { action: 'duplicateLine', description: 'Satırı çoğalt', category: 'Editor' },
-    'ctrl+l': { action: 'selectLine', description: 'Satırı seç', category: 'Editor' },
-    'ctrl+g': { action: 'gotoLine', description: 'Satıra git', category: 'Editor' },
-    'ctrl+space': { action: 'autocomplete', description: 'Otomatik tamamla', category: 'Editor' },
-    'alt+arrowup': { action: 'moveLineUp', description: 'Satırı yukarı taşı', category: 'Editor' },
-    'alt+arrowdown': { action: 'moveLineDown', description: 'Satırı aşağı taşı', category: 'Editor' },
+    'ctrl+s': { action: 'saveSnippet', description: 'Save as snippet', category: 'Editor' },
+    'ctrl+shift+f': { action: 'formatSQL', description: 'Format SQL', category: 'Editor' },
+    'ctrl+/': { action: 'toggleComment', description: 'Toggle comment', category: 'Editor' },
+    'ctrl+d': { action: 'duplicateLine', description: 'Duplicate line', category: 'Editor' },
+    'ctrl+l': { action: 'selectLine', description: 'Select line', category: 'Editor' },
+    'ctrl+g': { action: 'gotoLine', description: 'Go to line', category: 'Editor' },
+    'ctrl+space': { action: 'autocomplete', description: 'Autocomplete', category: 'Editor' },
+    'alt+arrowup': { action: 'moveLineUp', description: 'Move line up', category: 'Editor' },
+    'alt+arrowdown': { action: 'moveLineDown', description: 'Move line down', category: 'Editor' },
 
     // Find & Replace
-    'ctrl+f': { action: 'find', description: 'Bul', category: 'Search' },
-    'ctrl+h': { action: 'findReplace', description: 'Bul ve değiştir', category: 'Search' },
-    'f3': { action: 'findNext', description: 'Sonrakini bul', category: 'Search' },
-    'shift+f3': { action: 'findPrev', description: 'Öncekini bul', category: 'Search' },
+    'ctrl+f': { action: 'find', description: 'Find', category: 'Search' },
+    'ctrl+h': { action: 'findReplace', description: 'Find and replace', category: 'Search' },
+    'f3': { action: 'findNext', description: 'Find next', category: 'Search' },
+    'shift+f3': { action: 'findPrev', description: 'Find previous', category: 'Search' },
 
     // Navigation
-    'ctrl+shift+e': { action: 'focusExplorer', description: 'Object Explorer\'a odaklan', category: 'Navigation' },
-    'ctrl+shift+q': { action: 'focusQuery', description: 'Query Editor\'a odaklan', category: 'Navigation' },
-    'ctrl+shift+r': { action: 'focusResults', description: 'Results\'a odaklan', category: 'Navigation' },
-    'ctrl+shift+s': { action: 'focusSnippets', description: 'Snippets\'a odaklan', category: 'Navigation' },
+    'ctrl+shift+e': { action: 'focusExplorer', description: 'Focus Object Explorer', category: 'Navigation' },
+    'ctrl+shift+q': { action: 'focusQuery', description: 'Focus Query Editor', category: 'Navigation' },
+    'ctrl+shift+r': { action: 'focusResults', description: 'Focus Results', category: 'Navigation' },
+    'ctrl+shift+s': { action: 'focusSnippets', description: 'Focus Snippets', category: 'Navigation' },
 
     // General
-    'escape': { action: 'closeModal', description: 'Modal/popup kapat', category: 'General' },
-    'f1': { action: 'showHelp', description: 'Kısayol yardımı', category: 'General' },
-    'ctrl+shift+?': { action: 'showHelp', description: 'Kısayol yardımı', category: 'General' },
+    'escape': { action: 'closeModal', description: 'Close modal/popup', category: 'General' },
+    'f1': { action: 'showHelp', description: 'Shortcut help', category: 'General' },
+    'ctrl+shift+?': { action: 'showHelp', description: 'Shortcut help', category: 'General' },
 
     // Data operations
-    'ctrl+shift+c': { action: 'copyAsSQL', description: 'SQL olarak kopyala', category: 'Data' },
-    'ctrl+shift+x': { action: 'exportCSV', description: 'CSV olarak dışa aktar', category: 'Data' },
+    'ctrl+shift+c': { action: 'copyAsSQL', description: 'Copy as SQL', category: 'Data' },
+    'ctrl+shift+x': { action: 'exportCSV', description: 'Export as CSV', category: 'Data' },
 
     // Tools
-    'ctrl+shift+p': { action: 'toggleProfiler', description: 'Query Profiler aç/kapat', category: 'Tools' },
+    'ctrl+shift+p': { action: 'toggleProfiler', description: 'Toggle Query Profiler', category: 'Tools' },
 };
 
 // Action handlers - will be set by components
@@ -191,30 +191,56 @@ export function showShortcutsHelp() {
     modal.id = 'shortcut-help-modal';
     modal.className = 'fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[1000] animate-fadeIn';
 
+    // Define category order for better organization
+    const categoryOrder = ['Query', 'Editor', 'Navigation', 'Tabs', 'Search', 'Data', 'Tools', 'General'];
+    const orderedCategories = categoryOrder
+        .filter(cat => categories[cat])
+        .map(cat => [cat, categories[cat]]);
+
     modal.innerHTML = `
-        <div class="bg-[#16191e] border border-white/10 rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-[85vh] overflow-hidden flex flex-col">
-            <div class="flex items-center justify-between p-5 border-b border-white/5">
-                <div class="flex items-center gap-3">
-                    <span class="material-symbols-outlined text-mysql-teal text-2xl">keyboard</span>
-                    <h2 class="text-xl font-semibold text-white">Klavye Kısayolları</h2>
+        <div class="bg-[#16191e] border border-white/10 rounded-xl shadow-2xl max-w-3xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col">
+            <div class="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-gradient-to-r from-[#16191e] to-[#1a1d23]">
+                <div class="flex items-center gap-2">
+                    <span class="material-symbols-outlined text-mysql-teal text-xl">keyboard</span>
+                    <h2 class="text-base font-semibold text-white">Keyboard Shortcuts</h2>
+                    <span id="shortcut-count" class="text-xs text-gray-500 ml-2">${Object.keys(SHORTCUTS).length} shortcuts</span>
                 </div>
-                <button id="close-shortcut-modal" class="p-2 rounded-lg hover:bg-white/10 transition-colors">
-                    <span class="material-symbols-outlined text-gray-400 hover:text-white">close</span>
+                <button id="close-shortcut-modal" class="p-1.5 rounded-lg hover:bg-white/10 transition-colors">
+                    <span class="material-symbols-outlined text-gray-400 hover:text-white text-lg">close</span>
                 </button>
             </div>
-            <div class="flex-1 overflow-y-auto custom-scrollbar p-5">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    ${Object.entries(categories).map(([category, shortcuts]) => `
-                        <div class="bg-[#0f1115] rounded-xl p-4 border border-white/5">
-                            <h3 class="text-mysql-teal font-medium mb-3 flex items-center gap-2">
-                                <span class="material-symbols-outlined text-sm">${getCategoryIcon(category)}</span>
-                                ${category}
-                            </h3>
-                            <div class="space-y-2">
+            <div class="px-4 pt-3 pb-2 border-b border-white/5">
+                <div class="relative">
+                    <span class="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 text-sm pointer-events-none">search</span>
+                    <input 
+                        type="text" 
+                        id="shortcut-search" 
+                        placeholder="Search shortcuts or descriptions..." 
+                        class="w-full bg-[#0f1115] border border-white/10 rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-mysql-teal/50 focus:bg-[#1a1d23] transition-colors"
+                        autocomplete="off"
+                        spellcheck="false"
+                    />
+                    <button id="clear-search" class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors hidden">
+                        <span class="material-symbols-outlined text-sm">close</span>
+                    </button>
+                </div>
+            </div>
+            <div id="shortcuts-container" class="flex-1 overflow-y-auto custom-scrollbar px-4 py-3">
+                <div class="space-y-3">
+                    ${orderedCategories.map(([category, shortcuts]) => `
+                        <div class="shortcut-category border-b border-white/5 pb-3 last:border-0" data-category="${category}">
+                            <div class="flex items-center gap-1.5 mb-2 sticky top-0 bg-[#16191e] py-1">
+                                <span class="material-symbols-outlined text-mysql-teal text-sm">${getCategoryIcon(category)}</span>
+                                <h3 class="text-xs font-semibold text-mysql-teal uppercase tracking-wide">${category}</h3>
+                            </div>
+                            <div class="grid grid-cols-1 gap-1">
                                 ${shortcuts.map(s => `
-                                    <div class="flex items-center justify-between py-1.5 hover:bg-white/5 rounded px-2 -mx-2 transition-colors">
-                                        <span class="text-gray-400 text-sm">${s.description}</span>
-                                        <kbd class="px-2 py-1 bg-[#1a1d23] border border-white/10 rounded text-xs text-gray-300 font-mono shadow-sm">
+                                    <div class="shortcut-item flex items-center justify-between py-1 px-2 hover:bg-white/5 rounded transition-colors group" 
+                                         data-description="${s.description.toLowerCase()}" 
+                                         data-key="${s.key.toLowerCase()}" 
+                                         data-action="${s.action.toLowerCase()}">
+                                        <span class="text-gray-300 text-xs group-hover:text-white transition-colors">${s.description}</span>
+                                        <kbd class="px-2 py-0.5 bg-[#0f1115] border border-white/10 rounded text-[11px] text-gray-400 font-mono shadow-sm whitespace-nowrap ml-3">
                                             ${formatKeyCombo(s.key)}
                                         </kbd>
                                     </div>
@@ -223,15 +249,93 @@ export function showShortcutsHelp() {
                         </div>
                     `).join('')}
                 </div>
+                <div id="no-results" class="hidden text-center py-12">
+                    <span class="material-symbols-outlined text-gray-600 text-5xl mb-3">search_off</span>
+                    <p class="text-gray-500 text-sm">No shortcuts found</p>
+                    <p class="text-gray-600 text-xs mt-1">Try a different search term</p>
+                </div>
             </div>
-            <div class="p-4 border-t border-white/5 text-center text-xs text-gray-500">
-                <span class="material-symbols-outlined text-[10px] align-middle">info</span>
-                Kısayolları gizlemek için <kbd class="px-1.5 py-0.5 bg-[#1a1d23] border border-white/10 rounded text-[10px]">ESC</kbd> veya <kbd class="px-1.5 py-0.5 bg-[#1a1d23] border border-white/10 rounded text-[10px]">F1</kbd> tuşuna basın
+            <div class="px-4 py-2 border-t border-white/5 bg-[#0f1115] text-center">
+                <span class="text-[10px] text-gray-500">
+                    Press <kbd class="px-1 py-0.5 bg-[#16191e] border border-white/10 rounded text-[10px] text-gray-400">ESC</kbd> to close
+                </span>
             </div>
         </div>
     `;
 
     document.body.appendChild(modal);
+
+    // Search functionality
+    const searchInput = document.getElementById('shortcut-search');
+    const clearBtn = document.getElementById('clear-search');
+    const shortcutItems = document.querySelectorAll('.shortcut-item');
+    const categoryDivs = document.querySelectorAll('.shortcut-category');
+    const noResults = document.getElementById('no-results');
+    const shortcutCount = document.getElementById('shortcut-count');
+    const container = document.getElementById('shortcuts-container');
+
+    searchInput.addEventListener('input', (e) => {
+        const query = e.target.value.toLowerCase().trim();
+        
+        // Show/hide clear button
+        clearBtn.classList.toggle('hidden', !query);
+        
+        let visibleCount = 0;
+        let hasVisibleCategories = false;
+
+        if (!query) {
+            // Show all items
+            shortcutItems.forEach(item => item.classList.remove('hidden'));
+            categoryDivs.forEach(cat => cat.classList.remove('hidden'));
+            noResults.classList.add('hidden');
+            container.classList.remove('hidden');
+            shortcutCount.textContent = `${Object.keys(SHORTCUTS).length} shortcuts`;
+            return;
+        }
+
+        // Filter items
+        shortcutItems.forEach(item => {
+            const description = item.dataset.description;
+            const key = item.dataset.key;
+            const action = item.dataset.action;
+            const matches = description.includes(query) || 
+                           key.includes(query) || 
+                           action.includes(query);
+            
+            item.classList.toggle('hidden', !matches);
+            if (matches) visibleCount++;
+        });
+
+        // Hide empty categories
+        categoryDivs.forEach(cat => {
+            const visibleItems = cat.querySelectorAll('.shortcut-item:not(.hidden)');
+            const hasVisible = visibleItems.length > 0;
+            cat.classList.toggle('hidden', !hasVisible);
+            if (hasVisible) hasVisibleCategories = true;
+        });
+
+        // Show/hide no results message
+        if (!hasVisibleCategories) {
+            noResults.classList.remove('hidden');
+            container.classList.add('hidden');
+        } else {
+            noResults.classList.add('hidden');
+            container.classList.remove('hidden');
+        }
+
+        // Update count
+        shortcutCount.textContent = `${visibleCount} shortcut${visibleCount !== 1 ? 's' : ''}`;
+    });
+
+    // Clear search
+    clearBtn.addEventListener('click', () => {
+        searchInput.value = '';
+        searchInput.dispatchEvent(new Event('input'));
+        searchInput.focus();
+    });
+
+    // Focus search on open
+    setTimeout(() => searchInput.focus(), 100);
 
     // Close handlers
     document.getElementById('close-shortcut-modal').onclick = () => modal.remove();
