@@ -390,43 +390,46 @@ export function QueryEditor() {
         const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0];
 
         container.innerHTML = `
-            <div class="flex items-end justify-between border-b ${isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5')}">
-                <div class="flex gap-1" id="tabs-container">
-                    ${tabs.map(tab => {
+            <div class="border-b ${isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5')}">
+                <div class="flex items-end border-b ${isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5')}">
+                    <div class="flex gap-1 flex-1 overflow-x-auto custom-scrollbar" id="tabs-container">
+                        ${tabs.map(tab => {
             const isActive = tab.id === activeTabId;
             return `
-                            <div data-id="${tab.id}" class="tab-item px-4 py-2 border-t border-x rounded-t-md flex items-center gap-3 relative top-[1px] cursor-pointer select-none transition-colors group ${isActive ? (isLight ? 'bg-white border-gray-200 text-mysql-teal' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text' : 'bg-[#1a1d23] border-mysql-teal/40 text-mysql-teal')) : (isLight ? 'bg-gray-100/50 border-transparent text-gray-500 hover:bg-gray-100' : (isOceanic ? 'bg-[#2E3440]/50 border-transparent text-ocean-text/60 hover:bg-white/5' : 'bg-transparent border-transparent text-gray-500 hover:bg-white/5'))}">
-                                <span class="material-symbols-outlined text-sm">${isActive ? 'edit_document' : 'description'}</span>
-                                <span class="font-mono text-[11px]">${tab.title}</span>
-                                <span class="close-tab-btn material-symbols-outlined text-[14px] hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">close</span>
-                            </div>
-                        `;
+                                <div data-id="${tab.id}" class="tab-item px-4 py-2 border-t border-x rounded-t-md flex items-center gap-3 relative top-[1px] cursor-pointer select-none transition-colors group whitespace-nowrap ${isActive ? (isLight ? 'bg-white border-gray-200 text-mysql-teal' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text' : 'bg-[#1a1d23] border-mysql-teal/40 text-mysql-teal')) : (isLight ? 'bg-gray-100/50 border-transparent text-gray-500 hover:bg-gray-100' : (isOceanic ? 'bg-[#2E3440]/50 border-transparent text-ocean-text/60 hover:bg-white/5' : 'bg-transparent border-transparent text-gray-500 hover:bg-white/5'))}">
+                                    <span class="material-symbols-outlined text-sm">${isActive ? 'edit_document' : 'description'}</span>
+                                    <span class="font-mono text-[11px]">${tab.title}</span>
+                                    <span class="close-tab-btn material-symbols-outlined text-[14px] hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">close</span>
+                                </div>
+                            `;
         }).join('')}
-                    <div id="new-tab-btn" class="px-3 py-2 text-gray-600 hover:text-mysql-teal flex items-center cursor-pointer transition-colors" title="New Query Tab">
-                        <span class="material-symbols-outlined text-[18px]">add</span>
+                        <div id="new-tab-btn" class="px-3 py-2 text-gray-600 hover:text-mysql-teal flex items-center cursor-pointer transition-colors" title="New Query Tab">
+                            <span class="material-symbols-outlined text-[18px]">add</span>
+                        </div>
                     </div>
                 </div>
-                <div class="pb-2 flex items-center gap-4">
-                <div class="flex items-center gap-2" title="Select Active Database">
-                    <span class="material-symbols-outlined text-gray-600 text-sm">database</span>
-                    <select id="db-selector" class="${isLight ? 'bg-gray-100 border-gray-200 text-gray-700' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50 text-ocean-text' : 'bg-[#1a1d23] border-white/10 text-gray-300')} border text-[10px] rounded px-2 py-1.5 outline-none focus:border-mysql-teal/50 min-w-[120px] cursor-pointer">
-                         <option value="" disabled selected>Loading...</option>
-                    </select>
-                </div>
-                <div class="h-6 w-px ${isLight ? 'bg-gray-200' : (isOceanic ? 'bg-ocean-border/30' : 'bg-white/10')} mx-1"></div>
-                    <button id="format-btn" class="flex items-center justify-center p-1.5 ${isLight ? 'bg-white border-gray-200 text-gray-700 shadow-sm' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text' : 'bg-[#1a1d23] border-white/10 text-gray-300')} border rounded hover:opacity-80 active:scale-95 transition-all" title="Format SQL (Ctrl+Shift+F)">
-                        <span class="material-symbols-outlined text-lg">format_align_left</span>
-                    </button>
-                    <button id="execute-btn" class="flex items-center justify-center p-1.5 bg-mysql-teal text-black rounded shadow-[0_0_10px_rgba(0,200,255,0.2)] hover:brightness-110 active:scale-95 transition-all" title="Execute Query (Ctrl+Enter)">
-                        <span class="material-symbols-outlined text-lg">play_arrow</span>
-                    </button>
-                    <button id="explain-btn" class="flex items-center justify-center p-1.5 ${isLight ? 'bg-white border-gray-200 text-gray-700 shadow-sm' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text' : 'bg-[#1a1d23] border-white/10 text-gray-300')} border rounded hover:opacity-80 active:scale-95 transition-all" title="Explain Query Plan">
-                        <span class="material-symbols-outlined text-lg">analytics</span>
-                    </button>
-                    ${lastExecutionTime ? `<div class="px-2 py-1 text-[10px] ${isLight ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-green-900/20 text-green-400 border border-green-500/30'} rounded font-mono flex items-center gap-1">
-                        <span class="material-symbols-outlined text-xs">schedule</span>
+                <div class="px-3 py-1.5 flex items-center justify-end gap-3 ${isLight ? 'bg-gray-50' : (isOceanic ? 'bg-ocean-bg/50' : 'bg-[#0f1115]')}">
+                    <div class="flex items-center gap-1.5" title="Select Active Database">
+                        <span class="material-symbols-outlined text-gray-600 text-xs">database</span>
+                        <select id="db-selector" class="${isLight ? 'bg-gray-100 border-gray-200 text-gray-700' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50 text-ocean-text' : 'bg-[#1a1d23] border-white/10 text-gray-300')} border text-[10px] rounded px-2 py-1 outline-none focus:border-mysql-teal/50 min-w-[100px] cursor-pointer">
+                            <option value="" disabled selected>Loading...</option>
+                        </select>
+                    </div>
+                    ${lastExecutionTime ? `<div class="px-1.5 py-0.5 text-[9px] ${isLight ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-green-900/20 text-green-400 border border-green-500/30'} rounded font-mono flex items-center gap-1">
+                        <span class="material-symbols-outlined text-[10px]">schedule</span>
                         ${lastExecutionTime}ms
                     </div>` : ''}
+                    <div class="flex items-center gap-1.5">
+                        <button id="format-btn" class="flex items-center justify-center p-1.5 ${isLight ? 'bg-white border-gray-200 text-gray-700 shadow-sm' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text' : 'bg-[#1a1d23] border-white/10 text-gray-300')} border rounded hover:opacity-80 active:scale-95 transition-all" title="Format SQL (Ctrl+Shift+F)">
+                            <span class="material-symbols-outlined text-base">format_align_left</span>
+                        </button>
+                        <button id="explain-btn" class="flex items-center justify-center p-1.5 ${isLight ? 'bg-white border-gray-200 text-gray-700 shadow-sm' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text' : 'bg-[#1a1d23] border-white/10 text-gray-300')} border rounded hover:opacity-80 active:scale-95 transition-all" title="Explain Query Plan">
+                            <span class="material-symbols-outlined text-base">analytics</span>
+                        </button>
+                        <button id="execute-btn" class="flex items-center justify-center p-1.5 bg-mysql-teal text-black rounded shadow-[0_0_8px_rgba(0,200,255,0.15)] hover:brightness-110 active:scale-95 transition-all" title="Execute Query (Ctrl+Enter)">
+                            <span class="material-symbols-outlined text-lg">play_arrow</span>
+                        </button>
+                    </div>
                 </div>
             </div>
             <div class="flex-1 neu-inset rounded-xl ${isLight ? 'bg-white' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#08090c]')} overflow-hidden flex p-4 font-mono text-[14px] leading-relaxed relative focus-within:ring-1 focus-within:ring-mysql-teal/50 transition-all">
