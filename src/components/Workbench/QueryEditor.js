@@ -428,26 +428,26 @@ export function QueryEditor() {
                         </div>
                     </div>
                 </div>
-                <div class="px-3 py-1.5 flex items-center justify-end gap-3 ${isLight ? 'bg-gray-50' : (isOceanic ? 'bg-ocean-bg/50' : 'bg-[#0f1115]')}">
-                    <div class="flex items-center gap-1.5" title="Select Active Database">
-                        <span class="material-symbols-outlined text-gray-600 text-xs">database</span>
-                        <select id="db-selector" class="${isLight ? 'bg-gray-100 border-gray-200 text-gray-700' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50 text-ocean-text' : 'bg-[#1a1d23] border-white/10 text-gray-300')} border text-[10px] rounded px-2 py-1 outline-none focus:border-mysql-teal/50 min-w-[100px] cursor-pointer">
+                <div class="px-2 py-0.5 flex items-center justify-end gap-2 ${isLight ? 'bg-gray-50' : (isOceanic ? 'bg-ocean-bg/50' : 'bg-[#0f1115]')}">
+                    <div class="flex items-center gap-1" title="Select Active Database">
+                        <span class="material-symbols-outlined text-gray-600" style="font-size: 14px;">database</span>
+                        <select id="db-selector" class="${isLight ? 'bg-gray-100 border-gray-200 text-gray-700' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50 text-ocean-text' : 'bg-[#1a1d23] border-white/10 text-gray-300')} border text-[9px] rounded px-1.5 py-0.5 outline-none focus:border-mysql-teal/50 min-w-[90px] cursor-pointer">
                             <option value="" disabled selected>Loading...</option>
                         </select>
                     </div>
-                    ${lastExecutionTime ? `<div class="px-1.5 py-0.5 text-[9px] ${isLight ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-green-900/20 text-green-400 border border-green-500/30'} rounded font-mono flex items-center gap-1">
-                        <span class="material-symbols-outlined text-[10px]">schedule</span>
+                    ${lastExecutionTime ? `<div class="px-1 py-0.5 text-[8px] ${isLight ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-green-900/20 text-green-400 border border-green-500/30'} rounded font-mono flex items-center gap-0.5">
+                        <span class="material-symbols-outlined" style="font-size: 10px;">schedule</span>
                         ${lastExecutionTime}ms
                     </div>` : ''}
-                    <div class="flex items-center gap-1.5">
-                        <button id="format-btn" class="flex items-center justify-center p-1.5 ${isLight ? 'bg-white border-gray-200 text-gray-700 shadow-sm' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text' : 'bg-[#1a1d23] border-white/10 text-gray-300')} border rounded hover:opacity-80 active:scale-95 transition-all" title="Format SQL (Ctrl+Shift+F)">
-                            <span class="material-symbols-outlined text-base">format_align_left</span>
+                    <div class="flex items-center gap-1">
+                        <button id="format-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-gray-700 shadow-sm' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text' : 'bg-[#1a1d23] border-white/10 text-gray-300')} border rounded hover:opacity-80 active:scale-95 transition-all" title="Format SQL (Ctrl+Shift+F)">
+                            <span class="material-symbols-outlined text-sm">format_align_left</span>
                         </button>
-                        <button id="explain-btn" class="flex items-center justify-center p-1.5 ${isLight ? 'bg-white border-gray-200 text-gray-700 shadow-sm' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text' : 'bg-[#1a1d23] border-white/10 text-gray-300')} border rounded hover:opacity-80 active:scale-95 transition-all" title="Explain Query Plan">
-                            <span class="material-symbols-outlined text-base">analytics</span>
+                        <button id="explain-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-gray-700 shadow-sm' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text' : 'bg-[#1a1d23] border-white/10 text-gray-300')} border rounded hover:opacity-80 active:scale-95 transition-all" title="Explain Query Plan">
+                            <span class="material-symbols-outlined text-sm">analytics</span>
                         </button>
-                        <button id="execute-btn" class="flex items-center justify-center p-1.5 bg-mysql-teal text-black rounded shadow-[0_0_8px_rgba(0,200,255,0.15)] hover:brightness-110 active:scale-95 transition-all" title="Execute Query (Ctrl+Enter)">
-                            <span class="material-symbols-outlined text-lg">play_arrow</span>
+                        <button id="execute-btn" class="flex items-center justify-center p-0.5 bg-mysql-teal text-black rounded shadow-[0_0_8px_rgba(0,200,255,0.15)] hover:brightness-110 active:scale-95 transition-all" title="Execute Query (Ctrl+Enter)">
+                            <span class="material-symbols-outlined text-sm">play_arrow</span>
                         </button>
                     </div>
                 </div>
