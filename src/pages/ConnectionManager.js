@@ -266,14 +266,9 @@ export function ConnectionManager() {
                         <button id="test-btn" class="text-gray-500 hover:${isLight ? 'text-gray-800' : 'text-white'} text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-colors">
                             <span class="material-symbols-outlined text-base">wifi_tethering</span> Test Connection
                         </button>
-                        <div class="flex gap-3">
-                            <button id="save-btn" class="${isLight ? 'bg-gray-100 border-gray-200 text-gray-700 hover:bg-gray-200' : 'bg-white/5 border-white/10 text-white hover:bg-white/10'} px-6 py-2.5 rounded-xl border text-xs font-bold uppercase tracking-wider transition-all">
-                                Save
-                            </button>
-                            <button id="connect-now-btn" class="gloss-btn-cyan px-6 py-2.5 rounded-xl text-white text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-mysql-cyan/20">
-                                <span class="material-symbols-outlined text-base">bolt</span> Connect
-                            </button>
-                        </div>
+                        <button id="connect-now-btn" class="gloss-btn-cyan px-6 py-2.5 rounded-xl text-white text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-mysql-cyan/20">
+                            <span class="material-symbols-outlined text-base">bolt</span> Connect
+                        </button>
                     </div>
                 </div>
              </div>
@@ -290,14 +285,6 @@ export function ConnectionManager() {
                 if (e.key === 'Enter') {
                     e.preventDefault();
                     handleConnect();
-                } else if (e.ctrlKey && e.key === 's') {
-                    e.preventDefault();
-                    saveCurrentConnection().then(success => {
-                        if (success) {
-                            viewMode = 'grid';
-                            render();
-                        }
-                    });
                 }
             });
         });
@@ -320,13 +307,6 @@ export function ConnectionManager() {
         };
 
         container.querySelector('#test-btn').onclick = handleTestConnection;
-
-        container.querySelector('#save-btn').onclick = async () => {
-            if (await saveCurrentConnection()) {
-                viewMode = 'grid';
-            }
-        };
-
         container.querySelector('#connect-now-btn').onclick = handleConnect;
     };
 
@@ -351,16 +331,14 @@ export function ConnectionManager() {
             Dialog.alert('Please provide a specific name for this connection.', 'Input Required');
             return false;
         }
+        
         try {
-            console.log('[DEBUG] Saving connection:', config);
             const result = await invoke('save_connection', { config });
-            console.log('[DEBUG] Save result:', result);
             await loadConnections();
-            console.log('[DEBUG] Connections reloaded after save');
             return true;
         } catch (error) {
-            console.error('[ERROR] Failed to save connection:', error);
-            Dialog.alert('Failed to save connection:\\n\\n' + error + '\\n\\nPlease check the console for details.', 'Save Error');
+            console.error('Failed to save connection:', error);
+            Dialog.alert('Failed to save connection:\\n\\n' + error, 'Save Error');
             return false;
         }
     };
@@ -419,10 +397,23 @@ export function ConnectionManager() {
     };
 
     const handleConnect = async () => {
-        // If we are in edit mode, maybe save first? 
-        // Or act like "One-off" connect?
-        // Let's assume we want to save if it has a name, otherwise just connect temp?
-        // Better to save active config to storage and connect.
+        // Check if connection needs to be saved
+        const needsSave = !config.id || hasUnsavedChanges();
+        
+        if (needsSave && config.name) {
+            // Ask user if they want to save
+            const shouldSave = await Dialog.confirm(
+                'Do you want to save this connection before connecting?',
+                'Save Connection?'
+            );
+            
+            if (shouldSave) {
+                const saved = await saveCurrentConnection();
+                if (!saved) {
+                    return; // Don't connect if save failed
+                }
+            }
+        }
 
         // Visual feedback
         const btn = container.querySelector('#connect-now-btn') || container.querySelector(`.connect-btn[data-id="${config.id}"]`);
@@ -443,6 +434,21 @@ export function ConnectionManager() {
                 btn.disabled = false;
             }
         }
+    };
+    
+    // Helper to check if config has unsaved changes
+    const hasUnsavedChanges = () => {
+        if (!config.id) return true; // New connection
+        const savedConn = connections.find(c => c.id === config.id);
+        if (!savedConn) return true;
+        
+        // Compare important fields
+        return savedConn.name !== config.name ||
+               savedConn.host !== config.host ||
+               savedConn.port !== config.port ||
+               savedConn.username !== config.username ||
+               savedConn.password !== config.password ||
+               savedConn.database !== config.database;
     };
 
     const verifyActiveConnection = async () => {

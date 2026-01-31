@@ -41,7 +41,6 @@ fn get_config_path(app: &AppHandle) -> Result<PathBuf, String> {
     }
     
     path.push("connections.json");
-    eprintln!("[DEBUG] Config path: {:?}", path);
     Ok(path)
 }
 
@@ -50,10 +49,8 @@ fn get_config_path(app: &AppHandle) -> Result<PathBuf, String> {
 #[tauri::command]
 pub fn get_connections(app: AppHandle) -> Result<Vec<ConnectionConfig>, String> {
     let path = get_config_path(&app)?;
-    eprintln!("[DEBUG] Reading connections from: {:?}", path);
     
     if !path.exists() {
-        eprintln!("[DEBUG] Connections file doesn't exist yet, returning empty list");
         return Ok(Vec::new());
     }
     
@@ -63,54 +60,40 @@ pub fn get_connections(app: AppHandle) -> Result<Vec<ConnectionConfig>, String> 
     let configs: Vec<ConnectionConfig> = serde_json::from_str(&content)
         .map_err(|e| format!("Failed to parse connections JSON: {}", e))?;
     
-    eprintln!("[DEBUG] Loaded {} connections", configs.len());
     Ok(configs)
 }
 
 #[tauri::command]
 pub fn save_connection(app: AppHandle, config: ConnectionConfig) -> Result<String, String> {
     let path = get_config_path(&app)?;
-    eprintln!("[DEBUG] Saving connection to: {:?}", path);
-    
     let mut configs = get_connections(app.clone())?;
-    eprintln!("[DEBUG] Current connections count: {}", configs.len());
     
     let mut config = config;
     if config.id.is_none() {
         config.id = Some(uuid::Uuid::new_v4().to_string());
-        eprintln!("[DEBUG] Generated new ID: {:?}", config.id);
     }
 
     if let Some(idx) = configs.iter().position(|c| c.id == config.id) {
-        eprintln!("[DEBUG] Updating existing connection at index {}", idx);
         configs[idx] = config;
     } else {
-        eprintln!("[DEBUG] Adding new connection");
         configs.push(config);
     }
     
     let content = serde_json::to_string_pretty(&configs)
         .map_err(|e| format!("Failed to serialize connections: {}", e))?;
     
-    eprintln!("[DEBUG] Writing {} bytes to file", content.len());
     fs::write(&path, &content)
         .map_err(|e| format!("Failed to write connections file at {:?}: {}", path, e))?;
     
-    eprintln!("[DEBUG] Connection saved successfully");
     Ok("Connection saved successfully".to_string())
 }
 
 #[tauri::command]
 pub fn delete_connection(app: AppHandle, id: String) -> Result<String, String> {
     let path = get_config_path(&app)?;
-    eprintln!("[DEBUG] Deleting connection {} from: {:?}", id, path);
-    
     let mut configs = get_connections(app.clone())?;
-    let before_count = configs.len();
     
     configs.retain(|c| c.id.as_deref() != Some(&id));
-    
-    eprintln!("[DEBUG] Removed {} connections", before_count - configs.len());
     
     let content = serde_json::to_string_pretty(&configs)
         .map_err(|e| format!("Failed to serialize connections: {}", e))?;
