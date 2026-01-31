@@ -32,7 +32,7 @@ export function SchemaDesigner() {
                         <div>
                             <h1 class="text-[10px] font-black tracking-[0.2em] text-white/90 uppercase leading-none mb-1">Schema Designer</h1>
                             <div class="flex items-center gap-2">
-                                <span class="text-[11px] font-mono text-mysql-cyan/70">PROD_STORE.${state.tableName}</span>
+                                <span class="text-[11px] font-mono text-mysql-cyan/70">${state.database}.${state.tableName}</span>
                                 <div class="w-1 h-1 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div>
                             </div>
                         </div>
