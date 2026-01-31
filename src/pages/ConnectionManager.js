@@ -195,8 +195,9 @@ export function ConnectionManager() {
         });
     };
 
-    const renderEditView = () => {
-        container.innerHTML = `
+    const renderEditView = () => {        const isLight = theme === 'light';
+        const isOceanic = theme === 'oceanic';
+                container.innerHTML = `
              <div class="w-full h-full flex flex-col px-6 py-4 justify-center max-w-2xl mx-auto">
                 <button id="back-btn" class="self-start mb-3 flex items-center gap-1.5 ${isLight ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white'} transition-colors text-xs font-medium">
                     <span class="material-symbols-outlined text-sm">arrow_back</span>
