@@ -583,6 +583,43 @@ pub async fn get_table_foreign_keys(
     Ok(fks)
 }
 
+#[tauri::command]
+pub async fn get_table_primary_keys(
+    state: State<'_, AppState>,
+    database: String,
+    table: String
+) -> Result<Vec<String>, String> {
+    let pool = {
+        let pool_guard = state.pool.lock().unwrap();
+        pool_guard.clone().ok_or("No active connection")?
+    };
+
+    let query = format!(
+        "SELECT COLUMN_NAME \
+         FROM information_schema.KEY_COLUMN_USAGE \
+         WHERE TABLE_SCHEMA = '{}' AND TABLE_NAME = '{}' AND CONSTRAINT_NAME = 'PRIMARY' \
+         ORDER BY ORDINAL_POSITION",
+        database, table
+    );
+    
+    let rows = sqlx::query(&query)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("Failed to fetch primary keys: {}", e))?;
+
+    let mut pk_columns = Vec::new();
+    for row in rows {
+        use sqlx::Row;
+        let col_name: String = row.try_get(0).unwrap_or_default();
+        if !col_name.is_empty() {
+            pk_columns.push(col_name);
+        }
+    }
+
+    Ok(pk_columns)
+}
+
+
 #[derive(Serialize, Debug)]
 pub struct TableConstraint {
     pub name: String,

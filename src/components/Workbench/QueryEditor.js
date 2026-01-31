@@ -499,6 +499,9 @@ export function QueryEditor() {
                     executeBtn.classList.add('opacity-70', 'cursor-not-allowed');
                     const result = await invoke('execute_query', { query: editorContent });
 
+                    // Add query to result for editability detection
+                    result.query = editorContent;
+
                     const event = new CustomEvent('tactilesql:query-result', { detail: result });
                     window.dispatchEvent(event);
 
@@ -625,6 +628,14 @@ export function QueryEditor() {
     // Initial Render
     render();
     loadDatabasesForAutocomplete();
+
+    // Listen for refresh requests (from ResultsTable after commit)
+    window.addEventListener('tactilesql:refresh-query', () => {
+        const executeBtn = container.querySelector('#execute-btn');
+        if (executeBtn) {
+            executeBtn.click();
+        }
+    });
 
     return container;
 }
