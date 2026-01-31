@@ -508,7 +508,7 @@ export function QueryEditor() {
                     }));
                     Dialog.alert('Query Execution Failed: ' + error, 'Execution Error');
                 } finally {
-                    executeBtn.innerHTML = '<span class="material-symbols-outlined text-sm font-bold">play_arrow</span> EXECUTE';
+                    executeBtn.innerHTML = '<span class="material-symbols-outlined text-lg">play_arrow</span>';
                     executeBtn.classList.remove('opacity-70', 'cursor-not-allowed');
                 }
             });
@@ -547,7 +547,7 @@ export function QueryEditor() {
                 } catch (error) {
                     Dialog.alert('Explain Failed: ' + error, 'Analysis Error');
                 } finally {
-                    explainBtn.innerHTML = '<span class="material-symbols-outlined text-sm">analytics</span> EXPLAIN';
+                    explainBtn.innerHTML = '<span class="material-symbols-outlined text-lg">analytics</span>';
                     explainBtn.classList.remove('opacity-70', 'cursor-not-allowed');
                 }
             });
