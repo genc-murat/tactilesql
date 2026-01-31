@@ -157,6 +157,7 @@ export function QueryEditor() {
     ];
     let activeTabId = '1';
     let lastExecutionTime = null;
+    const maxVisibleTabs = 7; // Fixed: always show 7 tabs max
 
     // Autocomplete state
     let suggestions = [];
@@ -388,23 +389,42 @@ export function QueryEditor() {
     // --- Render ---
     const render = () => {
         const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0];
+        const visibleTabs = tabs.slice(0, maxVisibleTabs);
+        const overflowTabs = tabs.slice(maxVisibleTabs);
 
         container.innerHTML = `
             <div class="border-b ${isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5')}">
                 <div class="flex items-end border-b ${isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5')}">
-                    <div class="flex gap-1 flex-1 overflow-x-auto custom-scrollbar" id="tabs-container">
-                        ${tabs.map(tab => {
+                    <div class="flex gap-1 flex-1 items-end" id="tabs-container">
+                        ${visibleTabs.map(tab => {
             const isActive = tab.id === activeTabId;
             return `
-                                <div data-id="${tab.id}" class="tab-item px-4 py-2 border-t border-x rounded-t-md flex items-center gap-3 relative top-[1px] cursor-pointer select-none transition-colors group whitespace-nowrap ${isActive ? (isLight ? 'bg-white border-gray-200 text-mysql-teal' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text' : 'bg-[#1a1d23] border-mysql-teal/40 text-mysql-teal')) : (isLight ? 'bg-gray-100/50 border-transparent text-gray-500 hover:bg-gray-100' : (isOceanic ? 'bg-[#2E3440]/50 border-transparent text-ocean-text/60 hover:bg-white/5' : 'bg-transparent border-transparent text-gray-500 hover:bg-white/5'))}">
-                                    <span class="material-symbols-outlined text-sm">${isActive ? 'edit_document' : 'description'}</span>
-                                    <span class="font-mono text-[11px]">${tab.title}</span>
-                                    <span class="close-tab-btn material-symbols-outlined text-[14px] hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">close</span>
+                                <div data-id="${tab.id}" class="tab-item px-3 py-2 border-t border-x rounded-t-md flex items-center gap-2 relative top-[1px] cursor-pointer select-none transition-all group max-w-[180px] ${isActive ? (isLight ? 'bg-white border-gray-200 text-mysql-teal' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text' : 'bg-[#1a1d23] border-mysql-teal/40 text-mysql-teal')) : (isLight ? 'bg-gray-100/50 border-transparent text-gray-500 hover:bg-gray-100' : (isOceanic ? 'bg-[#2E3440]/50 border-transparent text-ocean-text/60 hover:bg-white/5' : 'bg-transparent border-transparent text-gray-500 hover:bg-white/5'))}">
+                                    <span class="material-symbols-outlined text-xs">${isActive ? 'edit_document' : 'description'}</span>
+                                    <span class="font-mono text-[10px] truncate flex-1">${tab.title}</span>
+                                    <span class="close-tab-btn material-symbols-outlined text-[12px] hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">close</span>
                                 </div>
                             `;
         }).join('')}
-                        <div id="new-tab-btn" class="px-3 py-2 text-gray-600 hover:text-mysql-teal flex items-center cursor-pointer transition-colors" title="New Query Tab">
-                            <span class="material-symbols-outlined text-[18px]">add</span>
+                        ${overflowTabs.length > 0 ? `
+                            <div class="relative group">
+                                <div id="overflow-tab-btn" class="px-2 py-2 border-t border-x border-transparent rounded-t-md flex items-center gap-1 cursor-pointer select-none transition-colors hover:bg-white/5 relative top-[1px]">
+                                    <span class="material-symbols-outlined text-xs text-gray-500">more_horiz</span>
+                                    <span class="font-mono text-[9px] text-gray-500">${overflowTabs.length}</span>
+                                </div>
+                                <div id="overflow-menu" class="hidden absolute top-full left-0 mt-1 ${isLight ? 'bg-white border-gray-200 shadow-xl' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 shadow-2xl' : 'bg-[#1a1d23] border-white/10 shadow-2xl')} border rounded-lg py-1 min-w-[160px] z-50">
+                                    ${overflowTabs.map(tab => `
+                                        <div data-id="${tab.id}" class="overflow-tab-item px-3 py-1.5 flex items-center gap-2 cursor-pointer ${isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-400 hover:bg-white/5'} transition-colors">
+                                            <span class="material-symbols-outlined text-xs">description</span>
+                                            <span class="font-mono text-[10px] flex-1">${tab.title}</span>
+                                            <span class="close-overflow-tab material-symbols-outlined text-[12px] hover:text-red-400 opacity-0 group-hover:opacity-100">close</span>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        ` : ''}
+                        <div id="new-tab-btn" class="px-2 py-2 text-gray-600 hover:text-mysql-teal flex items-center cursor-pointer transition-colors" title="New Query Tab">
+                            <span class="material-symbols-outlined text-base">add</span>
                         </div>
                     </div>
                 </div>
@@ -466,6 +486,52 @@ export function QueryEditor() {
                 e.stopPropagation();
                 const tabItem = btn.closest('.tab-item');
                 const id = tabItem.dataset.id;
+                if (tabs.length === 1) return;
+                const idx = tabs.findIndex(t => t.id === id);
+                tabs = tabs.filter(t => t.id !== id);
+                if (activeTabId === id) {
+                    const newIdx = Math.max(0, idx - 1);
+                    activeTabId = tabs[newIdx].id;
+                }
+                render();
+            });
+        });
+
+        // Overflow Tab Menu Toggle
+        const overflowBtn = container.querySelector('#overflow-tab-btn');
+        const overflowMenu = container.querySelector('#overflow-menu');
+        if (overflowBtn && overflowMenu) {
+            overflowBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                overflowMenu.classList.toggle('hidden');
+            });
+
+            // Close menu when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('#overflow-tab-btn') && !e.target.closest('#overflow-menu')) {
+                    overflowMenu.classList.add('hidden');
+                }
+            });
+        }
+
+        // Overflow Tab switching
+        container.querySelectorAll('.overflow-tab-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                if (e.target.closest('.close-overflow-tab')) return;
+                const id = item.dataset.id;
+                if (id !== activeTabId) {
+                    activeTabId = id;
+                    render();
+                }
+            });
+        });
+
+        // Close Overflow Tab
+        container.querySelectorAll('.close-overflow-tab').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const item = btn.closest('.overflow-tab-item');
+                const id = item.dataset.id;
                 if (tabs.length === 1) return;
                 const idx = tabs.findIndex(t => t.id === id);
                 tabs = tabs.filter(t => t.id !== id);
