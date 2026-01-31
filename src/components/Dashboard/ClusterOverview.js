@@ -1,7 +1,9 @@
 import { ThemeManager } from '../../utils/ThemeManager.js';
 
 export function ClusterOverview() {
-    let isLight = ThemeManager.getCurrentTheme() === 'light';
+    let theme = ThemeManager.getCurrentTheme();
+    let isLight = theme === 'light';
+    let isOceanic = theme === 'oceanic';
     const section = document.createElement('section');
     section.className = "flex flex-col gap-5";
 
@@ -20,10 +22,10 @@ export function ClusterOverview() {
             </div>
             <div id="db-cards-grid" class="grid grid-cols-2 lg:grid-cols-4 gap-5">
                 ${currentRows.length === 0 ? `
-                    <div class="tactile-card rounded-2xl p-5 border-t ${isLight ? 'border-gray-200 bg-gray-50' : 'border-white/5 bg-white/5'} h-32 animate-pulse"></div>
-                    <div class="tactile-card rounded-2xl p-5 border-t ${isLight ? 'border-gray-200 bg-gray-50' : 'border-white/5 bg-white/5'} h-32 animate-pulse"></div>
-                    <div class="tactile-card rounded-2xl p-5 border-t ${isLight ? 'border-gray-200 bg-gray-50' : 'border-white/5 bg-white/5'} h-32 animate-pulse"></div>
-                    <div class="tactile-card rounded-2xl p-5 border-t ${isLight ? 'border-gray-200 bg-gray-50' : 'border-white/5 bg-white/5'} h-32 animate-pulse"></div>
+                    <div class="tactile-card rounded-2xl p-5 border-t ${isLight ? 'border-gray-200 bg-gray-50' : (isOceanic ? 'bg-[#3B4252] border-ocean-border/30' : 'border-white/5 bg-white/5')} h-32 animate-pulse"></div>
+                    <div class="tactile-card rounded-2xl p-5 border-t ${isLight ? 'border-gray-200 bg-gray-50' : (isOceanic ? 'bg-[#3B4252] border-ocean-border/30' : 'border-white/5 bg-white/5')} h-32 animate-pulse"></div>
+                    <div class="tactile-card rounded-2xl p-5 border-t ${isLight ? 'border-gray-200 bg-gray-50' : (isOceanic ? 'bg-[#3B4252] border-ocean-border/30' : 'border-white/5 bg-white/5')} h-32 animate-pulse"></div>
+                    <div class="tactile-card rounded-2xl p-5 border-t ${isLight ? 'border-gray-200 bg-gray-50' : (isOceanic ? 'bg-[#3B4252] border-ocean-border/30' : 'border-white/5 bg-white/5')} h-32 animate-pulse"></div>
                 ` : ''}
             </div>
         `;
@@ -57,20 +59,20 @@ export function ClusterOverview() {
                 return `
                 <div class="tactile-card rounded-2xl p-5 border-t border-${color}-400/20 group hover:translate-y-[-4px] transition-all cursor-pointer">
                     <div class="flex justify-between items-center mb-4">
-                        <span class="text-sm font-bold ${isLight ? 'text-gray-800' : 'text-white'} group-hover:text-${color}-500 transition-colors truncate w-32" title="${dbName}">${dbName}</span>
+                        <span class="text-sm font-bold ${isLight ? 'text-gray-800' : (isOceanic ? 'text-ocean-text' : 'text-white')} group-hover:text-${color}-500 transition-colors truncate w-32" title="${dbName}">${dbName}</span>
                         <span class="material-symbols-outlined text-base text-gray-400">settings</span>
                     </div>
                     <div class="space-y-3">
                         <div class="flex justify-between items-center text-[10px] font-mono">
                             <span class="text-gray-500">STORAGE</span>
-                            <span class="${isLight ? 'text-gray-600' : 'text-gray-300'}">${formatBytes(size)}</span>
+                            <span class="${isLight ? 'text-gray-600' : (isOceanic ? 'text-ocean-text/80' : 'text-gray-300')}">${formatBytes(size)}</span>
                         </div>
-                        <div class="w-full h-1 ${isLight ? 'bg-gray-100' : 'bg-black/40'} rounded-full overflow-hidden">
+                        <div class="w-full h-1 ${isLight ? 'bg-gray-100' : (isOceanic ? 'bg-[#2E3440]' : 'bg-black/40')} rounded-full overflow-hidden">
                             <div class="h-full bg-${color}-500/60" style="width: ${percentage}%"></div>
                         </div>
                         <div class="flex justify-between items-center text-[10px] font-mono">
                             <span class="text-gray-500">TABLES</span>
-                            <span class="${isLight ? 'text-gray-600' : 'text-gray-300'}">${tables}</span>
+                            <span class="${isLight ? 'text-gray-600' : (isOceanic ? 'text-ocean-text/80' : 'text-gray-300')}">${tables}</span>
                         </div>
                     </div>
                 </div>
@@ -95,7 +97,9 @@ export function ClusterOverview() {
 
     // --- Theme Change Handling ---
     const onThemeChange = (e) => {
-        isLight = e.detail.theme === 'light';
+        theme = e.detail.theme;
+        isLight = theme === 'light';
+        isOceanic = theme === 'oceanic';
         render();
     };
     window.addEventListener('themechange', onThemeChange);

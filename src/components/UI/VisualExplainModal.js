@@ -1,4 +1,5 @@
 import { Dialog } from './Dialog.js';
+import { ThemeManager } from '../../utils/ThemeManager.js';
 
 export function showVisualExplainModal(queryResult) {
     if (!queryResult) {
@@ -26,34 +27,35 @@ export function showVisualExplainModal(queryResult) {
     }
 
     // Remove existing
-    const existing = document.getElementById('visual-explain-modal');
-    if (existing) existing.remove();
+    const theme = ThemeManager.getCurrentTheme();
+    const isLight = theme === 'light';
+    const isOceanic = theme === 'oceanic';
 
     const overlay = document.createElement('div');
     overlay.id = 'visual-explain-modal';
     overlay.className = 'fixed inset-0 bg-black/95 backdrop-blur-md z-[9999] flex items-center justify-center p-8';
 
     overlay.innerHTML = `
-        <div class="bg-[#0f1115] border border-white/10 rounded-xl shadow-2xl w-full max-w-3xl h-[85vh] flex flex-col overflow-hidden transform transition-all">
-            <div class="flex items-center justify-between px-6 py-4 border-b border-white/5 bg-[#13161b]">
+        <div class="${isLight ? 'bg-white border-gray-200' : (isOceanic ? 'bg-ocean-panel border-ocean-border' : 'bg-[#0f1115] border border-white/10')} rounded-xl shadow-2xl w-full max-w-3xl h-[85vh] flex flex-col overflow-hidden transform transition-all">
+            <div class="flex items-center justify-between px-6 py-4 border-b ${isLight ? 'border-gray-100 bg-gray-50' : (isOceanic ? 'border-ocean-border/30 bg-ocean-panel' : 'border-white/5 bg-[#13161b]')}">
                 <div class="flex items-center gap-2">
                     <span class="material-symbols-outlined text-gray-400 text-lg">account_tree</span>
                     <div>
-                        <h2 class="text-sm font-bold text-white tracking-tight uppercase">Query Analysis</h2>
+                        <h2 class="text-sm font-bold ${isLight ? 'text-gray-800' : 'text-white'} tracking-tight uppercase">Query Analysis</h2>
                     </div>
                 </div>
-                <button id="close-modal" class="w-6 h-6 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-all">
+                <button id="close-modal" class="w-6 h-6 flex items-center justify-center rounded-full ${isLight ? 'bg-gray-100' : 'bg-white/5'} hover:bg-white/10 text-gray-400 hover:text-white transition-all">
                     <span class="material-symbols-outlined text-sm">close</span>
                 </button>
             </div>
             
-            <div class="flex-1 overflow-auto custom-scrollbar p-6 bg-[#0a0c10] relative">
+            <div class="flex-1 overflow-auto custom-scrollbar p-6 ${isLight ? 'bg-white' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]')} relative">
                 <div class="max-w-xl mx-auto space-y-4" id="visualization-container">
                     <!-- Nodes injected here -->
                 </div>
             </div>
 
-            <div class="px-6 py-2 border-t border-white/5 bg-[#13161b] flex justify-center gap-4 text-[10px] text-gray-500 font-medium">
+            <div class="px-6 py-2 border-t ${isLight ? 'border-gray-100 bg-gray-50' : (isOceanic ? 'border-ocean-border/30 bg-ocean-panel' : 'border-white/5 bg-[#13161b]')} flex justify-center gap-4 text-[10px] text-gray-500 font-medium">
                  <div class="flex items-center gap-1.5"><div class="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_5px_rgba(34,197,94,0.3)]"></div> Very Fast</div>
                  <div class="flex items-center gap-1.5"><div class="w-1.5 h-1.5 rounded-full bg-yellow-500 shadow-[0_0_5px_rgba(234,179,8,0.3)]"></div> Moderate</div>
                  <div class="flex items-center gap-1.5"><div class="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_5px_rgba(239,68,68,0.3)]"></div> Slow</div>
@@ -137,7 +139,7 @@ export function showVisualExplainModal(queryResult) {
 
             // Minimal connector
             if (!isLast) {
-                node.innerHTML += `<div class="absolute left-[9px] top-8 bottom-[-16px] w-[2px] bg-[#1a1d23] group-hover:bg-[#2a2d33] transition-colors"></div>`;
+                node.innerHTML += `<div class="absolute left-[9px] top-8 bottom-[-16px] w-[2px] ${isLight ? 'bg-gray-100' : (isOceanic ? 'bg-ocean-border/50' : 'bg-[#1a1d23]')} group-hover:bg-[#2a2d33] transition-colors"></div>`;
             }
 
             // Warnings
@@ -154,11 +156,11 @@ export function showVisualExplainModal(queryResult) {
             }
 
             node.innerHTML += `
-               <div class="absolute left-0 top-0 w-[20px] h-[20px] rounded-full bg-[#1a1d23] border border-white/10 flex items-center justify-center text-[9px] font-mono text-gray-500">
+               <div class="absolute left-0 top-0 w-[20px] h-[20px] rounded-full ${isLight ? 'bg-gray-50 border-gray-200' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#1a1d23] border border-white/10')} flex items-center justify-center text-[9px] font-mono text-gray-500">
                     ${id || index + 1}
                </div>
 
-               <div class="bg-[#13161b] border ${cardClass} rounded-lg p-3 transition-all shadow-md relative overflow-hidden">
+               <div class="${isLight ? 'bg-white' : (isOceanic ? 'bg-ocean-panel' : 'bg-[#13161b]')} border ${cardClass} rounded-lg p-3 transition-all shadow-md relative overflow-hidden">
                     <div class="flex justify-between items-center">
                         <div class="flex gap-3 items-center">
                             <div class="w-8 h-8 rounded-md flex items-center justify-center ${iconClass} shrink-0">

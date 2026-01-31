@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { Dialog } from './Dialog.js';
+import { ThemeManager } from '../../utils/ThemeManager.js';
 
 // SQL Keywords
 const SQL_KEYWORDS = [
@@ -78,20 +79,24 @@ export function showViewSourceModal(dbName, viewName) {
     const existing = document.getElementById('view-source-modal');
     if (existing) existing.remove();
 
+    const theme = ThemeManager.getCurrentTheme();
+    const isLight = theme === 'light';
+    const isOceanic = theme === 'oceanic';
+
     const overlay = document.createElement('div');
     overlay.id = 'view-source-modal';
     overlay.className = 'fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-center justify-center p-4';
 
     overlay.innerHTML = `
-        <div class="bg-[#0f1115] border border-white/10 rounded-xl shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden">
-            <div class="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-[#16191e]">
+        <div class="${isLight ? 'bg-white border-gray-200' : (isOceanic ? 'bg-ocean-panel border-ocean-border' : 'bg-[#0f1115] border border-white/10')} rounded-xl shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden">
+            <div class="flex items-center justify-between px-6 py-4 border-b ${isLight ? 'border-gray-100 bg-gray-50' : (isOceanic ? 'border-ocean-border/30 bg-ocean-panel' : 'border-white/10 bg-[#16191e]')}">
                 <div class="flex items-center gap-3">
                     <span class="material-symbols-outlined text-blue-400">visibility</span>
-                    <h2 class="text-sm font-bold text-white uppercase tracking-wider">View Source</h2>
-                    <span class="text-[10px] font-mono text-gray-500 bg-black/30 px-2 py-1 rounded">${dbName}.${viewName}</span>
+                    <h2 class="text-sm font-bold ${isLight ? 'text-gray-800' : 'text-white'} uppercase tracking-wider">View Source</h2>
+                    <span class="text-[10px] font-mono ${isLight ? 'text-gray-500 bg-gray-100' : 'text-gray-500 bg-black/30'} px-2 py-1 rounded">${dbName}.${viewName}</span>
                 </div>
                 <div class="flex items-center gap-3">
-                    <button id="format-btn" class="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-white border border-white/10 rounded hover:bg-white/5 transition-colors flex items-center gap-1.5">
+                    <button id="format-btn" class="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-gray-600 hover:text-gray-900 border-gray-200 hover:bg-gray-100' : 'text-gray-400 hover:text-white border border-white/10 rounded hover:bg-white/5'} transition-colors flex items-center gap-1.5">
                         <span class="material-symbols-outlined text-sm">auto_fix_high</span> Format
                     </button>
                     <button id="close-modal" class="text-gray-500 hover:text-white transition-colors">
@@ -104,12 +109,12 @@ export function showViewSourceModal(dbName, viewName) {
                     <span class="material-symbols-outlined animate-spin text-mysql-teal">sync</span>
                     <span class="ml-2 text-gray-500">Loading view definition...</span>
                 </div>
-                <div id="editor-container" class="hidden flex-1 relative bg-[#08090c]">
-                    <pre id="syntax-highlight" class="absolute inset-0 p-6 font-mono text-[14px] leading-[1.8] pointer-events-none overflow-auto custom-scrollbar whitespace-pre-wrap break-words" aria-hidden="true"></pre>
-                    <textarea id="view-source-editor" class="absolute inset-0 w-full h-full bg-transparent text-transparent caret-white font-mono text-[14px] leading-[1.8] p-6 resize-none outline-none focus:ring-1 focus:ring-mysql-teal/30 custom-scrollbar z-10" spellcheck="false"></textarea>
+                <div id="editor-container" class="hidden flex-1 relative ${isLight ? 'bg-white' : (isOceanic ? 'bg-[#2E3440]' : 'bg-[#08090c]')}">
+                    <pre id="syntax-highlight" class="absolute inset-0 p-6 font-mono text-[14px] leading-[1.8] pointer-events-none overflow-auto custom-scrollbar whitespace-pre-wrap break-words ${isLight ? 'text-gray-800' : 'text-gray-300'}" aria-hidden="true"></pre>
+                    <textarea id="view-source-editor" class="absolute inset-0 w-full h-full bg-transparent text-transparent ${isLight ? 'caret-gray-800' : (isOceanic ? 'caret-ocean-frost' : 'caret-white')} font-mono text-[14px] leading-[1.8] p-6 resize-none outline-none focus:ring-1 focus:ring-mysql-teal/30 custom-scrollbar z-10" spellcheck="false"></textarea>
                 </div>
             </div>
-            <div class="flex items-center justify-between px-6 py-4 border-t border-white/10 bg-[#16191e]">
+            <div class="flex items-center justify-between px-6 py-4 border-t ${isLight ? 'border-gray-100 bg-gray-50' : (isOceanic ? 'border-ocean-border/30 bg-ocean-panel' : 'border-white/10 bg-[#16191e]')}">
                 <div class="text-[10px] text-gray-600">
                     <span class="text-yellow-500">⚠</span> Changes will be applied using CREATE OR REPLACE VIEW
                 </div>

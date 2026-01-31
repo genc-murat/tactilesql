@@ -5,7 +5,8 @@ export const ThemeManager = {
     STORAGE_KEY: 'tactileSQL-theme',
     THEMES: {
         DARK: 'dark',
-        LIGHT: 'light'
+        LIGHT: 'light',
+        OCEANIC: 'oceanic'
     },
 
     /**
@@ -32,9 +33,10 @@ export const ThemeManager = {
      * Get current active theme
      */
     getCurrentTheme() {
-        return document.documentElement.classList.contains('light')
-            ? this.THEMES.LIGHT
-            : this.THEMES.DARK;
+        const root = document.documentElement;
+        if (root.classList.contains(this.THEMES.LIGHT)) return this.THEMES.LIGHT;
+        if (root.classList.contains(this.THEMES.OCEANIC)) return this.THEMES.OCEANIC;
+        return this.THEMES.DARK;
     },
 
     /**
@@ -43,13 +45,11 @@ export const ThemeManager = {
     applyTheme(theme) {
         const root = document.documentElement;
 
-        if (theme === this.THEMES.LIGHT) {
-            root.classList.remove('dark');
-            root.classList.add('light');
-        } else {
-            root.classList.remove('light');
-            root.classList.add('dark');
-        }
+        // Remove all theme classes
+        Object.values(this.THEMES).forEach(t => root.classList.remove(t));
+
+        // Add current theme class
+        root.classList.add(theme);
 
         localStorage.setItem(this.STORAGE_KEY, theme);
 
@@ -62,9 +62,12 @@ export const ThemeManager = {
      */
     toggle() {
         const current = this.getCurrentTheme();
-        const newTheme = current === this.THEMES.DARK
-            ? this.THEMES.LIGHT
-            : this.THEMES.DARK;
+        let newTheme;
+
+        if (current === this.THEMES.DARK) newTheme = this.THEMES.LIGHT;
+        else if (current === this.THEMES.LIGHT) newTheme = this.THEMES.OCEANIC;
+        else newTheme = this.THEMES.DARK;
+
         this.applyTheme(newTheme);
         return newTheme;
     },

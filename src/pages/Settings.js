@@ -1,11 +1,14 @@
 import { ThemeManager } from '../utils/ThemeManager.js';
 
 export function Settings() {
-    let isLight = ThemeManager.getCurrentTheme() === 'light';
+    let theme = ThemeManager.getCurrentTheme();
     const container = document.createElement('div');
-    container.className = `h-full overflow-auto ${isLight ? 'bg-gray-50' : 'bg-base-dark'} transition-colors duration-300`;
+    const getBgClass = (t) => t === 'light' ? 'bg-gray-50' : (t === 'oceanic' ? 'bg-ocean-bg' : 'bg-base-dark');
+    container.className = `h-full overflow-auto ${getBgClass(theme)} transition-colors duration-300`;
 
     const render = () => {
+        const isLight = theme === 'light';
+        const isOceanic = theme === 'oceanic';
         const currentTheme = ThemeManager.getCurrentTheme();
 
         container.innerHTML = `
@@ -46,6 +49,10 @@ export function Settings() {
                                     <span class="material-symbols-outlined text-lg">light_mode</span>
                                     Light
                                 </button>
+                                <button id="theme-oceanic" class="theme-btn flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${currentTheme === 'oceanic' ? 'bg-gradient-to-r from-mysql-teal to-mysql-cyan text-white shadow-lg shadow-mysql-teal/30' : (isLight ? 'text-gray-600 hover:text-gray-800' : 'text-gray-400 hover:text-gray-200')}">
+                                    <span class="material-symbols-outlined text-lg">water</span>
+                                    Oceanic
+                                </button>
                             </div>
                         </div>
 
@@ -53,7 +60,7 @@ export function Settings() {
                         <div class="mt-4">
                             <h4 class="text-xs font-medium ${isLight ? 'text-gray-600' : 'text-gray-400'} uppercase tracking-wider mb-3">Preview</h4>
                             <div id="theme-preview" class="rounded-lg overflow-hidden border ${isLight ? 'border-gray-200' : 'border-white/10'}">
-                                ${currentTheme === 'dark' ? getDarkPreview() : getLightPreview()}
+                                ${currentTheme === 'dark' ? getDarkPreview() : (currentTheme === 'light' ? getLightPreview() : getOceanicPreview())}
                             </div>
                         </div>
                     </div>
@@ -138,20 +145,25 @@ export function Settings() {
     const attachEvents = () => {
         const darkBtn = container.querySelector('#theme-dark');
         const lightBtn = container.querySelector('#theme-light');
+        const oceanicBtn = container.querySelector('#theme-oceanic');
         const preview = container.querySelector('#theme-preview');
 
-        const updateButtons = (theme) => {
+        const updateButtons = (newTheme) => {
             const activeClass = 'bg-gradient-to-r from-mysql-teal to-mysql-cyan text-white shadow-lg shadow-mysql-teal/30';
-            const inactiveClass = isLight ? 'text-gray-600 hover:text-gray-800' : 'text-gray-400 hover:text-gray-200';
+            const getInactiveClass = (t) => t === 'light' ? 'text-gray-600 hover:text-gray-800' : (t === 'oceanic' ? 'text-ocean-text/60 hover:text-ocean-text' : 'text-gray-400 hover:text-gray-200');
+            const inactiveClass = getInactiveClass(newTheme);
+
+            [darkBtn, lightBtn, oceanicBtn].forEach(btn => btn.className = `theme-btn flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${inactiveClass}`);
 
             if (theme === 'dark') {
                 darkBtn.className = `theme-btn flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${activeClass}`;
-                lightBtn.className = `theme-btn flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${inactiveClass}`;
                 preview.innerHTML = getDarkPreview();
-            } else {
-                darkBtn.className = `theme-btn flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${inactiveClass}`;
+            } else if (theme === 'light') {
                 lightBtn.className = `theme-btn flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${activeClass}`;
                 preview.innerHTML = getLightPreview();
+            } else {
+                oceanicBtn.className = `theme-btn flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${activeClass}`;
+                preview.innerHTML = getOceanicPreview();
             }
         };
 
@@ -164,11 +176,16 @@ export function Settings() {
             ThemeManager.setTheme('light');
             updateButtons('light');
         });
+
+        oceanicBtn?.addEventListener('click', () => {
+            ThemeManager.setTheme('oceanic');
+            updateButtons('oceanic');
+        });
     };
 
     const onThemeChange = (e) => {
-        isLight = e.detail.theme === 'light';
-        container.className = `h-full overflow-auto ${isLight ? 'bg-gray-50' : 'bg-base-dark'} transition-colors duration-300`;
+        theme = e.detail.theme;
+        container.className = `h-full overflow-auto ${getBgClass(theme)} transition-colors duration-300`;
         render();
         attachEvents();
     };
@@ -222,6 +239,28 @@ function getLightPreview() {
                     <span class="text-blue-600 font-semibold">FROM</span>
                     <span class="text-amber-600"> users</span>
                     <span class="text-gray-600">;</span>
+                </code>
+            </div>
+        </div>
+    `;
+}
+
+function getOceanicPreview() {
+    return `
+        <div class="bg-[#2E3440] p-4 oceanic">
+            <div class="flex items-center gap-2 mb-3">
+                <div class="w-3 h-3 rounded-full bg-red-400"></div>
+                <div class="w-3 h-3 rounded-full bg-yellow-400"></div>
+                <div class="w-3 h-3 rounded-full bg-green-400"></div>
+                <span class="ml-2 text-xs text-[#D8DEE9]">Oceanic Theme Preview</span>
+            </div>
+            <div class="bg-[#3B4252] rounded-lg p-3 border border-[#4C566A]">
+                <code class="text-sm font-mono">
+                    <span class="syntax-keyword font-semibold">SELECT</span>
+                    <span class="text-[#D8DEE9]"> * </span>
+                    <span class="syntax-keyword font-semibold">FROM</span>
+                    <span class="syntax-string"> users</span>
+                    <span class="text-[#D8DEE9]">;</span>
                 </code>
             </div>
         </div>

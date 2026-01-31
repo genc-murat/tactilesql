@@ -1,22 +1,28 @@
+import { ThemeManager } from '../../utils/ThemeManager.js';
+
 export class Dialog {
     static init() {
         if (document.getElementById('tactile-dialog-overlay')) return;
+
+        const theme = ThemeManager.getCurrentTheme();
+        const isLight = theme === 'light';
+        const isOceanic = theme === 'oceanic';
 
         const overlay = document.createElement('div');
         overlay.id = 'tactile-dialog-overlay';
         overlay.className = "fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] hidden flex items-center justify-center opacity-0 transition-opacity duration-200";
 
         overlay.innerHTML = `
-            <div id="tactile-dialog" class="bg-[#16191e] border border-white/10 rounded-2xl w-[400px] shadow-2xl scale-95 transition-transform duration-200 overflow-hidden relative">
-                <div class="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-neon-cyan to-purple-500"></div>
+            <div id="tactile-dialog" class="${isLight ? 'bg-white border-gray-200' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#16191e] border border-white/10')} rounded-2xl w-[400px] shadow-2xl scale-95 transition-transform duration-200 overflow-hidden relative">
+                <div class="absolute top-0 inset-x-0 h-1 bg-gradient-to-r ${isOceanic ? 'from-ocean-frost to-ocean-mint' : 'from-neon-cyan to-purple-500'}"></div>
                 <div class="p-6 pt-8 text-center space-y-4">
-                    <div id="dialog-icon-container" class="mx-auto size-12 rounded-full bg-white/5 flex items-center justify-center mb-4">
-                        <span id="dialog-icon" class="material-symbols-outlined text-2xl text-white">info</span>
+                    <div id="dialog-icon-container" class="mx-auto size-12 rounded-full ${isLight ? 'bg-gray-50' : 'bg-white/5'} flex items-center justify-center mb-4">
+                        <span id="dialog-icon" class="material-symbols-outlined text-2xl ${isLight ? 'text-gray-400' : 'text-white'}">info</span>
                     </div>
-                    <h3 id="dialog-title" class="text-sm font-black uppercase tracking-[0.2em] text-white">Notification</h3>
-                    <p id="dialog-message" class="text-[11px] text-gray-400 font-mono leading-relaxed whitespace-pre-wrap"></p>
+                    <h3 id="dialog-title" class="text-sm font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-800' : (isOceanic ? 'text-ocean-text' : 'text-white')}">Notification</h3>
+                    <p id="dialog-message" class="text-[11px] ${isLight ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/70' : 'text-gray-400')} font-mono leading-relaxed whitespace-pre-wrap"></p>
                 </div>
-                <div id="dialog-actions" class="p-4 bg-white/5 flex gap-3 justify-center border-t border-white/5">
+                <div id="dialog-actions" class="p-4 ${isLight ? 'bg-gray-50 border-gray-100' : 'bg-white/5 border-white/5'} flex gap-3 justify-center border-t">
                     <!-- Buttons injected here -->
                 </div>
             </div>
@@ -36,11 +42,18 @@ export class Dialog {
     static show({ title, message, type = 'info', onConfirm = null }) {
         this.init();
 
-        this.title.textContent = title || 'Notification';
-        this.message.textContent = message || '';
+        const theme = ThemeManager.getCurrentTheme();
+        const isLight = theme === 'light';
+        const isOceanic = theme === 'oceanic';
 
-        // Reset styles based on type
-        this.iconContainer.className = "mx-auto size-12 rounded-full flex items-center justify-center mb-4 border border-white/10";
+        // Update main container theme
+        this.dialog.className = `${isLight ? 'bg-white border-gray-200' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#16191e] border border-white/10')} rounded-2xl w-[400px] shadow-2xl scale-95 transition-transform duration-200 overflow-hidden relative`;
+        this.title.className = `text-sm font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-800' : (isOceanic ? 'text-ocean-text' : 'text-white')}`;
+        this.message.className = `text-[11px] ${isLight ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/70' : 'text-gray-400')} font-mono leading-relaxed whitespace-pre-wrap`;
+        this.actions.className = `p-4 ${isLight ? 'bg-gray-50 border-gray-100' : 'bg-white/5 border-white/5'} flex gap-3 justify-center border-t`;
+
+        // Reset icon styles
+        this.iconContainer.className = `mx-auto size-12 rounded-full flex items-center justify-center mb-4 border ${isLight ? 'border-gray-200' : 'border-white/10'}`;
         this.icon.className = "material-symbols-outlined text-2xl";
 
         switch (type) {
@@ -144,6 +157,10 @@ export class Dialog {
             // Initialize functionality first
             this.init();
 
+            const theme = ThemeManager.getCurrentTheme();
+            const isLight = theme === 'light';
+            const isOceanic = theme === 'oceanic';
+
             this.title.textContent = title;
             this.message.textContent = message;
 
@@ -151,7 +168,7 @@ export class Dialog {
             const inputContainer = document.createElement('div');
             inputContainer.className = "mt-3";
             inputContainer.innerHTML = `
-                <input type="text" id="dialog-prompt-input" class="w-full bg-[#0b0d11] border border-white/10 rounded p-2 text-xs text-gray-300 focus:border-mysql-teal/50 outline-none" value="${defaultValue}" />
+                <input type="text" id="dialog-prompt-input" class="w-full ${isLight ? 'bg-white border-gray-200 text-gray-800 focus:border-mysql-teal' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text focus:border-ocean-frost' : 'bg-[#0b0d11] border border-white/10 text-gray-300 focus:border-mysql-teal/50')} rounded p-2 text-xs outline-none" value="${defaultValue}" />
              `;
 
             // Temporarily replace message content or append

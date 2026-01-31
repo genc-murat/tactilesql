@@ -25,6 +25,16 @@
         --border-color: #e5e7eb;
     }
 
+    html.oceanic {
+        --bg-primary: #2E3440;
+        --bg-secondary: #3B4252;
+        --bg-tertiary: #4C566A;
+        --text-primary: #ECEFF4;
+        --text-secondary: #D8DEE9;
+        --border-color: #4C566A;
+        --accent-color: #88C0D0;
+    }
+
     html.dark,
     html:not(.light) {
         --bg-primary: #0a0c10;
@@ -62,6 +72,12 @@
             0 1px 2px -1px rgba(0, 0, 0, 0.1);
     }
 
+    .oceanic .tactile-card {
+        background: #3B4252;
+        border: 1px solid #4C566A;
+        box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.2);
+    }
+
     .tactile-card-inset {
         background: #0f1115;
         box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.5),
@@ -71,6 +87,11 @@
     .light .tactile-card-inset {
         background: #f3f4f6;
         box-shadow: inset 1px 1px 2px rgba(0, 0, 0, 0.05);
+    }
+
+    .oceanic .tactile-card-inset {
+        background: #2E3440;
+        box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.3);
     }
 
     .neon-cyan {
@@ -264,5 +285,22 @@
 
     .sql-function {
         color: #d088ff;
+    }
+
+    /* Oceanic Syntax Highlighting */
+    .oceanic .syntax-keyword {
+        color: #81A1C1;
+    }
+
+    .oceanic .syntax-string {
+        color: #A3BE8C;
+    }
+
+    .oceanic .syntax-function {
+        color: #88C0D0;
+    }
+
+    .oceanic .syntax-operator {
+        color: #81A1C1;
     }
 }

@@ -73,10 +73,11 @@ export function Dashboard() {
     };
 
     // --- Theme Handling ---
-    let isLight = ThemeManager.getCurrentTheme() === 'light';
+    let theme = ThemeManager.getCurrentTheme();
     const onThemeChange = (e) => {
-        isLight = e.detail.theme === 'light';
-        container.className = `flex flex-col gap-6 p-6 h-full overflow-y-auto custom-scrollbar transition-all duration-300 ${isLight ? 'bg-gray-50' : 'bg-[#0a0c10]'}`;
+        theme = e.detail.theme;
+        const bgClass = theme === 'light' ? 'bg-gray-50' : (theme === 'oceanic' ? 'bg-ocean-bg' : 'bg-base-dark');
+        container.className = `flex flex-col gap-6 p-6 h-full overflow-y-auto custom-scrollbar transition-all duration-300 ${bgClass}`;
     };
     window.addEventListener('themechange', onThemeChange);
 

@@ -150,19 +150,28 @@ export function SqlWorkbench() {
 
     // --- Theme Handling ---
     const onThemeChange = (e) => {
-        const isLightNew = e.detail.theme === 'light';
-        container.className = `flex-1 flex flex-col h-full overflow-hidden transition-all duration-300 ${isLightNew ? 'bg-gray-50' : ''}`;
+        const theme = e.detail.theme;
+        const isLightNew = theme === 'light';
+        const isOceanicNew = theme === 'oceanic';
+
+        container.className = `flex-1 flex flex-col h-full overflow-hidden transition-all duration-300 ${isLightNew ? 'bg-gray-50' : (isOceanicNew ? 'bg-ocean-bg' : '')}`;
 
         // Update resizers and areas
-        sidebarResizer.className = `w-1.5 ${isLightNew ? 'bg-gray-200 hover:bg-mysql-teal/30' : 'bg-[#0b0d11] hover:bg-mysql-teal/50'} cursor-col-resize flex items-center justify-center group transition-colors`;
-        sidebarResizer.querySelector('div').className = `h-12 w-0.5 ${isLightNew ? 'bg-gray-400' : 'bg-white/10'} group-hover:bg-mysql-teal/70 rounded-full transition-colors`;
+        const resizerBg = isLightNew ? 'bg-gray-200 hover:bg-mysql-teal/30' : (isOceanicNew ? 'bg-ocean-border/50 hover:bg-ocean-frost/30' : 'bg-[#0b0d11] hover:bg-mysql-teal/50');
+        const resizerHandle = isLightNew ? 'bg-gray-400' : (isOceanicNew ? 'bg-ocean-frost/30' : 'bg-white/10');
 
-        queryResults.className = `flex-1 flex flex-col overflow-hidden ${isLightNew ? 'bg-white' : 'bg-[#0f1115]'}`;
-        verticalResizer.className = `h-1.5 ${isLightNew ? 'bg-gray-100 hover:bg-mysql-teal/30' : 'bg-[#1a1d23] hover:bg-mysql-teal/50'} cursor-row-resize flex items-center justify-center group transition-colors`;
-        verticalResizer.querySelector('div').className = `w-12 h-0.5 ${isLightNew ? 'bg-gray-400' : 'bg-white/10'} group-hover:bg-mysql-teal/70 rounded-full transition-colors`;
+        sidebarResizer.className = `w-1.5 ${resizerBg} cursor-col-resize flex items-center justify-center group transition-colors`;
+        sidebarResizer.querySelector('div').className = `h-12 w-0.5 ${resizerHandle} group-hover:bg-mysql-teal/70 rounded-full transition-colors`;
 
-        snippetResizer.className = `w-1.5 ${isLightNew ? 'bg-gray-200 hover:bg-mysql-teal/30' : 'bg-[#0b0d11] hover:bg-mysql-teal/50'} cursor-col-resize flex items-center justify-center group transition-colors`;
-        snippetResizer.querySelector('div').className = `h-12 w-0.5 ${isLightNew ? 'bg-gray-400' : 'bg-white/10'} group-hover:bg-mysql-teal/70 rounded-full transition-colors`;
+        const contentBg = isLightNew ? 'bg-white' : (isOceanicNew ? 'bg-ocean-bg' : 'bg-[#0f1115]');
+        queryResults.className = `flex-1 flex flex-col overflow-hidden ${contentBg}`;
+
+        const vResizerBg = isLightNew ? 'bg-gray-100 hover:bg-mysql-teal/30' : (isOceanicNew ? 'bg-ocean-border/30 hover:bg-ocean-frost/30' : 'bg-[#1a1d23] hover:bg-mysql-teal/50');
+        verticalResizer.className = `h-1.5 ${vResizerBg} cursor-row-resize flex items-center justify-center group transition-colors`;
+        verticalResizer.querySelector('div').className = `w-12 h-0.5 ${resizerHandle} group-hover:bg-mysql-teal/70 rounded-full transition-colors`;
+
+        snippetResizer.className = `w-1.5 ${resizerBg} cursor-col-resize flex items-center justify-center group transition-colors`;
+        snippetResizer.querySelector('div').className = `h-12 w-0.5 ${resizerHandle} group-hover:bg-mysql-teal/70 rounded-full transition-colors`;
     };
     window.addEventListener('themechange', onThemeChange);
 

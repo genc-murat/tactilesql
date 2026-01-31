@@ -23,7 +23,14 @@ export default {
                 "sql-function": "#8be9fd",
                 "sql-string": "#f1fa8c",
                 "sql-ident": "#50fa7b",
-                "sql-comment": "#6272a4"
+                "sql-comment": "#6272a4",
+                // Oceanic (Nord-like) Palette
+                "ocean-frost": "#88C0D0",
+                "ocean-mint": "#A3BE8C",
+                "ocean-bg": "#2E3440",
+                "ocean-panel": "#3B4252",
+                "ocean-border": "#4C566A",
+                "ocean-text": "#D8DEE9",
             },
             fontFamily: {
                 "mono": ["JetBrains Mono", "monospace"],

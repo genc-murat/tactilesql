@@ -4,9 +4,17 @@ import { Dialog } from '../UI/Dialog.js';
 import { ThemeManager } from '../../utils/ThemeManager.js';
 
 export function ObjectExplorer() {
-    let isLight = ThemeManager.getCurrentTheme() === 'light';
-    const explorer = document.createElement('aside');
-    explorer.className = `h-full border-r ${isLight ? 'bg-white border-gray-200' : 'bg-[#0b0d11] border-white/5'} flex flex-col p-3 gap-4 overflow-hidden`;
+    let theme = ThemeManager.getCurrentTheme();
+    let isLight = theme === 'light';
+    let isOceanic = theme === 'oceanic';
+
+    const explorer = document.createElement('div');
+    const getExplorerClass = (t) => {
+        const isL = t === 'light';
+        const isO = t === 'oceanic';
+        return `h-full border-r ${isL ? 'bg-white border-gray-200' : (isO ? 'bg-ocean-panel border-ocean-border' : 'bg-[#0b0d11] border-white/5')} flex flex-col p-3 gap-4 overflow-hidden`;
+    };
+    explorer.className = getExplorerClass(theme);
 
     // --- State ---
     let databases = [];
@@ -21,45 +29,45 @@ export function ObjectExplorer() {
     const renderTableDetails = (db, table) => {
         const key = `${db}.${table}`;
         const details = tableDetails[key];
-        if (!details) return `<div class="pl-4 py-1 ${isLight ? 'text-gray-400' : 'text-gray-700'} italic text-[10px]">Loading...</div>`;
+        if (!details) return `<div class="pl-4 py-1 ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-700')} italic text-[10px]">Loading...</div>`;
 
         const { columns, indexes, fks, constraints } = details;
         return `
-            <div class="pl-4 space-y-1 border-l ${isLight ? 'border-gray-200' : 'border-white/10'} ml-2">
+            <div class="pl-4 space-y-1 border-l ${isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/30' : 'border-white/10')} ml-2">
                 <div class="py-0.5">
-                    <div class="flex items-center gap-1.5 ${isLight ? 'text-gray-400' : 'text-gray-500'} text-[10px]">
+                    <div class="flex items-center gap-1.5 ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500')} text-[10px]">
                         <span class="material-symbols-outlined text-[12px] text-purple-400">view_column</span>
                         <span class="uppercase tracking-wider font-semibold">Columns</span>
                         <span class="${isLight ? 'text-gray-300' : 'text-gray-700'}">(${columns.length})</span>
                     </div>
                     <div class="pl-4 space-y-0.5 mt-0.5">
                         ${columns.map(col => `
-                            <div class="flex items-center gap-1.5 text-[10px] ${isLight ? 'text-gray-600' : 'text-gray-600'}">
+                            <div class="flex items-center gap-1.5 text-[10px] ${isLight ? 'text-gray-600' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-600')}">
                                 ${col.column_key === 'PRI' ? '<span class="material-symbols-outlined text-[10px] text-yellow-500">key</span>' :
                 col.column_key === 'UNI' ? '<span class="material-symbols-outlined text-[10px] text-blue-400">fingerprint</span>' :
                     col.column_key === 'MUL' ? '<span class="material-symbols-outlined text-[10px] text-gray-500">link</span>' :
                         '<span class="w-[10px]"></span>'}
-                                <span class="${isLight ? 'text-gray-700' : 'text-gray-400'}">${col.name}</span>
-                                <span class="${isLight ? 'text-gray-400' : 'text-gray-700'} text-[9px]">${col.data_type}</span>
+                                <span class="${isLight ? 'text-gray-700' : (isOceanic ? 'text-ocean-text' : 'text-gray-400')}">${col.name}</span>
+                                <span class="${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-700')} text-[9px]">${col.data_type}</span>
                             </div>
                         `).join('')}
                     </div>
                 </div>
                 ${indexes.length > 0 ? `
                     <div class="py-0.5">
-                        <div class="flex items-center gap-1.5 ${isLight ? 'text-gray-400' : 'text-gray-500'} text-[10px]">
+                        <div class="flex items-center gap-1.5 ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500')} text-[10px]">
                             <span class="material-symbols-outlined text-[12px] text-cyan-400">bolt</span>
                             <span class="uppercase tracking-wider font-semibold">Indexes</span>
-                            <span class="${isLight ? 'text-gray-300' : 'text-gray-700'}">(${indexes.length})</span>
+                            <span class="${isLight ? 'text-gray-300' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-700')}">(${indexes.length})</span>
                         </div>
                     </div>
                 ` : ''}
                 ${fks.length > 0 ? `
                     <div class="py-0.5">
-                        <div class="flex items-center gap-1.5 ${isLight ? 'text-gray-400' : 'text-gray-500'} text-[10px]">
+                        <div class="flex items-center gap-1.5 ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500')} text-[10px]">
                             <span class="material-symbols-outlined text-[12px] text-orange-400">link</span>
                             <span class="uppercase tracking-wider font-semibold">Foreign Keys</span>
-                            <span class="${isLight ? 'text-gray-300' : 'text-gray-700'}">(${fks.length})</span>
+                            <span class="${isLight ? 'text-gray-300' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-700')}">(${fks.length})</span>
                         </div>
                     </div>
                 ` : ''}
@@ -73,9 +81,9 @@ export function ObjectExplorer() {
         const isExpanded = expandedTables.has(key);
         return `
             <div>
-                <div class="table-item flex items-center gap-2 ${isLight ? 'text-gray-700 hover:text-mysql-teal' : 'text-gray-500 hover:text-white'} cursor-grab py-1 group" data-table="${table}" data-db="${db}" draggable="true">
-                    <span class="material-symbols-outlined text-[10px] transition-transform ${isExpanded ? 'rotate-90' : ''} ${isLight ? 'text-gray-400' : 'text-gray-600'}">arrow_right</span>
-                    <span class="material-symbols-outlined text-[14px] ${isLight ? 'text-gray-400' : 'text-gray-700'} group-hover:text-mysql-teal">table_rows</span>
+                <div class="table-item flex items-center gap-2 ${isLight ? 'text-gray-700 hover:text-mysql-teal' : (isOceanic ? 'text-ocean-text/80 hover:text-ocean-frost' : 'text-gray-500 hover:text-white')} cursor-grab py-1 group" data-table="${table}" data-db="${db}" draggable="true">
+                    <span class="material-symbols-outlined text-[10px] transition-transform ${isExpanded ? 'rotate-90' : ''} ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-600')}">arrow_right</span>
+                    <span class="material-symbols-outlined text-[14px] ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-700')} group-hover:text-mysql-teal">table_rows</span>
                     <span>${table}</span>
                 </div>
                 ${isExpanded ? renderTableDetails(db, table) : ''}
@@ -88,10 +96,10 @@ export function ObjectExplorer() {
         if (!items || items.length === 0) return '';
         return `
             <div class="py-0.5">
-                <div class="flex items-center gap-1.5 ${isLight ? 'text-gray-400' : 'text-gray-500'} text-[10px] px-1">
+                <div class="flex items-center gap-1.5 ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500')} text-[10px] px-1">
                     <span class="material-symbols-outlined text-[12px] ${color}">${icon}</span>
                     <span class="uppercase tracking-wider font-semibold">${label}</span>
-                    <span class="${isLight ? 'text-gray-300' : 'text-gray-700'}">(${items.length})</span>
+                    <span class="${isLight ? 'text-gray-300' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-700')}">(${items.length})</span>
                 </div>
                 <div class="pl-5 space-y-0.5 mt-0.5">
                     ${items.map(item => renderItem(db, item)).join('')}
@@ -112,31 +120,31 @@ export function ObjectExplorer() {
                 ${renderObjectCategory(db, 'tables', 'Tables', 'table_rows', 'text-mysql-teal', tables,
             (db, t) => renderTable(db, t))}
                 ${renderObjectCategory(db, 'views', 'Views', 'visibility', 'text-blue-400', views,
-                (db, v) => `<div class="view-item flex items-center gap-2 text-[10px] ${isLight ? 'text-gray-600 hover:text-mysql-teal' : 'text-gray-500 hover:text-white'} py-0.5 cursor-pointer" data-view="${v}" data-db="${db}">
+                (db, v) => `<div class="view-item flex items-center gap-2 text-[10px] ${isLight ? 'text-gray-600 hover:text-mysql-teal' : (isOceanic ? 'text-ocean-text/70 hover:text-ocean-frost' : 'text-gray-500 hover:text-white')} py-0.5 cursor-pointer" data-view="${v}" data-db="${db}">
                         <span class="material-symbols-outlined text-[12px] text-blue-400">visibility</span>
                         <span>${v}</span>
                     </div>`)}
                 ${renderObjectCategory(db, 'triggers', 'Triggers', 'bolt', 'text-yellow-400', triggers,
-                    (db, t) => `<div class="flex items-center gap-2 text-[10px] ${isLight ? 'text-gray-600' : 'text-gray-500'} py-0.5">
+                    (db, t) => `<div class="flex items-center gap-2 text-[10px] ${isLight ? 'text-gray-600' : (isOceanic ? 'text-ocean-text/70' : 'text-gray-500')} py-0.5">
                         <span class="material-symbols-outlined text-[12px] text-yellow-400">bolt</span>
                         <span>${t.name}</span>
-                        <span class="${isLight ? 'text-gray-400' : 'text-gray-700'} text-[9px]">${t.timing} ${t.event}</span>
+                        <span class="${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-700')} text-[9px]">${t.timing} ${t.event}</span>
                     </div>`)}
                 ${renderObjectCategory(db, 'procedures', 'Procedures', 'code_blocks', 'text-green-400', procedures,
-                        (db, p) => `<div class="flex items-center gap-2 text-[10px] ${isLight ? 'text-gray-600' : 'text-gray-500'} py-0.5">
+                        (db, p) => `<div class="flex items-center gap-2 text-[10px] ${isLight ? 'text-gray-600' : (isOceanic ? 'text-ocean-text/70' : 'text-gray-500')} py-0.5">
                         <span class="material-symbols-outlined text-[12px] text-green-400">code_blocks</span>
                         <span>${p.name}</span>
                     </div>`)}
                 ${renderObjectCategory(db, 'functions', 'Functions', 'function', 'text-pink-400', functions,
-                            (db, f) => `<div class="flex items-center gap-2 text-[10px] ${isLight ? 'text-gray-600' : 'text-gray-500'} py-0.5">
+                            (db, f) => `<div class="flex items-center gap-2 text-[10px] ${isLight ? 'text-gray-600' : (isOceanic ? 'text-ocean-text/70' : 'text-gray-500')} py-0.5">
                         <span class="material-symbols-outlined text-[12px] text-pink-400">function</span>
                         <span>${f.name}</span>
                     </div>`)}
                 ${renderObjectCategory(db, 'events', 'Events', 'schedule', 'text-orange-400', events,
-                                (db, e) => `<div class="flex items-center gap-2 text-[10px] ${isLight ? 'text-gray-600' : 'text-gray-500'} py-0.5">
+                                (db, e) => `<div class="flex items-center gap-2 text-[10px] ${isLight ? 'text-gray-600' : (isOceanic ? 'text-ocean-text/70' : 'text-gray-500')} py-0.5">
                         <span class="material-symbols-outlined text-[12px] text-orange-400">schedule</span>
                         <span>${e.name}</span>
-                        <span class="${isLight ? 'text-gray-400' : 'text-gray-700'} text-[9px]">${e.status}</span>
+                        <span class="${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-700')} text-[9px]">${e.status}</span>
                     </div>`)}
             </div>
         `;
@@ -147,9 +155,9 @@ export function ObjectExplorer() {
         const isExpanded = expandedDbs.has(db);
         return `
             <div>
-                <div data-db="${db}" class="db-item flex items-center gap-2 ${isLight ? 'text-gray-600 hover:text-mysql-teal' : 'text-gray-400 hover:text-white'} group cursor-pointer p-1">
+                <div data-db="${db}" class="db-item flex items-center gap-2 ${isLight ? 'text-gray-600 hover:text-mysql-teal' : (isOceanic ? 'text-ocean-text/70 hover:text-ocean-frost' : 'text-gray-400 hover:text-white')} group cursor-pointer p-1">
                     <span class="material-symbols-outlined text-xs transition-transform ${isExpanded ? 'rotate-90' : ''}">arrow_right</span>
-                    <div class="w-1.5 h-1.5 rounded-full ${isExpanded ? 'bg-mysql-teal glow-node' : (isLight ? 'bg-gray-300' : 'bg-gray-700')}"></div>
+                    <div class="w-1.5 h-1.5 rounded-full ${isExpanded ? 'bg-mysql-teal glow-node' : (isLight ? 'bg-gray-300' : (isOceanic ? 'bg-[#4C566A]' : 'bg-gray-700'))}"></div>
                     <span class="font-bold tracking-tight uppercase ${isExpanded ? 'text-mysql-teal' : ''}">${db}</span>
                 </div>
                 ${isExpanded ? renderDatabaseContents(db) : ''}
@@ -164,9 +172,9 @@ export function ObjectExplorer() {
 
         explorer.innerHTML = `
             <div class="flex items-center justify-between px-2">
-                <h2 class="text-[10px] font-bold uppercase tracking-[0.15em] ${isLight ? 'text-gray-500' : 'text-gray-500'}">Object Explorer</h2>
+                <h2 class="text-[10px] font-bold uppercase tracking-[0.15em] ${isLight ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500')}">Object Explorer</h2>
                 <div class="flex gap-2">
-                    <span id="refresh-btn" class="material-symbols-outlined text-[16px] ${isLight ? 'text-gray-400' : 'text-gray-600'} cursor-pointer hover:text-mysql-teal" title="Refresh">sync</span>
+                    <span id="refresh-btn" class="material-symbols-outlined text-[16px] ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-600')} cursor-pointer hover:text-mysql-teal" title="Refresh">sync</span>
                 </div>
             </div>
             <div id="explorer-tree" class="flex-1 overflow-y-auto custom-scrollbar font-mono text-[11px] space-y-1">
@@ -277,21 +285,21 @@ export function ObjectExplorer() {
 
         const menu = document.createElement('div');
         menu.id = 'explorer-context-menu';
-        menu.className = `fixed z-[9999] ${isLight ? 'bg-white border-gray-200 shadow-lg' : 'bg-[#1a1d23] border border-white/10 shadow-xl'} rounded-lg py-1 w-48`;
+        menu.className = `fixed z-[9999] ${isLight ? 'bg-white border-gray-200 shadow-lg' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50 shadow-xl' : 'bg-[#1a1d23] border border-white/10 shadow-xl')} rounded-lg py-1 w-48`;
         menu.style.left = `${x}px`;
         menu.style.top = `${y}px`;
 
         menu.innerHTML = `
-            <div class="px-3 py-1.5 text-[10px] font-mono ${isLight ? 'text-gray-400 border-gray-100' : 'text-gray-500 border-white/5'} border-b uppercase tracking-widest mb-1">
+            <div class="px-3 py-1.5 text-[10px] font-mono ${isLight ? 'text-gray-400 border-gray-100' : (isOceanic ? 'text-ocean-text/40 border-ocean-border/30' : 'text-gray-500 border-white/5')} border-b uppercase tracking-widest mb-1">
                 <span class="text-blue-400">VIEW</span> ${dbName}.${viewName}
             </div>
-            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5 hover:text-white'} flex items-center gap-2" id="ctx-view-source">
+            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${isLight ? 'text-gray-700 hover:bg-gray-50' : (isOceanic ? 'text-ocean-text/90 hover:bg-white/5 hover:text-ocean-frost' : 'text-gray-300 hover:bg-white/5 hover:text-white')} flex items-center gap-2" id="ctx-view-source">
                 <span class="material-symbols-outlined text-sm text-purple-400">code</span> View Source
             </button>
-            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5 hover:text-white'} flex items-center gap-2" id="ctx-select-view">
+            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${isLight ? 'text-gray-700 hover:bg-gray-50' : (isOceanic ? 'text-ocean-text/90 hover:bg-white/5 hover:text-ocean-frost' : 'text-gray-300 hover:bg-white/5 hover:text-white')} flex items-center gap-2" id="ctx-select-view">
                 <span class="material-symbols-outlined text-sm text-cyan-400">table_view</span> Select *
             </button>
-            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5 hover:text-white'} flex items-center gap-2" id="ctx-copy-view">
+            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${isLight ? 'text-gray-700 hover:bg-gray-50' : (isOceanic ? 'text-ocean-text/90 hover:bg-white/5 hover:text-ocean-frost' : 'text-gray-300 hover:bg-white/5 hover:text-white')} flex items-center gap-2" id="ctx-copy-view">
                 <span class="material-symbols-outlined text-sm text-gray-500">content_copy</span> Copy Name
             </button>
         `;
@@ -328,21 +336,21 @@ export function ObjectExplorer() {
 
         const menu = document.createElement('div');
         menu.id = 'explorer-context-menu';
-        menu.className = `fixed z-[9999] ${isLight ? 'bg-white border-gray-200 shadow-lg' : 'bg-[#1a1d23] border border-white/10 shadow-xl'} rounded-lg py-1 w-48`;
+        menu.className = `fixed z-[9999] ${isLight ? 'bg-white border-gray-200 shadow-lg' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50 shadow-xl' : 'bg-[#1a1d23] border border-white/10 shadow-xl')} rounded-lg py-1 w-48`;
         menu.style.left = `${x}px`;
         menu.style.top = `${y}px`;
 
         menu.innerHTML = `
-            <div class="px-3 py-1.5 text-[10px] font-mono ${isLight ? 'text-gray-400 border-gray-100' : 'text-gray-500 border-white/5'} border-b uppercase tracking-widest mb-1">
+            <div class="px-3 py-1.5 text-[10px] font-mono ${isLight ? 'text-gray-400 border-gray-100' : (isOceanic ? 'text-ocean-text/40 border-ocean-border/30' : 'text-gray-500 border-white/5')} border-b uppercase tracking-widest mb-1">
                 ${dbName}
             </div>
-            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5 hover:text-white'} flex items-center gap-2" id="ctx-db-properties">
+            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${isLight ? 'text-gray-700 hover:bg-gray-50' : (isOceanic ? 'text-ocean-text/90 hover:bg-white/5 hover:text-ocean-frost' : 'text-gray-300 hover:bg-white/5 hover:text-white')} flex items-center gap-2" id="ctx-db-properties">
                 <span class="material-symbols-outlined text-sm text-mysql-teal">info</span> Properties
             </button>
-            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5 hover:text-white'} flex items-center gap-2" id="ctx-db-refresh">
+            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${isLight ? 'text-gray-700 hover:bg-gray-50' : (isOceanic ? 'text-ocean-text/90 hover:bg-white/5 hover:text-ocean-frost' : 'text-gray-300 hover:bg-white/5 hover:text-white')} flex items-center gap-2" id="ctx-db-refresh">
                 <span class="material-symbols-outlined text-sm text-green-400">sync</span> Refresh
             </button>
-            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5 hover:text-white'} flex items-center gap-2" id="ctx-db-copy">
+            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${isLight ? 'text-gray-700 hover:bg-gray-50' : (isOceanic ? 'text-ocean-text/90 hover:bg-white/5 hover:text-ocean-frost' : 'text-gray-300 hover:bg-white/5 hover:text-white')} flex items-center gap-2" id="ctx-db-copy">
                 <span class="material-symbols-outlined text-sm text-gray-500">content_copy</span> Copy Name
             </button>
         `;
@@ -420,24 +428,24 @@ export function ObjectExplorer() {
 
         const menu = document.createElement('div');
         menu.id = 'explorer-context-menu';
-        menu.className = `fixed z-[9999] ${isLight ? 'bg-white border-gray-200 shadow-lg' : 'bg-[#1a1d23] border border-white/10 shadow-xl'} rounded-lg py-1 w-48`;
+        menu.className = `fixed z-[9999] ${isLight ? 'bg-white border-gray-200 shadow-lg' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50 shadow-xl' : 'bg-[#1a1d23] border border-white/10 shadow-xl')} rounded-lg py-1 w-48`;
         menu.style.left = `${x}px`;
         menu.style.top = `${y}px`;
 
         menu.innerHTML = `
-            <div class="px-3 py-1.5 text-[10px] font-mono ${isLight ? 'text-gray-400 border-gray-100' : 'text-gray-500 border-white/5'} border-b uppercase tracking-widest mb-1">
+            <div class="px-3 py-1.5 text-[10px] font-mono ${isLight ? 'text-gray-400 border-gray-100' : (isOceanic ? 'text-ocean-text/40 border-ocean-border/30' : 'text-gray-500 border-white/5')} border-b uppercase tracking-widest mb-1">
                 ${dbName}.${tableName}
             </div>
-            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5 hover:text-white'} flex items-center gap-2" id="ctx-refresh">
+            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${isLight ? 'text-gray-700 hover:bg-gray-50' : (isOceanic ? 'text-ocean-text/90 hover:bg-white/5 hover:text-ocean-frost' : 'text-gray-300 hover:bg-white/5 hover:text-white')} flex items-center gap-2" id="ctx-refresh">
                 <span class="material-symbols-outlined text-sm text-green-400">sync</span> Refresh
             </button>
-            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5 hover:text-white'} flex items-center gap-2" id="ctx-design">
+            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${isLight ? 'text-gray-700 hover:bg-gray-50' : (isOceanic ? 'text-ocean-text/90 hover:bg-white/5 hover:text-ocean-frost' : 'text-gray-300 hover:bg-white/5 hover:text-white')} flex items-center gap-2" id="ctx-design">
                 <span class="material-symbols-outlined text-sm text-mysql-teal">schema</span> Schema Design
             </button>
-            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5 hover:text-white'} flex items-center gap-2" id="ctx-select">
+            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${isLight ? 'text-gray-700 hover:bg-gray-50' : (isOceanic ? 'text-ocean-text/90 hover:bg-white/5 hover:text-ocean-frost' : 'text-gray-300 hover:bg-white/5 hover:text-white')} flex items-center gap-2" id="ctx-select">
                 <span class="material-symbols-outlined text-sm text-cyan-400">table_view</span> Select Top 200
             </button>
-            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5 hover:text-white'} flex items-center gap-2" id="ctx-copy">
+            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${isLight ? 'text-gray-700 hover:bg-gray-50' : (isOceanic ? 'text-ocean-text/90 hover:bg-white/5 hover:text-ocean-frost' : 'text-gray-300 hover:bg-white/5 hover:text-white')} flex items-center gap-2" id="ctx-copy">
                 <span class="material-symbols-outlined text-sm text-gray-500">content_copy</span> Copy Name
             </button>
         `;
@@ -531,8 +539,10 @@ export function ObjectExplorer() {
 
     // --- Theme Change Handling ---
     const onThemeChange = (e) => {
-        isLight = e.detail.theme === 'light';
-        explorer.className = `h-full border-r ${isLight ? 'bg-white border-gray-200' : 'bg-[#0b0d11] border-white/5'} flex flex-col p-3 gap-4 overflow-hidden`;
+        theme = e.detail.theme;
+        isLight = theme === 'light';
+        isOceanic = theme === 'oceanic';
+        explorer.className = getExplorerClass(theme);
         render();
     };
     window.addEventListener('themechange', onThemeChange);

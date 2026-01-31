@@ -3,9 +3,16 @@ import { Dialog } from '../components/UI/Dialog.js';
 import { ThemeManager } from '../utils/ThemeManager.js';
 
 export function ConnectionManager() {
-    let isLight = ThemeManager.getCurrentTheme() === 'light';
+    let theme = ThemeManager.getCurrentTheme();
+    const isLightInitial = theme === 'light';
+    const isOceanicInitial = theme === 'oceanic';
     const container = document.createElement('div');
-    container.className = `flex-1 flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : 'bg-[#0a0c10]'} selection:bg-mysql-cyan/30 transition-all duration-300`;
+    const getContainerClass = (t) => {
+        const isLight = t === 'light';
+        const isOceanic = t === 'oceanic';
+        return `flex-1 flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]')} selection:bg-mysql-cyan/30 transition-all duration-300`;
+    };
+    container.className = getContainerClass(theme);
 
     const DEFAULT_CONFIG = {
         id: null,
@@ -49,6 +56,8 @@ export function ConnectionManager() {
     };
 
     const renderGridView = () => {
+        const isLight = theme === 'light';
+        const isOceanic = theme === 'oceanic';
         const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
 
         container.innerHTML = `
@@ -70,7 +79,7 @@ export function ConnectionManager() {
             const timeAgo = lastConnected ? formatTimeAgo(lastConnected) : 'Never';
 
             return `
-                        <div class="neu-card group relative p-6 rounded-3xl border ${isActive ? 'border-green-500/30' : (isLight ? 'border-gray-200' : 'border-white/5')} hover:border-mysql-teal/50 transition-all duration-300 ${isLight ? 'bg-white' : 'bg-[#13161b]'} hover:scale-[1.02]">
+                        <div class="neu-card group relative p-6 rounded-3xl border ${isActive ? 'border-green-500/30' : (isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5'))} hover:border-mysql-teal/50 transition-all duration-300 ${isLight ? 'bg-white' : (isOceanic ? 'bg-[#3B4252]' : 'bg-[#13161b]')} hover:scale-[1.02]">
                             
                             ${isActive ? `
                                 <div class="absolute top-4 left-4 z-10">
@@ -184,7 +193,7 @@ export function ConnectionManager() {
                     <span class="material-symbols-outlined text-sm">arrow_back</span> Back to Connections
                 </button>
 
-                <div class="neu-card rounded-2xl p-6 relative overflow-hidden ${isLight ? 'bg-white' : 'bg-[#13161b]'} shadow-2xl border ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                <div class="neu-card rounded-2xl p-6 relative overflow-hidden ${isLight ? 'bg-white' : (isOceanic ? 'bg-[#3B4252]' : 'bg-[#13161b]')} shadow-2xl border ${isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5')}">
                     <div class="absolute top-0 right-0 -mt-20 -mr-20 size-96 bg-mysql-cyan/5 blur-[120px] rounded-full pointer-events-none"></div>
                     
                     <h2 class="text-xl font-black ${isLight ? 'text-gray-900' : 'text-white'} mb-6 tracking-tight flex items-center gap-3">
@@ -438,8 +447,8 @@ export function ConnectionManager() {
 
     // --- Theme Handling ---
     const onThemeChange = (e) => {
-        isLight = e.detail.theme === 'light';
-        container.className = `flex-1 flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : 'bg-[#0a0c10]'} selection:bg-mysql-cyan/30 relative transition-all duration-300`;
+        theme = e.detail.theme;
+        container.className = getContainerClass(theme);
         render();
     };
     window.addEventListener('themechange', onThemeChange);

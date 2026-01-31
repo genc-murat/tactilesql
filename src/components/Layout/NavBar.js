@@ -2,9 +2,11 @@ import { ThemeManager } from '../../utils/ThemeManager.js';
 
 export function NavBar() {
     const nav = document.createElement('nav');
-    let isLight = ThemeManager.getCurrentTheme() === 'light';
+    let theme = ThemeManager.getCurrentTheme();
 
     const render = () => {
+        const isLight = theme === 'light';
+        const isOceanic = theme === 'oceanic';
         // Get current path from hash
         const currentPath = window.location.hash.split('?')[0].slice(1) || '/';
 
@@ -26,7 +28,9 @@ export function NavBar() {
                         ? 'text-mysql-cyan bg-mysql-teal/10 border border-mysql-teal/30'
                         : isLight
                             ? 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                            : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+                            : isOceanic
+                                ? 'text-ocean-text/70 hover:text-ocean-text hover:bg-white/5'
+                                : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
                     }">
                         <span class="material-symbols-outlined text-sm">${item.icon}</span>
                         ${item.label}
@@ -35,7 +39,7 @@ export function NavBar() {
             }).join('');
         };
 
-        nav.className = `h-12 ${isLight ? 'bg-white border-gray-200' : 'bg-[#0a0c10] border-white/5'} border-b px-6 flex items-center justify-between z-40 transition-all duration-300`;
+        nav.className = `h-12 ${isLight ? 'bg-white border-gray-200' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#0a0c10] border-white/5')} border-b px-6 flex items-center justify-between z-40 transition-all duration-300`;
 
         nav.innerHTML = `
             <div class="flex items-center gap-4">
@@ -43,7 +47,7 @@ export function NavBar() {
                     <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-mysql-teal to-mysql-cyan flex items-center justify-center shadow-lg shadow-mysql-teal/20">
                         <span class="material-symbols-outlined text-white text-lg">database</span>
                     </div>
-                    <div class="text-[10px] font-black tracking-[0.2em] ${isLight ? 'text-gray-800' : 'text-white/80'} uppercase transition-colors duration-300">TactileSQL</div>
+                    <div class="text-[10px] font-black tracking-[0.2em] ${isLight ? 'text-gray-800' : (isOceanic ? 'text-ocean-text' : 'text-white/80')} uppercase transition-colors duration-300">TactileSQL</div>
                 </a>
                 <div class="flex items-center gap-1">
                     ${renderNavItems()}
@@ -60,7 +64,7 @@ export function NavBar() {
 
     // --- Theme Handling ---
     const onThemeChange = (e) => {
-        isLight = e.detail.theme === 'light';
+        theme = e.detail.theme;
         render();
     };
     window.addEventListener('themechange', onThemeChange);

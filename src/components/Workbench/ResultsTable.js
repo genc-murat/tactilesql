@@ -4,21 +4,23 @@ import { Dialog } from '../UI/Dialog.js';
 import { ThemeManager } from '../../utils/ThemeManager.js';
 
 export function ResultsTable() {
-    let isLight = ThemeManager.getCurrentTheme() === 'light';
+    let theme = ThemeManager.getCurrentTheme();
+    let isLight = theme === 'light';
+    let isOceanic = theme === 'oceanic';
     const container = document.createElement('div');
     container.className = "flex flex-col flex-1 min-h-0";
 
     const renderControls = () => {
         container.innerHTML = `
-            <div class="flex items-center justify-between px-6 h-12 ${isLight ? 'bg-gray-50 border-gray-200' : 'bg-[#1a1d23]/50 border-white/5'} border-b">
+            <div class="flex items-center justify-between px-6 h-12 ${isLight ? 'bg-gray-50 border-gray-200' : (isOceanic ? 'bg-[#3B4252] border-ocean-border/30' : 'bg-[#1a1d23]/50 border-white/5')} border-b">
                 <div class="flex items-center gap-6">
                     <div class="flex items-center gap-2">
                         <h2 class="text-[10px] font-black uppercase tracking-[0.2em] text-mysql-teal/80">Result Set</h2>
                         <span id="row-count-badge" class="px-1.5 py-0.5 rounded ${isLight ? 'bg-mysql-teal/10 text-mysql-teal' : 'bg-mysql-teal/10 text-mysql-teal'} text-[9px] font-bold">0 ROWS</span>
                     </div>
-                    <div class="flex items-center ${isLight ? 'bg-white border-gray-200' : 'bg-black/30 border-white/5'} border rounded px-2 py-1">
+                    <div class="flex items-center ${isLight ? 'bg-white border-gray-200' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50' : 'bg-black/30 border-white/5')} border rounded px-2 py-1">
                         <span class="material-symbols-outlined text-xs text-gray-500 mr-2">filter_alt</span>
-                        <input id="filter-input" class="bg-transparent border-none focus:ring-0 text-[10px] ${isLight ? 'text-gray-700' : 'text-gray-400'} w-48 p-0 placeholder:text-gray-400" placeholder="Quick filter results..." type="text" />
+                        <input id="filter-input" class="bg-transparent border-none focus:ring-0 text-[10px] ${isLight ? 'text-gray-700' : (isOceanic ? 'text-ocean-text' : 'text-gray-400')} w-48 p-0 placeholder:text-gray-400" placeholder="Quick filter results..." type="text" />
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
@@ -36,22 +38,22 @@ export function ResultsTable() {
                     <button id="insert-row-btn" class="hidden flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/10 border border-cyan-500/30 text-[10px] font-bold uppercase tracking-wider text-cyan-400 hover:bg-cyan-500/20 rounded transition-all">
                         <span class="material-symbols-outlined text-sm">add</span> Insert Row
                     </button>
-                    <button id="export-csv-btn" class="flex items-center gap-1.5 px-3 py-1.5 ${isLight ? 'bg-white border-gray-200 text-gray-600' : 'bg-white/5 border-white/10 text-gray-400'} border text-[10px] font-bold uppercase tracking-wider hover:bg-opacity-80 rounded transition-all shadow-sm">
+                    <button id="export-csv-btn" class="flex items-center gap-1.5 px-3 py-1.5 ${isLight ? 'bg-white border-gray-200 text-gray-600' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50 text-ocean-text' : 'bg-white/5 border-white/10 text-gray-400')} border text-[10px] font-bold uppercase tracking-wider hover:bg-opacity-80 rounded transition-all shadow-sm">
                         <span class="material-symbols-outlined text-sm">download</span> Export CSV
                     </button>
-                    <button id="copy-btn" class="flex items-center gap-1.5 px-3 py-1.5 ${isLight ? 'bg-white border-gray-200 text-gray-600' : 'bg-white/5 border-white/10 text-gray-400'} border text-[10px] font-bold uppercase tracking-wider hover:bg-opacity-80 rounded transition-all shadow-sm">
+                    <button id="copy-btn" class="flex items-center gap-1.5 px-3 py-1.5 ${isLight ? 'bg-white border-gray-200 text-gray-600' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50 text-ocean-text' : 'bg-white/5 border-white/10 text-gray-400')} border text-[10px] font-bold uppercase tracking-wider hover:bg-opacity-80 rounded transition-all shadow-sm">
                         <span class="material-symbols-outlined text-sm">content_copy</span> Copy
                     </button>
                 </div>
             </div>
             <div class="flex-1 overflow-auto custom-scrollbar">
                 <table id="results-table" class="w-full text-left font-mono text-[11px] border-collapse">
-                    <thead class="sticky top-0 ${isLight ? 'bg-gray-100' : 'bg-[#16191e]'} z-10 transition-colors">
+                    <thead class="sticky top-0 ${isLight ? 'bg-gray-100' : (isOceanic ? 'bg-ocean-panel' : 'bg-[#16191e]')} z-10 transition-colors">
                         <tr class="text-gray-500 uppercase tracking-tighter">
                              <!-- Columns will be injected here -->
                         </tr>
                     </thead>
-                    <tbody class="divide-y ${isLight ? 'divide-gray-100' : 'divide-white/5'}">
+                    <tbody class="divide-y ${isLight ? 'divide-gray-100' : (isOceanic ? 'divide-ocean-border/30' : 'divide-white/5')}">
                         <tr>
                             <td class="p-8 text-center text-gray-500 italic">
                                 <div class="flex flex-col items-center gap-2">
@@ -81,7 +83,7 @@ export function ResultsTable() {
 
     // --- Helpers ---
     const formatCell = (cell) => {
-        if (cell === null || cell === undefined) return `<span class="${isLight ? 'text-gray-300' : 'text-gray-600'} italic">NULL</span>`;
+        if (cell === null || cell === undefined) return `<span class="${isLight ? 'text-gray-300' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-600')} italic">NULL</span>`;
         if (typeof cell === 'boolean') return cell ? '<span class="text-green-400 font-bold">TRUE</span>' : '<span class="text-red-400 font-bold">FALSE</span>';
         if (typeof cell === 'number') return `<span class="text-mysql-teal">${cell}</span>`;
         return String(cell).replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -189,7 +191,7 @@ export function ResultsTable() {
         const input = document.createElement('input');
         input.type = 'text';
         input.value = currentValue === null ? '' : currentValue;
-        input.className = `${isLight ? 'bg-white border-mysql-teal text-gray-800' : 'bg-gray-900 border-cyan-500 text-white'} border rounded px-2 py-1 w-full outline-none shadow-sm`;
+        input.className = `${isLight ? 'bg-white border-mysql-teal text-gray-800' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text' : 'bg-gray-900 border-cyan-500 text-white')} border rounded px-2 py-1 w-full outline-none shadow-sm`;
 
         const save = () => {
             const newValue = input.value === '' ? null : input.value;
@@ -336,7 +338,7 @@ export function ResultsTable() {
             // Update row styling
             const row = container.querySelector(`tr[data-row-idx="${rowIdx}"]`);
             if (row) {
-                row.classList.add(`${isLight ? 'bg-red-50' : 'bg-red-500/10'} opacity-50`);
+                row.classList.add(`${isLight ? 'bg-red-50' : (isOceanic ? 'bg-red-900/20' : 'bg-red-500/10')} opacity-50`);
                 row.querySelectorAll('td').forEach(td => {
                     td.classList.add('line-through');
                 });
@@ -360,7 +362,7 @@ export function ResultsTable() {
 
         // Update Metadata
         const rowCountBadge = container.querySelector('#row-count-badge');
-        if (rowCountBadge) rowCountBadge.innerHTML = `${rows.length} ROWS <span class="${isLight ? 'text-gray-400' : 'text-gray-500'} font-normal ml-1">• ${data.duration || '0ms'}</span>`;
+        if (rowCountBadge) rowCountBadge.innerHTML = `${rows.length} ROWS <span class="${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500')} font-normal ml-1">• ${data.duration || '0ms'}</span>`;
 
         const table = container.querySelector('table');
         if (!table) return;
@@ -368,9 +370,9 @@ export function ResultsTable() {
         // Render Head (now with correct isEditable value)
         const thead = table.querySelector('thead tr');
         if (thead && columns.length > 0) {
-            const actionCol = isEditable ? `<th class="p-3 font-bold border-r ${isLight ? 'border-gray-200' : 'border-white/5'} border-b ${isLight ? 'border-gray-200' : 'border-white/5'} w-24 text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">Actions</th>` : '';
+            const actionCol = isEditable ? `<th class="p-3 font-bold border-r ${isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5')} border-b ${isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5')} w-24 text-xs ${isLight ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/70' : 'text-gray-400')}">Actions</th>` : '';
             thead.innerHTML = actionCol + columns.map(col => `
-                <th class="p-3 font-bold border-r ${isLight ? 'border-gray-200' : 'border-white/5'} border-b ${isLight ? 'border-gray-200' : 'border-white/5'} whitespace-nowrap text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'} select-none">${col}</th>
+                <th class="p-3 font-bold border-r ${isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5')} border-b ${isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5')} whitespace-nowrap text-xs ${isLight ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/70' : 'text-gray-400')} select-none">${col}</th>
             `).join('');
         }
 
@@ -388,7 +390,7 @@ export function ResultsTable() {
                 const insertRows = pendingChanges.inserts.map((insert, idx) => {
                     const cells = columns.map(col => {
                         const value = insert.data[col];
-                        return `<td class="p-3 border-r ${isLight ? 'border-gray-100' : 'border-white/5'} ${isLight ? 'text-gray-700' : 'text-gray-300'} bg-cyan-500/10 border border-cyan-500/20 cursor-pointer" data-insert-idx="${idx}" data-col="${col}">
+                        return `<td class="p-3 border-r ${isLight ? 'border-gray-100' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5')} ${isLight ? 'text-gray-700' : (isOceanic ? 'text-ocean-text' : 'text-gray-300')} bg-cyan-500/10 border border-cyan-500/20 cursor-pointer" data-insert-idx="${idx}" data-col="${col}">
                             ${formatCell(value)}
                         </td>`;
                     }).join('');
@@ -410,7 +412,7 @@ export function ResultsTable() {
                         const isModified = pendingChanges.updates.has(key);
                         const displayValue = isModified ? pendingChanges.updates.get(key) : cell;
 
-                        return `<td class="p-3 border-r ${isLight ? 'border-gray-100' : 'border-white/5'} ${isLight ? 'text-gray-700' : 'text-gray-300'} whitespace-nowrap overflow-hidden text-ellipsis max-w-xs ${isModified ? 'bg-yellow-500/10 border border-yellow-500/30' : ''} ${isEditable && !isDeleted ? 'cursor-pointer hover:bg-cyan-500/5' : ''}" 
+                        return `<td class="p-3 border-r ${isLight ? 'border-gray-100' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5')} ${isLight ? 'text-gray-700' : (isOceanic ? 'text-ocean-text' : 'text-gray-300')} whitespace-nowrap overflow-hidden text-ellipsis max-w-xs ${isModified ? 'bg-yellow-500/10 border border-yellow-500/30' : ''} ${isEditable && !isDeleted ? 'cursor-pointer hover:bg-cyan-500/5' : ''}" 
                             title="${cell}" 
                             data-row-idx="${idx}" 
                             data-col-idx="${colIdx}">
@@ -418,8 +420,8 @@ export function ResultsTable() {
                         </td>`;
                     }).join('');
 
-                    return `<tr class="hover:bg-mysql-teal/10 transition-colors group ${idx % 2 === 1 ? (isLight ? 'bg-gray-50/50' : 'bg-white/[0.01]') : ''} ${isDeleted ? (isLight ? 'bg-red-50' : 'bg-red-500/10') : ''}" data-row-idx="${idx}">
-                        ${isEditable ? `<td class="p-2 border-r ${isLight ? 'border-gray-100' : 'border-white/5'} text-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    return `<tr class="hover:bg-mysql-teal/10 transition-colors group ${idx % 2 === 1 ? (isLight ? 'bg-gray-50/50' : (isOceanic ? 'bg-[#2E3440]/30' : 'bg-white/[0.01]')) : ''} ${isDeleted ? (isLight ? 'bg-red-50' : (isOceanic ? 'bg-red-900/20' : 'bg-red-500/10')) : ''}" data-row-idx="${idx}">
+                        ${isEditable ? `<td class="p-2 border-r ${isLight ? 'border-gray-100' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5')} text-center opacity-0 group-hover:opacity-100 transition-opacity">
                             <button class="delete-row-btn text-red-400 hover:text-red-300 p-1" data-row-idx="${idx}" ${isDeleted ? 'disabled' : ''}>
                                 <span class="material-symbols-outlined text-sm">delete</span>
                             </button>
@@ -454,7 +456,7 @@ export function ResultsTable() {
                     const input = document.createElement('input');
                     input.type = 'text';
                     input.value = insert.data[col] === null ? '' : insert.data[col];
-                    input.className = `${isLight ? 'bg-white border-mysql-teal text-gray-800' : 'bg-gray-900 border-cyan-500 text-white'} border rounded px-2 py-1 w-full outline-none`;
+                    input.className = `${isLight ? 'bg-white border-mysql-teal text-gray-800' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text' : 'bg-gray-900 border-cyan-500 text-white')} border rounded px-2 py-1 w-full outline-none`;
 
                     const save = () => {
                         insert.data[col] = input.value === '' ? null : input.value;
@@ -547,7 +549,9 @@ export function ResultsTable() {
 
     // --- Theme Change Handling ---
     const onThemeChange = (e) => {
-        isLight = e.detail.theme === 'light';
+        theme = e.detail.theme;
+        isLight = theme === 'light';
+        isOceanic = theme === 'oceanic';
         renderControls();
         if (currentData.columns.length > 0) {
             renderTable(currentData);

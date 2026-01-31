@@ -1,21 +1,23 @@
 import { ThemeManager } from '../../utils/ThemeManager.js';
 
 export function KPISection() {
-    let isLight = ThemeManager.getCurrentTheme() === 'light';
+    let theme = ThemeManager.getCurrentTheme();
     const section = document.createElement('div');
-    section.className = "grid grid-cols-3 gap-6";
+    section.className = "grid grid-cols-3 gap-6 transition-all duration-300";
 
     const render = () => {
+        const isLight = theme === 'light';
+        const isOceanic = theme === 'oceanic';
         section.innerHTML = `
             <div id="card-cpu" class="tactile-card rounded-2xl p-6 flex flex-col gap-4 relative overflow-hidden">
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 rounded-lg ${isLight ? 'bg-cyan-50' : 'bg-cyan-500/10'} flex items-center justify-center">
-                            <span class="material-symbols-outlined text-cyan-500 text-lg">memory</span>
+                        <div class="w-8 h-8 rounded-lg ${isLight ? 'bg-cyan-50' : (isOceanic ? 'bg-ocean-frost/10' : 'bg-cyan-500/10')} flex items-center justify-center">
+                            <span class="material-symbols-outlined text-cyan-500 ${isOceanic ? 'text-ocean-frost' : ''} text-lg">memory</span>
                         </div>
-                        <span class="text-[10px] font-bold uppercase tracking-[0.15em] ${isLight ? 'text-gray-500' : 'text-gray-400'}">THREADS</span>
+                        <span class="text-[10px] font-bold uppercase tracking-[0.15em] ${isLight ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-400')}">THREADS</span>
                     </div>
-                    <span class="value-display text-xl font-mono text-cyan-500 font-bold ${isLight ? '' : 'neon-cyan'}">--</span>
+                    <span class="value-display text-xl font-mono ${isOceanic ? 'text-ocean-frost' : 'text-cyan-500'} font-bold ${isLight ? '' : (isOceanic ? 'glow-cyan' : 'neon-cyan')}">--</span>
                 </div>
                 <!-- Visual Bars -->
                 <div class="h-20 w-full flex items-end gap-1.5 tactile-card-inset p-2 rounded-xl">
@@ -24,7 +26,7 @@ export function KPISection() {
                     <div class="flex-1 bg-cyan-400/30 rounded-sm h-[35%]"></div>
                     <div class="flex-1 bg-cyan-400/40 rounded-sm h-[60%]"></div>
                     <div class="flex-1 bg-cyan-400/50 rounded-sm h-[55%]"></div>
-                    <div class="flex-1 bg-cyan-400/70 rounded-sm h-[75%] ${isLight ? '' : 'neon-cyan shadow-[0_0_10px_rgba(34,211,238,0.4)]'}"></div>
+                    <div class="flex-1 bg-cyan-400/70 rounded-sm h-[75%] ${isLight ? '' : (isOceanic ? 'bg-ocean-frost' : 'neon-cyan shadow-[0_0_10px_rgba(34,211,238,0.4)]')}"></div>
                     <div class="flex-1 bg-cyan-400/40 rounded-sm h-[40%]"></div>
                 </div>
             </div>
@@ -32,12 +34,12 @@ export function KPISection() {
             <div id="card-ram" class="tactile-card rounded-2xl p-6 flex flex-col gap-4 relative overflow-hidden">
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 rounded-lg ${isLight ? 'bg-purple-50' : 'bg-purple-500/10'} flex items-center justify-center">
+                        <div class="w-8 h-8 rounded-lg ${isLight ? 'bg-purple-50' : (isOceanic ? 'bg-mysql-purple/10' : 'bg-purple-500/10')} flex items-center justify-center">
                             <span class="material-symbols-outlined text-purple-500 text-lg">account_tree</span>
                         </div>
-                        <span class="text-[10px] font-bold uppercase tracking-[0.15em] ${isLight ? 'text-gray-500' : 'text-gray-400'}">BUFFER POOL</span>
+                        <span class="text-[10px] font-bold uppercase tracking-[0.15em] ${isLight ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-400')}">BUFFER POOL</span>
                     </div>
-                    <span class="value-display text-xl font-mono text-purple-500 font-bold ${isLight ? '' : 'neon-purple'}">--</span>
+                    <span class="value-display text-xl font-mono text-purple-500 font-bold ${isLight ? '' : (isOceanic ? 'glow-purple' : 'neon-purple')}">--</span>
                 </div>
                 <div class="h-20 w-full flex items-end gap-1.5 tactile-card-inset p-2 rounded-xl">
                     <div class="flex-1 bg-purple-400/20 rounded-sm h-[60%]"></div>
@@ -53,12 +55,12 @@ export function KPISection() {
             <div id="card-net" class="tactile-card rounded-2xl p-6 flex flex-col gap-4 relative overflow-hidden">
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 rounded-lg ${isLight ? 'bg-emerald-50' : 'bg-emerald-500/10'} flex items-center justify-center">
-                            <span class="material-symbols-outlined text-emerald-500 text-lg">sensors</span>
+                        <div class="w-8 h-8 rounded-lg ${isLight ? 'bg-emerald-50' : (isOceanic ? 'bg-ocean-mint/10' : 'bg-emerald-500/10')} flex items-center justify-center">
+                            <span class="material-symbols-outlined text-emerald-500 ${isOceanic ? 'text-ocean-mint' : ''} text-lg">sensors</span>
                         </div>
-                        <span class="text-[10px] font-bold uppercase tracking-[0.15em] ${isLight ? 'text-gray-500' : 'text-gray-400'}">TRAFFIC</span>
+                        <span class="text-[10px] font-bold uppercase tracking-[0.15em] ${isLight ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-400')}">TRAFFIC</span>
                     </div>
-                    <span class="value-display text-xl font-mono text-emerald-500 font-bold">--</span>
+                    <span class="value-display text-xl font-mono ${isOceanic ? 'text-ocean-mint' : 'text-emerald-500'} font-bold">--</span>
                 </div>
                 <div class="h-20 w-full flex items-end gap-1.5 tactile-card-inset p-2 rounded-xl">
                      <div class="flex-1 bg-emerald-400/10 rounded-sm h-[15%]"></div>
@@ -117,7 +119,7 @@ export function KPISection() {
 
     // --- Theme Change Handling ---
     const onThemeChange = (e) => {
-        isLight = e.detail.theme === 'light';
+        theme = e.detail.theme;
         render();
     };
     window.addEventListener('themechange', onThemeChange);

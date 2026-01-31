@@ -3,7 +3,6 @@ import { Dialog } from '../components/UI/Dialog.js';
 import { ThemeManager } from '../utils/ThemeManager.js';
 
 export function SchemaDesigner() {
-    let isLight = ThemeManager.getCurrentTheme() === 'light';
     // Parse URL params
     const hash = window.location.hash;
     const params = new URLSearchParams(hash.split('?')[1] || '');
@@ -59,12 +58,23 @@ export function SchemaDesigner() {
         newTrigger: { name: '', timing: 'BEFORE', event: 'INSERT', body: '' }
     };
 
+    let theme = ThemeManager.getCurrentTheme();
+    let isLight = theme === 'light';
+    let isOceanic = theme === 'oceanic';
     const container = document.createElement('div');
-    container.className = `flex-1 flex flex-col h-full overflow-hidden bg-background-main selection:bg-mysql-teal/40 relative transition-colors duration-300`;
+    const getContainerClass = (t) => {
+        const _isLight = t === 'light';
+        const _isOceanic = t === 'oceanic';
+        return `flex-1 flex flex-col h-full overflow-hidden ${_isLight ? 'bg-gray-50' : (_isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]')} selection:bg-mysql-teal/40 relative transition-all duration-300`;
+    };
+    container.className = getContainerClass(theme);
 
     // --- Template ---
-    const renderMainTemplate = () => `
-            <header class="h-14 border-b ${isLight ? 'border-gray-100 bg-white' : 'border-white/5 bg-[#121418]'} px-6 flex items-center justify-between z-20">
+    const renderMainTemplate = () => {
+        const isLight = theme === 'light';
+        const isOceanic = theme === 'oceanic';
+        return `
+            <header class="h-14 border-b ${isLight ? 'border-gray-100 bg-white' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'border-white/5 bg-[#121418]')} px-6 flex items-center justify-between z-20">
                 <div class="flex items-center gap-8">
                     <div class="flex items-center gap-3">
                         <div class="w-8 h-8 rounded bg-mysql-teal flex items-center justify-center neu-flat">
@@ -89,7 +99,7 @@ export function SchemaDesigner() {
             </header>
 
             <div class="flex-1 flex overflow-hidden z-10">
-                <main class="flex-1 flex flex-col bg-background-main p-6 overflow-hidden">
+                <main class="flex-1 flex flex-col ${isLight ? 'bg-gray-50' : (isOceanic ? 'bg-ocean-bg' : 'bg-base-dark')} p-6 overflow-hidden">
                     <div class="flex items-center justify-between mb-4 px-2">
                         <div class="flex items-center gap-6">
                             <!-- Tabs -->
@@ -270,9 +280,15 @@ END"></textarea>
                     </div>
                 </div>
             </div>
-    `;
+        `;
+    };
 
-    container.innerHTML = renderMainTemplate();
+    const render = () => {
+        container.innerHTML = renderMainTemplate();
+        updateAll();
+    };
+
+    render();
 
     // --- Render Functions ---
 
@@ -302,17 +318,17 @@ END"></textarea>
 
         if (state.activeTab === 'columns') {
             actionsContainer.innerHTML = `
-                <button class="h-7 px-3 flex items-center gap-2 rounded ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-200' : 'bg-white/5 hover:bg-white/10 text-gray-400 border-white/10'} border text-[10px] font-bold transition-colors" id="btn-add-column">
-                    <span class="material-symbols-outlined text-sm">add</span> Add Column
+            <button class="h-7 px-3 flex items-center gap-2 rounded ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-200' : 'bg-white/5 hover:bg-white/10 text-gray-400 border-white/10'} border text-[10px] font-bold transition-colors" id="btn-add-column">
+                <span class="material-symbols-outlined text-sm">add</span> Add Column
                 </button>
-            `;
+        `;
             container.querySelector('#btn-add-column').onclick = handleAddColumn;
         } else if (state.activeTab === 'indexes') {
             actionsContainer.innerHTML = `
-                <button class="h-7 px-3 flex items-center gap-2 rounded ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-200' : 'bg-white/5 hover:bg-white/10 text-gray-400 border-white/10'} border text-[10px] font-bold transition-colors" id="btn-add-index">
-                    <span class="material-symbols-outlined text-sm">add</span> Add Index
+        <button class="h-7 px-3 flex items-center gap-2 rounded ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-200' : 'bg-white/5 hover:bg-white/10 text-gray-400 border-white/10'} border text-[10px] font-bold transition-colors" id="btn-add-index">
+            <span class="material-symbols-outlined text-sm">add</span> Add Index
                 </button>
-            `;
+        `;
             container.querySelector('#btn-add-index').onclick = () => {
                 state.showIndexModal = true;
                 state.newIndex = { name: '', type: 'INDEX', columns: [] }; // Reset
@@ -320,10 +336,10 @@ END"></textarea>
             };
         } else if (state.activeTab === 'foreign_keys') {
             actionsContainer.innerHTML = `
-                <button class="h-7 px-3 flex items-center gap-2 rounded ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-200' : 'bg-white/5 hover:bg-white/10 text-gray-400 border-white/10'} border text-[10px] font-bold transition-colors" id="btn-add-fk">
-                    <span class="material-symbols-outlined text-sm">add</span> Add Foreign Key
+        <button class="h-7 px-3 flex items-center gap-2 rounded ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-200' : 'bg-white/5 hover:bg-white/10 text-gray-400 border-white/10'} border text-[10px] font-bold transition-colors" id="btn-add-fk">
+            <span class="material-symbols-outlined text-sm">add</span> Add Foreign Key
                 </button>
-            `;
+        `;
             container.querySelector('#btn-add-fk').onclick = () => {
                 state.showFKModal = true;
                 state.newFK = { name: '', column: '', refTable: '', refColumn: '' };
@@ -334,10 +350,10 @@ END"></textarea>
             // Read-only view for now
         } else if (state.activeTab === 'triggers') {
             actionsContainer.innerHTML = `
-                <button class="h-7 px-3 flex items-center gap-2 rounded ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-200' : 'bg-white/5 hover:bg-white/10 text-gray-400 border-white/10'} border text-[10px] font-bold transition-colors" id="btn-add-trigger">
-                    <span class="material-symbols-outlined text-sm">add</span> Add Trigger
+        <button class="h-7 px-3 flex items-center gap-2 rounded ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-200' : 'bg-white/5 hover:bg-white/10 text-gray-400 border-white/10'} border text-[10px] font-bold transition-colors" id="btn-add-trigger">
+            <span class="material-symbols-outlined text-sm">add</span> Add Trigger
                 </button>
-            `;
+        `;
             container.querySelector('#btn-add-trigger').onclick = () => {
                 state.showTriggerModal = true;
                 state.newTrigger = { name: '', timing: 'BEFORE', event: 'INSERT', body: '' };
@@ -357,7 +373,7 @@ END"></textarea>
         if (state.activeTab === 'columns') {
             statusDisplay.innerText = `${state.columns.length} COLUMNS`;
             thead.innerHTML = `
-                <tr class="text-gray-500 uppercase text-[10px] tracking-widest">
+        <tr class="text-gray-500 uppercase text-[10px] tracking-widest">
                     <th class="p-4 w-12 text-center">#</th>
                     <th class="p-4 min-w-[200px]">Column Name</th>
                     <th class="p-4 w-32">Type</th>
@@ -366,12 +382,12 @@ END"></textarea>
                     <th class="p-4 w-40">Constraints</th>
                     <th class="p-4 w-10"></th>
                 </tr>
-            `;
+        `;
             renderColumnsTable();
         } else if (state.activeTab === 'indexes') {
             statusDisplay.innerText = `${Object.keys(groupByIndexName(state.indexes)).length} INDEXES`;
             thead.innerHTML = `
-                <tr class="text-gray-500 uppercase text-[10px] tracking-widest">
+        <tr class="text-gray-500 uppercase text-[10px] tracking-widest">
                     <th class="p-4 w-12 text-center">#</th>
                     <th class="p-4 min-w-[150px]">Index Name</th>
                     <th class="p-4">Columns</th>
@@ -379,12 +395,12 @@ END"></textarea>
                     <th class="p-4 w-24">Unique</th>
                     <th class="p-4 w-10"></th>
                 </tr>
-            `;
+        `;
             renderIndexesTable();
         } else if (state.activeTab === 'foreign_keys') {
             statusDisplay.innerText = `${state.foreignKeys.length} FOREIGN KEYS`;
             thead.innerHTML = `
-                <tr class="text-gray-500 uppercase text-[10px] tracking-widest">
+        <tr class="text-gray-500 uppercase text-[10px] tracking-widest">
                     <th class="p-4 w-12 text-center">#</th>
                     <th class="p-4 min-w-[150px]">Constraint Name</th>
                     <th class="p-4">Column</th>
@@ -392,30 +408,30 @@ END"></textarea>
                     <th class="p-4">Referenced Column</th>
                     <th class="p-4 w-10"></th>
                 </tr>
-            `;
+        `;
             renderFKTable();
         } else if (state.activeTab === 'constraints') {
             statusDisplay.innerText = `${state.constraints.length} CONSTRAINTS`;
             thead.innerHTML = `
-                <tr class="text-gray-500 uppercase text-[10px] tracking-widest">
+        <tr class="text-gray-500 uppercase text-[10px] tracking-widest">
                     <th class="p-4 w-12 text-center">#</th>
                     <th class="p-4 min-w-[150px]">Constraint Name</th>
                     <th class="p-4">Type</th>
                     <th class="p-4"></th>
                 </tr>
-            `;
+        `;
             renderConstraintsTable();
         } else if (state.activeTab === 'triggers') {
             statusDisplay.innerText = `${state.triggers.length} TRIGGERS`;
             thead.innerHTML = `
-                <tr class="text-gray-500 uppercase text-[10px] tracking-widest">
+        <tr class="text-gray-500 uppercase text-[10px] tracking-widest">
                      <th class="p-4 w-12 text-center">#</th>
                      <th class="p-4 min-w-[150px]">Trigger Name</th>
                      <th class="p-4">Event</th>
                      <th class="p-4">Timing</th>
                      <th class="p-4 w-10"></th>
                 </tr>
-             `;
+        `;
             renderTriggersTable();
         } else if (state.activeTab === 'ddl') {
             statusDisplay.innerText = `CREATE STATEMENT`;
@@ -426,7 +442,7 @@ END"></textarea>
             thead.innerHTML = '';
             renderStatsView();
         } else if (state.activeTab === 'diagram') {
-            statusDisplay.innerText = `ER DIAGRAM (Direct Relationships)`;
+            statusDisplay.innerText = `ER DIAGRAM(Direct Relationships)`;
             thead.innerHTML = '';
             renderDiagramView();
         }
@@ -443,7 +459,7 @@ END"></textarea>
         state.columns.forEach((col, index) => {
             const tr = document.createElement('tr');
             const isSelected = col.id === state.selectedColumnId;
-            tr.className = `group transition-colors cursor-pointer ${isSelected ? (isLight ? 'bg-mysql-teal/10 border-l-2 border-l-mysql-teal' : 'bg-mysql-teal/[0.07] border-l-2 border-l-mysql-teal') : `hover:${isLight ? 'bg-gray-50' : 'bg-white/[0.03]'} border-l-2 border-l-transparent`}`;
+            tr.className = `group transition-colors cursor-pointer ${isSelected ? (isLight ? 'bg-mysql-teal/10 border-l-2 border-l-mysql-teal' : 'bg-mysql-teal/[0.07] border-l-2 border-l-mysql-teal') : `hover:${isLight ? 'bg-gray-50' : 'bg-white/[0.03]'} border-l-2 border-l-transparent`} `;
             tr.onclick = () => {
                 state.selectedColumnId = col.id;
                 renderContent();
@@ -458,7 +474,7 @@ END"></textarea>
             constraintsHtml += '</div>';
 
             tr.innerHTML = `
-                <td class="p-4 text-center ${isSelected ? 'text-mysql-teal font-bold' : (isLight ? 'text-gray-400' : 'text-gray-700')} italic">${index + 1}</td>
+        <td class="p-4 text-center ${isSelected ? 'text-mysql-teal font-bold' : (isLight ? 'text-gray-400' : 'text-gray-700')} italic"> ${index + 1}</td>
                 <td class="p-4">
                     <div class="flex items-center gap-2">
                         ${col.primaryKey ? `<span class="material-symbols-outlined ${isLight ? 'text-mysql-teal' : 'text-mysql-cyan'} text-sm">key</span>` : ''}
@@ -472,12 +488,12 @@ END"></textarea>
                 <td class="p-4 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button class="text-gray-500 hover:text-red-400 btn-delete-col" data-id="${col.id}"><span class="material-symbols-outlined text-sm">delete</span></button>
                 </td>
-            `;
+    `;
 
             const delBtn = tr.querySelector('.btn-delete-col');
             delBtn.onclick = async (e) => {
                 e.stopPropagation();
-                if (await Dialog.confirm(`Delete column "${col.name}"?`)) {
+                if (await Dialog.confirm(`Delete column "${col.name}" ? `)) {
                     state.columns = state.columns.filter(c => c.id !== col.id);
                     if (state.selectedColumnId === col.id && state.columns.length > 0) {
                         state.selectedColumnId = state.columns[0].id;
@@ -508,10 +524,10 @@ END"></textarea>
             const tr = document.createElement('tr');
             tr.className = `group transition-colors hover:${isLight ? 'bg-gray-50' : 'bg-white/[0.03]'} border-l-2 border-l-transparent`;
 
-            const colsHtml = idx.columns.map(c => `<span class="px-2 py-0.5 rounded ${isLight ? 'bg-gray-200 text-gray-700' : 'bg-white/10 text-gray-300'} text-[10px] font-mono">${c}</span>`).join('<span class="text-gray-600 mx-1">,</span>');
+            const colsHtml = idx.columns.map(c => `<span class="px-2 py-0.5 rounded ${isLight ? 'bg-gray-200 text-gray-700' : 'bg-white/10 text-gray-300'} text-[10px] font-mono"> ${c}</span>`).join('<span class="text-gray-600 mx-1">,</span>');
 
             tr.innerHTML = `
-                <td class="p-4 text-center ${isLight ? 'text-gray-400' : 'text-gray-700'} italic">${i + 1}</td>
+        <td class="p-4 text-center ${isLight ? 'text-gray-400' : 'text-gray-700'} italic"> ${i + 1}</td>
                 <td class="p-4">
                     <div class="flex items-center gap-2">
                         <span class="material-symbols-outlined text-gray-500 text-sm">fact_check</span>
@@ -530,12 +546,12 @@ END"></textarea>
                 <td class="p-4 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button class="text-gray-500 hover:text-red-400 btn-delete-idx"><span class="material-symbols-outlined text-sm">delete</span></button>
                 </td>
-           `;
+    `;
 
             const delBtn = tr.querySelector('.btn-delete-idx');
             delBtn.onclick = async (e) => {
                 e.stopPropagation();
-                if (await Dialog.confirm(`Drop index "${idx.name}"?`)) {
+                if (await Dialog.confirm(`Drop index "${idx.name}" ? `)) {
                     state.indexes = state.indexes.filter(x => x.name !== idx.name);
                     updateAll();
                 }
@@ -556,7 +572,7 @@ END"></textarea>
             tr.className = `group transition-colors hover:${isLight ? 'bg-gray-50' : 'bg-white/[0.03]'} border-l-2 border-l-transparent`;
 
             tr.innerHTML = `
-                <td class="p-4 text-center ${isLight ? 'text-gray-400' : 'text-gray-700'} italic">${i + 1}</td>
+        <td class="p-4 text-center ${isLight ? 'text-gray-400' : 'text-gray-700'} italic"> ${i + 1}</td>
                 <td class="p-4">
                     <div class="flex items-center gap-2">
                          <span class="material-symbols-outlined text-gray-500 text-sm">link</span>
@@ -569,11 +585,11 @@ END"></textarea>
                 <td class="p-4 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button class="text-gray-500 hover:text-red-400 btn-delete-fk"><span class="material-symbols-outlined text-sm">delete</span></button>
                 </td>
-           `;
+    `;
 
             tr.querySelector('.btn-delete-fk').onclick = async (e) => {
                 e.stopPropagation();
-                if (await Dialog.confirm(`Delete foreign key "${fk.constraint_name}"?`)) {
+                if (await Dialog.confirm(`Delete foreign key "${fk.constraint_name}" ? `)) {
                     state.foreignKeys = state.foreignKeys.filter(f => f.constraint_name !== fk.constraint_name);
                     updateAll();
                 }
@@ -599,7 +615,7 @@ END"></textarea>
             if (cons.constraint_type === 'UNIQUE') typeColor = isLight ? 'text-orange-600' : 'text-orange-400';
 
             tr.innerHTML = `
-                <td class="p-4 text-center ${isLight ? 'text-gray-400' : 'text-gray-700'} italic">${i + 1}</td>
+        <td class="p-4 text-center ${isLight ? 'text-gray-400' : 'text-gray-700'} italic"> ${i + 1}</td>
                 <td class="p-4">
                     <div class="flex items-center gap-2">
                          <span class="material-symbols-outlined text-gray-500 text-sm">lock</span>
@@ -608,7 +624,7 @@ END"></textarea>
                 </td>
                 <td class="p-4 ${typeColor} font-mono text-xs">${cons.constraint_type}</td>
                 <td class="p-4"></td>
-           `;
+    `;
             tbody.appendChild(tr);
         });
     }
@@ -631,7 +647,7 @@ END"></textarea>
             if (trig.event === 'DELETE') eventColor = isLight ? 'text-red-600 font-bold' : 'text-red-400';
 
             tr.innerHTML = `
-                <td class="p-4 text-center ${isLight ? 'text-gray-400' : 'text-gray-700'} italic">${i + 1}</td>
+        <td class="p-4 text-center ${isLight ? 'text-gray-400' : 'text-gray-700'} italic"> ${i + 1}</td>
                 <td class="p-4">
                     <div class="flex items-center gap-2">
                          <span class="material-symbols-outlined text-gray-500 text-sm">bolt</span>
@@ -641,7 +657,7 @@ END"></textarea>
                 <td class="p-4 ${eventColor} font-mono text-xs font-bold">${trig.event}</td>
                 <td class="p-4 ${isLight ? 'text-purple-600' : 'text-purple-300'} font-mono text-xs">${trig.timing}</td>
                 <td class="p-4"></td>
-           `;
+    `;
             tbody.appendChild(tr);
         });
     }
@@ -677,7 +693,7 @@ END"></textarea>
 
         // Helper for grid items
         const renderItem = (label, value) => `
-            <div class="${isLight ? 'bg-white border-gray-200 shadow-sm' : 'bg-white/5 border-white/5'} border rounded p-4 flex flex-col gap-1">
+        <div class="${isLight ? 'bg-white border-gray-200 shadow-sm' : 'bg-white/5 border-white/5'} border rounded p-4 flex flex-col gap-1">
                 <span class="text-[10px] uppercase font-bold tracking-widest text-gray-500">${label}</span>
                 <span class="text-sm font-mono ${isLight ? 'text-gray-900' : 'text-white'} truncate" title="${value}">${value !== null && value !== undefined ? value : '-'}</span>
             </div>
@@ -689,8 +705,8 @@ END"></textarea>
         const stats = state.stats;
 
         const gridHtml = `
-            <div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-6">
-                ${renderItem('Rows', stats.rows)}
+        <div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-6">
+            ${renderItem('Rows', stats.rows)}
                 ${renderItem('Engine', stats.engine)}
                 ${renderItem('Collation', stats.collation)}
                 ${renderItem('Auto Increment', stats.auto_increment)}
@@ -704,10 +720,10 @@ END"></textarea>
                 ${renderItem('Update Time', stats.update_time)}
                 ${renderItem('Check Time', stats.check_time)}
                 ${renderItem('Checksum', stats.checksum)}
-                <div class="col-span-2 lg:col-span-3 xl:col-span-4 ${isLight ? 'bg-white border-gray-200 shadow-sm' : 'bg-white/5 border-white/5'} border rounded p-4 flex flex-col gap-1">
-                    <span class="text-[10px] uppercase font-bold tracking-widest text-gray-500">Comment</span>
-                    <span class="text-sm ${isLight ? 'text-gray-700' : 'text-white'} italic">${stats.table_comment || '-'}</span>
-                </div>
+    <div class="col-span-2 lg:col-span-3 xl:col-span-4 ${isLight ? 'bg-white border-gray-200 shadow-sm' : 'bg-white/5 border-white/5'} border rounded p-4 flex flex-col gap-1">
+        <span class="text-[10px] uppercase font-bold tracking-widest text-gray-500">Comment</span>
+        <span class="text-sm ${isLight ? 'text-gray-700' : 'text-white'} italic">${stats.table_comment || '-'}</span>
+    </div>
             </div>
         `;
 
@@ -745,56 +761,56 @@ END"></textarea>
 
         if (state.activeTab === 'indexes') {
             sidebar.innerHTML = `
-                <div class="p-6 text-center ${isLight ? 'text-gray-400' : 'text-gray-500'} space-y-4 mt-10">
+        <div class="p-6 text-center ${isLight ? 'text-gray-400' : 'text-gray-500'} space-y-4 mt-10">
                     <span class="material-symbols-outlined text-4xl opacity-20">dataset</span>
                     <p class="text-xs">Index Management</p>
                     <p class="text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-600'}">Use the "Add Index" button to create new indexes on this table.</p>
                 </div>
-            `;
+        `;
             return;
         }
 
         if (state.activeTab === 'foreign_keys') {
             sidebar.innerHTML = `
-                <div class="p-6 text-center ${isLight ? 'text-gray-400' : 'text-gray-500'} space-y-4 mt-10">
+        <div class="p-6 text-center ${isLight ? 'text-gray-400' : 'text-gray-500'} space-y-4 mt-10">
                     <span class="material-symbols-outlined text-4xl opacity-20">link</span>
                     <p class="text-xs">Foreign Keys</p>
                     <p class="text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-600'}">Define relationships with other tables.</p>
                 </div>
-            `;
+        `;
             return;
         }
 
         if (state.activeTab === 'constraints') {
             sidebar.innerHTML = `
-                <div class="p-6 text-center ${isLight ? 'text-gray-400' : 'text-gray-500'} space-y-4 mt-10">
+        <div class="p-6 text-center ${isLight ? 'text-gray-400' : 'text-gray-500'} space-y-4 mt-10">
                     <span class="material-symbols-outlined text-4xl opacity-20">lock</span>
                     <p class="text-xs">Constraints</p>
                     <p class="text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-600'}">View all table constraints including Primary Keys, Unique Keys, Foreign Keys, and Check constraints.</p>
                 </div>
-            `;
+        `;
             return;
         }
 
         if (state.activeTab === 'triggers') {
             sidebar.innerHTML = `
-                <div class="p-6 text-center ${isLight ? 'text-gray-400' : 'text-gray-500'} space-y-4 mt-10">
+        <div class="p-6 text-center ${isLight ? 'text-gray-400' : 'text-gray-500'} space-y-4 mt-10">
                     <span class="material-symbols-outlined text-4xl opacity-20">bolt</span>
                     <p class="text-xs">Triggers</p>
                     <p class="text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-600'}">Triggers are special stored procedures that are run automatically when an event occurs in the database server.</p>
                 </div>
-            `;
+        `;
             return;
         }
 
         const col = state.columns.find(c => c.id === state.selectedColumnId);
         if (!col) {
-            sidebar.innerHTML = `<div class="p-6 text-gray-500 text-xs italic text-center mt-10">No column selected</div>`;
+            sidebar.innerHTML = `<div class="p-6 text-gray-500 text-xs italic text-center mt-10"> No column selected</div>`;
             return;
         }
 
         const renderSwitch = (label, propName, code) => `
-            <div class="flex items-center justify-between p-3 rounded-xl ${isLight ? 'bg-gray-50 border-gray-200' : 'bg-white/[0.02] border-white/5'} border hover:${isLight ? 'border-mysql-teal/30' : 'border-white/10'} transition-all cursor-pointer" onclick="document.getElementById('chk-${propName}').click()">
+        <div class="flex items-center justify-between p-3 rounded-xl ${isLight ? 'bg-gray-50 border-gray-200' : 'bg-white/[0.02] border-white/5'} border hover:${isLight ? 'border-mysql-teal/30' : 'border-white/10'} transition-all cursor-pointer" onclick="document.getElementById('chk-${propName}').click()">
                 <div class="flex flex-col">
                     <span class="text-xs font-bold ${isLight ? 'text-gray-700' : 'text-gray-300'}">${label}</span>
                     <span class="text-[9px] ${isLight ? 'text-gray-400' : 'text-gray-600'} font-mono uppercase tracking-tighter">${code}</span>
@@ -807,7 +823,7 @@ END"></textarea>
         `;
 
         sidebar.innerHTML = `
-            <div class="p-6 border-b ${isLight ? 'border-gray-100 bg-gray-50/50' : 'border-white/5 bg-white/[0.02]'}">
+        <div class="p-6 border-b ${isLight ? 'border-gray-100 bg-gray-50/50' : 'border-white/5 bg-white/[0.02]'}">
                 <div class="flex items-center justify-between mb-4">
                     <h2 class="text-xs font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-900' : 'text-white'}">Column Properties</h2>
                     <span class="text-[10px] font-mono text-mysql-teal">ID: ${col.id}</span>
@@ -822,54 +838,54 @@ END"></textarea>
                     </div>
                 </div>
             </div>
-            <div class="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-8">
-                <section class="space-y-4">
+        <div class="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-8">
+            <section class="space-y-4">
+                <div class="space-y-2">
+                    <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Internal Name</label>
+                    <input id="inp-name" class="tactile-input w-full" type="text" value="${col.name}" />
+                </div>
+                <div class="grid grid-cols-2 gap-3">
                     <div class="space-y-2">
-                        <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Internal Name</label>
-                        <input id="inp-name" class="tactile-input w-full" type="text" value="${col.name}" />
+                        <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Data Type</label>
+                        <select id="sel-type" class="tactile-input w-full outline-none">
+                            <optgroup label="Numeric">
+                                ${['TINYINT', 'SMALLINT', 'MEDIUMINT', 'INT', 'BIGINT', 'DECIMAL', 'NUMERIC', 'FLOAT', 'DOUBLE', 'BIT'].map(t => `<option ${t === col.type ? 'selected' : ''}>${t}</option>`).join('')}
+                            </optgroup>
+                            <optgroup label="String">
+                                ${['CHAR', 'VARCHAR', 'TINYTEXT', 'TEXT', 'MEDIUMTEXT', 'LONGTEXT', 'BINARY', 'VARBINARY', 'ENUM', 'SET'].map(t => `<option ${t === col.type ? 'selected' : ''}>${t}</option>`).join('')}
+                            </optgroup>
+                            <optgroup label="Binary">
+                                ${['TINYBLOB', 'BLOB', 'MEDIUMBLOB', 'LONGBLOB'].map(t => `<option ${t === col.type ? 'selected' : ''}>${t}</option>`).join('')}
+                            </optgroup>
+                            <optgroup label="Date &amp; Time">
+                                ${['DATE', 'TIME', 'DATETIME', 'TIMESTAMP', 'YEAR'].map(t => `<option ${t === col.type ? 'selected' : ''}>${t}</option>`).join('')}
+                            </optgroup>
+                            <optgroup label="Other">
+                                ${['JSON', 'BOOLEAN', 'GEOMETRY', 'POINT', 'LINESTRING', 'POLYGON'].map(t => `<option ${t === col.type ? 'selected' : ''}>${t}</option>`).join('')}
+                            </optgroup>
+                        </select>
                     </div>
-                    <div class="grid grid-cols-2 gap-3">
-                        <div class="space-y-2">
-                            <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Data Type</label>
-                            <select id="sel-type" class="tactile-input w-full outline-none">
-                                <optgroup label="Numeric">
-                                    ${['TINYINT', 'SMALLINT', 'MEDIUMINT', 'INT', 'BIGINT', 'DECIMAL', 'NUMERIC', 'FLOAT', 'DOUBLE', 'BIT'].map(t => `<option ${t === col.type ? 'selected' : ''}>${t}</option>`).join('')}
-                                </optgroup>
-                                <optgroup label="String">
-                                    ${['CHAR', 'VARCHAR', 'TINYTEXT', 'TEXT', 'MEDIUMTEXT', 'LONGTEXT', 'BINARY', 'VARBINARY', 'ENUM', 'SET'].map(t => `<option ${t === col.type ? 'selected' : ''}>${t}</option>`).join('')}
-                                </optgroup>
-                                <optgroup label="Binary">
-                                    ${['TINYBLOB', 'BLOB', 'MEDIUMBLOB', 'LONGBLOB'].map(t => `<option ${t === col.type ? 'selected' : ''}>${t}</option>`).join('')}
-                                </optgroup>
-                                <optgroup label="Date &amp; Time">
-                                    ${['DATE', 'TIME', 'DATETIME', 'TIMESTAMP', 'YEAR'].map(t => `<option ${t === col.type ? 'selected' : ''}>${t}</option>`).join('')}
-                                </optgroup>
-                                <optgroup label="Other">
-                                    ${['JSON', 'BOOLEAN', 'GEOMETRY', 'POINT', 'LINESTRING', 'POLYGON'].map(t => `<option ${t === col.type ? 'selected' : ''}>${t}</option>`).join('')}
-                                </optgroup>
-                            </select>
-                        </div>
-                        <div class="space-y-2">
-                            <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Length</label>
-                            <input id="inp-length" class="tactile-input w-full" type="text" value="${col.length}" placeholder="N/A" />
-                        </div>
+                    <div class="space-y-2">
+                        <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Length</label>
+                        <input id="inp-length" class="tactile-input w-full" type="text" value="${col.length}" placeholder="N/A" />
                     </div>
-                     <div class="space-y-2">
-                        <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Default Value</label>
-                        <input id="inp-default" class="tactile-input w-full" type="text" value="${col.defaultVal}" placeholder="NULL" />
-                    </div>
-                </section>
-                <section class="space-y-4">
-                    <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Constraints & Flags</label>
-                    <div class="space-y-3">
-                        ${renderSwitch('Primary Key', 'primaryKey', 'PRIMARY_KEY_FLAG')}
-                        ${renderSwitch('Not Null', 'nullable', 'NOT_NULL_FLAG')} 
-                        ${renderSwitch('Auto Increment', 'autoIncrement', 'AUTO_INCREMENT_FLAG')}
-                        ${renderSwitch('Unique Index', 'unique', 'UNIQUE_KEY_FLAG')}
-                    </div>
-                </section>
-            </div>
-        `;
+                </div>
+                <div class="space-y-2">
+                    <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Default Value</label>
+                    <input id="inp-default" class="tactile-input w-full" type="text" value="${col.defaultVal}" placeholder="NULL" />
+                </div>
+            </section>
+            <section class="space-y-4">
+                <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Constraints & Flags</label>
+                <div class="space-y-3">
+                    ${renderSwitch('Primary Key', 'primaryKey', 'PRIMARY_KEY_FLAG')}
+                    ${renderSwitch('Not Null', 'nullable', 'NOT_NULL_FLAG')}
+                    ${renderSwitch('Auto Increment', 'autoIncrement', 'AUTO_INCREMENT_FLAG')}
+                    ${renderSwitch('Unique Index', 'unique', 'UNIQUE_KEY_FLAG')}
+                </div>
+            </section>
+        </div>
+    `;
 
         // Attach logic similar to previous implementation...
         // For brevity, skipping repeated event attachment boilerplate logic as it is identical.
@@ -932,18 +948,18 @@ END"></textarea>
             state.columns.forEach(col => {
                 const isChecked = state.newIndex.columns.includes(col.name);
                 const row = document.createElement('div');
-                row.className = `flex items-center gap-3 p-2 rounded cursor-pointer transition-colors ${isChecked ? 'bg-mysql-teal/10' : 'hover:bg-white/5'}`;
+                row.className = `flex items-center gap-3 p-2 rounded cursor-pointer transition-colors ${isChecked ? 'bg-mysql-teal/10' : 'hover:bg-white/5'} `;
                 row.onclick = () => {
                     if (isChecked) state.newIndex.columns = state.newIndex.columns.filter(c => c !== col.name);
                     else state.newIndex.columns.push(col.name);
                     renderIndexModal();
                 };
                 row.innerHTML = `
-                    <div class="w-4 h-4 rounded border flex items-center justify-center ${isChecked ? 'bg-mysql-teal border-mysql-teal' : 'border-gray-600 bg-transparent'}">
-                        ${isChecked ? '<span class="material-symbols-outlined text-[10px] text-white">check</span>' : ''}
+        <div class="w-4 h-4 rounded border flex items-center justify-center ${isChecked ? 'bg-mysql-teal border-mysql-teal' : 'border-gray-600 bg-transparent'}">
+            ${isChecked ? '<span class="material-symbols-outlined text-[10px] text-white">check</span>' : ''}
                     </div>
-                    <span class="text-xs font-mono ${isChecked ? 'text-white font-bold' : 'text-gray-400'}">${col.name}</span>
-                 `;
+        <span class="text-xs font-mono ${isChecked ? 'text-white font-bold' : 'text-gray-400'}">${col.name}</span>
+    `;
                 colsList.appendChild(row);
             });
 
@@ -980,14 +996,14 @@ END"></textarea>
             inpName.value = state.newFK.name;
 
             // Populate Local Cols
-            selLocal.innerHTML = state.columns.map(c => `<option value="${c.name}" ${state.newFK.column === c.name ? 'selected' : ''}>${c.name}</option>`).join('');
+            selLocal.innerHTML = state.columns.map(c => `<option value="${c.name}" ${state.newFK.column === c.name ? 'selected' : ''}> ${c.name}</option>`).join('');
 
             // Populate Tables
-            selRefTable.innerHTML = `<option value="">Select Table</option>` + state.tablesList.map(t => `<option value="${t}" ${state.newFK.refTable === t ? 'selected' : ''}>${t}</option>`).join('');
+            selRefTable.innerHTML = `<option value="">Select Table</option>` + state.tablesList.map(t => ` <option value="${t}" ${state.newFK.refTable === t ? 'selected' : ''}> ${t}</option>`).join('');
 
             // Populate Ref Columns (if table selected)
             if (state.newFK.refTable && state.refTableColumns.length > 0) {
-                selRefCol.innerHTML = state.refTableColumns.map(c => `<option value="${c.name}" ${state.newFK.refColumn === c.name ? 'selected' : ''}>${c.name}</option>`).join('');
+                selRefCol.innerHTML = state.refTableColumns.map(c => `<option value="${c.name}" ${state.newFK.refColumn === c.name ? 'selected' : ''}> ${c.name}</option>`).join('');
                 selRefCol.disabled = false;
             } else {
                 selRefCol.innerHTML = '<option>Select Table First</option>';
@@ -1079,7 +1095,7 @@ END"></textarea>
 
     function generateSQL() {
         const codeBlock = container.querySelector('#sql-code-block');
-        let sql = `-- Modifications for table: ${state.tableName}\n`;
+        let sql = `-- Modifications for table: ${state.tableName} \n`;
         let hasChanges = false;
 
         // Columns
@@ -1494,10 +1510,11 @@ END;\n`;
 
     // --- Theme Handling ---
     const onThemeChange = (e) => {
-        isLight = e.detail.theme === 'light';
-        container.className = `flex-1 flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : 'bg-[#0a0c10]'} selection:bg-mysql-teal/40 relative transition-all duration-300`;
+        theme = e.detail.theme;
+        isLight = theme === 'light';
+        isOceanic = theme === 'oceanic';
+        container.className = getContainerClass(theme);
         render();
-        updateAll();
     };
     window.addEventListener('themechange', onThemeChange);
 
