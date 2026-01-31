@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { Dialog } from '../components/UI/Dialog.js';
 
 export function SchemaDesigner() {
     // Parse URL params
@@ -11,24 +12,39 @@ export function SchemaDesigner() {
     let state = {
         database: dbName,
         tableName: tableName,
+
+        // Columns
         columns: [],
         selectedColumnId: null,
         originalColumns: [],
+
+        // Indexes
         indexes: [],
         originalIndexes: [],
-        activeTab: 'columns',
-        // New Modal State
+
+        // Foreign Keys
+        foreignKeys: [],
+        originalForeignKeys: [],
+
+        // UI
+        activeTab: 'columns', // columns, indexes, foreign_keys
+        isLoading: true,
+        error: null,
+        tablesList: [], // For FK reference dropdown
+
+        // Modals
         showIndexModal: false,
         newIndex: { name: '', type: 'INDEX', columns: [] },
-        isLoading: true,
-        error: null
+
+        showFKModal: false,
+        newFK: { name: '', column: '', refTable: '', refColumn: '' },
+        refTableColumns: [] // Columns of the selected referenced table
     };
 
     const container = document.createElement('div');
     container.className = "flex-1 flex flex-col h-full overflow-hidden bg-[#0b0d11] selection:bg-mysql-teal/40 relative";
 
     // --- Template ---
-    // Added Modal Container at the end
     const renderMainTemplate = () => `
             <header class="h-14 border-b border-white/5 bg-[#121418] px-6 flex items-center justify-between z-20">
                 <div class="flex items-center gap-8">
@@ -65,6 +81,9 @@ export function SchemaDesigner() {
                                 </button>
                                 <button class="px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all" id="tab-indexes">
                                     Indexes
+                                </button>
+                                <button class="px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all" id="tab-fks">
+                                    Foreign Keys
                                 </button>
                             </div>
                             
@@ -109,18 +128,14 @@ export function SchemaDesigner() {
                 </div>
             </div>
 
-            <!-- Modal Backdrop -->
-            <div id="modal-container" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] ${state.showIndexModal ? 'flex' : 'hidden'} items-center justify-center opacity-0 transition-opacity duration-200">
-                <!-- Modal Content -->
-                <div class="neu-card w-[500px] bg-[#1a1d23] border border-white/10 rounded-2xl shadow-2xl transform scale-95 transition-transform duration-200" id="modal-content">
+            <!-- ADD INDEX MODAL -->
+            <div id="modal-idx-container" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] hidden items-center justify-center opacity-0 transition-opacity duration-200">
+                <div class="neu-card w-[500px] bg-[#1a1d23] border border-white/10 rounded-2xl shadow-2xl transform scale-95 transition-transform duration-200" id="modal-idx-content">
                     <div class="p-6 border-b border-white/5 flex items-center justify-between">
                          <h2 class="text-sm font-black uppercase tracking-[0.2em] text-white">Create New Index</h2>
-                         <button id="btn-modal-close" class="text-gray-500 hover:text-white transition-colors">
-                            <span class="material-symbols-outlined">close</span>
-                         </button>
+                         <button id="btn-modal-idx-close" class="text-gray-500 hover:text-white transition-colors"><span class="material-symbols-outlined">close</span></button>
                     </div>
                     <div class="p-6 space-y-6">
-                        <!-- Index Name and Type -->
                          <div class="grid grid-cols-2 gap-4">
                             <div class="space-y-2">
                                 <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Index Name</label>
@@ -135,19 +150,50 @@ export function SchemaDesigner() {
                                 </select>
                             </div>
                         </div>
-                        
-                        <!-- Column Selection -->
                          <div class="space-y-2">
                             <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Select Columns</label>
-                            <div class="border border-white/10 rounded-xl bg-[#0b0d11] p-2 max-h-48 overflow-y-auto custom-scrollbar" id="modal-cols-list">
-                                <!-- Checkboxes rendered here -->
-                            </div>
-                            <p class="text-[10px] text-gray-600 italic">Select one or more columns for the index.</p>
+                            <div class="border border-white/10 rounded-xl bg-[#0b0d11] p-2 max-h-48 overflow-y-auto custom-scrollbar" id="modal-idx-cols-list"></div>
                         </div>
                     </div>
                     <div class="p-6 border-t border-white/5 flex justify-end gap-3 bg-[#121418] rounded-b-2xl">
-                         <button id="btn-modal-cancel" class="px-4 py-2 rounded text-xs font-bold text-gray-400 hover:text-white transition-colors">Cancel</button>
-                         <button id="btn-modal-save" class="px-5 py-2 rounded bg-mysql-teal text-white text-xs font-bold hover:brightness-110 shadow-lg shadow-mysql-teal/20">Create Index</button>
+                         <button id="btn-modal-idx-cancel" class="px-4 py-2 rounded text-xs font-bold text-gray-400 hover:text-white transition-colors">Cancel</button>
+                         <button id="btn-modal-idx-save" class="px-5 py-2 rounded bg-mysql-teal text-white text-xs font-bold hover:brightness-110 shadow-lg shadow-mysql-teal/20">Create Index</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ADD FK MODAL -->
+            <div id="modal-fk-container" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] hidden items-center justify-center opacity-0 transition-opacity duration-200">
+                <div class="neu-card w-[500px] bg-[#1a1d23] border border-white/10 rounded-2xl shadow-2xl transform scale-95 transition-transform duration-200" id="modal-fk-content">
+                    <div class="p-6 border-b border-white/5 flex items-center justify-between">
+                         <h2 class="text-sm font-black uppercase tracking-[0.2em] text-white">Create Foreign Key</h2>
+                         <button id="btn-modal-fk-close" class="text-gray-500 hover:text-white transition-colors"><span class="material-symbols-outlined">close</span></button>
+                    </div>
+                    <div class="p-6 space-y-6">
+                        <div class="space-y-2">
+                            <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Constraint Name</label>
+                            <input type="text" id="inp-fk-name" class="w-full bg-[#0b0d11] border border-white/10 rounded-lg px-3 py-2 text-xs font-mono text-white focus:border-mysql-teal outline-none" placeholder="fk_table_col" />
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                             <div class="space-y-2">
+                                <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Local Column</label>
+                                <select id="sel-fk-local-col" class="w-full bg-[#0b0d11] border border-white/10 rounded-lg px-3 py-2 text-xs font-mono text-white outline-none"></select>
+                            </div>
+                            <div class="space-y-2">
+                                <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Referenced Table</label>
+                                <select id="sel-fk-ref-table" class="w-full bg-[#0b0d11] border border-white/10 rounded-lg px-3 py-2 text-xs font-mono text-white outline-none"></select>
+                            </div>
+                        </div>
+                        <div class="space-y-2">
+                            <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Referenced Column</label>
+                            <select id="sel-fk-ref-col" class="w-full bg-[#0b0d11] border border-white/10 rounded-lg px-3 py-2 text-xs font-mono text-white outline-none" disabled>
+                                <option>Select Table First</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="p-6 border-t border-white/5 flex justify-end gap-3 bg-[#121418] rounded-b-2xl">
+                         <button id="btn-modal-fk-cancel" class="px-4 py-2 rounded text-xs font-bold text-gray-400 hover:text-white transition-colors">Cancel</button>
+                         <button id="btn-modal-fk-save" class="px-5 py-2 rounded bg-mysql-teal text-white text-xs font-bold hover:brightness-110 shadow-lg shadow-mysql-teal/20">Create Constraints</button>
                     </div>
                 </div>
             </div>
@@ -160,12 +206,14 @@ export function SchemaDesigner() {
     function renderTabs() {
         const tabCols = container.querySelector('#tab-columns');
         const tabIdx = container.querySelector('#tab-indexes');
+        const tabFks = container.querySelector('#tab-fks');
 
         const activeClass = 'bg-mysql-teal text-white shadow-lg';
         const inactiveClass = 'text-gray-500 hover:text-gray-300';
 
         tabCols.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'columns' ? activeClass : inactiveClass}`;
         tabIdx.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'indexes' ? activeClass : inactiveClass}`;
+        tabFks.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'foreign_keys' ? activeClass : inactiveClass}`;
 
         // Render actions
         const actionsContainer = container.querySelector('#tab-actions');
@@ -176,7 +224,7 @@ export function SchemaDesigner() {
                 </button>
             `;
             container.querySelector('#btn-add-column').onclick = handleAddColumn;
-        } else {
+        } else if (state.activeTab === 'indexes') {
             actionsContainer.innerHTML = `
                 <button class="h-7 px-3 flex items-center gap-2 rounded bg-white/5 border border-white/10 text-[10px] font-bold text-gray-400 hover:bg-white/10" id="btn-add-index">
                     <span class="material-symbols-outlined text-sm">add</span> Add Index
@@ -185,65 +233,19 @@ export function SchemaDesigner() {
             container.querySelector('#btn-add-index').onclick = () => {
                 state.showIndexModal = true;
                 state.newIndex = { name: '', type: 'INDEX', columns: [] }; // Reset
-                renderModal();
+                renderIndexModal();
             };
-        }
-    }
-
-    function renderModal() {
-        const modalContainer = container.querySelector('#modal-container');
-        const modalContent = container.querySelector('#modal-content');
-        const colsList = container.querySelector('#modal-cols-list');
-        const nameInput = container.querySelector('#inp-idx-name');
-        const typeSelect = container.querySelector('#sel-idx-type');
-
-        if (state.showIndexModal) {
-            modalContainer.classList.remove('hidden');
-            modalContainer.classList.add('flex');
-            // Small timeout for transition
-            setTimeout(() => {
-                modalContainer.classList.remove('opacity-0');
-                modalContent.classList.remove('scale-95');
-                modalContent.classList.add('scale-100');
-            }, 10);
-
-            // Populate Fields
-            nameInput.value = state.newIndex.name;
-            typeSelect.value = state.newIndex.type;
-
-            // Populate Columns Box
-            colsList.innerHTML = '';
-            state.columns.forEach(col => {
-                const isChecked = state.newIndex.columns.includes(col.name);
-                const row = document.createElement('div');
-                row.className = `flex items-center gap-3 p-2 rounded cursor-pointer transition-colors ${isChecked ? 'bg-mysql-teal/10' : 'hover:bg-white/5'}`;
-                row.onclick = () => {
-                    // Toggle selection
-                    if (isChecked) state.newIndex.columns = state.newIndex.columns.filter(c => c !== col.name);
-                    else state.newIndex.columns.push(col.name);
-                    renderModal(); // Re-render to update checkbox visual
-                };
-
-                row.innerHTML = `
-                    <div class="w-4 h-4 rounded border flex items-center justify-center ${isChecked ? 'bg-mysql-teal border-mysql-teal' : 'border-gray-600 bg-transparent'}">
-                        ${isChecked ? '<span class="material-symbols-outlined text-[10px] text-white">check</span>' : ''}
-                    </div>
-                    <span class="text-xs font-mono ${isChecked ? 'text-white font-bold' : 'text-gray-400'}">${col.name}</span>
-                 `;
-                colsList.appendChild(row);
-            });
-
-            // Focus name if empty
-            if (!state.newIndex.name) nameInput.focus();
-
         } else {
-            modalContainer.classList.add('opacity-0');
-            modalContent.classList.remove('scale-100');
-            modalContent.classList.add('scale-95');
-            setTimeout(() => {
-                modalContainer.classList.add('hidden');
-                modalContainer.classList.remove('flex');
-            }, 200);
+            actionsContainer.innerHTML = `
+                <button class="h-7 px-3 flex items-center gap-2 rounded bg-white/5 border border-white/10 text-[10px] font-bold text-gray-400 hover:bg-white/10" id="btn-add-fk">
+                    <span class="material-symbols-outlined text-sm">add</span> Add Foreign Key
+                </button>
+            `;
+            container.querySelector('#btn-add-fk').onclick = () => {
+                state.showFKModal = true;
+                state.newFK = { name: '', column: '', refTable: '', refColumn: '' };
+                renderFKModal();
+            };
         }
     }
 
@@ -265,7 +267,7 @@ export function SchemaDesigner() {
                 </tr>
             `;
             renderColumnsTable();
-        } else {
+        } else if (state.activeTab === 'indexes') {
             statusDisplay.innerText = `${Object.keys(groupByIndexName(state.indexes)).length} INDEXES`;
             thead.innerHTML = `
                 <tr class="text-gray-500 uppercase text-[10px] tracking-widest">
@@ -278,23 +280,20 @@ export function SchemaDesigner() {
                 </tr>
             `;
             renderIndexesTable();
+        } else {
+            statusDisplay.innerText = `${state.foreignKeys.length} FOREIGN KEYS`;
+            thead.innerHTML = `
+                <tr class="text-gray-500 uppercase text-[10px] tracking-widest">
+                    <th class="p-4 w-12 text-center">#</th>
+                    <th class="p-4 min-w-[150px]">Constraint Name</th>
+                    <th class="p-4">Column</th>
+                    <th class="p-4">Referenced Table</th>
+                    <th class="p-4">Referenced Column</th>
+                    <th class="p-4 w-10"></th>
+                </tr>
+            `;
+            renderFKTable();
         }
-    }
-
-    function groupByIndexName(flatIndexes) {
-        const groups = {};
-        flatIndexes.forEach(idx => {
-            if (!groups[idx.name]) {
-                groups[idx.name] = {
-                    name: idx.name,
-                    type: idx.index_type,
-                    unique: !idx.non_unique,
-                    columns: []
-                };
-            }
-            groups[idx.name].columns.push(idx.column_name);
-        });
-        return groups;
     }
 
     function renderColumnsTable() {
@@ -340,9 +339,9 @@ export function SchemaDesigner() {
             `;
 
             const delBtn = tr.querySelector('.btn-delete-col');
-            delBtn.onclick = (e) => {
+            delBtn.onclick = async (e) => {
                 e.stopPropagation();
-                if (confirm(`Delete column "${col.name}"?`)) {
+                if (await Dialog.confirm(`Delete column "${col.name}"?`)) {
                     state.columns = state.columns.filter(c => c.id !== col.id);
                     if (state.selectedColumnId === col.id && state.columns.length > 0) {
                         state.selectedColumnId = state.columns[0].id;
@@ -398,13 +397,51 @@ export function SchemaDesigner() {
            `;
 
             const delBtn = tr.querySelector('.btn-delete-idx');
-            delBtn.onclick = (e) => {
+            delBtn.onclick = async (e) => {
                 e.stopPropagation();
-                if (confirm(`Drop index "${idx.name}"?`)) {
+                if (await Dialog.confirm(`Drop index "${idx.name}"?`)) {
                     state.indexes = state.indexes.filter(x => x.name !== idx.name);
                     updateAll();
                 }
             }
+            tbody.appendChild(tr);
+        });
+    }
+
+    function renderFKTable() {
+        const tbody = container.querySelector('#table-body');
+        tbody.innerHTML = '';
+
+        if (state.isLoading) { renderLoading(tbody); return; }
+        if (state.foreignKeys.length === 0) { renderEmpty(tbody, 'No foreign keys defined.'); return; }
+
+        state.foreignKeys.forEach((fk, i) => {
+            const tr = document.createElement('tr');
+            tr.className = `group transition-colors hover:bg-white/[0.03] border-l-2 border-l-transparent`;
+
+            tr.innerHTML = `
+                <td class="p-4 text-center text-gray-700 italic">${i + 1}</td>
+                <td class="p-4">
+                    <div class="flex items-center gap-2">
+                         <span class="material-symbols-outlined text-gray-500 text-sm">link</span>
+                         <span class="text-gray-200 font-bold font-mono text-xs">${fk.constraint_name}</span>
+                    </div>
+                </td>
+                <td class="p-4 text-mysql-cyan font-mono text-xs">${fk.column_name}</td>
+                <td class="p-4 text-white font-bold font-mono text-xs">${fk.referenced_table}</td>
+                <td class="p-4 text-gray-400 font-mono text-xs">${fk.referenced_column}</td>
+                <td class="p-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button class="text-gray-500 hover:text-red-400 btn-delete-fk"><span class="material-symbols-outlined text-sm">delete</span></button>
+                </td>
+           `;
+
+            tr.querySelector('.btn-delete-fk').onclick = async (e) => {
+                e.stopPropagation();
+                if (await Dialog.confirm(`Delete foreign key "${fk.constraint_name}"?`)) {
+                    state.foreignKeys = state.foreignKeys.filter(f => f.constraint_name !== fk.constraint_name);
+                    updateAll();
+                }
+            };
             tbody.appendChild(tr);
         });
     }
@@ -435,8 +472,18 @@ export function SchemaDesigner() {
             return;
         }
 
-        const col = state.columns.find(c => c.id === state.selectedColumnId);
+        if (state.activeTab === 'foreign_keys') {
+            sidebar.innerHTML = `
+                <div class="p-6 text-center text-gray-500 space-y-4 mt-10">
+                    <span class="material-symbols-outlined text-4xl opacity-20">link</span>
+                    <p class="text-xs">Foreign Keys</p>
+                    <p class="text-[10px] text-gray-600">Define relationships with other tables.</p>
+                </div>
+            `;
+            return;
+        }
 
+        const col = state.columns.find(c => c.id === state.selectedColumnId);
         if (!col) {
             sidebar.innerHTML = `<div class="p-6 text-gray-500 text-xs italic text-center mt-10">No column selected</div>`;
             return;
@@ -512,18 +559,7 @@ export function SchemaDesigner() {
                     <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Constraints & Flags</label>
                     <div class="space-y-3">
                         ${renderSwitch('Primary Key', 'primaryKey', 'PRIMARY_KEY_FLAG')}
-                        
-                         <div class="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/5 hover:border-white/10 transition-all cursor-pointer" onclick="document.getElementById('chk-notnull').click()">
-                            <div class="flex flex-col">
-                                <span class="text-xs font-bold text-gray-300">Not Null</span>
-                                <span class="text-[9px] text-gray-600 font-mono">NOT_NULL_FLAG</span>
-                            </div>
-                            <input type="checkbox" id="chk-notnull" class="hidden" ${!col.nullable ? 'checked' : ''} />
-                            <div class="pointer-events-none tactile-switch ${!col.nullable ? 'tactile-switch-on' : 'tactile-switch-off'}">
-                                <div class="absolute ${!col.nullable ? 'right-1 bg-white' : 'left-1 bg-gray-600'} top-1 w-3 h-3 rounded-full shadow-md transition-all"></div>
-                            </div>
-                        </div>
-
+                        ${renderSwitch('Not Null', 'nullable', 'NOT_NULL_FLAG')} 
                         ${renderSwitch('Auto Increment', 'autoIncrement', 'AUTO_INCREMENT_FLAG')}
                         ${renderSwitch('Unique Index', 'unique', 'UNIQUE_KEY_FLAG')}
                     </div>
@@ -531,12 +567,16 @@ export function SchemaDesigner() {
             </div>
         `;
 
+        // Attach logic similar to previous implementation...
+        // For brevity, skipping repeated event attachment boilerplate logic as it is identical.
+        // Re-implementing simplified manual attachment:
         const attachListener = (id, prop, isCheckbox = false, isInverse = false) => {
             const el = sidebar.querySelector(`#${id}`);
             if (!el) return;
             el.onchange = (e) => {
                 let val = isCheckbox ? e.target.checked : e.target.value;
-                if (isInverse) val = !val;
+                if (isInverse && isCheckbox) val = !val; // Toggle logic for inverse booleans (like NOT NULL)
+
                 const colRef = state.columns.find(c => c.id === state.selectedColumnId);
                 if (colRef) {
                     colRef[prop] = val;
@@ -561,6 +601,143 @@ export function SchemaDesigner() {
         attachListener('chk-notnull', 'nullable', true, true);
         attachListener('chk-autoIncrement', 'autoIncrement', true);
         attachListener('chk-unique', 'unique', true);
+    }
+
+    // --- Modal Logic ---
+
+    function renderIndexModal() {
+        const modal = container.querySelector('#modal-idx-container');
+        const content = container.querySelector('#modal-idx-content');
+        const colsList = container.querySelector('#modal-idx-cols-list');
+        const nameInput = container.querySelector('#inp-idx-name');
+        const typeSelect = container.querySelector('#sel-idx-type');
+
+        if (state.showIndexModal) {
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            setTimeout(() => {
+                modal.classList.remove('opacity-0');
+                content.classList.remove('scale-95');
+                content.classList.add('scale-100');
+            }, 10);
+
+            nameInput.value = state.newIndex.name;
+            typeSelect.value = state.newIndex.type;
+
+            colsList.innerHTML = '';
+            state.columns.forEach(col => {
+                const isChecked = state.newIndex.columns.includes(col.name);
+                const row = document.createElement('div');
+                row.className = `flex items-center gap-3 p-2 rounded cursor-pointer transition-colors ${isChecked ? 'bg-mysql-teal/10' : 'hover:bg-white/5'}`;
+                row.onclick = () => {
+                    if (isChecked) state.newIndex.columns = state.newIndex.columns.filter(c => c !== col.name);
+                    else state.newIndex.columns.push(col.name);
+                    renderIndexModal();
+                };
+                row.innerHTML = `
+                    <div class="w-4 h-4 rounded border flex items-center justify-center ${isChecked ? 'bg-mysql-teal border-mysql-teal' : 'border-gray-600 bg-transparent'}">
+                        ${isChecked ? '<span class="material-symbols-outlined text-[10px] text-white">check</span>' : ''}
+                    </div>
+                    <span class="text-xs font-mono ${isChecked ? 'text-white font-bold' : 'text-gray-400'}">${col.name}</span>
+                 `;
+                colsList.appendChild(row);
+            });
+
+            if (!state.newIndex.name) nameInput.focus();
+        } else {
+            modal.classList.add('opacity-0');
+            content.classList.remove('scale-100');
+            content.classList.add('scale-95');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }, 200);
+        }
+    }
+
+    function renderFKModal() {
+        const modal = container.querySelector('#modal-fk-container');
+        const content = container.querySelector('#modal-fk-content');
+
+        const inpName = container.querySelector('#inp-fk-name');
+        const selLocal = container.querySelector('#sel-fk-local-col');
+        const selRefTable = container.querySelector('#sel-fk-ref-table');
+        const selRefCol = container.querySelector('#sel-fk-ref-col');
+
+        if (state.showFKModal) {
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            setTimeout(() => {
+                modal.classList.remove('opacity-0');
+                content.classList.remove('scale-95');
+                content.classList.add('scale-100');
+            }, 10);
+
+            inpName.value = state.newFK.name;
+
+            // Populate Local Cols
+            selLocal.innerHTML = state.columns.map(c => `<option value="${c.name}" ${state.newFK.column === c.name ? 'selected' : ''}>${c.name}</option>`).join('');
+
+            // Populate Tables
+            selRefTable.innerHTML = `<option value="">Select Table</option>` + state.tablesList.map(t => `<option value="${t}" ${state.newFK.refTable === t ? 'selected' : ''}>${t}</option>`).join('');
+
+            // Populate Ref Columns (if table selected)
+            if (state.newFK.refTable && state.refTableColumns.length > 0) {
+                selRefCol.innerHTML = state.refTableColumns.map(c => `<option value="${c.name}" ${state.newFK.refColumn === c.name ? 'selected' : ''}>${c.name}</option>`).join('');
+                selRefCol.disabled = false;
+            } else {
+                selRefCol.innerHTML = '<option>Select Table First</option>';
+                selRefCol.disabled = true;
+            }
+
+            // Bind Events
+            inpName.oninput = (e) => state.newFK.name = e.target.value;
+            selLocal.onchange = (e) => state.newFK.column = e.target.value;
+            selRefTable.onchange = async (e) => {
+                state.newFK.refTable = e.target.value;
+                state.newFK.refColumn = '';
+                if (state.newFK.refTable) {
+                    // Fetch columns
+                    try {
+                        const schema = await invoke('get_table_schema', { database: state.database, table: state.newFK.refTable });
+                        state.refTableColumns = schema;
+                        state.newFK.refColumn = schema.length > 0 ? schema[0].name : '';
+                    } catch (e) { console.error(e); }
+                } else {
+                    state.refTableColumns = [];
+                }
+                renderFKModal();
+            };
+            selRefCol.onchange = (e) => state.newFK.refColumn = e.target.value;
+
+        } else {
+            modal.classList.add('opacity-0');
+            content.classList.remove('scale-100');
+            content.classList.add('scale-95');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }, 200);
+        }
+    }
+
+
+    // --- Core Logic ---
+
+    function groupByIndexName(flatIndexes) {
+        const groups = {};
+        flatIndexes.forEach(idx => {
+            if (!groups[idx.name]) {
+                groups[idx.name] = {
+                    name: idx.name,
+                    type: idx.index_type,
+                    unique: !idx.non_unique,
+                    columns: []
+                };
+            }
+            groups[idx.name].columns.push(idx.column_name);
+        });
+        return groups;
     }
 
     function generateSQL() {
@@ -625,12 +802,28 @@ export function SchemaDesigner() {
             }
         });
 
+        // Foreign Keys
+        state.foreignKeys.forEach(fk => {
+            const original = state.originalForeignKeys.find(f => f.constraint_name === fk.constraint_name);
+            if (!original) {
+                hasChanges = true;
+                sql += `ALTER TABLE \`${state.tableName}\` ADD CONSTRAINT \`${fk.constraint_name}\` FOREIGN KEY (\`${fk.column_name}\`) REFERENCES \`${fk.referenced_table}\` (\`${fk.referenced_column}\`);\n`;
+            }
+        });
+
+        state.originalForeignKeys.forEach(fk => {
+            if (!state.foreignKeys.some(f => f.constraint_name === fk.constraint_name)) {
+                hasChanges = true;
+                sql += `ALTER TABLE \`${state.tableName}\` DROP FOREIGN KEY \`${fk.constraint_name}\`;\n`;
+            }
+        });
+
         if (!hasChanges) {
             codeBlock.innerHTML = `<span class="text-gray-500 italic">-- No changes detected.</span>`;
         } else {
             // Syntax Highlight
             sql = sql
-                .replace(/(ALTER TABLE|ADD COLUMN|CHANGE COLUMN|DROP COLUMN|CREATE UNIQUE INDEX|CREATE INDEX|DROP INDEX|ON)/g, '<span class="text-sql-keyword">$1</span>')
+                .replace(/(ALTER TABLE|ADD COLUMN|CHANGE COLUMN|DROP COLUMN|CREATE UNIQUE INDEX|CREATE INDEX|DROP INDEX|ADD CONSTRAINT|FOREIGN KEY|REFERENCES|DROP FOREIGN KEY|ON)/g, '<span class="text-sql-keyword">$1</span>')
                 .replace(/`(.*?)`/g, '<span class="text-sql-ident">`$1`</span>')
                 .replace(/\b(VARCHAR|BIGINT|INT|TEXT|DATETIME|BOOLEAN|JSON)\b/g, '<span class="text-sql-function">$1</span>')
                 .replace(/(--.*)/g, '<span class="text-sql-comment">$1</span>');
@@ -641,17 +834,16 @@ export function SchemaDesigner() {
 
     function updateAll() {
         renderTabs();
-        renderContent();
         renderSidebar();
+        renderContent();
         generateSQL();
-        renderModal(); // Ensure modal is current
     }
 
     // --- Handlers ---
 
     function handleAddColumn() {
         const newId = Math.max(...state.columns.map(c => c.id), 0) + 1;
-        const newCol = {
+        state.columns.push({
             id: newId,
             name: `new_column_${newId}`,
             type: 'VARCHAR',
@@ -662,55 +854,54 @@ export function SchemaDesigner() {
             autoIncrement: false,
             unique: false,
             comment: ''
-        };
-        state.columns.push(newCol);
+        });
         state.selectedColumnId = newId;
         updateAll();
-
-        setTimeout(() => {
-            const tbody = container.querySelector('#table-body');
-            tbody.lastElementChild?.scrollIntoView({ behavior: 'smooth' });
-        }, 10);
     }
 
-    // Modal Interactions
-    container.querySelector('#inp-idx-name').oninput = (e) => state.newIndex.name = e.target.value;
-    container.querySelector('#sel-idx-type').onchange = (e) => state.newIndex.type = e.target.value;
+    // Index Modal Handlers
+    container.querySelector('#btn-modal-idx-close').onclick = () => { state.showIndexModal = false; renderIndexModal(); };
+    container.querySelector('#btn-modal-idx-cancel').onclick = () => { state.showIndexModal = false; renderIndexModal(); };
+    container.querySelector('#btn-modal-idx-save').onclick = () => {
+        if (!state.newIndex.name) { Dialog.alert('Please enter an index name.'); return; }
+        if (state.newIndex.columns.length === 0) { Dialog.alert('Please select at least one column.'); return; }
+        if (state.indexes.some(i => i.name === state.newIndex.name)) { Dialog.alert('Index name already exists.'); return; }
 
-    container.querySelector('#btn-modal-close').onclick = () => {
-        state.showIndexModal = false;
-        renderModal();
-    };
-    container.querySelector('#btn-modal-cancel').onclick = () => {
-        state.showIndexModal = false;
-        renderModal();
-    };
-
-    container.querySelector('#btn-modal-save').onclick = () => {
-        if (!state.newIndex.name) {
-            alert('Please enter an index name.');
-            return;
-        }
-        if (state.newIndex.columns.length === 0) {
-            alert('Please select at least one column.');
-            return;
-        }
-        if (state.indexes.some(i => i.name === state.newIndex.name)) {
-            alert('Index name already exists.');
-            return;
-        }
-
-        // Add to state
         state.newIndex.columns.forEach(col => {
             state.indexes.push({
                 name: state.newIndex.name,
                 column_name: col,
                 non_unique: state.newIndex.type === 'UNIQUE' ? 0 : 1,
-                index_type: 'BTREE' // Default
+                index_type: 'BTREE'
             });
         });
-
         state.showIndexModal = false;
+        renderIndexModal();
+        updateAll();
+    };
+
+    // FK Modal Handlers
+    container.querySelector('#btn-modal-fk-close').onclick = () => { state.showFKModal = false; renderFKModal(); };
+    container.querySelector('#btn-modal-fk-cancel').onclick = () => { state.showFKModal = false; renderFKModal(); };
+    container.querySelector('#btn-modal-fk-save').onclick = () => {
+        const n = state.newFK;
+        if (!n.name || !n.column || !n.refTable || !n.refColumn) {
+            Dialog.alert('Please fill in all fields.');
+            return;
+        }
+        if (state.foreignKeys.some(f => f.constraint_name === n.name)) {
+            Dialog.alert('Constraint name exists.');
+            return;
+        }
+
+        state.foreignKeys.push({
+            constraint_name: n.name,
+            column_name: n.column,
+            referenced_table: n.refTable,
+            referenced_column: n.refColumn
+        });
+        state.showFKModal = false;
+        renderFKModal();
         updateAll();
     };
 
@@ -718,12 +909,13 @@ export function SchemaDesigner() {
     async function loadData() {
         try {
             state.isLoading = true;
-            state.error = null;
             updateAll();
 
-            const [schema, indexes] = await Promise.all([
+            const [schema, indexes, fks, tables] = await Promise.all([
                 invoke('get_table_schema', { database: state.database, table: state.tableName }),
-                invoke('get_table_indexes', { database: state.database, table: state.tableName })
+                invoke('get_table_indexes', { database: state.database, table: state.tableName }),
+                invoke('get_table_foreign_keys', { database: state.database, table: state.tableName }),
+                invoke('get_tables', { database: state.database })
             ]);
 
             state.columns = schema.map((col, index) => {
@@ -750,6 +942,11 @@ export function SchemaDesigner() {
 
             state.indexes = indexes;
             state.originalIndexes = JSON.parse(JSON.stringify(state.indexes));
+
+            state.foreignKeys = fks;
+            state.originalForeignKeys = JSON.parse(JSON.stringify(state.foreignKeys));
+
+            state.tablesList = tables;
 
             state.isLoading = false;
             updateAll();
@@ -784,27 +981,24 @@ export function SchemaDesigner() {
     };
 
     // Tab Clicks
-    container.querySelector('#tab-columns').onclick = () => {
-        state.activeTab = 'columns';
-        updateAll();
-    };
-    container.querySelector('#tab-indexes').onclick = () => {
-        state.activeTab = 'indexes';
-        updateAll();
-    }
+    container.querySelector('#tab-columns').onclick = () => { state.activeTab = 'columns'; updateAll(); };
+    container.querySelector('#tab-indexes').onclick = () => { state.activeTab = 'indexes'; updateAll(); };
+    container.querySelector('#tab-fks').onclick = () => { state.activeTab = 'foreign_keys'; updateAll(); };
 
     // Push Changes
     const btnPush = container.querySelector('#btn-push-changes');
     btnPush.onclick = async () => {
         const sqlCode = container.querySelector('#sql-code-block');
+        const sqlHtml = sqlCode.innerHTML;
         const sqlText = sqlCode.innerText || sqlCode.textContent;
 
         if (sqlText.includes('No changes detected')) {
-            alert('No changes to push.');
+            Dialog.alert('No changes to push.');
             return;
         }
 
-        if (!confirm(`About to execute the following SQL:\n\n${sqlText}\n\nProceed?`)) {
+        // Use new custom dialog with code block
+        if (!await Dialog.confirmCode(sqlHtml, "Review SQL Changes")) {
             return;
         }
 
@@ -824,11 +1018,11 @@ export function SchemaDesigner() {
                 await invoke('execute_query', { query: stmt + ';' });
             }
 
-            alert('✅ Changes pushed successfully!\n\nReloading schema...');
+            Dialog.alert('Changes pushed successfully! Reloading schema.', 'Success');
             await loadData();
 
         } catch (error) {
-            alert(`❌ Failed to push changes:\n\n${error}`);
+            Dialog.alert(`Failed to push changes: ${error}`, 'Error');
             console.error('Push changes error:', error);
         } finally {
             btnPush.disabled = false;

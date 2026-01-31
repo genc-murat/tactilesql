@@ -205,4 +205,46 @@ export class Dialog {
             }, 50);
         });
     }
+
+    static async confirmCode(codeHtml, title = 'Confirm Action') {
+        return new Promise((resolve) => {
+            this.show({
+                title,
+                message: 'Please review the proposed changes below:',
+                type: 'confirm',
+                onConfirm: () => resolve(true)
+            });
+
+            // Make dialog wider for code
+            this.dialog.style.width = '600px';
+
+            const codeContainer = document.createElement('div');
+            codeContainer.className = "mt-4 p-4 bg-black/30 rounded-lg border border-white/5 font-mono text-[11px] leading-relaxed text-blue-300 overflow-x-auto max-h-[300px] custom-scrollbar whitespace-pre text-left shadow-inner";
+            codeContainer.style.tabSize = '4';
+            codeContainer.innerHTML = codeHtml;
+
+            this.message.appendChild(codeContainer);
+
+            const cancelHandler = () => {
+                this.dialog.style.width = '400px'; // Reset width
+                resolve(false);
+            };
+
+            // Override cancel for cleanup
+            const cancelBtn = this.actions.querySelector('button');
+            if (cancelBtn) cancelBtn.onclick = () => {
+                this.close(false);
+                this.dialog.style.width = '400px'; // Reset width
+                resolve(false);
+            };
+
+            // Override confirm for cleanup
+            const confirmBtn = this.actions.lastElementChild;
+            if (confirmBtn) confirmBtn.onclick = () => {
+                this.close(true);
+                this.dialog.style.width = '400px'; // Reset width
+                resolve(true);
+            };
+        });
+    }
 }
