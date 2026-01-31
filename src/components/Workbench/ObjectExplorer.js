@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { showViewSourceModal } from '../UI/ViewSourceModal.js';
+import { Dialog } from '../UI/Dialog.js';
 
 export function ObjectExplorer() {
     const explorer = document.createElement('aside');
@@ -203,6 +204,12 @@ export function ObjectExplorer() {
                 }
                 render();
             });
+
+            item.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                showDatabaseContextMenu(e.clientX, e.clientY, item.dataset.db);
+            });
         });
 
         // Table expand/collapse
@@ -310,6 +317,98 @@ export function ObjectExplorer() {
             document.removeEventListener('click', closeMenu);
         };
         setTimeout(() => document.addEventListener('click', closeMenu), 0);
+    };
+
+    // --- Database Context Menu ---
+    const showDatabaseContextMenu = (x, y, dbName) => {
+        const existing = document.getElementById('explorer-context-menu');
+        if (existing) existing.remove();
+
+        const menu = document.createElement('div');
+        menu.id = 'explorer-context-menu';
+        menu.className = "fixed z-[9999] bg-[#1a1d23] border border-white/10 rounded-lg shadow-xl py-1 w-48";
+        menu.style.left = `${x}px`;
+        menu.style.top = `${y}px`;
+
+        menu.innerHTML = `
+            <div class="px-3 py-1.5 text-[10px] font-mono text-gray-500 border-b border-white/5 uppercase tracking-widest mb-1">
+                ${dbName}
+            </div>
+            <button class="w-full text-left px-3 py-2 text-[11px] font-bold text-gray-300 hover:bg-white/5 hover:text-white flex items-center gap-2" id="ctx-db-properties">
+                <span class="material-symbols-outlined text-sm text-mysql-teal">info</span> Properties
+            </button>
+            <button class="w-full text-left px-3 py-2 text-[11px] font-bold text-gray-300 hover:bg-white/5 hover:text-white flex items-center gap-2" id="ctx-db-refresh">
+                <span class="material-symbols-outlined text-sm text-green-400">sync</span> Refresh
+            </button>
+            <button class="w-full text-left px-3 py-2 text-[11px] font-bold text-gray-300 hover:bg-white/5 hover:text-white flex items-center gap-2" id="ctx-db-copy">
+                <span class="material-symbols-outlined text-sm text-gray-500">content_copy</span> Copy Name
+            </button>
+        `;
+
+        document.body.appendChild(menu);
+
+        menu.querySelector('#ctx-db-properties').onclick = () => {
+            showDatabaseProperties(dbName);
+            menu.remove();
+        };
+
+        menu.querySelector('#ctx-db-refresh').onclick = async () => {
+            delete dbObjects[dbName];
+            if (expandedDbs.has(dbName)) await loadDatabaseObjects(dbName);
+            menu.remove();
+        };
+
+        menu.querySelector('#ctx-db-copy').onclick = () => {
+            navigator.clipboard.writeText(dbName);
+            menu.remove();
+        };
+
+        const closeMenu = () => {
+            menu.remove();
+            document.removeEventListener('click', closeMenu);
+        };
+        setTimeout(() => document.addEventListener('click', closeMenu), 0);
+    };
+
+    const showDatabaseProperties = async (dbName) => {
+        try {
+            const results = await invoke('execute_query', {
+                query: `
+                    SELECT 
+                        DEFAULT_CHARACTER_SET_NAME, 
+                        DEFAULT_COLLATION_NAME 
+                    FROM information_schema.SCHEMATA 
+                    WHERE SCHEMA_NAME = '${dbName}'
+                `
+            });
+
+            // Get table count
+            const tableCountResult = await invoke('execute_query', {
+                query: `SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = '${dbName}'`
+            });
+
+            // Get approx size
+            const sizeResult = await invoke('execute_query', {
+                query: `
+                    SELECT 
+                        ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) 
+                    FROM information_schema.tables 
+                    WHERE table_schema = '${dbName}' 
+                    GROUP BY table_schema;
+                `
+            });
+
+            const charset = results.rows?.[0]?.[0] || 'Unknown';
+            const collation = results.rows?.[0]?.[1] || 'Unknown';
+            const tableCount = tableCountResult.rows?.[0]?.[0] || '0';
+            const sizeMB = sizeResult.rows?.[0]?.[0] || '0';
+
+            const message = `Name: ${dbName}\nCharset: ${charset}\nCollation: ${collation}\nTables: ${tableCount}\nSize: ${sizeMB} MB`;
+            Dialog.alert(message, 'Database Properties');
+
+        } catch (error) {
+            Dialog.alert('Failed to fetch properties: ' + error, 'Error');
+        }
     };
 
     // --- Table Context Menu ---
