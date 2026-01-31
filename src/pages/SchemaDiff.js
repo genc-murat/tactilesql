@@ -9,7 +9,6 @@ export function SchemaDiff() {
     let isOceanic = theme === 'oceanic';
 
     const container = document.createElement('div');
-    // Base container classes matching app theme
     const updateContainerClass = () => {
         container.className = `min-h-full flex flex-col transition-colors duration-200 font-sans ${isLight ? 'bg-gray-50 text-gray-800' : (isOceanic ? 'bg-ocean-bg text-ocean-text' : 'bg-base-dark text-gray-300')}`;
     };
@@ -19,6 +18,14 @@ export function SchemaDiff() {
     let databases = [];
     let sourceDb = '';
     let targetDb = '';
+
+    // New State for Table Mode
+    let comparisonMode = 'full'; // 'full' | 'table'
+    let sourceTablesList = [];
+    let targetTablesList = [];
+    let selectedSourceTable = '';
+    let selectedTargetTable = '';
+
     let isComparing = false;
     let diffResults = null;
     let generatedSql = '';
@@ -36,6 +43,29 @@ export function SchemaDiff() {
         }
     };
 
+    const loadTables = async (type, dbName) => {
+        if (!dbName) return;
+        try {
+            const tables = await invoke('get_tables', { database: dbName });
+            if (type === 'source') {
+                sourceTablesList = tables;
+                // Auto-select target table if it matches source table
+                if (selectedSourceTable && targetTablesList.includes(selectedSourceTable)) {
+                    selectedTargetTable = selectedSourceTable;
+                }
+            } else {
+                targetTablesList = tables;
+                // Auto-select match
+                if (selectedSourceTable && targetTablesList.includes(selectedSourceTable)) {
+                    selectedTargetTable = selectedSourceTable;
+                }
+            }
+            render();
+        } catch (error) {
+            console.error(`Failed to load tables for ${dbName}:`, error);
+        }
+    };
+
     const runComparison = async () => {
         if (!sourceDb || !targetDb) {
             Dialog.alert('Please select both Source and Target databases.', 'Selection Required');
@@ -46,96 +76,80 @@ export function SchemaDiff() {
             return;
         }
 
+        if (comparisonMode === 'table') {
+            if (!selectedSourceTable || !selectedTargetTable) {
+                Dialog.alert('Please select both Source and Target tables for table comparison.', 'Selection Required');
+                return;
+            }
+        }
+
         isComparing = true;
         render();
 
         try {
-            // 1. Fetch tables
-            const [sourceTables, targetTables] = await Promise.all([
-                invoke('get_tables', { database: sourceDb }),
-                invoke('get_tables', { database: targetDb })
-            ]);
-
-            const sourceSet = new Set(sourceTables);
-            const targetSet = new Set(targetTables);
-
-            const missingInTarget = sourceTables.filter(t => !targetSet.has(t));
-            const missingInSource = targetTables.filter(t => !sourceSet.has(t));
-            const commonTables = sourceTables.filter(t => targetSet.has(t));
-
             const diffs = [];
             let sqlCommands = [];
             let cCreate = 0, cDrop = 0, cAlter = 0;
-
             sqlCommands.push(`-- Start sync process for target database: '${targetDb}'`);
 
-            // 2. Process Missing In Target (CREATE TABLE)
-            for (const table of missingInTarget) {
-                const ddl = await invoke('get_table_ddl', { database: sourceDb, table });
-                diffs.push({ type: 'create', table, reason: 'Table missing in target' });
-                sqlCommands.push(`-- Creating missing table: ${table}\n${ddl};\n`);
-                cCreate++;
-            }
-
-            // 3. Process Missing In Source (DROP TABLE)
-            if (missingInSource.length > 0) {
-                sqlCommands.push(`-- Dropping obsolete tables`);
-            }
-            for (const table of missingInSource) {
-                diffs.push({ type: 'drop', table, reason: 'Table extra in target' });
-                sqlCommands.push(`DROP TABLE \`${targetDb}\`.\`${table}\`;`);
-                cDrop++;
-            }
-
-            // 4. Process Common Tables (ALTER)
-            for (const table of commonTables) {
-                // Fetch schemas
-                const [sourceSchema, targetSchema] = await Promise.all([
-                    invoke('get_table_schema', { database: sourceDb, table }),
-                    invoke('get_table_schema', { database: targetDb, table })
+            if (comparisonMode === 'full') {
+                // FULL DATABASE COMPARISON
+                const [sourceTables, targetTables] = await Promise.all([
+                    invoke('get_tables', { database: sourceDb }),
+                    invoke('get_tables', { database: targetDb })
                 ]);
+                // Update cached lists while we are at it
+                sourceTablesList = sourceTables;
+                targetTablesList = targetTables;
 
-                // Fetch Indexes
-                const [sourceIndexes, targetIndexes] = await Promise.all([
-                    invoke('get_table_indexes', { database: sourceDb, table }),
-                    invoke('get_table_indexes', { database: targetDb, table })
-                ]);
+                const sourceSet = new Set(sourceTables);
+                const targetSet = new Set(targetTables);
 
-                // Compare Columns
-                const colDiffs = [];
-                const sCols = new Map(sourceSchema.map(c => [c.name, c]));
-                const tCols = new Map(targetSchema.map(c => [c.name, c]));
+                const missingInTarget = sourceTables.filter(t => !targetSet.has(t));
+                const missingInSource = targetTables.filter(t => !sourceSet.has(t));
+                const commonTables = sourceTables.filter(t => targetSet.has(t));
 
-                let tableAlters = [];
-
-                // Columns in Source (Add/Modify)
-                for (const [name, sCol] of sCols) {
-                    const tCol = tCols.get(name);
-                    if (!tCol) {
-                        colDiffs.push({ type: 'add_col', column: name, details: `${sCol.column_type}` });
-                        tableAlters.push(`ADD COLUMN \`${name}\` ${sCol.column_type} ${sCol.is_nullable ? 'NULL' : 'NOT NULL'} ${sCol.column_default ? `DEFAULT '${sCol.column_default}'` : ''} ${sCol.extra}`);
-                    } else {
-                        // Check for differences (simplified check)
-                        if (sCol.column_type !== tCol.column_type || sCol.is_nullable !== tCol.is_nullable) {
-                            colDiffs.push({ type: 'mod_col', column: name, details: `${tCol.column_type} -> ${sCol.column_type}` });
-                            tableAlters.push(`MODIFY COLUMN \`${name}\` ${sCol.column_type} ${sCol.is_nullable ? 'NULL' : 'NOT NULL'} ${sCol.column_default ? `DEFAULT '${sCol.column_default}'` : ''} ${sCol.extra}`);
-                        }
-                    }
+                // 1. Missing In Target (CREATE)
+                for (const table of missingInTarget) {
+                    const ddl = await invoke('get_table_ddl', { database: sourceDb, table });
+                    diffs.push({ type: 'create', table, reason: 'Table missing in target' });
+                    sqlCommands.push(`-- Creating missing table: ${table}\n${ddl};\n`);
+                    cCreate++;
                 }
 
-                // Columns in Target only (Drop)
-                for (const name of tCols.keys()) {
-                    if (!sCols.has(name)) {
-                        colDiffs.push({ type: 'drop_col', column: name });
-                        tableAlters.push(`DROP COLUMN \`${name}\``);
-                    }
+                // 2. Missing In Source (DROP)
+                if (missingInSource.length > 0) sqlCommands.push(`-- Dropping obsolete tables`);
+                for (const table of missingInSource) {
+                    diffs.push({ type: 'drop', table, reason: 'Table extra in target' });
+                    sqlCommands.push(`DROP TABLE \`${targetDb}\`.\`${table}\`;`);
+                    cDrop++;
                 }
 
-                if (colDiffs.length > 0) {
-                    diffs.push({ type: 'alter', table, changes: colDiffs });
-                    sqlCommands.push(`-- Altering table structure for: ${table}`);
-                    sqlCommands.push(`ALTER TABLE \`${targetDb}\`.\`${table}\` \n    ${tableAlters.join(',\n    ')};`);
+                // 3. Common (ALTER)
+                for (const table of commonTables) {
+                    const changes = await compareTableSchemas(table, table); // Compare same table name
+                    if (changes.diffs.length > 0) {
+                        diffs.push({ type: 'alter', table, changes: changes.diffs });
+                        sqlCommands.push(`-- Altering table structure for: ${table}`);
+                        sqlCommands.push(`ALTER TABLE \`${targetDb}\`.\`${table}\` \n    ${changes.alters.join(',\n    ')};`);
+                        cAlter++;
+                    }
+                }
+            } else {
+                // SINGLE TABLE COMPARISON
+                // We compare selectedSourceTable vs selectedTargetTable
+                // Conceptually we treat them as "matched".
+                const tableAlias = selectedTargetTable; // The table being modified is the target one
+
+                const changes = await compareTableSchemas(selectedSourceTable, selectedTargetTable);
+
+                if (changes.diffs.length > 0) {
+                    diffs.push({ type: 'alter', table: tableAlias, changes: changes.diffs, reason: `Compared with source: ${selectedSourceTable}` });
+                    sqlCommands.push(`-- Altering table structure for: ${tableAlias} (match with ${selectedSourceTable})`);
+                    sqlCommands.push(`ALTER TABLE \`${targetDb}\`.\`${tableAlias}\` \n    ${changes.alters.join(',\n    ')};`);
                     cAlter++;
+                } else {
+                    // No diffs found
                 }
             }
 
@@ -152,6 +166,47 @@ export function SchemaDiff() {
             isComparing = false;
             render();
         }
+    };
+
+    // Helper to compare schema of two tables (names can differ)
+    const compareTableSchemas = async (sTable, tTable) => {
+        const [sourceSchema, targetSchema] = await Promise.all([
+            invoke('get_table_schema', { database: sourceDb, table: sTable }),
+            invoke('get_table_schema', { database: targetDb, table: tTable })
+        ]);
+
+        const sCols = new Map(sourceSchema.map(c => [c.name, c]));
+        const tCols = new Map(targetSchema.map(c => [c.name, c]));
+
+        const colDiffs = [];
+        const tableAlters = [];
+
+        // Columns in Source (Add/Modify)
+        for (const [name, sCol] of sCols) {
+            const tCol = tCols.get(name);
+            if (!tCol) {
+                // Add column to target
+                colDiffs.push({ type: 'add_col', column: name, details: `${sCol.column_type}` });
+                tableAlters.push(`ADD COLUMN \`${name}\` ${sCol.column_type} ${sCol.is_nullable ? 'NULL' : 'NOT NULL'} ${sCol.column_default ? `DEFAULT '${sCol.column_default}'` : ''} ${sCol.extra}`);
+            } else {
+                // Check diff
+                if (sCol.column_type !== tCol.column_type || sCol.is_nullable !== tCol.is_nullable) {
+                    colDiffs.push({ type: 'mod_col', column: name, details: `${tCol.column_type} -> ${sCol.column_type}` });
+                    tableAlters.push(`MODIFY COLUMN \`${name}\` ${sCol.column_type} ${sCol.is_nullable ? 'NULL' : 'NOT NULL'} ${sCol.column_default ? `DEFAULT '${sCol.column_default}'` : ''} ${sCol.extra}`);
+                }
+            }
+        }
+
+        // Columns in Target only (Drop)
+        for (const name of tCols.keys()) {
+            if (!sCols.has(name)) {
+                // Drop column from target
+                colDiffs.push({ type: 'drop_col', column: name });
+                tableAlters.push(`DROP COLUMN \`${name}\``);
+            }
+        }
+
+        return { diffs: colDiffs, alters: tableAlters };
     };
 
     // --- Render Helpers ---
@@ -178,8 +233,9 @@ export function SchemaDiff() {
         return 'bg-amber-500/10 text-amber-400';
     };
 
-    // Theme-based classes
     const getClasses = () => {
+        // ... (Same theme content but extracted for brevity or kept same)
+        // I'll inline the previous strict theme logic to be safe
         if (isLight) return {
             panel: 'bg-white border-gray-200',
             border: 'border-gray-200',
@@ -233,21 +289,43 @@ export function SchemaDiff() {
 
         container.innerHTML = `
             <!-- Header -->
-            <header class="border-b ${themeClasses.border} ${themeClasses.headerBg} px-6 py-4 flex items-center justify-between sticky top-0 z-10 shrink-0 shadow-sm">
-                <div class="flex items-center gap-3">
-                    <div class="p-2 rounded-lg ${isLight || isOceanic ? themeClasses.iconPrimary : 'bg-mysql-teal/10 border border-mysql-teal/20'}">
-                        <span class="material-symbols-outlined text-2xl ${isLight ? 'text-white' : (isOceanic ? '' : 'text-mysql-teal')}">compare_arrows</span>
+            <header class="border-b ${themeClasses.border} ${themeClasses.headerBg} px-6 py-4 flex flex-col gap-4 sticky top-0 z-10 shrink-0 shadow-sm">
+                
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="p-2 rounded-lg ${isLight || isOceanic ? themeClasses.iconPrimary : 'bg-mysql-teal/10 border border-mysql-teal/20'}">
+                            <span class="material-symbols-outlined text-2xl ${isLight ? 'text-white' : (isOceanic ? '' : 'text-mysql-teal')}">compare_arrows</span>
+                        </div>
+                        <div>
+                            <h1 class="font-bold text-lg leading-tight ${themeClasses.textMain}">Schema Diff</h1>
+                            <p class="text-xs ${themeClasses.textMuted}">Compare databases and sync changes</p>
+                        </div>
                     </div>
-                    <div>
-                        <h1 class="font-bold text-lg leading-tight ${themeClasses.textMain}">Schema Diff</h1>
-                        <p class="text-xs ${themeClasses.textMuted}">Compare databases and sync changes</p>
+                    
+                     <!-- Mode Toggle -->
+                     <div class="flex items-center gap-2 bg-black/5 dark:bg-white/5 p-1 rounded-lg">
+                        <button id="mode-full" class="px-3 py-1 text-xs font-bold rounded-md transition-all ${comparisonMode === 'full' ? (isLight ? 'bg-white shadow text-indigo-600' : 'bg-mysql-teal text-black') : themeClasses.textMuted}">
+                            Full Database
+                        </button>
+                        <button id="mode-table" class="px-3 py-1 text-xs font-bold rounded-md transition-all ${comparisonMode === 'table' ? (isLight ? 'bg-white shadow text-indigo-600' : 'bg-mysql-teal text-black') : themeClasses.textMuted}">
+                            Single Table
+                        </button>
                     </div>
+
+                    <button id="compare-btn" class="${themeClasses.buttonPrimary} px-6 py-2.5 rounded-lg font-semibold flex items-center gap-2 transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-wait" ${isComparing ? 'disabled' : ''}>
+                        <span class="material-symbols-outlined text-sm ${isComparing ? 'animate-spin' : ''}">${isComparing ? 'refresh' : 'play_arrow'}</span>
+                        ${isComparing ? 'Comparing...' : 'Compare'}
+                    </button>
                 </div>
                 
-                <div class="flex items-center gap-6">
+                <!-- Controls Row -->
+                <div class="flex items-center gap-6 pb-2">
                     <div class="flex items-center gap-4">
+                        <!-- Source Group -->
                         <div class="space-y-1">
-                            <label class="text-[10px] uppercase tracking-wider font-bold ${themeClasses.textMuted}">Source (Truth)</label>
+                            <div class="flex items-center justify-between">
+                                <label class="text-[10px] uppercase tracking-wider font-bold ${themeClasses.textMuted}">Source DB</label>
+                            </div>
                             <div class="relative">
                                 <select id="source-db-select" class="${themeClasses.selectBg} ${themeClasses.textMain} border-none rounded-lg py-2 pl-3 pr-10 text-sm focus:ring-1 focus:ring-mysql-teal/50 w-48 appearance-none outline-none cursor-pointer">
                                     <option value="" disabled ${!sourceDb ? 'selected' : ''}>Select Source</option>
@@ -255,12 +333,25 @@ export function SchemaDiff() {
                                 </select>
                                 <span class="material-symbols-outlined absolute right-2 top-2 ${themeClasses.textMuted} pointer-events-none text-base">expand_more</span>
                             </div>
+                            <!-- Source Table (visible if table mode) -->
+                            ${comparisonMode === 'table' ? `
+                                <div class="relative mt-2">
+                                     <select id="source-table-select" class="${themeClasses.selectBg} ${themeClasses.textMain} border-none rounded-lg py-2 pl-3 pr-10 text-sm focus:ring-1 focus:ring-mysql-teal/50 w-48 appearance-none outline-none cursor-pointer">
+                                        <option value="" disabled ${!selectedSourceTable ? 'selected' : ''}>Select Table</option>
+                                        ${sourceTablesList.map(t => `<option value="${t}" ${selectedSourceTable === t ? 'selected' : ''}>${t}</option>`).join('')}
+                                    </select>
+                                    <span class="material-symbols-outlined absolute right-2 top-2 ${themeClasses.textMuted} pointer-events-none text-base">table_chart</span>
+                                </div>
+                            ` : ''}
                         </div>
                         
-                        <span class="material-symbols-outlined ${themeClasses.textMuted} mt-5">arrow_forward</span>
+                        <span class="material-symbols-outlined ${themeClasses.textMuted} self-center">arrow_forward</span>
                         
+                        <!-- Target Group -->
                         <div class="space-y-1">
-                            <label class="text-[10px] uppercase tracking-wider font-bold ${themeClasses.textMuted}">Target (To Update)</label>
+                           <div class="flex items-center justify-between">
+                                <label class="text-[10px] uppercase tracking-wider font-bold ${themeClasses.textMuted}">Target DB</label>
+                            </div>
                             <div class="relative">
                                 <select id="target-db-select" class="${themeClasses.selectBg} ${themeClasses.textMain} border-none rounded-lg py-2 pl-3 pr-10 text-sm focus:ring-1 focus:ring-mysql-teal/50 w-48 appearance-none outline-none cursor-pointer">
                                     <option value="" disabled ${!targetDb ? 'selected' : ''}>Select Target</option>
@@ -268,13 +359,18 @@ export function SchemaDiff() {
                                 </select>
                                 <span class="material-symbols-outlined absolute right-2 top-2 ${themeClasses.textMuted} pointer-events-none text-base">expand_more</span>
                             </div>
+                             <!-- Target Table (visible if table mode) -->
+                            ${comparisonMode === 'table' ? `
+                                <div class="relative mt-2">
+                                     <select id="target-table-select" class="${themeClasses.selectBg} ${themeClasses.textMain} border-none rounded-lg py-2 pl-3 pr-10 text-sm focus:ring-1 focus:ring-mysql-teal/50 w-48 appearance-none outline-none cursor-pointer">
+                                        <option value="" disabled ${!selectedTargetTable ? 'selected' : ''}>Select Table</option>
+                                        ${targetTablesList.map(t => `<option value="${t}" ${selectedTargetTable === t ? 'selected' : ''}>${t}</option>`).join('')}
+                                    </select>
+                                    <span class="material-symbols-outlined absolute right-2 top-2 ${themeClasses.textMuted} pointer-events-none text-base">table_chart</span>
+                                </div>
+                            ` : ''}
                         </div>
                     </div>
-                    
-                    <button id="compare-btn" class="${themeClasses.buttonPrimary} px-6 py-2.5 rounded-lg font-semibold flex items-center gap-2 transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-wait" ${isComparing ? 'disabled' : ''}>
-                        <span class="material-symbols-outlined text-sm ${isComparing ? 'animate-spin' : ''}">${isComparing ? 'refresh' : 'play_arrow'}</span>
-                        ${isComparing ? 'Comparing...' : 'Compare'}
-                    </button>
                 </div>
             </header>
             
@@ -299,7 +395,7 @@ export function SchemaDiff() {
                         ${!diffResults ? `
                             <div class="flex flex-col items-center justify-center h-48 opacity-40">
                                 <span class="material-symbols-outlined text-5xl ${themeClasses.textMuted} mb-2">difference</span>
-                                <p class="text-sm ${themeClasses.textMuted}">Select databases and compare</p>
+                                <p class="text-sm ${themeClasses.textMuted}">Select tables and compare</p>
                             </div>
                         ` : diffResults.length === 0 ? `
                              <div class="flex flex-col items-center justify-center h-48 text-emerald-500">
@@ -378,13 +474,46 @@ export function SchemaDiff() {
         `;
 
         // Event Listeners
+        // Mode Toggles
+        container.querySelector('#mode-full')?.addEventListener('click', () => {
+            comparisonMode = 'full';
+            render();
+        });
+        container.querySelector('#mode-table')?.addEventListener('click', () => {
+            comparisonMode = 'table';
+            // Trigger load tables if needed
+            if (sourceDb && sourceTablesList.length === 0) loadTables('source', sourceDb);
+            if (targetDb && targetTablesList.length === 0) loadTables('target', targetDb);
+            render();
+        });
+
         container.querySelector('#source-db-select')?.addEventListener('change', (e) => {
             sourceDb = e.target.value;
+            selectedSourceTable = ''; // Reset table
+            if (comparisonMode === 'table') loadTables('source', sourceDb);
         });
 
         container.querySelector('#target-db-select')?.addEventListener('change', (e) => {
             targetDb = e.target.value;
+            selectedTargetTable = ''; // Reset table
+            if (comparisonMode === 'table') loadTables('target', targetDb);
         });
+
+        // Table Select Listeners
+        if (comparisonMode === 'table') {
+            container.querySelector('#source-table-select')?.addEventListener('change', (e) => {
+                selectedSourceTable = e.target.value;
+                // Auto-select match logic
+                if (targetTablesList.includes(selectedSourceTable)) {
+                    selectedTargetTable = selectedSourceTable;
+                    // We must re-render to update the Target select
+                    render();
+                }
+            });
+            container.querySelector('#target-table-select')?.addEventListener('change', (e) => {
+                selectedTargetTable = e.target.value;
+            });
+        }
 
         container.querySelector('#compare-btn')?.addEventListener('click', runComparison);
 
