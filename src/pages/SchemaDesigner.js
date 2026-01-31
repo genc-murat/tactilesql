@@ -55,7 +55,10 @@ export function SchemaDesigner() {
         refTableColumns: [], // Columns of the selected referenced table
 
         showTriggerModal: false,
-        newTrigger: { name: '', timing: 'BEFORE', event: 'INSERT', body: '' }
+        newTrigger: { name: '', timing: 'BEFORE', event: 'INSERT', body: '' },
+
+        showColumnModal: false,
+        newColumn: { name: '', type: 'INT', length: '', defaultVal: '', nullable: true, primaryKey: false, autoIncrement: false, unique: false }
     };
 
     let theme = ThemeManager.getCurrentTheme();
@@ -277,6 +280,103 @@ END"></textarea>
                     <div class="p-6 border-t ${isLight ? 'border-gray-100 bg-gray-50' : 'border-white/5 bg-[#121418]'} flex justify-end gap-3 rounded-b-2xl">
                          <button id="btn-modal-trigger-cancel" class="px-4 py-2 rounded text-xs font-bold text-gray-400 hover:${isLight ? 'text-gray-900' : 'text-white'} transition-colors">Cancel</button>
                          <button id="btn-modal-trigger-save" class="px-5 py-2 rounded bg-mysql-teal text-white text-xs font-bold hover:brightness-110 shadow-lg shadow-mysql-teal/20">Create Trigger</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ADD COLUMN MODAL -->
+            <div id="modal-column-container" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] hidden items-center justify-center opacity-0 transition-opacity duration-200">
+                <div class="neu-card w-[500px] ${isLight ? 'bg-white' : 'bg-[#1a1d23]'} border ${isLight ? 'border-gray-200' : 'border-white/10'} rounded-2xl shadow-2xl transform scale-95 transition-transform duration-200" id="modal-column-content">
+                    <div class="p-6 border-b ${isLight ? 'border-gray-100' : 'border-white/5'} flex items-center justify-between">
+                         <h2 class="text-sm font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-900' : 'text-white'}">Add New Column</h2>
+                         <button id="btn-modal-column-close" class="text-gray-500 hover:${isLight ? 'text-gray-900' : 'text-white'} transition-colors"><span class="material-symbols-outlined">close</span></button>
+                    </div>
+                    <div class="p-6 space-y-6">
+                        <div class="space-y-2">
+                            <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Column Name</label>
+                            <input type="text" id="inp-column-name" class="tactile-input w-full" placeholder="column_name" />
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="space-y-2">
+                                <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Data Type</label>
+                                <select id="sel-column-type" class="tactile-input w-full outline-none">
+                                    <optgroup label="Numeric">
+                                        <option value="TINYINT">TINYINT</option>
+                                        <option value="SMALLINT">SMALLINT</option>
+                                        <option value="MEDIUMINT">MEDIUMINT</option>
+                                        <option value="INT" selected>INT</option>
+                                        <option value="BIGINT">BIGINT</option>
+                                        <option value="DECIMAL">DECIMAL</option>
+                                        <option value="NUMERIC">NUMERIC</option>
+                                        <option value="FLOAT">FLOAT</option>
+                                        <option value="DOUBLE">DOUBLE</option>
+                                        <option value="BIT">BIT</option>
+                                    </optgroup>
+                                    <optgroup label="String">
+                                        <option value="CHAR">CHAR</option>
+                                        <option value="VARCHAR">VARCHAR</option>
+                                        <option value="TINYTEXT">TINYTEXT</option>
+                                        <option value="TEXT">TEXT</option>
+                                        <option value="MEDIUMTEXT">MEDIUMTEXT</option>
+                                        <option value="LONGTEXT">LONGTEXT</option>
+                                        <option value="BINARY">BINARY</option>
+                                        <option value="VARBINARY">VARBINARY</option>
+                                        <option value="ENUM">ENUM</option>
+                                        <option value="SET">SET</option>
+                                    </optgroup>
+                                    <optgroup label="Binary">
+                                        <option value="TINYBLOB">TINYBLOB</option>
+                                        <option value="BLOB">BLOB</option>
+                                        <option value="MEDIUMBLOB">MEDIUMBLOB</option>
+                                        <option value="LONGBLOB">LONGBLOB</option>
+                                    </optgroup>
+                                    <optgroup label="Date &amp; Time">
+                                        <option value="DATE">DATE</option>
+                                        <option value="TIME">TIME</option>
+                                        <option value="DATETIME">DATETIME</option>
+                                        <option value="TIMESTAMP">TIMESTAMP</option>
+                                        <option value="YEAR">YEAR</option>
+                                    </optgroup>
+                                    <optgroup label="Other">
+                                        <option value="JSON">JSON</option>
+                                        <option value="BOOLEAN">BOOLEAN</option>
+                                    </optgroup>
+                                </select>
+                            </div>
+                            <div class="space-y-2">
+                                <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Length</label>
+                                <input type="text" id="inp-column-length" class="tactile-input w-full" placeholder="255" />
+                            </div>
+                        </div>
+                        <div class="space-y-2">
+                            <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Default Value</label>
+                            <input type="text" id="inp-column-default" class="tactile-input w-full" placeholder="NULL" />
+                        </div>
+                        <div class="space-y-3">
+                            <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Constraints</label>
+                            <div class="space-y-2">
+                                <label class="flex items-center gap-3 cursor-pointer">
+                                    <input type="checkbox" id="chk-column-pk" class="w-4 h-4" />
+                                    <span class="text-xs ${isLight ? 'text-gray-700' : 'text-gray-300'}">Primary Key</span>
+                                </label>
+                                <label class="flex items-center gap-3 cursor-pointer">
+                                    <input type="checkbox" id="chk-column-notnull" class="w-4 h-4" />
+                                    <span class="text-xs ${isLight ? 'text-gray-700' : 'text-gray-300'}">Not Null</span>
+                                </label>
+                                <label class="flex items-center gap-3 cursor-pointer">
+                                    <input type="checkbox" id="chk-column-ai" class="w-4 h-4" />
+                                    <span class="text-xs ${isLight ? 'text-gray-700' : 'text-gray-300'}">Auto Increment</span>
+                                </label>
+                                <label class="flex items-center gap-3 cursor-pointer">
+                                    <input type="checkbox" id="chk-column-unique" class="w-4 h-4" />
+                                    <span class="text-xs ${isLight ? 'text-gray-700' : 'text-gray-300'}">Unique</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="p-6 border-t ${isLight ? 'border-gray-100 bg-gray-50' : 'border-white/5 bg-[#121418]'} flex justify-end gap-3 rounded-b-2xl">
+                         <button id="btn-modal-column-cancel" class="px-4 py-2 rounded text-xs font-bold text-gray-400 hover:${isLight ? 'text-gray-900' : 'text-white'} transition-colors">Cancel</button>
+                         <button id="btn-modal-column-save" class="px-5 py-2 rounded bg-mysql-teal text-white text-xs font-bold hover:brightness-110 shadow-lg shadow-mysql-teal/20">Add Column</button>
                     </div>
                 </div>
             </div>
@@ -918,7 +1018,7 @@ END"></textarea>
         attachListener('inp-length', 'length');
         attachListener('inp-default', 'defaultVal');
         attachListener('chk-primaryKey', 'primaryKey', true);
-        attachListener('chk-notnull', 'nullable', true, true);
+        attachListener('chk-nullable', 'nullable', true, true);
         attachListener('chk-autoIncrement', 'autoIncrement', true);
         attachListener('chk-unique', 'unique', true);
     }
@@ -1074,6 +1174,51 @@ END"></textarea>
         }
     }
 
+    function renderColumnModal() {
+        const modal = container.querySelector('#modal-column-container');
+        const content = container.querySelector('#modal-column-content');
+
+        const inpName = container.querySelector('#inp-column-name');
+        const selType = container.querySelector('#sel-column-type');
+        const inpLength = container.querySelector('#inp-column-length');
+        const inpDefault = container.querySelector('#inp-column-default');
+        const chkPK = container.querySelector('#chk-column-pk');
+        const chkNotNull = container.querySelector('#chk-column-notnull');
+        const chkAI = container.querySelector('#chk-column-ai');
+        const chkUnique = container.querySelector('#chk-column-unique');
+
+        if (state.showColumnModal) {
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            setTimeout(() => { modal.classList.remove('opacity-0'); content.classList.remove('scale-95'); content.classList.add('scale-100'); }, 10);
+
+            inpName.value = state.newColumn.name;
+            selType.value = state.newColumn.type;
+            inpLength.value = state.newColumn.length;
+            inpDefault.value = state.newColumn.defaultVal;
+            chkPK.checked = state.newColumn.primaryKey;
+            chkNotNull.checked = !state.newColumn.nullable;
+            chkAI.checked = state.newColumn.autoIncrement;
+            chkUnique.checked = state.newColumn.unique;
+
+            if (!state.newColumn.name) inpName.focus();
+
+            // Bind Events
+            inpName.oninput = (e) => state.newColumn.name = e.target.value;
+            selType.onchange = (e) => state.newColumn.type = e.target.value;
+            inpLength.oninput = (e) => state.newColumn.length = e.target.value;
+            inpDefault.oninput = (e) => state.newColumn.defaultVal = e.target.value;
+            chkPK.onchange = (e) => state.newColumn.primaryKey = e.target.checked;
+            chkNotNull.onchange = (e) => state.newColumn.nullable = !e.target.checked;
+            chkAI.onchange = (e) => state.newColumn.autoIncrement = e.target.checked;
+            chkUnique.onchange = (e) => state.newColumn.unique = e.target.checked;
+
+        } else {
+            modal.classList.add('opacity-0'); content.classList.remove('scale-100'); content.classList.add('scale-95');
+            setTimeout(() => { modal.classList.add('hidden'); modal.classList.remove('flex'); }, 200);
+        }
+    }
+
 
     // --- Core Logic ---
 
@@ -1217,21 +1362,9 @@ END;\n`;
     // --- Handlers ---
 
     function handleAddColumn() {
-        const newId = Math.max(...state.columns.map(c => c.id), 0) + 1;
-        state.columns.push({
-            id: newId,
-            name: `new_column_${newId}`,
-            type: 'VARCHAR',
-            length: '255',
-            defaultVal: '',
-            nullable: true,
-            primaryKey: false,
-            autoIncrement: false,
-            unique: false,
-            comment: ''
-        });
-        state.selectedColumnId = newId;
-        updateAll();
+        state.showColumnModal = true;
+        state.newColumn = { name: '', type: 'INT', length: '', defaultVal: '', nullable: true, primaryKey: false, autoIncrement: false, unique: false };
+        renderColumnModal();
     }
 
     // Index Modal Handlers
@@ -1505,6 +1638,31 @@ END;\n`;
         state.triggers.push({ ...state.newTrigger });
         state.showTriggerModal = false;
         renderTriggerModal();
+        updateAll();
+    };
+
+    // Column Modal Events
+    container.querySelector('#btn-modal-column-close').onclick = () => { state.showColumnModal = false; renderColumnModal(); };
+    container.querySelector('#btn-modal-column-cancel').onclick = () => { state.showColumnModal = false; renderColumnModal(); };
+    container.querySelector('#btn-modal-column-save').onclick = () => {
+        if (!state.newColumn.name) { Dialog.alert('Please enter a column name'); return; }
+
+        const newId = Math.max(...state.columns.map(c => c.id), 0) + 1;
+        state.columns.push({
+            id: newId,
+            name: state.newColumn.name,
+            type: state.newColumn.type,
+            length: state.newColumn.length,
+            defaultVal: state.newColumn.defaultVal,
+            nullable: state.newColumn.nullable,
+            primaryKey: state.newColumn.primaryKey,
+            autoIncrement: state.newColumn.autoIncrement,
+            unique: state.newColumn.unique,
+            comment: ''
+        });
+        state.selectedColumnId = newId;
+        state.showColumnModal = false;
+        renderColumnModal();
         updateAll();
     };
 
