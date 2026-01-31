@@ -17,11 +17,7 @@
         "width": 1280,
         "height": 800,
         "decorations": false,
-        "resizable": true,
-        "minWidth": 800,
-        "minHeight": 600,
-        "maxWidth": 2560,
-        "maxHeight": 1440
+        "resizable": false
       }
     ],
     "security": {

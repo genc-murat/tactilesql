@@ -11,7 +11,7 @@ export function NavBar() {
         const currentPath = window.location.hash.split('?')[0].slice(1) || '/';
 
         const navItems = [
-            { path: '/', label: 'DASHBOARD', icon: 'dashboard' },
+            { path: '/dashboard', label: 'DASHBOARD', icon: 'dashboard' },
             { path: '/workbench', label: 'EXPLORER', icon: 'code' },
             { path: '/diff', label: 'SCHEMA DIFF', icon: 'compare_arrows' },
             { path: '/connections', label: 'CONNECTIONS', icon: 'cable' },
@@ -43,7 +43,7 @@ export function NavBar() {
 
         nav.innerHTML = `
             <div class="flex items-center gap-4">
-                <a href="#/" class="flex items-center gap-3 mr-6">
+                <a href="#/workbench" class="flex items-center gap-3 mr-6">
                     <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-mysql-teal to-mysql-cyan flex items-center justify-center shadow-lg shadow-mysql-teal/20">
                         <span class="material-symbols-outlined text-white text-lg">database</span>
                     </div>

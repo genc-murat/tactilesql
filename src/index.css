@@ -341,4 +341,77 @@
     kbd {
         font-family: 'JetBrains Mono', ui-monospace, monospace;
     }
+
+    /* Window Resize Handles */
+    .window-resize-handle {
+        position: fixed;
+        z-index: 9999;
+        background: transparent;
+        pointer-events: auto;
+        -webkit-app-region: no-drag;
+    }
+
+    .window-resize-handle-left {
+        left: 0;
+        top: 0;
+        width: 8px;
+        height: 100%;
+        cursor: w-resize;
+    }
+
+    .window-resize-handle-right {
+        right: 0;
+        top: 0;
+        width: 8px;
+        height: 100%;
+        cursor: e-resize;
+    }
+
+    .window-resize-handle-top {
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 8px;
+        cursor: n-resize;
+    }
+
+    .window-resize-handle-bottom {
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 8px;
+        cursor: s-resize;
+    }
+
+    .window-resize-handle-topleft {
+        top: 0;
+        left: 0;
+        width: 16px;
+        height: 16px;
+        cursor: nw-resize;
+    }
+
+    .window-resize-handle-topright {
+        top: 0;
+        right: 0;
+        width: 16px;
+        height: 16px;
+        cursor: ne-resize;
+    }
+
+    .window-resize-handle-bottomleft {
+        bottom: 0;
+        left: 0;
+        width: 16px;
+        height: 16px;
+        cursor: sw-resize;
+    }
+
+    .window-resize-handle-bottomright {
+        bottom: 0;
+        right: 0;
+        width: 16px;
+        height: 16px;
+        cursor: se-resize;
+    }
 }

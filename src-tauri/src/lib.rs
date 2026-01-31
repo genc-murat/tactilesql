@@ -1,4 +1,6 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+use tauri::Manager;
+
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
@@ -11,6 +13,19 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(db::AppState::default())
+        .setup(|app| {
+            // Get all webview windows and set size constraints
+            use tauri::LogicalSize;
+            println!("Setting up windows...");
+            for (label, window) in app.webview_windows() {
+                println!("Found window with label: {}", label);
+                match window.set_min_size(Some(LogicalSize::new(1280.0, 800.0))) {
+                    Ok(_) => println!("Successfully set min size for window: {}", label),
+                    Err(e) => println!("Error setting min size: {}", e),
+                }
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             greet, 
             db::test_connection, 

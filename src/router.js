@@ -9,7 +9,12 @@ export class Router {
     }
 
     async handleRoute() {
-        let hash = window.location.hash.slice(1) || '/';
+        let hash = window.location.hash.slice(1);
+
+        if (!hash || hash === '/') {
+            window.location.hash = '/workbench';
+            hash = '/workbench';
+        }
 
         // Split path and query parameters
         const [path] = hash.split('?');
