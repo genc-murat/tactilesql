@@ -8,62 +8,77 @@ export function ResultsTable() {
     let isLight = theme === 'light';
     let isOceanic = theme === 'oceanic';
     const container = document.createElement('div');
-    container.className = "flex flex-col flex-1 min-h-0";
+    container.className = "flex flex-col flex-1 min-h-[300px] max-h-full min-w-[600px]";
 
     const renderControls = () => {
         container.innerHTML = `
-            <div class="flex items-center justify-between px-6 h-12 ${isLight ? 'bg-gray-50 border-gray-200' : (isOceanic ? 'bg-[#3B4252] border-ocean-border/30' : 'bg-[#16191e] border-white/5')} border-b">
-                <div class="flex items-center gap-6">
-                    <div class="flex items-center gap-2">
-                        <h2 class="text-[10px] font-black uppercase tracking-[0.2em] text-mysql-teal/80">Result Set</h2>
-                        <span id="row-count-badge" class="px-1.5 py-0.5 rounded ${isLight ? 'bg-mysql-teal/10 text-mysql-teal' : 'bg-mysql-teal/10 text-mysql-teal'} text-[9px] font-bold">0 ROWS</span>
-                    </div>
-                    <div class="flex items-center ${isLight ? 'bg-white border-gray-200' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50' : 'bg-[#0f1115] border-white/5')} border rounded px-2 py-1">
-                        <span class="material-symbols-outlined text-xs text-gray-500 mr-2">filter_alt</span>
-                        <input id="filter-input" class="bg-transparent border-none focus:ring-0 text-[10px] ${isLight ? 'text-gray-700' : (isOceanic ? 'text-ocean-text' : 'text-gray-400')} w-48 p-0 placeholder:text-gray-400" placeholder="Quick filter results..." type="text" />
-                    </div>
-                </div>
-                <div class="flex items-center gap-2">
-                    <div id="selection-indicator" class="hidden flex items-center gap-2 mr-2">
-                        <span class="px-2 py-1 rounded bg-cyan-500/10 text-cyan-400 text-[9px] font-bold border border-cyan-500/20">
-                            <span id="selection-count">0</span> SELECTED
-                        </span>
-                        <button id="delete-selected-btn" class="flex items-center gap-1 px-2 py-1 bg-red-500/10 border border-red-500/30 text-[10px] font-bold text-red-400 hover:bg-red-500/20 rounded transition-all">
-                            <span class="material-symbols-outlined text-xs">delete</span> Delete
-                        </button>
-                        <button id="clear-selection-btn" class="flex items-center gap-1 px-2 py-1 ${isLight ? 'bg-gray-100 border-gray-200 text-gray-600' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text' : 'bg-white/5 border-white/10 text-gray-400')} border text-[10px] font-bold rounded transition-all">
-                            <span class="material-symbols-outlined text-xs">close</span> Clear
-                        </button>
-                    </div>
-                    <div id="pending-indicator" class="hidden flex items-center gap-2 mr-4">
-                        <span class="px-2 py-1 rounded bg-yellow-500/10 text-yellow-500 text-[9px] font-bold border border-yellow-500/20">
-                            <span id="pending-count">0</span> CHANGES
-                        </span>
-                        <button id="commit-btn" class="flex items-center gap-1.5 px-3 py-1.5 bg-green-500/10 border border-green-500/30 text-[10px] font-bold uppercase tracking-wider text-green-400 hover:bg-green-500/20 rounded transition-all">
-                            <span class="material-symbols-outlined text-sm">check</span> Commit
-                        </button>
-                        <button id="discard-btn" class="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 border border-red-500/30 text-[10px] font-bold uppercase tracking-wider text-red-400 hover:bg-red-500/20 rounded transition-all">
-                            <span class="material-symbols-outlined text-sm">close</span> Discard
-                        </button>
-                    </div>
-                    <button id="insert-row-btn" class="hidden flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/10 border border-cyan-500/30 text-[10px] font-bold uppercase tracking-wider text-cyan-400 hover:bg-cyan-500/20 rounded transition-all">
-                        <span class="material-symbols-outlined text-sm">add</span> Insert Row
-                    </button>
-                    <div class="relative">
-                        <button id="column-toggle-btn" class="flex items-center gap-1.5 px-3 py-1.5 ${isLight ? 'bg-white border-gray-200 text-gray-600' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50 text-ocean-text' : 'bg-white/5 border-white/10 text-gray-400')} border text-[10px] font-bold uppercase tracking-wider hover:bg-opacity-80 rounded transition-all shadow-sm">
-                            <span class="material-symbols-outlined text-sm">view_column</span> Columns
-                        </button>
-                        <div id="column-menu" class="hidden absolute right-0 top-full mt-1 ${isLight ? 'bg-white border-gray-200 shadow-lg' : (isOceanic ? 'bg-ocean-panel border-ocean-border shadow-xl' : 'bg-[#1a1d23] border-white/10 shadow-xl')} border rounded-lg py-2 z-50 min-w-[180px] max-h-[300px] overflow-y-auto custom-scrollbar">
-                            <div class="px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-500')} border-b ${isLight ? 'border-gray-100' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5')} mb-1">Toggle Columns</div>
-                            <div id="column-list"></div>
+            <div class="flex items-center justify-between px-4 h-14 ${isLight ? 'bg-gradient-to-b from-gray-50 to-gray-100/50 border-gray-200' : (isOceanic ? 'bg-gradient-to-b from-[#3B4252] to-[#2E3440] border-ocean-border/30' : 'bg-gradient-to-b from-[#16191e] to-[#13161b] border-white/5')} border-b shadow-sm">
+                <div class="flex items-center gap-4 flex-1 min-w-0">
+                    <div class="flex items-center gap-2.5 flex-shrink-0">
+                        <div class="flex items-center justify-center w-8 h-8 rounded-lg ${isLight ? 'bg-mysql-teal/10' : 'bg-mysql-teal/20'} shadow-inner">
+                            <span class="material-symbols-outlined text-lg text-mysql-teal">table_chart</span>
+                        </div>
+                        <div class="flex flex-col">
+                            <h2 class="text-[10px] font-black uppercase tracking-[0.15em] ${isLight ? 'text-gray-700' : (isOceanic ? 'text-ocean-text' : 'text-gray-300')}">Result Set</h2>
+                            <span id="row-count-badge" class="text-[9px] font-semibold ${isLight ? 'text-mysql-teal' : 'text-mysql-teal/90'}">0 rows</span>
                         </div>
                     </div>
-                    <button id="export-csv-btn" class="flex items-center gap-1.5 px-3 py-1.5 ${isLight ? 'bg-white border-gray-200 text-gray-600' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50 text-ocean-text' : 'bg-white/5 border-white/10 text-gray-400')} border text-[10px] font-bold uppercase tracking-wider hover:bg-opacity-80 rounded transition-all shadow-sm">
-                        <span class="material-symbols-outlined text-sm">download</span> Export CSV
+                    <div class="h-6 w-px ${isLight ? 'bg-gray-300' : (isOceanic ? 'bg-ocean-border' : 'bg-white/10')} flex-shrink-0"></div>
+                    <div class="flex items-center ${isLight ? 'bg-white border-gray-300 shadow-sm' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50 shadow-lg' : 'bg-[#0f1115] border-white/10 shadow-lg')} border rounded-lg px-3 py-1.5 flex-1 min-w-[200px] max-w-xl">
+                        <span class="material-symbols-outlined text-sm ${isLight ? 'text-gray-400' : 'text-gray-500'} mr-2 flex-shrink-0">search</span>
+                        <input id="filter-input" class="bg-transparent border-none focus:ring-0 text-[11px] ${isLight ? 'text-gray-700 placeholder:text-gray-400' : (isOceanic ? 'text-ocean-text placeholder:text-gray-500' : 'text-gray-300 placeholder:text-gray-500')} w-full p-0" placeholder="Search in results..." type="text" />
+                    </div>
+                </div>
+                <div class="flex items-center gap-3 flex-shrink-0">
+                    <!-- Pending Changes -->
+                    <div id="pending-indicator" class="flex items-center gap-2 px-3 py-1.5 ${isLight ? 'bg-yellow-50 border-yellow-200' : 'bg-yellow-500/10 border-yellow-500/20'} border rounded-lg transition-all duration-200 overflow-hidden max-w-0 opacity-0 pointer-events-none">
+                        <span class="px-2 py-0.5 rounded-md bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 text-[9px] font-bold whitespace-nowrap">
+                            <span id="pending-count">0</span> CHANGES
+                        </span>
+                        <div class="flex items-center gap-1">
+                            <button id="commit-btn" class="flex items-center gap-1.5 px-2.5 py-1 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 text-[10px] font-bold uppercase tracking-wider text-green-600 dark:text-green-400 rounded-md transition-all whitespace-nowrap" title="Commit changes">
+                                <span class="material-symbols-outlined text-sm">check</span>
+                                <span>Commit</span>
+                            </button>
+                            <button id="discard-btn" class="flex items-center gap-1.5 px-2.5 py-1 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-[10px] font-bold uppercase tracking-wider text-red-600 dark:text-red-400 rounded-md transition-all whitespace-nowrap" title="Discard changes">
+                                <span class="material-symbols-outlined text-sm">close</span>
+                                <span>Discard</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Insert Row Button -->
+                    <button id="insert-row-btn" class="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-[10px] font-bold uppercase tracking-wider text-cyan-600 dark:text-cyan-400 rounded-lg transition-all shadow-sm whitespace-nowrap max-w-0 overflow-hidden opacity-0 pointer-events-none" title="Insert new row">
+                        <span class="material-symbols-outlined text-sm">add</span>
+                        <span>Insert Row</span>
                     </button>
-                    <button id="copy-btn" class="flex items-center gap-1.5 px-3 py-1.5 ${isLight ? 'bg-white border-gray-200 text-gray-600' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50 text-ocean-text' : 'bg-white/5 border-white/10 text-gray-400')} border text-[10px] font-bold uppercase tracking-wider hover:bg-opacity-80 rounded transition-all shadow-sm">
-                        <span class="material-symbols-outlined text-sm">content_copy</span> Copy
-                    </button>
+                    
+                    <!-- Divider -->
+                    <div class="h-8 w-px ${isLight ? 'bg-gray-300' : (isOceanic ? 'bg-ocean-border' : 'bg-white/10')}"></div>
+                    
+                    <!-- Action Buttons Group -->
+                    <div class="flex items-center ${isLight ? 'bg-white border-gray-300 shadow-sm' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50 shadow-lg' : 'bg-[#0f1115] border-white/10 shadow-lg')} border rounded-lg overflow-hidden">
+                        <!-- Columns Toggle -->
+                        <div class="relative">
+                            <button id="column-toggle-btn" class="flex items-center justify-center w-10 h-10 ${isLight ? 'text-gray-600 hover:bg-gray-50' : (isOceanic ? 'text-ocean-text hover:bg-ocean-panel' : 'text-gray-400 hover:bg-white/5')} transition-all border-r ${isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/50' : 'border-white/10')}" title="Toggle column visibility">
+                                <span class="material-symbols-outlined text-lg">view_column</span>
+                            </button>
+                            <div id="column-menu" class="hidden absolute right-0 top-full mt-1.5 ${isLight ? 'bg-white border-gray-200 shadow-xl' : (isOceanic ? 'bg-ocean-panel border-ocean-border shadow-2xl' : 'bg-[#1a1d23] border-white/10 shadow-2xl')} border rounded-lg py-2 z-50 min-w-[200px] max-h-[320px] overflow-y-auto custom-scrollbar">
+                                <div class="px-3 py-2 text-[9px] font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-500')} border-b ${isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5')} mb-1">Column Visibility</div>
+                                <div id="column-list"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- Export CSV -->
+                        <button id="export-csv-btn" class="flex items-center justify-center w-10 h-10 ${isLight ? 'text-gray-600 hover:bg-gray-50' : (isOceanic ? 'text-ocean-text hover:bg-ocean-panel' : 'text-gray-400 hover:bg-white/5')} transition-all border-r ${isLight ? 'border-gray-200' : (isOceanic ? 'border-ocean-border/50' : 'border-white/10')}" title="Export to CSV">
+                            <span class="material-symbols-outlined text-lg">download</span>
+                        </button>
+                        
+                        <!-- Copy -->
+                        <button id="copy-btn" class="flex items-center justify-center w-10 h-10 ${isLight ? 'text-gray-600 hover:bg-gray-50' : (isOceanic ? 'text-ocean-text hover:bg-ocean-panel' : 'text-gray-400 hover:bg-white/5')} transition-all" title="Copy to clipboard">
+                            <span class="material-symbols-outlined text-lg">content_copy</span>
+                        </button>
+                    </div>
                 </div>
             </div>
             ${resultTabs.length > 0 ? `
@@ -108,6 +123,35 @@ export function ResultsTable() {
                         </tr>
                     </tbody>
                 </table>
+            </div>
+            <!-- Selection Action Bar (Bottom) -->
+            <div id="selection-action-bar" class="flex items-center justify-between px-4 h-0 overflow-hidden opacity-0 ${isLight ? 'bg-cyan-50 border-gray-200' : (isOceanic ? 'bg-cyan-900/20 border-ocean-border' : 'bg-cyan-900/20 border-white/10')} border-t transition-all duration-300">
+                <div class="flex items-center gap-3">
+                    <div class="flex items-center gap-2">
+                        <div class="flex items-center justify-center w-8 h-8 rounded-lg bg-cyan-500/20">
+                            <span class="material-symbols-outlined text-lg text-cyan-500">check_circle</span>
+                        </div>
+                        <div class="flex flex-col">
+                            <span class="text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-cyan-700' : 'text-cyan-400'}"><span id="selection-count-bottom">0</span> Row(s) Selected</span>
+                            <span class="text-[9px] ${isLight ? 'text-gray-600' : 'text-gray-400'}">Choose an action below</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button id="delete-selected-btn" class="flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-[11px] font-bold text-red-600 dark:text-red-400 rounded-lg transition-all shadow-sm" title="Delete selected rows">
+                        <span class="material-symbols-outlined text-base">delete</span>
+                        <span>Delete Selected</span>
+                    </button>
+                    <button id="copy-selected-btn" class="flex items-center gap-2 px-4 py-2 ${isLight ? 'bg-white border-gray-300 text-gray-700' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text' : 'bg-white/10 border-white/20 text-gray-300')} hover:bg-opacity-80 border text-[11px] font-bold rounded-lg transition-all shadow-sm" title="Copy selected rows">
+                        <span class="material-symbols-outlined text-base">content_copy</span>
+                        <span>Copy Selected</span>
+                    </button>
+                    <div class="h-8 w-px ${isLight ? 'bg-gray-300' : (isOceanic ? 'bg-ocean-border' : 'bg-white/20')}"></div>
+                    <button id="clear-selection-btn" class="flex items-center gap-2 px-4 py-2 ${isLight ? 'bg-white border-gray-300 text-gray-600' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text' : 'bg-white/10 border-white/20 text-gray-400')} hover:bg-opacity-80 border text-[11px] font-semibold rounded-lg transition-all" title="Clear selection">
+                        <span class="material-symbols-outlined text-base">close</span>
+                        <span>Clear Selection</span>
+                    </button>
+                </div>
             </div>
         `;
         attachEvents();
@@ -249,22 +293,27 @@ export function ResultsTable() {
         const count = pendingChanges.updates.size + pendingChanges.deletes.size + pendingChanges.inserts.length;
 
         if (count > 0) {
-            indicator.classList.remove('hidden');
+            indicator.classList.remove('max-w-0', 'opacity-0', 'pointer-events-none');
+            indicator.classList.add('max-w-full', 'opacity-100', 'pointer-events-auto');
             container.querySelector('#pending-count').textContent = count;
         } else {
-            indicator.classList.add('hidden');
+            indicator.classList.add('max-w-0', 'opacity-0', 'pointer-events-none');
+            indicator.classList.remove('max-w-full', 'opacity-100', 'pointer-events-auto');
         }
     };
 
     const updateSelectionIndicator = () => {
-        const indicator = container.querySelector('#selection-indicator');
-        if (!indicator) return;
+        const actionBar = container.querySelector('#selection-action-bar');
+        if (!actionBar) return;
 
         if (selectedRows.size > 0) {
-            indicator.classList.remove('hidden');
-            container.querySelector('#selection-count').textContent = selectedRows.size;
+            actionBar.classList.remove('h-0', 'opacity-0');
+            actionBar.classList.add('h-14', 'opacity-100');
+            const countElement = container.querySelector('#selection-count-bottom');
+            if (countElement) countElement.textContent = selectedRows.size;
         } else {
-            indicator.classList.add('hidden');
+            actionBar.classList.add('h-0', 'opacity-0');
+            actionBar.classList.remove('h-14', 'opacity-100');
         }
     };
 
@@ -561,7 +610,13 @@ export function ResultsTable() {
             isEditable = await checkIfEditable(query);
             const insertBtn = container.querySelector('#insert-row-btn');
             if (insertBtn) {
-                insertBtn.classList.toggle('hidden', !isEditable);
+                if (isEditable) {
+                    insertBtn.classList.remove('max-w-0', 'opacity-0', 'pointer-events-none');
+                    insertBtn.classList.add('max-w-full', 'opacity-100', 'pointer-events-auto');
+                } else {
+                    insertBtn.classList.add('max-w-0', 'opacity-0', 'pointer-events-none');
+                    insertBtn.classList.remove('max-w-full', 'opacity-100', 'pointer-events-auto');
+                }
             }
         }
 
@@ -782,6 +837,7 @@ export function ResultsTable() {
         const insertRowBtn = container.querySelector('#insert-row-btn');
         const filterInput = container.querySelector('#filter-input');
         const deleteSelectedBtn = container.querySelector('#delete-selected-btn');
+        const copySelectedBtn = container.querySelector('#copy-selected-btn');
         const clearSelectionBtn = container.querySelector('#clear-selection-btn');
         const columnToggleBtn = container.querySelector('#column-toggle-btn');
         const columnMenu = container.querySelector('#column-menu');
@@ -840,6 +896,19 @@ export function ResultsTable() {
                 selectedRows.clear();
                 updateSelectionIndicator();
                 renderTable(currentData);
+            });
+        }
+
+        // Copy selected rows
+        if (copySelectedBtn) {
+            copySelectedBtn.addEventListener('click', () => {
+                if (selectedRows.size === 0) return;
+                
+                const selectedRowsData = Array.from(selectedRows)
+                    .sort((a, b) => a - b)
+                    .map(rowIdx => currentData.rows[rowIdx]);
+                
+                copyToClipboard(currentData.columns, selectedRowsData);
             });
         }
 
