@@ -24,6 +24,8 @@ export function ObjectExplorer() {
     let expandedTables = new Set();
     let dbObjects = {}; // cache for active connection
     let tableDetails = {}; // cache for active connection
+    let userDbsExpanded = true; // State for user databases fold
+    let systemDbsExpanded = true; // State for system databases fold
 
     const systemDatabases = ['mysql', 'information_schema', 'performance_schema', 'sys'];
 
@@ -180,20 +182,24 @@ export function ObjectExplorer() {
             <div class="pl-3 border-l ${isLight ? 'border-gray-200' : 'border-white/5'} ml-3 space-y-1 mt-1">
                  ${userDbs.length > 0 ? `
                     <div class="mb-2">
-                         <div class="px-2 py-1 text-[9px] font-bold uppercase tracking-[0.2em] ${isLight ? 'text-gray-400' : 'text-gray-600'} flex items-center gap-2">
+                         <div class="px-2 py-1 text-[9px] font-bold uppercase tracking-[0.2em] ${isLight ? 'text-gray-400' : 'text-gray-600'} flex items-center gap-2 cursor-pointer hover:text-mysql-teal transition-colors" id="user-dbs-toggle">
+                            <span class="material-symbols-outlined text-[10px] transition-transform ${userDbsExpanded ? 'rotate-90' : ''}">arrow_right</span>
                             <span class="material-symbols-outlined text-[12px] text-mysql-teal">database</span>
                             User Databases
+                            <span class="${isLight ? 'text-gray-300' : 'text-gray-700'}"> (${userDbs.length})</span>
                         </div>
-                        <div class="space-y-0.5 pl-1">${userDbs.map(db => renderDatabase(db)).join('')}</div>
+                        ${userDbsExpanded ? `<div class="space-y-0.5 pl-1">${userDbs.map(db => renderDatabase(db)).join('')}</div>` : ''}
                     </div>
                 ` : ''}
                 ${systemDbs.length > 0 ? `
                     <div class="mt-2 pt-2 border-t ${isLight ? 'border-gray-100' : 'border-white/5'}">
-                        <div class="px-2 py-1 text-[9px] font-bold uppercase tracking-[0.2em] ${isLight ? 'text-gray-400' : 'text-gray-600'} flex items-center gap-2">
+                        <div class="px-2 py-1 text-[9px] font-bold uppercase tracking-[0.2em] ${isLight ? 'text-gray-400' : 'text-gray-600'} flex items-center gap-2 cursor-pointer hover:text-amber-500 transition-colors" id="system-dbs-toggle">
+                             <span class="material-symbols-outlined text-[10px] transition-transform ${systemDbsExpanded ? 'rotate-90' : ''}">arrow_right</span>
                              <span class="material-symbols-outlined text-[12px] text-amber-500">settings</span>
                              System Databases
+                             <span class="${isLight ? 'text-gray-300' : 'text-gray-700'}"> (${systemDbs.length})</span>
                         </div>
-                        <div class="space-y-0.5 opacity-70 pl-1">${systemDbs.map(db => renderDatabase(db)).join('')}</div>
+                        ${systemDbsExpanded ? `<div class="space-y-0.5 opacity-70 pl-1">${systemDbs.map(db => renderDatabase(db)).join('')}</div>` : ''}
                     </div>
                 ` : ''}
             </div>
@@ -354,6 +360,26 @@ export function ObjectExplorer() {
         if (refreshBtn) {
             refreshBtn.addEventListener('click', () => {
                 loadConnections();
+            });
+        }
+
+        // User Databases fold toggle
+        const userDbsToggle = explorer.querySelector('#user-dbs-toggle');
+        if (userDbsToggle) {
+            userDbsToggle.addEventListener('click', (e) => {
+                e.stopPropagation();
+                userDbsExpanded = !userDbsExpanded;
+                render();
+            });
+        }
+
+        // System Databases fold toggle
+        const systemDbsToggle = explorer.querySelector('#system-dbs-toggle');
+        if (systemDbsToggle) {
+            systemDbsToggle.addEventListener('click', (e) => {
+                e.stopPropagation();
+                systemDbsExpanded = !systemDbsExpanded;
+                render();
             });
         }
     };
