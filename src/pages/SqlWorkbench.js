@@ -12,7 +12,7 @@ export function SqlWorkbench() {
     const mainContent = document.createElement('div');
     mainContent.className = "flex-1 flex overflow-hidden";
 
-    // Sidebar
+    // Sidebar (Object Explorer)
     const sidebar = ObjectExplorer();
     sidebar.style.width = '256px';
     sidebar.style.minWidth = '180px';
@@ -77,6 +77,37 @@ export function SqlWorkbench() {
         e.preventDefault();
     });
 
+    mainContent.appendChild(queryResults);
+
+    // Snippet Library Resizer (horizontal)
+    const snippetResizer = document.createElement('div');
+    snippetResizer.className = "w-1.5 bg-[#0b0d11] hover:bg-mysql-teal/50 cursor-col-resize flex items-center justify-center group transition-colors";
+    snippetResizer.innerHTML = `
+        <div class="h-12 w-0.5 bg-white/10 group-hover:bg-mysql-teal/70 rounded-full transition-colors"></div>
+    `;
+    mainContent.appendChild(snippetResizer);
+
+    // Snippet Library
+    const snippets = SnippetLibrary();
+    snippets.style.width = '280px';
+    snippets.style.minWidth = '200px';
+    snippets.style.maxWidth = '450px';
+    mainContent.appendChild(snippets);
+
+    // Snippet Resizer Logic
+    let isSnippetResizing = false;
+    let snippetStartX = 0;
+    let snippetStartWidth = 0;
+
+    snippetResizer.addEventListener('mousedown', (e) => {
+        isSnippetResizing = true;
+        snippetStartX = e.clientX;
+        snippetStartWidth = snippets.offsetWidth;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        e.preventDefault();
+    });
+
     // Combined mousemove handler
     document.addEventListener('mousemove', (e) => {
         if (isVerticalResizing) {
@@ -89,23 +120,24 @@ export function SqlWorkbench() {
             const newWidth = Math.max(180, Math.min(sidebarStartWidth + delta, 500));
             sidebar.style.width = `${newWidth}px`;
         }
+        if (isSnippetResizing) {
+            // Note: Snippet panel resizes from left, so delta is negative for expanding
+            const delta = snippetStartX - e.clientX;
+            const newWidth = Math.max(200, Math.min(snippetStartWidth + delta, 450));
+            snippets.style.width = `${newWidth}px`;
+        }
     });
 
     // Combined mouseup handler
     document.addEventListener('mouseup', () => {
-        if (isVerticalResizing || isSidebarResizing) {
+        if (isVerticalResizing || isSidebarResizing || isSnippetResizing) {
             isVerticalResizing = false;
             isSidebarResizing = false;
+            isSnippetResizing = false;
             document.body.style.cursor = '';
             document.body.style.userSelect = '';
         }
     });
-
-    mainContent.appendChild(queryResults);
-
-    // Snippet Library
-    const snippets = SnippetLibrary();
-    mainContent.appendChild(snippets);
 
     container.appendChild(mainContent);
 

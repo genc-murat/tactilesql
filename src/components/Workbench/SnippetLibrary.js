@@ -2,7 +2,7 @@ import { Dialog } from '../UI/Dialog.js';
 
 export function SnippetLibrary() {
     const aside = document.createElement('aside');
-    aside.className = "w-72 border-l border-white/5 bg-[#0b0d11] flex flex-col p-4 gap-6 overflow-hidden";
+    aside.className = "h-full border-l border-white/5 bg-[#0b0d11] flex flex-col p-4 gap-6 overflow-hidden";
 
     // --- State ---
     let snippets = JSON.parse(localStorage.getItem('tactile_snippets') || '[]');
