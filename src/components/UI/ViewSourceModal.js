@@ -199,7 +199,7 @@ export function showViewSourceModal(dbName, viewName) {
             Dialog.alert('View updated successfully!', 'Success');
             overlay.remove();
         } catch (error) {
-            Dialog.alert(`Failed to save: ${error}`, 'Error');
+            Dialog.alert(`Failed to save: ${String(error).replace(/\n/g, '<br>')}`, 'Save Error');
             saveBtn.innerHTML = 'Save Changes';
             saveBtn.disabled = false;
         }

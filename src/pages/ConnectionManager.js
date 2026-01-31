@@ -338,7 +338,7 @@ export function ConnectionManager() {
             return true;
         } catch (error) {
             console.error('Failed to save connection:', error);
-            Dialog.alert('Failed to save connection:\\n\\n' + error, 'Save Error');
+            Dialog.alert(`Failed to save connection: ${String(error).replace(/\n/g, '<br>')}`, 'Connection Save Error');
             return false;
         }
     };
@@ -348,7 +348,7 @@ export function ConnectionManager() {
             await invoke('delete_connection', { id });
             await loadConnections();
         } catch (error) {
-            Dialog.alert('Failed delete: ' + error, 'Error');
+            Dialog.alert(`Failed to delete connection: ${String(error).replace(/\n/g, '<br>')}`, 'Delete Connection Error');
         }
     };
 
@@ -371,7 +371,7 @@ export function ConnectionManager() {
                     <span class="material-symbols-outlined">check_circle</span>
                     Connection Successful!
                 </div>
-                <div class="text-sm text-gray-400">${res}</div>
+                <div class="text-sm text-gray-400">${String(res).replace(/\n/g, '<br>')}</div>
             </div>`;
 
             Dialog.alert(message, 'Test Connection');
@@ -386,8 +386,8 @@ export function ConnectionManager() {
                     <span class="material-symbols-outlined">error</span>
                     Connection Failed
                 </div>
-                <div class="text-sm text-gray-400">${error}</div>
-            </div>`, 'Test Failed');
+                <div class="text-sm text-gray-400">${String(error).replace(/\n/g, '<br>')}</div>
+            </div>`, 'Connection Test Failed');
             btn.innerHTML = '<span class="material-symbols-outlined text-red-400">error</span> Failed';
             setTimeout(() => {
                 btn.innerHTML = originalContent;
@@ -429,7 +429,7 @@ export function ConnectionManager() {
                 localStorage.setItem('activeConnection', JSON.stringify(config));
                 window.location.hash = '/workbench';
             } catch (err) {
-                Dialog.alert(err, 'Connection Failed');
+                Dialog.alert(`Connection failed: ${String(err).replace(/\n/g, '<br>')}`, 'Connection Error');
                 btn.innerHTML = originalContent;
                 btn.disabled = false;
             }

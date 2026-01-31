@@ -19,7 +19,7 @@ export class Dialog {
                     <div id="dialog-icon-container" class="mx-auto size-12 rounded-full ${isLight ? 'bg-gray-50' : 'bg-white/5'} flex items-center justify-center mb-4">
                         <span id="dialog-icon" class="material-symbols-outlined text-2xl ${isLight ? 'text-gray-400' : 'text-white'}">info</span>
                     </div>
-                    <h3 id="dialog-title" class="text-sm font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-800' : (isOceanic ? 'text-ocean-text' : 'text-white')}">Notification</h3>
+                    <h3 id="dialog-title" class="text-sm font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-800' : (isOceanic ? 'text-ocean-text' : 'text-white')}"></h3>
                     <p id="dialog-message" class="text-[11px] ${isLight ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/70' : 'text-gray-400')} font-mono leading-relaxed whitespace-pre-wrap"></p>
                 </div>
                 <div id="dialog-actions" class="p-4 ${isLight ? 'bg-gray-50 border-gray-100' : 'bg-white/5 border-white/5'} flex gap-3 justify-center border-t">
@@ -51,6 +51,24 @@ export class Dialog {
         this.title.className = `text-sm font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-800' : (isOceanic ? 'text-ocean-text' : 'text-white')}`;
         this.message.className = `text-[11px] ${isLight ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/70' : 'text-gray-400')} font-mono leading-relaxed whitespace-pre-wrap`;
         this.actions.className = `p-4 ${isLight ? 'bg-gray-50 border-gray-100' : 'bg-white/5 border-white/5'} flex gap-3 justify-center border-t`;
+
+        // Set title and message
+        this.title.textContent = title;
+        // If message contains HTML tags, use it as-is, otherwise convert \n to <br>
+        if (message.includes('<')) {
+            this.message.innerHTML = message;
+        } else {
+            // Escape HTML and convert both literal \n and actual newlines to <br>
+            const escaped = message
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;')
+                .replace(/\\n/g, '<br>')  // literal \n in string
+                .replace(/\n/g, '<br>');   // actual newline
+            this.message.innerHTML = escaped;
+        }
 
         // Reset icon styles
         this.iconContainer.className = `mx-auto size-12 rounded-full flex items-center justify-center mb-4 border ${isLight ? 'border-gray-200' : 'border-white/10'}`;
@@ -127,9 +145,18 @@ export class Dialog {
         // Check for 'success' or 'saved'
         const isSuccess = title.toLowerCase().includes('success') || message.toLowerCase().includes('saved');
 
+        // If message doesn't contain HTML, convert \n to <br> before showing
+        let processedMessage = message;
+        if (!message.includes('<')) {
+            // Replace both literal \n strings and actual newline characters
+            processedMessage = String(message)
+                .replace(/\\n/g, '<br>')  // literal \n in the string
+                .replace(/\n/g, '<br>');   // actual newline character
+        }
+
         this.show({
             title,
-            message,
+            message: processedMessage,
             type: isSuccess ? 'success' : type
         });
     }

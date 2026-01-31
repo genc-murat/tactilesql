@@ -1650,7 +1650,7 @@ END;\n`;
             await loadData();
 
         } catch (error) {
-            Dialog.alert(`Failed to push changes: ${error}`, 'Error');
+            Dialog.alert(`Failed to push changes: ${String(error).replace(/\n/g, '<br>')}`, 'Schema Push Error');
             console.error('Push changes error:', error);
         } finally {
             btnPush.disabled = false;

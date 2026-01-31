@@ -386,7 +386,7 @@ export function ObjectExplorer() {
             await loadDatabases();
 
         } catch (error) {
-            Dialog.alert('Failed to connect: ' + error, 'Connection Error');
+            Dialog.alert(`Failed to connect to database: ${String(error).replace(/\n/g, '<br>')}`, 'Database Connection Error');
         }
     };
 
@@ -592,7 +592,7 @@ export function ObjectExplorer() {
             Dialog.alert(message, 'Database Properties');
 
         } catch (error) {
-            Dialog.alert('Failed to fetch properties: ' + error, 'Error');
+            Dialog.alert(`Failed to fetch database properties: ${String(error).replace(/\n/g, '<br>')}`, 'Properties Error');
         }
     };
 
@@ -650,7 +650,7 @@ export function ObjectExplorer() {
                 result.query = query;
                 window.dispatchEvent(new CustomEvent('tactilesql:query-result', { detail: result }));
             } catch (error) {
-                Dialog.alert('Query failed: ' + error, 'Error');
+                Dialog.alert(`Query failed: ${String(error).replace(/\n/g, '<br>')}`, 'Query Error');
             }
         };
         menu.querySelector('#ctx-copy').onclick = () => {

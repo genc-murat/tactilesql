@@ -35,7 +35,7 @@ export function AccessControl() {
             }
         } catch (error) {
             console.error('Failed to load users:', error);
-            Dialog.alert(`Failed to load users: ${error}`, 'Error');
+            Dialog.alert(`Failed to load users: ${String(error).replace(/\n/g, '<br>')}`, 'Load Users Error');
         }
 
         isLoading = false;

@@ -907,7 +907,7 @@ export function QueryEditor() {
                             error: error.message || error.toString()
                         }
                     }));
-                    Dialog.alert('Query Execution Failed: ' + error, 'Execution Error');
+                    Dialog.alert(`Query execution failed: ${String(error).replace(/\n/g, '<br>')}`, 'Query Execution Error');
                     render(); // Show execution time even on error
                 } finally {
                     executeBtn.innerHTML = originalHTML;
@@ -958,7 +958,7 @@ export function QueryEditor() {
                     window.dispatchEvent(event);
 
                 } catch (error) {
-                    Dialog.alert('Explain Failed: ' + error, 'Analysis Error');
+                    Dialog.alert(`Explain failed: ${String(error).replace(/\n/g, '<br>')}`, 'Query Analysis Error');
                 } finally {
                     explainBtn.innerHTML = originalHTML;
                     explainBtn.classList.remove('opacity-70');
@@ -1009,7 +1009,7 @@ export function QueryEditor() {
                     // Load tables for new database
                     loadTablesForAutocomplete(newDb);
                 } catch (error) {
-                    Dialog.alert(`Failed to switch database: ${error}`, "Switch Failed");
+                    Dialog.alert(`Failed to switch database: ${String(error).replace(/\n/g, '<br>')}`, "Database Switch Error");
                 } finally {
                     e.target.disabled = false;
                 }

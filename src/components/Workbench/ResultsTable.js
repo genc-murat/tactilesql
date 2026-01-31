@@ -305,7 +305,7 @@ export function ResultsTable() {
             // Re-execute original query to refresh
             window.dispatchEvent(new CustomEvent('tactilesql:refresh-query'));
         } catch (error) {
-            Dialog.alert(`Failed to commit changes: ${error}`, 'Error');
+            Dialog.alert(`Failed to commit changes: ${String(error).replace(/\n/g, '<br>')}`, 'Commit Error');
         }
     };
 
