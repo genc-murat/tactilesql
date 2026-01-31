@@ -26,6 +26,9 @@ export function Footer() {
         let latencyStr = '0.000s';
         let memStr = '---';
         let dbName = config.database || 'No DB Selected';
+        let connectionName = config.name || 'Unnamed Connection';
+        let serverHost = config.host || 'localhost';
+        let serverPort = config.port || '3306';
 
         try {
             const start = performance.now();
@@ -69,6 +72,10 @@ export function Footer() {
                 <div class="flex items-center gap-2">
                     <div class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.4)]"></div>
                     <span class="text-gray-300 uppercase font-bold tracking-wide">${dbName}</span>
+                </div>
+                <div class="flex items-center gap-4">
+                    <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[14px] text-gray-400">storage</span> ${serverHost}:${serverPort}</span>
+                    <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[14px] text-gray-400">cable</span> ${connectionName}</span>
                 </div>
                 <div class="flex items-center gap-4">
                     <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[14px] text-gray-400">lock</span> SECURE</span>
