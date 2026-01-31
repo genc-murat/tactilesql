@@ -288,11 +288,11 @@ export function QueryEditor() {
                     </select>
                 </div>
                 <div class="h-6 w-px bg-white/10 mx-1"></div>
-                    <button id="execute-btn" class="flex items-center gap-2 px-5 py-2 bg-mysql-teal text-black rounded-md text-[11px] font-black uppercase tracking-widest shadow-[0_0_15px_rgba(0,200,255,0.3)] hover:brightness-110 active:scale-95 transition-all">
-                        <span class="material-symbols-outlined text-sm font-bold">play_arrow</span> EXECUTE
+                    <button id="execute-btn" class="flex items-center justify-center p-1.5 bg-mysql-teal text-black rounded shadow-[0_0_10px_rgba(0,200,255,0.2)] hover:brightness-110 active:scale-95 transition-all" title="Execute Query (Ctrl+Enter)">
+                        <span class="material-symbols-outlined text-lg">play_arrow</span>
                     </button>
-                    <button id="explain-btn" class="flex items-center gap-2 px-5 py-2 bg-[#1a1d23] border border-white/10 text-gray-300 rounded-md text-[11px] font-bold uppercase tracking-widest hover:bg-white/5 active:scale-95 transition-all shadow-lg">
-                        <span class="material-symbols-outlined text-sm">analytics</span> EXPLAIN
+                    <button id="explain-btn" class="flex items-center justify-center p-1.5 bg-[#1a1d23] border border-white/10 text-gray-300 rounded hover:bg-white/5 active:scale-95 transition-all shadow-lg" title="Explain Query Plan">
+                        <span class="material-symbols-outlined text-lg">analytics</span>
                     </button>
                 </div>
             </div>
