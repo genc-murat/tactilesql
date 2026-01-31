@@ -1,30 +1,91 @@
+import { invoke } from '@tauri-apps/api/core';
+
 export function Footer() {
     const footer = document.createElement('footer');
-    footer.className = "h-10 glass-header px-8 flex items-center justify-between text-[10px] font-mono";
+    footer.className = "h-8 bg-[#16191e] border-t border-white/5 px-4 flex items-center justify-between text-[10px] font-mono text-gray-500 select-none z-50 relative shrink-0 transition-all";
 
-    footer.innerHTML = `
-        <div class="flex items-center gap-10">
-            <div class="flex items-center gap-2">
-                <div class="w-2 h-2 rounded-full bg-cyan-400 pulse-neon"></div>
-                <span class="text-cyan-400 font-bold tracking-widest">SYSTEM STABLE</span>
+    const update = async () => {
+        const config = JSON.parse(localStorage.getItem('activeConnection') || 'null');
+
+        if (!config) {
+            footer.innerHTML = `
+                <div class="flex items-center gap-8 opacity-50">
+                    <div class="flex items-center gap-2">
+                        <div class="w-2 h-2 rounded-full bg-red-500"></div>
+                        <span class="text-gray-400">DISCONNECTED</span>
+                    </div>
+                </div>
+             `;
+            return;
+        }
+
+        let version = 'Checking...';
+        let latencyStr = '0.000s';
+        let memStr = '---';
+        let dbName = config.database || 'No DB Selected';
+
+        try {
+            const start = performance.now();
+
+            const results = await Promise.allSettled([
+                invoke('execute_query', { query: "SELECT VERSION()" }),
+                invoke('execute_query', { query: "SHOW GLOBAL STATUS LIKE 'Innodb_buffer_pool_bytes_data'" }),
+                invoke('execute_query', { query: "SELECT DATABASE()" })
+            ]);
+
+            const end = performance.now();
+            latencyStr = ((end - start) / 1000).toFixed(3) + 's';
+
+            if (results[0].status === 'fulfilled') {
+                version = results[0].value?.rows?.[0]?.[0] || 'Unknown';
+            }
+            // Memory
+            if (results[1].status === 'fulfilled') {
+                const bytes = parseInt(results[1].value?.rows?.[0]?.[1] || '0');
+                if (bytes > 0) memStr = (bytes / 1024 / 1024).toFixed(1) + 'MB';
+            }
+            // DB Name
+            if (results[2].status === 'fulfilled') {
+                const currentDb = results[2].value?.rows?.[0]?.[0];
+                if (currentDb) {
+                    dbName = currentDb;
+                } else {
+                    dbName = 'No DB Selected';
+                }
+            } else {
+                console.warn("Main Footer DB Fetch Failed", results[2].reason);
+            }
+
+        } catch (error) {
+            console.warn("Main Footer Sync Error:", error);
+        }
+
+        // HTML Structure
+        footer.innerHTML = `
+            <div class="flex items-center gap-8">
+                <div class="flex items-center gap-2">
+                    <div class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.4)]"></div>
+                    <span class="text-gray-300 uppercase font-bold tracking-wide">${dbName}</span>
+                </div>
+                <div class="flex items-center gap-4">
+                    <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[14px] text-gray-400">lock</span> SECURE</span>
+                    <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[14px] text-gray-400">memory</span> ${version}</span>
+                </div>
             </div>
-            <div class="h-3 w-px bg-white/10"></div>
-            <div class="flex items-center gap-6 text-gray-500">
-                <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[12px] text-cyan-500">lock</span> SSL: 256-BIT AES</span>
-                <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[12px] text-purple-500">memory</span> BUF: 8.2G / 16G</span>
-                <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[12px] text-emerald-500">terminal</span> ENGINE: InnoDB 8.0.33</span>
+            <div class="flex items-center gap-6">
+                <div class="flex items-center gap-4">
+                    <span>TIME: <span class="text-cyan-400 font-bold">${latencyStr}</span></span>
+                    <span>MEMORY: <span class="text-cyan-400 font-bold">${memStr}</span></span>
+                </div>
+                <div class="px-3 py-0.5 rounded-full bg-green-500/10 text-green-500 font-bold border border-green-500/20 tracking-widest uppercase text-[9px]">
+                    CONNECTED
+                </div>
             </div>
-        </div>
-        <div class="flex items-center gap-8 text-gray-500">
-            <div class="flex items-center gap-4">
-                <span>LATENCY: <span class="text-white">12ms</span></span>
-                <span>TX/s: <span class="text-white">1,422</span></span>
-            </div>
-            <div class="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-[9px] uppercase tracking-tighter text-gray-400">
-                Cluster: West-Europe-01
-            </div>
-        </div>
-    `;
+        `;
+    };
+
+    update();
+    setInterval(update, 2000);
 
     return footer;
 }
