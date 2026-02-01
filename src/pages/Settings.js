@@ -1,4 +1,5 @@
 import { ThemeManager } from '../utils/ThemeManager.js';
+import { SettingsManager } from '../utils/SettingsManager.js';
 
 export function Settings() {
     let theme = ThemeManager.getCurrentTheme();
@@ -16,6 +17,7 @@ export function Settings() {
         const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic';
         const currentTheme = ThemeManager.getCurrentTheme();
+        const snippetSuggestionsEnabled = SettingsManager.get('autocomplete.snippets', true);
 
         container.innerHTML = `
         <div class="max-w-4xl mx-auto p-8">
@@ -107,8 +109,18 @@ export function Settings() {
                                 <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Auto-complete</h3>
                                 <p class="text-xs text-gray-500 mt-1">Enable SQL auto-completion suggestions</p>
                             </div>
-                            <button class="relative w-12 h-6 rounded-full bg-gradient-to-r from-mysql-teal to-mysql-cyan transition-all">
+                            <button class="relative w-12 h-6 rounded-full bg-gradient-to-r from-mysql-teal to-mysql-cyan transition-all" title="Coming soon">
                                 <span class="absolute right-1 top-1 w-4 h-4 rounded-full bg-white shadow-md transition-transform"></span>
+                            </button>
+                        </div>
+
+                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                            <div>
+                                <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Snippet Suggestions</h3>
+                                <p class="text-xs text-gray-500 mt-1">Show snippet triggers in autocomplete</p>
+                            </div>
+                            <button id="autocomplete-snippets-toggle" class="relative w-12 h-6 rounded-full transition-all ${snippetSuggestionsEnabled ? 'bg-gradient-to-r from-mysql-teal to-mysql-cyan' : (isLight ? 'bg-gray-200' : (isOceanic ? 'bg-ocean-border/40' : 'bg-white/10'))}">
+                                <span class="absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow-md transition-transform transform ${snippetSuggestionsEnabled ? 'translate-x-6' : 'translate-x-0'}"></span>
                             </button>
                         </div>
 
@@ -158,6 +170,25 @@ export function Settings() {
         const dawnBtn = container.querySelector('#theme-dawn');
         const oceanicBtn = container.querySelector('#theme-oceanic');
         const preview = container.querySelector('#theme-preview');
+        const snippetToggle = container.querySelector('#autocomplete-snippets-toggle');
+
+        const isLight = theme === 'light' || theme === 'dawn';
+        const isDawn = theme === 'dawn';
+        const isOceanic = theme === 'oceanic';
+
+        const getToggleClasses = (isOn) => {
+            const buttonClass = `relative w-12 h-6 rounded-full transition-all ${isOn ? 'bg-gradient-to-r from-mysql-teal to-mysql-cyan' : (isLight ? 'bg-gray-200' : (isOceanic ? 'bg-ocean-border/40' : 'bg-white/10'))}`;
+            const knobClass = `absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow-md transition-transform transform ${isOn ? 'translate-x-6' : 'translate-x-0'}`;
+            return { buttonClass, knobClass };
+        };
+
+        const applyToggleState = (isOn) => {
+            if (!snippetToggle) return;
+            const knob = snippetToggle.querySelector('span');
+            const classes = getToggleClasses(isOn);
+            snippetToggle.className = classes.buttonClass;
+            if (knob) knob.className = classes.knobClass;
+        };
 
         // Re-declaring updateButtons to include dawnBtn scope
         const updateAllButtons = (newTheme) => {
@@ -197,6 +228,15 @@ export function Settings() {
             ThemeManager.setTheme('oceanic');
             updateAllButtons('oceanic');
         });
+
+        if (snippetToggle) {
+            snippetToggle.addEventListener('click', () => {
+                const current = SettingsManager.get('autocomplete.snippets', true);
+                const next = !current;
+                SettingsManager.set('autocomplete.snippets', next);
+                applyToggleState(next);
+            });
+        }
     };
 
     const onThemeChange = (e) => {

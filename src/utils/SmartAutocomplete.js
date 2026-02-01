@@ -13,6 +13,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { SQL_KEYWORDS } from './SqlHighlighter.js';
 import { auditTrail } from './QueryAuditTrail.js';
+import { SettingsManager } from './SettingsManager.js';
 
 const STORAGE_KEYS = {
     FREQUENCY: 'tactilesql_autocomplete_frequency',
@@ -222,7 +223,8 @@ export class SmartAutocomplete {
             let suggestions = [];
 
             // Check for snippet triggers first (2+ chars)
-            if (word.length >= 2 && !word.includes('.')) {
+            const snippetSuggestionsEnabled = SettingsManager.get('autocomplete.snippets', true);
+            if (snippetSuggestionsEnabled && word.length >= 2 && !word.includes('.')) {
                 const snippetSuggestions = this.#getSnippetSuggestions(word);
                 if (snippetSuggestions.length > 0) {
                     suggestions.push(...snippetSuggestions);
