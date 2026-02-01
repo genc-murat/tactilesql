@@ -2034,6 +2034,49 @@ export function QueryEditor() {
         }
     });
 
+    // Listen for Open SQL Script event from Object Explorer
+    window.addEventListener('tactilesql:open-sql-script', async (e) => {
+        const { database } = e.detail || {};
+        if (!database) return;
+
+        // Update the database selector to reflect the new database
+        const dbSelector = container.querySelector('#db-selector');
+        if (dbSelector) {
+            // Refresh database list and select the target database
+            try {
+                const dbs = await invoke('get_databases');
+                dbSelector.innerHTML = `
+                    <option value="">Select Database</option>
+                    ${dbs.map(db => `<option value="${db}" ${db === database ? 'selected' : ''}>${db}</option>`).join('')}
+                `;
+            } catch (error) {
+                // Just try to select the database
+                dbSelector.value = database;
+            }
+        }
+
+        // Load tables for autocomplete
+        loadTablesForAutocomplete(database);
+
+        // Create a new query tab for this database
+        createNewTabWithQuery(`-- Database: ${database}\n\n`);
+
+        // Focus on the editor
+        setTimeout(() => {
+            const editorEl = container.querySelector('#code-editor');
+            if (editorEl) {
+                editorEl.focus();
+                // Move cursor to end
+                const range = document.createRange();
+                const sel = window.getSelection();
+                range.selectNodeContents(editorEl);
+                range.collapse(false);
+                sel.removeAllRanges();
+                sel.addRange(range);
+            }
+        }, 100);
+    });
+
     return container;
 }
 

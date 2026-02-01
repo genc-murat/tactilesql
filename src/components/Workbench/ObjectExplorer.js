@@ -724,6 +724,10 @@ export function ObjectExplorer() {
             <div class="px-3 py-1.5 text-[10px] font-mono ${headerText} ${dividerColor} border-b tracking-widest mb-1">
                 ${dbName}
             </div>
+            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-db-open-script">
+                <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#286983]' : 'text-blue-400'}">description</span> Open SQL Script
+            </button>
+            <div class="my-1 border-t ${dividerColor}"></div>
             <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-db-properties">
                 <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal'}">info</span> Properties
             </button>
@@ -736,6 +740,31 @@ export function ObjectExplorer() {
         `;
 
         document.body.appendChild(menu);
+
+        menu.querySelector('#ctx-db-open-script').onclick = async () => {
+            menu.remove();
+            try {
+                // Switch to the selected database
+                const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+                if (!activeConfig.username) {
+                    Dialog.alert("Session lost. Please reconnect.", "Session Error");
+                    return;
+                }
+                
+                activeConfig.database = dbName;
+                await invoke('establish_connection', {
+                    config: { ...activeConfig, id: activeConfig.id || null, name: activeConfig.name || null }
+                });
+                localStorage.setItem('activeConnection', JSON.stringify(activeConfig));
+                
+                // Dispatch event to notify QueryEditor to update its database selector and create new tab
+                window.dispatchEvent(new CustomEvent('tactilesql:open-sql-script', { 
+                    detail: { database: dbName } 
+                }));
+            } catch (error) {
+                Dialog.alert(`Failed to switch database: ${String(error).replace(/\n/g, '<br>')}`, "Database Switch Error");
+            }
+        };
 
         menu.querySelector('#ctx-db-properties').onclick = () => {
             showDatabaseProperties(dbName);
