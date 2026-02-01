@@ -238,7 +238,7 @@ export function Settings() {
         const snippetSuggestionsEnabled = SettingsManager.get('autocomplete.snippets', true);
 
         container.innerHTML = `
-        <div class="max-w-5xl mx-auto p-8">
+        <div class="h-full p-6 lg:p-8">
             <!-- Header -->
             <div class="mb-6">
                 <h1 class="text-2xl font-bold ${isLight ? 'text-gray-900' : 'text-white'} mb-2">Settings</h1>
@@ -435,7 +435,7 @@ export function Settings() {
                 </div>
 
                 <!-- Snippet Categories -->
-                <div id="snippet-categories" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div id="snippet-categories" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start">
                     ${categories.map(category => `
                         <div class="snippet-category tactile-card ${isLight ? (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : 'bg-white border-gray-200') + ' shadow-sm' : ''} rounded-xl overflow-hidden" data-category="${category}">
                             <button class="category-toggle w-full flex items-center justify-between p-4 ${isLight ? 'hover:bg-gray-50' : 'hover:bg-white/5'} transition-colors">
