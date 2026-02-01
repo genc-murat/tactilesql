@@ -5,6 +5,8 @@ TactileSQL is a modern, desktop-first MySQL workbench built with Tauri 2 and van
 ## Highlights
 
 - **SQL Workbench** with multi-tab editor, syntax highlighting, auto-format, and autocomplete.
+- **Smart Autocomplete++** with context-aware suggestions, FK-based JOIN hints, and frequency learning.
+- **Query Audit Trail** for compliance tracking with exportable logs, statistics, and filtering.
 - **Visual Explain** and **Query Profiler** for performance insights.
 - **Query Analyzer** with optimization suggestions, index recommendations, and execution cost analysis.
 - **SSH Tunnel Support** for secure database connections through SSH servers.

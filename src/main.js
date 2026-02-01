@@ -12,6 +12,7 @@ import { AccessControl } from './pages/AccessControl.js';
 import { Settings } from './pages/Settings.js';
 import { DataTools } from './pages/DataTools.js';
 import { ServerMonitor } from './pages/ServerMonitor.js';
+import { AuditTrail } from './pages/AuditTrail.js';
 import { ThemeManager } from './utils/ThemeManager.js';
 import { initKeyboardShortcuts, registerHandler, showShortcutsHelp } from './utils/KeyboardShortcuts.js';
 
@@ -142,6 +143,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         '/settings': { component: Settings },
         '/data-tools': { component: DataTools },
         '/monitor': { component: ServerMonitor },
+        '/audit': { component: AuditTrail },
     };
 
     const router = new Router(routes, mainContent);

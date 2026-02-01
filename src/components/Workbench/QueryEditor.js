@@ -5,6 +5,8 @@ import { showVisualExplainModal } from '../UI/VisualExplainModal.js';
 import { ThemeManager } from '../../utils/ThemeManager.js';
 import { registerHandler, unregisterHandler } from '../../utils/KeyboardShortcuts.js';
 import { highlightSQL, formatSQL, SQL_KEYWORDS } from '../../utils/SqlHighlighter.js';
+import { auditTrail } from '../../utils/QueryAuditTrail.js';
+import { smartAutocomplete } from '../../utils/SmartAutocomplete.js';
 
 // SQL Keywords for autocomplete
 // Imported from SqlHighlighter.js
@@ -181,68 +183,63 @@ export function QueryEditor() {
         }
     };
 
-    const getSuggestions = async (word) => {
+    const getSuggestions = async (word, textarea) => {
         if (!word || word.length < 1) return [];
 
-        const upper = word.toUpperCase();
-        const lower = word.toLowerCase();
-        let results = [];
-
-        // SQL Keywords
-        const keywordMatches = SQL_KEYWORDS.filter(k => k.startsWith(upper));
-        results.push(...keywordMatches.map(k => ({ type: 'keyword', value: k, icon: 'code', color: 'text-purple-400' })));
-
-        // Database names
-        const dbMatches = cachedDatabases.filter(db => db.toLowerCase().startsWith(lower));
-        results.push(...dbMatches.map(db => ({ type: 'database', value: db, icon: 'database', color: 'text-mysql-teal' })));
-
-        // Table names from all cached databases
+        // Use Smart Autocomplete for context-aware suggestions
         const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
         const currentDb = activeConfig.database || '';
-        if (currentDb && cachedTables[currentDb]) {
-            const tableMatches = cachedTables[currentDb].filter(t => t.toLowerCase().startsWith(lower));
-            results.push(...tableMatches.map(t => ({ type: 'table', value: t, icon: 'table_rows', color: 'text-cyan-400' })));
-        }
+        const query = textarea?.value || '';
+        const cursorPos = textarea?.selectionStart || 0;
 
-        // Check for database.table pattern or table.column pattern
-        if (word.includes('.')) {
-            const [part1, part2] = word.split('.');
-            const filterLower = (part2 || '').toLowerCase();
+        // Fallback to basic autocomplete function
+        const getBasicSuggestions = async () => {
+            const upper = word.toUpperCase();
+            const lower = word.toLowerCase();
+            let results = [];
 
-            // 1. Check if part1 is a known database
-            // We find the exact db name match (case-sensitive or insensitive depending on DB, but usually exact from cache)
-            const matchedDb = cachedDatabases.find(db => db === part1);
-            if (matchedDb) {
-                const tables = await loadTablesForAutocomplete(matchedDb);
-                const tableMatches = tables.filter(t => t.toLowerCase().startsWith(filterLower));
-                results.push(...tableMatches.map(t => ({
-                    type: 'table',
-                    value: `${matchedDb}.${t}`,
-                    display: t,
-                    icon: 'table_rows',
-                    color: 'text-cyan-400'
-                })));
+            // SQL Keywords
+            const keywordMatches = SQL_KEYWORDS.filter(k => k.startsWith(upper)).slice(0, 10);
+            results.push(...keywordMatches.map(k => ({ type: 'keyword', value: k, icon: 'code', color: 'text-purple-400' })));
+
+            // Database names
+            const dbMatches = cachedDatabases.filter(db => db.toLowerCase().startsWith(lower));
+            results.push(...dbMatches.map(db => ({ type: 'database', value: db, icon: 'database', color: 'text-mysql-teal' })));
+
+            // Table names from current database
+            if (currentDb && cachedTables[currentDb]) {
+                const tableMatches = cachedTables[currentDb].filter(t => t.toLowerCase().startsWith(lower));
+                results.push(...tableMatches.map(t => ({ type: 'table', value: t, icon: 'table_rows', color: 'text-cyan-400' })));
             }
 
-            // 2. Check if part1 is a known table (for columns)
-            // Try to find columns for this table in any loaded database
-            for (const db of Object.keys(cachedTables)) {
-                if (cachedTables[db].includes(part1)) {
-                    const columns = await loadColumnsForAutocomplete(db, part1);
-                    const colMatches = columns.filter(c => c.toLowerCase().startsWith(filterLower));
-                    results.push(...colMatches.map(c => ({
-                        type: 'column',
-                        value: `${part1}.${c}`,
-                        display: c,
-                        icon: 'view_column',
-                        color: 'text-orange-400'
-                    })));
-                }
-            }
-        }
+            return results.slice(0, 15);
+        };
 
-        // Limit results
-        return results.slice(0, 10);
+        try {
+            // Initialize caches if needed
+            if (cachedDatabases.length === 0) {
+                await loadDatabasesForAutocomplete();
+            }
+            
+            // Try smart autocomplete
+            await smartAutocomplete.loadDatabases();
+            if (currentDb) {
+                await smartAutocomplete.loadTables(currentDb);
+            }
+
+            // Get context-aware suggestions
+            const smartSuggestions = await smartAutocomplete.getSuggestions(query, cursorPos, currentDb);
+            
+            if (smartSuggestions && smartSuggestions.length > 0) {
+                return smartSuggestions;
+            }
+            
+            // Fallback if smart returned empty
+            return await getBasicSuggestions();
+        } catch (e) {
+            console.warn('Smart autocomplete failed, falling back to basic:', e);
+            return await getBasicSuggestions();
+        }
     };
 
     const getWordAtPosition = (text, index) => {
@@ -279,7 +276,7 @@ export function QueryEditor() {
 
     const showAutocomplete = async (textarea) => {
         const word = getCurrentWord(textarea);
-        suggestions = await getSuggestions(word);
+        suggestions = await getSuggestions(word, textarea);
         selectedIndex = 0;
 
         if (suggestions.length > 0) {
@@ -301,7 +298,7 @@ export function QueryEditor() {
         if (!popup) {
             popup = document.createElement('div');
             popup.id = 'autocomplete-popup';
-            popup.className = `absolute z-[100] ${isLight ? 'bg-white border-gray-200 shadow-xl' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-xl' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50 shadow-2xl' : 'bg-[#1a1d23] border border-white/10 shadow-2xl'))} rounded-lg py-1 min-w-[200px] max-h-[200px] overflow-y-auto custom-scrollbar transition-all duration-200`;
+            popup.className = `absolute z-[100] ${isLight ? 'bg-white border-gray-200 shadow-xl' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-xl' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50 shadow-2xl' : 'bg-[#1a1d23] border border-white/10 shadow-2xl'))} rounded-lg py-1 min-w-[250px] max-w-[400px] max-h-[250px] overflow-y-auto custom-scrollbar transition-all duration-200`;
             const editorContainer = container.querySelector('.neu-inset');
             if (editorContainer) {
                 editorContainer.style.position = 'relative';
@@ -316,8 +313,11 @@ export function QueryEditor() {
         popup.innerHTML = suggestions.map((s, i) => `
             <div class="autocomplete-item px-3 py-1.5 flex items-center gap-2 cursor-pointer transition-colors ${i === selectedIndex ? (isLight ? 'bg-mysql-teal/10 text-mysql-teal' : (isDawn ? 'bg-[#ea9d34]/20 text-[#ea9d34]' : 'bg-mysql-teal/20 text-white')) : (isLight ? 'text-gray-700 hover:bg-gray-50' : (isDawn ? 'text-[#575279] hover:bg-[#faf4ed]' : 'text-gray-400 hover:bg-white/5'))}" data-index="${i}">
                 <span class="material-symbols-outlined text-sm ${s.color}">${s.icon}</span>
-                <span class="font-mono text-[12px]">${s.display || s.value}</span>
-                <span class="text-[9px] ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-600'))} uppercase ml-auto">${s.type}</span>
+                <div class="flex-1 min-w-0">
+                    <div class="font-mono text-[12px] truncate">${s.display || s.value}</div>
+                    ${s.detail ? `<div class="text-[9px] ${isLight ? 'text-gray-400' : 'text-gray-500'} truncate">${s.detail}</div>` : ''}
+                </div>
+                <span class="text-[9px] ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-600'))} uppercase flex-shrink-0">${s.type}</span>
             </div>
         `).join('');
 
@@ -357,6 +357,9 @@ export function QueryEditor() {
 
         const newCursorPos = wordStart + insertValue.length;
         textarea.setSelectionRange(newCursorPos, newCursorPos);
+
+        // Record selection for frequency learning
+        smartAutocomplete.recordSelection(suggestion.value);
 
         // Update tab content
         const activeTab = tabs.find(t => t.id === activeTabId);
@@ -1007,6 +1010,15 @@ export function QueryEditor() {
                         }
                     }));
 
+                    // Log to Audit Trail
+                    const totalRows = resultsArray.reduce((sum, r) => sum + (r.rows?.length || 0), 0);
+                    auditTrail.logQuery({
+                        query: editorContent,
+                        status: 'SUCCESS',
+                        duration: lastExecutionTime,
+                        rowsReturned: totalRows,
+                    });
+
                     // Re-render to show execution time badge
                     render();
 
@@ -1024,6 +1036,15 @@ export function QueryEditor() {
                             error: error.message || error.toString()
                         }
                     }));
+
+                    // Log to Audit Trail
+                    auditTrail.logQuery({
+                        query: editorContent,
+                        status: 'ERROR',
+                        duration: lastExecutionTime,
+                        error: error.message || error.toString(),
+                    });
+
                     Dialog.alert(`Query execution failed: ${String(error).replace(/\n/g, '<br>')}`, 'Query Execution Error');
                     render(); // Show execution time even on error
                 } finally {
