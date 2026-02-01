@@ -808,7 +808,10 @@ export function ObjectExplorer() {
 
         const menu = document.createElement('div');
         menu.id = 'explorer-context-menu';
-        menu.className = `fixed z-[9999] ${(isLight ? 'bg-white border-gray-200 shadow-lg' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279] shadow-lg shadow-[#ea9d34]/10' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50 shadow-xl' : 'bg-[#1a1d23] border border-white/10 shadow-xl')))} rounded-lg py-1 w-48`;
+
+        // Define menu styles based on theme
+        const menuBg = isLight ? 'bg-white border-gray-200 shadow-lg' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279] shadow-lg shadow-[#ea9d34]/10' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50 shadow-xl' : 'bg-[#1a1d23] border border-white/10 shadow-xl'));
+        menu.className = `fixed z-[9999] ${menuBg} rounded-lg py-1 w-48`;
         menu.style.left = `${x}px`;
         menu.style.top = `${y}px`;
 
@@ -820,14 +823,48 @@ export function ObjectExplorer() {
             <div class="px-3 py-1.5 text-[10px] font-mono ${headerText} ${dividerColor} border-b tracking-widest mb-1">
                 ${dbName}.${tableName}
             </div>
-            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-refresh">
-                <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#56949f]' : 'text-green-400'}">sync</span> Refresh
+            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-select">
+                <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#9ccfd8]' : 'text-cyan-400'}">table_view</span> Select Top 200
             </button>
             <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-design">
                 <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal'}">schema</span> Schema Design
             </button>
-            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-select">
-                <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#9ccfd8]' : 'text-cyan-400'}">table_view</span> Select Top 200
+            
+            <!-- Generate SQL Submenu -->
+            <div class="relative group" id="ctx-gen-wrapper">
+                <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                         <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#c6a0f6]' : 'text-purple-400'}">code</span> Generate SQL
+                    </div>
+                    <span class="material-symbols-outlined text-[10px]">chevron_right</span>
+                </button>
+                <div id="ctx-gen-submenu" class="hidden absolute left-full top-0 ml-1 w-40 rounded-lg py-1 ${menuBg} shadow-xl border ${dividerColor}">
+                     <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" data-type="select">
+                        <span class="material-symbols-outlined text-sm text-gray-400">abc</span> Select
+                    </button>
+                    <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" data-type="insert">
+                        <span class="material-symbols-outlined text-sm text-green-400">add_circle</span> Insert
+                    </button>
+                    <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" data-type="update">
+                        <span class="material-symbols-outlined text-sm text-blue-400">edit</span> Update
+                    </button>
+                    <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" data-type="delete">
+                        <span class="material-symbols-outlined text-sm text-red-400">delete</span> Delete
+                    </button>
+                    <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" data-type="merge">
+                        <span class="material-symbols-outlined text-sm text-orange-400">merge</span> Merge
+                    </button>
+                    <div class="h-px bg-white/5 my-1 mx-2"></div>
+                    <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" data-type="ddl">
+                        <span class="material-symbols-outlined text-sm text-yellow-400">description</span> DDL Script
+                    </button>
+                </div>
+            </div>
+
+            <div class="h-px ${dividerColor} my-1 mx-2"></div>
+
+             <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-refresh">
+                <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#56949f]' : 'text-green-400'}">sync</span> Refresh
             </button>
             <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-copy">
                 <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#9893a5]' : 'text-gray-500'}">content_copy</span> Copy Name
@@ -836,6 +873,82 @@ export function ObjectExplorer() {
 
         document.body.appendChild(menu);
 
+        // --- Submenu Logic ---
+        const wrapper = menu.querySelector('#ctx-gen-wrapper');
+        const submenu = menu.querySelector('#ctx-gen-submenu');
+
+        wrapper.onmouseenter = () => submenu.classList.remove('hidden');
+        wrapper.onmouseleave = () => submenu.classList.add('hidden');
+
+        submenu.querySelectorAll('button').forEach(btn => {
+            btn.onclick = async (e) => {
+                e.stopPropagation();
+                menu.remove();
+
+                const type = btn.dataset.type;
+                try {
+                    let sql = '';
+                    if (type === 'ddl') {
+                        const res = await invoke('execute_query', { query: `SHOW CREATE TABLE \`${dbName}\`.\`${tableName}\`` });
+                        if (res.rows && res.rows[0]) {
+                            // SHOW CREATE TABLE returns [Table, Create Table]
+                            sql = res.rows[0][1];
+                        }
+                    } else if (type === 'select') {
+                        sql = `SELECT * FROM \`${dbName}\`.\`${tableName}\`\nlimit 100;`;
+                    } else if (['insert', 'update', 'merge', 'delete'].includes(type)) {
+                        // For Delete we don't strictly need columns but it helps to see PKs if possible, 
+                        // but for simplicity we'll just do DELETE FROM ... WHERE ... 
+                        // However, let's fetch columns for Insert/Update/Merge
+
+                        let cols = [];
+                        if (type !== 'delete') {
+                            const key = `${dbName}.${tableName}`;
+                            // Try cache first
+                            if (tableDetails[key] && tableDetails[key].columns) {
+                                cols = tableDetails[key].columns;
+                            } else {
+                                cols = await invoke('get_table_schema', { database: dbName, table: tableName });
+                            }
+                        }
+
+                        if (type === 'insert') {
+                            const params = cols.map(() => '?').join(', ');
+                            const colList = cols.map(c => `\`${c.name}\``).join(', ');
+                            sql = `INSERT INTO \`${dbName}\`.\`${tableName}\`\n(${colList})\nVALUES\n(${params});`;
+                        } else if (type === 'update') {
+                            const setList = cols.map(c => `    \`${c.name}\` = ?`).join(',\n');
+                            sql = `UPDATE \`${dbName}\`.\`${tableName}\`\nSET\n${setList}\nWHERE <condition>;`;
+                        } else if (type === 'merge') {
+                            // INSERT ... ON DUPLICATE KEY UPDATE
+                            const params = cols.map(() => '?').join(', ');
+                            const colList = cols.map(c => `\`${c.name}\``).join(', ');
+                            const updateList = cols.map(c => `    \`${c.name}\` = VALUES(\`${c.name}\`)`).join(',\n');
+                            sql = `INSERT INTO \`${dbName}\`.\`${tableName}\`\n(${colList})\nVALUES\n(${params})\nON DUPLICATE KEY UPDATE\n${updateList};`;
+                        } else if (type === 'delete') {
+                            sql = `DELETE FROM \`${dbName}\`.\`${tableName}\`\nWHERE <condition>;`;
+                        }
+                    }
+
+                    if (sql) {
+                        const titles = {
+                            select: 'Select Statement',
+                            insert: 'Insert Statement',
+                            update: 'Update Statement',
+                            delete: 'Delete Statement',
+                            merge: 'Merge / Upsert Statement',
+                            ddl: 'DDL Script'
+                        };
+                        Dialog.showSQL(sql, titles[type] || 'Generated SQL');
+                    }
+                } catch (err) {
+                    Dialog.alert(`Failed to generate SQL: ${err}`, 'Error');
+                }
+            };
+        });
+
+
+        // --- Standard Actions ---
         menu.querySelector('#ctx-refresh').onclick = async () => {
             const key = `${dbName}.${tableName}`;
             delete tableDetails[key];
@@ -868,10 +981,19 @@ export function ObjectExplorer() {
         };
 
         const closeMenu = () => {
+            // Delay slightly to avoid closing if moving to submenu (handled by mouseleave but click outside should close)
+            // The submenu click propagation stop handles internal clicks.
+            // But we need to make sure we don't close if clicking inside submenu? 
+            // Actually, clicking outside ANYWHERE should close.
             menu.remove();
             document.removeEventListener('click', closeMenu);
         };
+        // Use a slight delay to avoid immediate trigger
         setTimeout(() => document.addEventListener('click', closeMenu), 0);
+
+        // Prevent click inside menu from closing it (except buttons which handle it)
+        // especially to allowing hovering/clicking empty space
+        menu.onclick = (e) => e.stopPropagation();
     };
 
     // --- Data Loading ---

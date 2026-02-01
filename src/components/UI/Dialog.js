@@ -294,4 +294,49 @@ export class Dialog {
             };
         });
     }
+
+    static showSQL(sql, title = 'Generated SQL') {
+        this.show({
+            title,
+            message: '',
+            type: 'info'
+        });
+
+        // Make dialog wider
+        this.dialog.style.width = '600px';
+        this.icon.textContent = 'code';
+        this.iconContainer.className = "mx-auto size-12 rounded-full flex items-center justify-center mb-4 border border-white/10 bg-purple-500/10 text-purple-400";
+
+        const codeContainer = document.createElement('div');
+        codeContainer.className = "mt-0 p-4 bg-black/30 rounded-lg border border-white/5 font-mono text-[11px] leading-relaxed text-blue-300 overflow-x-auto max-h-[300px] custom-scrollbar whitespace-pre text-left shadow-inner select-text";
+        codeContainer.style.tabSize = '4';
+        codeContainer.textContent = sql; // Use textContent to safely show code
+
+        this.message.appendChild(codeContainer);
+
+        // Custom buttons: Copy and Close
+        this.actions.innerHTML = '';
+
+        const copyBtn = document.createElement('button');
+        copyBtn.className = "px-4 py-2 rounded-lg text-[10px] bg-white/5 font-bold uppercase tracking-wider text-gray-300 hover:text-white hover:bg-white/10 transition-colors";
+        copyBtn.innerHTML = `<span class="flex items-center gap-2"><span class="material-symbols-outlined text-[14px]">content_copy</span> Copy</span>`;
+        copyBtn.onclick = () => {
+            navigator.clipboard.writeText(sql);
+            copyBtn.innerHTML = `<span class="flex items-center gap-2"><span class="material-symbols-outlined text-[14px]">check</span> Copied</span>`;
+            setTimeout(() => {
+                copyBtn.innerHTML = `<span class="flex items-center gap-2"><span class="material-symbols-outlined text-[14px]">content_copy</span> Copy</span>`;
+            }, 2000);
+        };
+
+        const closeBtn = document.createElement('button');
+        closeBtn.className = "px-4 py-2 rounded-lg bg-mysql-teal text-black text-[10px] font-bold uppercase tracking-wider hover:brightness-110 transition-colors";
+        closeBtn.textContent = "Close";
+        closeBtn.onclick = () => {
+            this.close();
+            this.dialog.style.width = '400px'; // Reset width
+        };
+
+        this.actions.appendChild(copyBtn);
+        this.actions.appendChild(closeBtn);
+    }
 }
