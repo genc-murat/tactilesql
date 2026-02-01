@@ -29,7 +29,8 @@ export function ConnectionManager() {
         sshPort: 22,
         sshUsername: '',
         sshPassword: '',
-        sshKeyPath: ''
+        sshKeyPath: '',
+        color: '#00c8ff' // Default MySQL Teal
     };
 
     let config = { ...DEFAULT_CONFIG };
@@ -236,6 +237,16 @@ export function ConnectionManager() {
                         </div>
 
                         <div class="grid grid-cols-4 gap-3">
+                            <div class="col-span-3 space-y-1">
+                                <label class="text-[9px] font-black text-gray-500 uppercase tracking-wider">Connection Theme Color</label>
+                                <div class="flex items-center gap-3">
+                                    <input name="color" type="color" class="w-10 h-8 rounded cursor-pointer bg-transparent border-none p-0" value="${config.color || '#00c8ff'}" />
+                                    <input name="color-text" class="tactile-input flex-1 text-xs py-1.5 font-mono" type="text" value="${config.color || '#00c8ff'}" readonly />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-4 gap-3">
                             <div class="col-span-2 space-y-1">
                                 <label class="text-[9px] font-black text-gray-500 uppercase tracking-wider">Host</label>
                                 <input name="host" class="tactile-input w-full text-xs py-1.5" placeholder="127.0.0.1" type="text" value="${config.host}" required />
@@ -325,8 +336,10 @@ export function ConnectionManager() {
                 const { name, value, type, checked } = e.target;
                 if (type === 'checkbox') {
                     config[name] = checked;
-                } else if (name === 'port' || name === 'sshPort') {
-                    config[name] = parseInt(value) || (name === 'port' ? 3306 : 22);
+                } else if (name === 'color') {
+                    config[name] = value;
+                    const textInput = container.querySelector('input[name="color-text"]');
+                    if (textInput) textInput.value = value;
                 } else {
                     config[name] = value;
                 }
@@ -547,7 +560,8 @@ export function ConnectionManager() {
             savedConn.port !== config.port ||
             savedConn.username !== config.username ||
             savedConn.password !== config.password ||
-            savedConn.database !== config.database;
+            savedConn.database !== config.database ||
+            savedConn.color !== config.color;
     };
 
     const verifyActiveConnection = async () => {

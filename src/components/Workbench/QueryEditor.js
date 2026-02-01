@@ -73,13 +73,13 @@ const savedState = (() => {
 })();
 
 let tabs = savedState?.tabs || [
-    { id: '1', title: 'Query 1', content: '', pinned: false }
+    { id: '1', title: 'Query 1', content: '', pinned: false, connectionName: '', connectionColor: '' }
 ];
 let activeTabId = savedState?.activeTabId || (tabs[0]?.id || '1');
 
 // Ensure at least one tab exists if something went wrong
 if (tabs.length === 0) {
-    tabs = [{ id: '1', title: 'Query 1', content: '', pinned: false }];
+    tabs = [{ id: '1', title: 'Query 1', content: '', pinned: false, connectionName: '', connectionColor: '' }];
     activeTabId = '1';
 }
 
@@ -394,11 +394,13 @@ export function QueryEditor() {
                         ${visibleTabs.map(tab => {
             const isActive = tab.id === activeTabId;
             const isPinned = tab.pinned;
+            const tabColor = tab.connectionColor || '';
+            const connectionLabel = tab.connectionName ? ` (${tab.connectionName})` : '';
             return `
-                                <div data-id="${tab.id}" class="tab-item px-3 py-2 border-t border-x rounded-t-md flex items-center gap-2 relative top-[1px] cursor-pointer select-none transition-all group max-w-[180px] ${isActive ? (isLight ? 'bg-white border-gray-200 text-mysql-teal' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-mysql-teal' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text' : 'bg-[#0f1115] border-mysql-teal/40 text-mysql-teal'))) : ((isLight || isDawn) ? 'bg-transparent border-transparent text-gray-500 hover:bg-black/5' : (isOceanic ? 'bg-[#2E3440]/50 border-transparent text-ocean-text/60 hover:bg-white/5' : 'bg-transparent border-transparent text-gray-500 hover:bg-white/5'))}">
+                                <div data-id="${tab.id}" class="tab-item px-3 py-2 border-t border-x rounded-t-md flex items-center gap-2 relative top-[1px] cursor-pointer select-none transition-all group max-w-[180px] ${isActive ? (isLight ? 'bg-white border-gray-200 text-mysql-teal' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-mysql-teal' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text' : 'bg-[#0f1115] border-mysql-teal/40 text-mysql-teal'))) : ((isLight || isDawn) ? 'bg-transparent border-transparent text-gray-500 hover:bg-black/5' : (isOceanic ? 'bg-[#2E3440]/50 border-transparent text-ocean-text/60 hover:bg-white/5' : 'bg-transparent border-transparent text-gray-500 hover:bg-white/5'))}" style="${tabColor ? `border-top: 2px solid ${tabColor};` : ''}">
                                     ${isPinned ? `<span class="pin-tab-btn material-symbols-outlined text-xs text-amber-500 hover:text-amber-400" title="Unpin Tab">push_pin</span>` : `<span class="pin-tab-btn material-symbols-outlined text-xs opacity-0 group-hover:opacity-100 hover:text-amber-500 transition-opacity" title="Pin Tab">push_pin</span>`}
                                     <span class="material-symbols-outlined text-xs">${isActive ? 'edit_document' : 'description'}</span>
-                                    <span class="font-mono text-[10px] truncate flex-1">${tab.title}</span>
+                                    <span class="font-mono text-[10px] truncate flex-1">${tab.title}${connectionLabel}</span>
                                     ${!isPinned ? `<span class="close-tab-btn material-symbols-outlined text-[12px] hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">close</span>` : `<span class="close-tab-btn material-symbols-outlined text-[12px] hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity" title="Unpin to close">close</span>`}
                                 </div>
                             `;
@@ -1808,7 +1810,15 @@ export function QueryEditor() {
     const createNewTabWithQuery = (query) => {
         const newId = Date.now().toString();
         const num = tabs.length + 1;
-        tabs.push({ id: newId, title: `Query ${num}`, content: query || '', pinned: false });
+        const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+        tabs.push({
+            id: newId,
+            title: `Query ${num}`,
+            content: query || '',
+            pinned: false,
+            connectionName: activeConfig.name || '',
+            connectionColor: activeConfig.color || ''
+        });
         activeTabId = newId;
         saveState();
         render();
@@ -2008,6 +2018,15 @@ export function QueryEditor() {
 
                 if (currentDb) {
                     loadTablesForAutocomplete(currentDb);
+                }
+
+                // Update active tab connection info if it doesn't have it or if connection changed
+                const activeTab = tabs.find(t => t.id === activeTabId);
+                if (activeTab) {
+                    activeTab.connectionName = activeConfig.name || '';
+                    activeTab.connectionColor = activeConfig.color || '';
+                    saveState();
+                    render();
                 }
             } catch (error) {
                 // Silently fail

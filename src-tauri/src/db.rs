@@ -96,6 +96,19 @@ pub struct ConnectionConfig {
     pub database: Option<String>,
     #[serde(default)]
     pub password_encrypted: bool,
+    pub color: Option<String>,
+    #[serde(rename = "useSSHTunnel", default)]
+    pub use_ssh_tunnel: bool,
+    #[serde(rename = "sshHost")]
+    pub ssh_host: Option<String>,
+    #[serde(rename = "sshPort")]
+    pub ssh_port: Option<u16>,
+    #[serde(rename = "sshUsername")]
+    pub ssh_username: Option<String>,
+    #[serde(rename = "sshPassword")]
+    pub ssh_password: Option<String>,
+    #[serde(rename = "sshKeyPath")]
+    pub ssh_key_path: Option<String>,
 }
 
 fn get_config_path(app: &AppHandle) -> Result<PathBuf, String> {

@@ -231,17 +231,30 @@ export function ObjectExplorer() {
     // --- Render Connection Node ---
     const renderConnectionNode = (conn) => {
         const isActive = conn.id === activeConnectionId;
+        const connColor = conn.color || '';
 
-        let bgClass = isActive ? (isLight ? 'bg-blue-50' : (isDawn ? 'bg-[#ea9d34]/10' : 'bg-white/5')) : ((isLight || isDawn) ? (isDawn ? 'hover:bg-[#fffaf3] border border-transparent hover:border-[#f2e9e1]' : 'hover:bg-gray-100') : 'hover:bg-white/5');
+        let bgClass = isActive
+            ? (connColor ? '' : (isLight ? 'bg-blue-50' : (isDawn ? 'bg-[#ea9d34]/10' : 'bg-white/5')))
+            : ((isLight || isDawn) ? (isDawn ? 'hover:bg-[#fffaf3] border border-transparent hover:border-[#f2e9e1]' : 'hover:bg-gray-100') : 'hover:bg-white/5');
+
         let nameColor = isActive ? (isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-white')) : (isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400'));
         let subText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-600'));
         let arrowColor = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-600');
         let iconColor = isActive ? (isDawn ? 'text-[#56949f]' : 'text-green-400') : (isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-600'));
         let activeDot = isActive ? `<div class="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full ${isDawn ? 'bg-[#56949f] border border-[#fffaf3]' : 'bg-green-500 border-2 border-[#0b0d11]'}"></div>` : '';
 
+        let customStyle = '';
+        if (connColor) {
+            if (isActive) {
+                customStyle = `background-color: ${connColor}1a; border-left: 3px solid ${connColor}; border-radius: 0 6px 6px 0;`;
+            } else {
+                customStyle = `border-left: 3px solid ${connColor}40; border-radius: 0 6px 6px 0;`;
+            }
+        }
+
         return `
             <div class="connection-node cursor-move" data-conn-id="${conn.id}" draggable="true">
-                <div class="conn-item flex items-center gap-2 py-1.5 px-2 rounded-md ${bgClass} transition-colors group" data-id="${conn.id}">
+                <div class="conn-item flex items-center gap-2 py-1.5 px-2 rounded-md ${bgClass} transition-colors group" data-id="${conn.id}" style="${customStyle}">
                     <span class="drag-handle material-symbols-outlined text-xs ${arrowColor} cursor-grab">drag_indicator</span>
                     <span class="material-symbols-outlined text-xs transition-transform ${isActive ? 'rotate-90' : ''} ${arrowColor}">arrow_right</span>
                     
