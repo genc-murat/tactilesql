@@ -84,19 +84,19 @@ export function QueryProfiler() {
     const fetchLocksData = async () => {
         const query = `
             SELECT
-              w.requesting_trx_id AS 'BekleyenIslemID',
+              r.trx_id AS 'BekleyenIslemID',
               r.trx_mysql_thread_id AS 'BekleyenThreadID',
               TIMESTAMPDIFF(SECOND, r.trx_started, NOW()) AS 'BeklemeSuresi_sn',
               r.trx_query AS 'BekleyenSorgu',
-              w.blocking_trx_id AS 'EngelleyenIslemID',
+              b.trx_id AS 'EngelleyenIslemID',
               b.trx_mysql_thread_id AS 'EngelleyenThreadID',
               b.trx_query AS 'EngelleyenSorgu'
             FROM
-              information_schema.innodb_lock_waits w
+              performance_schema.data_lock_waits w
             JOIN
-              information_schema.innodb_trx r ON r.trx_id = w.requesting_trx_id
+              information_schema.innodb_trx r ON r.trx_id = w.REQUESTING_ENGINE_TRANSACTION_ID
             JOIN
-              information_schema.innodb_trx b ON b.trx_id = w.blocking_trx_id;
+              information_schema.innodb_trx b ON b.trx_id = w.BLOCKING_ENGINE_TRANSACTION_ID;
         `;
 
         try {

@@ -112,6 +112,9 @@ export function ServerMonitor() {
                 <!-- Header -->
                 <div class="flex items-center justify-between mb-6 flex-shrink-0">
                     <div class="flex items-center gap-4">
+                        <button id="back-btn" class="w-10 h-10 rounded-lg ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-600' : (isDawn ? 'bg-[#f2e9e1] hover:bg-[#ebe3db] text-[#575279]' : (isOceanic ? 'bg-ocean-panel hover:bg-ocean-panel/80 text-ocean-text border border-ocean-border/50' : 'bg-white/5 hover:bg-white/10 text-gray-400'))} flex items-center justify-center transition-all" title="Back to Explorer">
+                            <span class="material-symbols-outlined">arrow_back</span>
+                        </button>
                         <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg">
                             <span class="material-symbols-outlined text-white text-2xl">monitor_heart</span>
                         </div>
@@ -658,6 +661,11 @@ SET GLOBAL long_query_time = 1;</pre>
     };
 
     const attachEvents = () => {
+        // Back button
+        container.querySelector('#back-btn')?.addEventListener('click', () => {
+            window.location.hash = '/workbench';
+        });
+
         // Tab switching
         container.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {

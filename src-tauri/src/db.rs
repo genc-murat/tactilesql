@@ -2417,22 +2417,22 @@ pub async fn get_locks(
 ) -> Result<Vec<LockInfo>, String> {
     let pool = get_pool(&state)?;
     
-    // Get InnoDB lock waits
+    // MySQL 8.0+ uses performance_schema.data_lock_waits instead of information_schema.innodb_lock_waits
     let query = r#"
         SELECT
-          w.requesting_trx_id AS 'BekleyenIslemID',
+          r.trx_id AS 'BekleyenIslemID',
           r.trx_mysql_thread_id AS 'BekleyenThreadID',
           TIMESTAMPDIFF(SECOND, r.trx_started, NOW()) AS 'BeklemeSuresi_sn',
           COALESCE(r.trx_query, '') AS 'BekleyenSorgu',
-          w.blocking_trx_id AS 'EngelleyenIslemID',
+          b.trx_id AS 'EngelleyenIslemID',
           b.trx_mysql_thread_id AS 'EngelleyenThreadID',
           COALESCE(b.trx_query, '') AS 'EngelleyenSorgu'
         FROM
-          information_schema.innodb_lock_waits w
+          performance_schema.data_lock_waits w
         JOIN
-          information_schema.innodb_trx r ON r.trx_id = w.requesting_trx_id
+          information_schema.innodb_trx r ON r.trx_id = w.REQUESTING_ENGINE_TRANSACTION_ID
         JOIN
-          information_schema.innodb_trx b ON b.trx_id = w.blocking_trx_id
+          information_schema.innodb_trx b ON b.trx_id = w.BLOCKING_ENGINE_TRANSACTION_ID
     "#;
     
     match sqlx::query(query).fetch_all(&pool).await {

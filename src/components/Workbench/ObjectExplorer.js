@@ -612,6 +612,9 @@ export function ObjectExplorer() {
                 <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-conn-refresh">
                     <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#3e8fb0]' : 'text-blue-400'}">sync</span> Refresh Databases
                 </button>
+                <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-conn-dashboard">
+                    <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#eb6f92]' : 'text-rose-400'}">monitor_heart</span> Open Dashboard
+                </button>
             ` : ''}
             <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-conn-edit">
                 <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal'}">edit</span> Edit Connection
@@ -633,6 +636,14 @@ export function ObjectExplorer() {
             btnRefresh.onclick = () => {
                 loadDatabases();
                 menu.remove();
+            };
+        }
+
+        const btnDashboard = menu.querySelector('#ctx-conn-dashboard');
+        if (btnDashboard) {
+            btnDashboard.onclick = () => {
+                menu.remove();
+                window.location.hash = `/monitor?conn=${id}`;
             };
         }
 
