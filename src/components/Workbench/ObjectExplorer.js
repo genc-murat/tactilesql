@@ -43,7 +43,7 @@ export function ObjectExplorer() {
                 <div class="py-0.5">
                     <div class="flex items-center gap-1.5 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'))} text-[10px]">
                         <span class="material-symbols-outlined text-[12px] ${isDawn ? 'text-[#c6a0f6]' : 'text-purple-400'}">view_column</span>
-                        <span class="uppercase tracking-wider font-semibold">Columns</span>
+                        <span class="tracking-wider font-semibold">Columns</span>
                         <span class="${isLight ? 'text-gray-300' : (isDawn ? 'text-[#ea9d34]' : 'text-gray-700')}">(${columns.length})</span>
                     </div>
                     <div class="pl-4 space-y-0.5 mt-0.5">
@@ -63,7 +63,7 @@ export function ObjectExplorer() {
                     <div class="py-0.5">
                         <div class="flex items-center gap-1.5 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'))} text-[10px]">
                             <span class="material-symbols-outlined text-[12px] ${isDawn ? 'text-[#9ccfd8]' : 'text-cyan-400'}">bolt</span>
-                            <span class="uppercase tracking-wider font-semibold">Indexes</span>
+                            <span class="tracking-wider font-semibold">Indexes</span>
                             <span class="${isLight ? 'text-gray-300' : (isDawn ? 'text-[#ea9d34]' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-700'))}">(${indexes.length})</span>
                         </div>
                     </div>
@@ -72,7 +72,7 @@ export function ObjectExplorer() {
                     <div class="py-0.5">
                         <div class="flex items-center gap-1.5 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'))} text-[10px]">
                             <span class="material-symbols-outlined text-[12px] ${isDawn ? 'text-[#eb6f92]' : 'text-orange-400'}">link</span>
-                            <span class="uppercase tracking-wider font-semibold">Foreign Keys</span>
+                            <span class="tracking-wider font-semibold">Foreign Keys</span>
                             <span class="${isLight ? 'text-gray-300' : (isDawn ? 'text-[#ea9d34]' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-700'))}">(${fks.length})</span>
                         </div>
                     </div>
@@ -111,7 +111,7 @@ export function ObjectExplorer() {
             <div class="py-0.5">
                 <div class="flex items-center gap-1.5 ${headerText} text-[10px] px-1">
                     <span class="material-symbols-outlined text-[12px] ${color}">${icon}</span>
-                    <span class="uppercase tracking-wider font-semibold">${label}</span>
+                    <span class="tracking-wider font-semibold">${label}</span>
                     <span class="${isLight ? 'text-gray-300' : (isDawn ? 'text-[#ea9d34]' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-700'))}">(${items.length})</span>
                 </div>
                 <div class="pl-5 space-y-0.5 mt-0.5">
@@ -178,7 +178,7 @@ export function ObjectExplorer() {
                 <div data-db="${db}" class="db-item flex items-center gap-2 ${baseColor} ${hoverColor} group cursor-pointer p-1">
                     <span class="material-symbols-outlined text-xs transition-transform ${isExpanded ? 'rotate-90' : ''}">arrow_right</span>
                     <div class="w-1.5 h-1.5 rounded-full ${dotColor}"></div>
-                    <span class="font-bold tracking-tight uppercase ${activeText}">${db}</span>
+                    <span class="font-bold tracking-tight ${activeText}">${db}</span>
                 </div>
                 ${isExpanded ? renderDatabaseContents(db) : ''}
             </div>
@@ -204,7 +204,7 @@ export function ObjectExplorer() {
             <div class="pl-3 border-l ${borderClass} ml-3 space-y-1 mt-1">
                  ${userDbs.length > 0 ? `
                     <div class="mb-2">
-                         <div class="px-2 py-1 text-[9px] font-bold uppercase tracking-[0.2em] ${headerText} flex items-center gap-2 cursor-pointer ${isDawn ? 'hover:text-[#575279]' : 'hover:text-mysql-teal'} transition-colors" id="user-dbs-toggle">
+                         <div class="px-2 py-1 text-[9px] font-bold tracking-[0.2em] ${headerText} flex items-center gap-2 cursor-pointer ${isDawn ? 'hover:text-[#575279]' : 'hover:text-mysql-teal'} transition-colors" id="user-dbs-toggle">
                             <span class="material-symbols-outlined text-[10px] transition-transform ${userDbsExpanded ? 'rotate-90' : ''}">arrow_right</span>
                             <span class="material-symbols-outlined text-[12px] ${iconColor}">database</span>
                             User Databases
@@ -215,7 +215,7 @@ export function ObjectExplorer() {
                 ` : ''}
                 ${systemDbs.length > 0 ? `
                     <div class="mt-2 pt-2 border-t ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
-                        <div class="px-2 py-1 text-[9px] font-bold uppercase tracking-[0.2em] ${headerText} flex items-center gap-2 cursor-pointer ${isDawn ? 'hover:text-[#575279]' : 'hover:text-amber-500'} transition-colors" id="system-dbs-toggle">
+                        <div class="px-2 py-1 text-[9px] font-bold tracking-[0.2em] ${headerText} flex items-center gap-2 cursor-pointer ${isDawn ? 'hover:text-[#575279]' : 'hover:text-amber-500'} transition-colors" id="system-dbs-toggle">
                              <span class="material-symbols-outlined text-[10px] transition-transform ${systemDbsExpanded ? 'rotate-90' : ''}">arrow_right</span>
                              <span class="material-symbols-outlined text-[12px] ${sysIconColor}">settings</span>
                              System Databases
@@ -287,7 +287,7 @@ export function ObjectExplorer() {
 
         explorer.innerHTML = `
             <div class="flex items-center justify-between px-2">
-                <h2 class="text-[10px] font-bold uppercase tracking-[0.15em] ${headerText}">Explorer</h2>
+                <h2 class="text-[10px] font-bold tracking-[0.15em] ${headerText}">Explorer</h2>
                 <div class="flex gap-2">
                     <span id="refresh-btn" class="material-symbols-outlined text-[16px] ${iconColor} cursor-pointer ${hoverIcon}" title="Reload Connections">sync</span>
                     <a href="#/connections" class="material-symbols-outlined text-[16px] ${iconColor} cursor-pointer ${hoverIcon}" title="Manage Connections">settings</a>
@@ -588,7 +588,7 @@ export function ObjectExplorer() {
         const hoverClass = isLight ? 'hover:bg-gray-50 text-gray-700' : (isDawn ? 'hover:bg-[#faf4ed] text-[#575279]' : 'hover:bg-white/5 text-gray-300 hover:text-white');
 
         menu.innerHTML = `
-            <div class="px-3 py-1.5 text-[10px] font-mono ${headerText} ${dividerColor} border-b uppercase tracking-widest mb-1">
+            <div class="px-3 py-1.5 text-[10px] font-mono ${headerText} ${dividerColor} border-b tracking-widest mb-1">
                 Connection Options
             </div>
             <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-conn-connect">
@@ -652,7 +652,7 @@ export function ObjectExplorer() {
         const hoverClass = isLight ? 'hover:bg-gray-50 text-gray-700' : (isDawn ? 'hover:bg-[#faf4ed] text-[#575279]' : 'hover:bg-white/5 text-gray-300 hover:text-white');
 
         menu.innerHTML = `
-            <div class="px-3 py-1.5 text-[10px] font-mono ${headerText} ${dividerColor} border-b uppercase tracking-widest mb-1">
+            <div class="px-3 py-1.5 text-[10px] font-mono ${headerText} ${dividerColor} border-b tracking-widest mb-1">
                 <span class="${isDawn ? 'text-[#3e8fb0]' : 'text-blue-400'}">VIEW</span> ${dbName}.${viewName}
             </div>
             <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-view-source">
@@ -707,7 +707,7 @@ export function ObjectExplorer() {
         const hoverClass = isLight ? 'hover:bg-gray-50 text-gray-700' : (isDawn ? 'hover:bg-[#faf4ed] text-[#575279]' : 'hover:bg-white/5 text-gray-300 hover:text-white');
 
         menu.innerHTML = `
-            <div class="px-3 py-1.5 text-[10px] font-mono ${headerText} ${dividerColor} border-b uppercase tracking-widest mb-1">
+            <div class="px-3 py-1.5 text-[10px] font-mono ${headerText} ${dividerColor} border-b tracking-widest mb-1">
                 ${dbName}
             </div>
             <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-db-properties">
@@ -803,7 +803,7 @@ export function ObjectExplorer() {
         const hoverClass = isLight ? 'hover:bg-gray-50 text-gray-700' : (isDawn ? 'hover:bg-[#faf4ed] text-[#575279]' : 'hover:bg-white/5 text-gray-300 hover:text-white');
 
         menu.innerHTML = `
-            <div class="px-3 py-1.5 text-[10px] font-mono ${headerText} ${dividerColor} border-b uppercase tracking-widest mb-1">
+            <div class="px-3 py-1.5 text-[10px] font-mono ${headerText} ${dividerColor} border-b tracking-widest mb-1">
                 ${dbName}.${tableName}
             </div>
             <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-refresh">

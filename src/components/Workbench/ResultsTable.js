@@ -34,7 +34,7 @@ export function ResultsTable() {
                             <span class="material-symbols-outlined text-lg ${iconColor}">table_chart</span>
                         </div>
                         <div class="flex flex-col">
-                            <h2 class="text-[10px] font-black uppercase tracking-[0.15em] ${textColor}">Result Set</h2>
+                            <h2 class="text-[10px] font-black tracking-[0.15em] ${textColor}">Result Set</h2>
                             <span id="row-count-badge" class="text-[9px] font-semibold ${isLight ? 'text-mysql-teal' : (isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal/90')}">0 rows</span>
                         </div>
                     </div>
@@ -48,14 +48,14 @@ export function ResultsTable() {
                     <!-- Pending Changes -->
                     <div id="pending-indicator" class="flex items-center gap-2 px-3 py-1.5 ${isLight ? 'bg-yellow-50 border-yellow-200' : (isDawn ? 'bg-[#f6c177]/10 border-[#f6c177]/20' : 'bg-yellow-500/10 border-yellow-500/20')} border rounded-lg transition-all duration-200 overflow-hidden max-w-0 opacity-0 pointer-events-none">
                         <span class="px-2 py-0.5 rounded-md ${isDawn ? 'bg-[#f6c177]/20 text-[#ea9d34]' : 'bg-yellow-500/20 text-yellow-700 dark:text-yellow-400'} text-[9px] font-bold whitespace-nowrap">
-                            <span id="pending-count">0</span> CHANGES
+                            <span id="pending-count">0</span> changes
                         </span>
                         <div class="flex items-center gap-1">
-                            <button id="commit-btn" class="flex items-center gap-1.5 px-2.5 py-1 ${isDawn ? 'bg-[#9ccfd8]/10 hover:bg-[#9ccfd8]/20 border border-[#9ccfd8]/30 text-[#56949f]' : 'bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 text-green-600 dark:text-green-400'} text-[10px] font-bold uppercase tracking-wider rounded-md transition-all whitespace-nowrap" title="Commit changes">
+                            <button id="commit-btn" class="flex items-center gap-1.5 px-2.5 py-1 ${isDawn ? 'bg-[#9ccfd8]/10 hover:bg-[#9ccfd8]/20 border border-[#9ccfd8]/30 text-[#56949f]' : 'bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 text-green-600 dark:text-green-400'} text-[10px] font-bold tracking-wider rounded-md transition-all whitespace-nowrap" title="Commit changes">
                                 <span class="material-symbols-outlined text-sm">check</span>
                                 <span>Commit</span>
                             </button>
-                            <button id="discard-btn" class="flex items-center gap-1.5 px-2.5 py-1 ${isDawn ? 'bg-[#eb6f92]/10 hover:bg-[#eb6f92]/20 border border-[#eb6f92]/30 text-[#eb6f92]' : 'bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-600 dark:text-red-400'} text-[10px] font-bold uppercase tracking-wider rounded-md transition-all whitespace-nowrap" title="Discard changes">
+                            <button id="discard-btn" class="flex items-center gap-1.5 px-2.5 py-1 ${isDawn ? 'bg-[#eb6f92]/10 hover:bg-[#eb6f92]/20 border border-[#eb6f92]/30 text-[#eb6f92]' : 'bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-600 dark:text-red-400'} text-[10px] font-bold tracking-wider rounded-md transition-all whitespace-nowrap" title="Discard changes">
                                 <span class="material-symbols-outlined text-sm">close</span>
                                 <span>Discard</span>
                             </button>
@@ -63,7 +63,7 @@ export function ResultsTable() {
                     </div>
                     
                     <!-- Insert Row Button -->
-                    <button id="insert-row-btn" class="flex items-center gap-1.5 px-3 py-1.5 ${isDawn ? 'bg-[#9ccfd8]/10 hover:bg-[#9ccfd8]/20 border border-[#9ccfd8]/30 text-[#56949f]' : 'bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-600 dark:text-cyan-400'} border text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all shadow-sm whitespace-nowrap max-w-0 overflow-hidden opacity-0 pointer-events-none" title="Insert new row">
+                    <button id="insert-row-btn" class="flex items-center gap-1.5 px-3 py-1.5 ${isDawn ? 'bg-[#9ccfd8]/10 hover:bg-[#9ccfd8]/20 border border-[#9ccfd8]/30 text-[#56949f]' : 'bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-600 dark:text-cyan-400'} border text-[10px] font-bold tracking-wider rounded-lg transition-all shadow-sm whitespace-nowrap max-w-0 overflow-hidden opacity-0 pointer-events-none" title="Insert new row">
                         <span class="material-symbols-outlined text-sm">add</span>
                         <span>Insert Row</span>
                     </button>
@@ -79,7 +79,7 @@ export function ResultsTable() {
                                 <span class="material-symbols-outlined text-lg">view_column</span>
                             </button>
                             <div id="column-menu" class="hidden absolute right-0 top-full mt-1.5 ${isLight ? 'bg-white border-gray-200 shadow-xl' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-xl' : (isOceanic ? 'bg-ocean-panel border-ocean-border shadow-2xl' : 'bg-[#1a1d23] border-white/10 shadow-2xl'))} border rounded-lg py-2 z-50 min-w-[200px] max-h-[320px] overflow-y-auto custom-scrollbar">
-                                <div class="px-3 py-2 text-[9px] font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-500'))} border-b ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5'))} mb-1">Column Visibility</div>
+                                <div class="px-3 py-2 text-[9px] font-bold tracking-wider ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-500'))} border-b ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5'))} mb-1">Column Visibility</div>
                                 <div id="column-list"></div>
                             </div>
                         </div>
@@ -123,7 +123,7 @@ export function ResultsTable() {
             <div class="flex-1 overflow-auto custom-scrollbar ${isLight ? 'bg-white' : (isDawn ? 'bg-[#faf4ed]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0f1115]'))}">
                 <table id="results-table" class="w-full text-left font-mono text-[11px] border-collapse">
                     <thead class="sticky top-0 ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel' : 'bg-[#16191e]'))} z-10 transition-colors">
-                        <tr class="text-gray-500 uppercase tracking-tighter">
+                        <tr class="text-gray-500 tracking-tighter">
                              <!-- Columns will be injected here -->
                         </tr>
                     </thead>
@@ -147,7 +147,7 @@ export function ResultsTable() {
                             <span class="material-symbols-outlined text-lg ${isDawn ? 'text-[#ea9d34]' : 'text-cyan-500'}">check_circle</span>
                         </div>
                         <div class="flex flex-col">
-                            <span class="text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-cyan-700' : (isDawn ? 'text-[#ea9d34]' : 'text-cyan-400')}"><span id="selection-count-bottom">0</span> Row(s) Selected</span>
+                            <span class="text-[10px] font-bold tracking-wider ${isLight ? 'text-cyan-700' : (isDawn ? 'text-[#ea9d34]' : 'text-cyan-400')}"><span id="selection-count-bottom">0</span> Row(s) Selected</span>
                             <span class="text-[9px] ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Choose an action below</span>
                         </div>
                     </div>
