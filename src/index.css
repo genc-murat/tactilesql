@@ -35,6 +35,16 @@
         --accent-color: #88C0D0;
     }
 
+    html.dawn {
+        --bg-primary: #faf4ed;
+        --bg-secondary: #fffaf3;
+        --bg-tertiary: #f2e9e1;
+        --text-primary: #575279;
+        --text-secondary: #797593;
+        --border-color: #dfdad9;
+        --accent-color: #ea9d34;
+    }
+
     html.dark,
     html:not(.light) {
         --bg-primary: #0a0c10;
@@ -58,6 +68,11 @@
         border-bottom: 1px solid rgba(0, 0, 0, 0.08);
     }
 
+    .dawn .glass-header {
+        background: rgba(255, 250, 243, 0.9);
+        border-bottom: 1px solid rgba(87, 82, 121, 0.08);
+    }
+
     .tactile-card {
         background: linear-gradient(145deg, #16191e, #111418);
         border: 1px solid rgba(255, 255, 255, 0.03);
@@ -70,6 +85,12 @@
         border: 1px solid #e5e7eb;
         box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1),
             0 1px 2px -1px rgba(0, 0, 0, 0.1);
+    }
+
+    .dawn .tactile-card {
+        background: #fffaf3;
+        border: 1px solid #f2e9e1;
+        box-shadow: 0 4px 8px rgba(87, 82, 121, 0.05);
     }
 
     .oceanic .tactile-card {
@@ -87,6 +108,11 @@
     .light .tactile-card-inset {
         background: #f3f4f6;
         box-shadow: inset 1px 1px 2px rgba(0, 0, 0, 0.05);
+    }
+
+    .dawn .tactile-card-inset {
+        background: #f2e9e1;
+        box-shadow: inset 1px 1px 2px rgba(87, 82, 121, 0.05);
     }
 
     .oceanic .tactile-card-inset {
@@ -137,6 +163,10 @@
         background: rgba(0, 0, 0, 0.2);
     }
 
+    .dawn .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: rgba(87, 82, 121, 0.2);
+    }
+
     /* Workbench Utilities */
     .neu-inset {
         box-shadow: inset 4px 4px 10px rgba(0, 0, 0, 0.5),
@@ -145,6 +175,11 @@
 
     .light .neu-inset {
         box-shadow: inset 1px 1px 3px rgba(0, 0, 0, 0.08);
+    }
+
+    .dawn .neu-inset {
+        box-shadow: inset 2px 2px 5px rgba(87, 82, 121, 0.1),
+            inset -1px -1px 2px rgba(255, 255, 255, 0.8);
     }
 
     .neu-flat {
@@ -158,6 +193,12 @@
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     }
 
+    .dawn .neu-flat {
+        background: #fffaf3;
+        box-shadow: 4px 4px 10px rgba(87, 82, 121, 0.05),
+            -2px -2px 5px rgba(255, 255, 255, 0.8);
+    }
+
     .neu-card {
         background: #16191e;
         border: 1px solid rgba(255, 255, 255, 0.05);
@@ -168,6 +209,12 @@
         background: #ffffff;
         border: 1px solid #e5e7eb;
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .dawn .neu-card {
+        background: #fffaf3;
+        border: 1px solid #f2e9e1;
+        box-shadow: 6px 6px 12px rgba(87, 82, 121, 0.08);
     }
 
     .glow-cyan {
@@ -201,6 +248,38 @@
     /* Connection Manager Utilities */
     .tactile-input {
         @apply bg-[#0d0f12] border border-white/10 rounded-xl text-sm font-mono focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all neu-inset px-4 py-3.5 outline-none text-gray-200 placeholder:text-gray-600;
+    }
+
+    .light .tactile-input {
+        @apply bg-white border-gray-200 text-gray-800 placeholder:text-gray-400;
+    }
+
+    .dawn .tactile-input {
+        @apply bg-[#faf4ed] border-[#f2e9e1] text-[#575279] placeholder:text-[#9893a5];
+    }
+
+    .oceanic .tactile-input {
+        @apply bg-ocean-bg border-ocean-border/50 text-ocean-text placeholder:text-ocean-text/40;
+    }
+
+    .tactile-select {
+        @apply tactile-input appearance-none pr-10 cursor-pointer;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='rgba(156, 163, 175, 0.5)'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 1rem center;
+        background-size: 1.25rem;
+    }
+
+    .light .tactile-select {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='rgba(75, 85, 99, 0.5)'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+    }
+
+    .dawn .tactile-select {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23ea9d34'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+    }
+
+    .oceanic .tactile-select {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='rgba(136, 192, 208, 0.5)'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
     }
 
     .gloss-btn-cyan {
@@ -302,6 +381,36 @@
 
     .oceanic .syntax-operator {
         color: #81A1C1;
+    }
+
+    /* Dawn Syntax Highlighting */
+    .dawn .syntax-keyword {
+        color: #286983;
+        font-weight: 600;
+    }
+
+    .dawn .syntax-string {
+        color: #d7827e;
+    }
+
+    .dawn .syntax-function {
+        color: #56949f;
+    }
+
+    .dawn .syntax-operator {
+        color: #907aa9;
+    }
+
+    .dawn .sql-keyword {
+        color: #286983;
+    }
+
+    .dawn .sql-string {
+        color: #d7827e;
+    }
+
+    .dawn .sql-function {
+        color: #56949f;
     }
 
     /* Animations */

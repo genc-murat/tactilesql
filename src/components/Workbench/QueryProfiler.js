@@ -16,15 +16,18 @@ let statusAfter = {};
 export function QueryProfiler() {
     let theme = ThemeManager.getCurrentTheme();
     let isLight = theme === 'light';
+    let isDawn = theme === 'dawn';
     let isOceanic = theme === 'oceanic';
 
     const container = document.createElement('div');
     // Compact width (w-96 to w-[500px] for locks view), glassmorphism
     container.className = `query-profiler hidden fixed bottom-4 right-4 w-[500px] max-h-[600px] overflow-hidden rounded-2xl shadow-2xl border z-50 transition-all duration-300 backdrop-blur-xl ${isLight
         ? 'bg-white/95 border-gray-200'
-        : (isOceanic
-            ? 'bg-ocean-panel/95 border-ocean-border'
-            : 'bg-[#1a1d23]/95 border-white/10')
+        : (isDawn
+            ? 'bg-[#faf4ed]/95 border-[#f2e9e1]'
+            : (isOceanic
+                ? 'bg-ocean-panel/95 border-ocean-border'
+                : 'bg-[#1a1d23]/95 border-white/10'))
         }`;
 
     const formatBytes = (bytes) => {
@@ -168,13 +171,13 @@ export function QueryProfiler() {
     };
 
     const renderHeader = () => {
-        const labelColor = isLight ? 'text-gray-500' : 'text-gray-400';
-        const activeColor = isLight ? 'text-mysql-teal bg-mysql-teal/10' : 'text-mysql-teal bg-mysql-teal/20';
-        const inactiveColor = isLight ? 'text-gray-400 hover:text-gray-600' : 'text-gray-500 hover:text-gray-300';
-        const dangerActiveColor = isLight ? 'text-red-500 bg-red-50' : 'text-red-400 bg-red-900/20';
+        const labelColor = (isLight || isDawn) ? 'text-gray-500' : 'text-gray-400';
+        const activeColor = (isLight || isDawn) ? 'text-mysql-teal bg-mysql-teal/10' : 'text-mysql-teal bg-mysql-teal/20';
+        const inactiveColor = (isLight || isDawn) ? 'text-gray-400 hover:text-gray-600' : 'text-gray-500 hover:text-gray-300';
+        const dangerActiveColor = (isLight || isDawn) ? 'text-red-500 bg-red-50' : 'text-red-400 bg-red-900/20';
 
         return `
-            <div class="flex items-center justify-between px-3 py-2 border-b ${isLight ? 'border-gray-200/50' : 'border-white/5'}">
+            <div class="flex items-center justify-between px-3 py-2 border-b ${isLight ? 'border-gray-200/50' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
                 <div class="flex items-center gap-1">
                     <button id="tab-profile" class="px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest transition-colors ${activeTab === 'profile' ? activeColor : inactiveColor}">
                         Profile
@@ -186,8 +189,9 @@ export function QueryProfiler() {
                         <span class="material-symbols-outlined text-[12px]">lock</span> Locks
                     </button>
                 </div>
+                </div>
                 <button id="close-profiler" class="p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
-                    <span class="material-symbols-outlined text-[14px] ${isLight ? 'text-gray-400' : 'text-gray-500'}">close</span>
+                    <span class="material-symbols-outlined text-[14px] ${(isLight || isDawn) ? 'text-gray-400' : 'text-gray-500'}">close</span>
                 </button>
             </div>
         `;
@@ -199,7 +203,7 @@ export function QueryProfiler() {
 
         if (!profileData) {
             contentDiv.innerHTML = `
-                <div class="h-64 flex flex-col items-center justify-center text-center ${isLight ? 'text-gray-400' : 'text-gray-500'}">
+                <div class="h-64 flex flex-col items-center justify-center text-center ${(isLight || isDawn) ? 'text-gray-400' : 'text-gray-500'}">
                     <span class="material-symbols-outlined text-3xl opacity-50 mb-2">query_stats</span>
                     <span class="text-xs font-medium uppercase tracking-wider">Execute a query to see stats</span>
                 </div>
@@ -235,9 +239,9 @@ export function QueryProfiler() {
         const scoreBg = score >= 80 ? 'bg-green-500/10' : (score >= 50 ? 'bg-yellow-500/10' : 'bg-red-500/10');
         const scoreBorder = score >= 80 ? 'border-green-500/20' : (score >= 50 ? 'border-yellow-500/20' : 'border-red-500/20');
 
-        const labelColor = isLight ? 'text-gray-500' : 'text-gray-400';
-        const valueColor = isLight ? 'text-gray-800' : 'text-gray-200';
-        const gridBg = isLight ? 'bg-gray-50/80' : 'bg-white/5';
+        const labelColor = (isLight || isDawn) ? 'text-gray-500' : 'text-gray-400';
+        const valueColor = isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-200');
+        const gridBg = isLight ? 'bg-gray-50/80' : (isDawn ? 'bg-[#fffaf3]/80' : 'bg-white/5');
 
         // Check for issues to auto-expand details
         const hasIssues = tmpDiskTables > 0 || selectFullJoin > 0 || sortMerge > 0 || selectScan > 0;
@@ -261,14 +265,14 @@ export function QueryProfiler() {
 
             <!-- Primary Metrics Grid (Compact 2x2) -->
             <div class="grid grid-cols-2 gap-2 mb-3">
-                <div class="p-2 rounded-lg ${gridBg} border ${isLight ? 'border-transparent' : 'border-white/5'}">
+                <div class="p-2 rounded-lg ${gridBg} border ${isLight ? 'border-transparent' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
                     <div class="text-[9px] uppercase tracking-wider ${labelColor} mb-0.5">Rows</div>
                     <div class="flex items-baseline justify-between">
                         <span class="text-xs font-bold ${valueColor}">${formatNumber(rowsReturned)}</span>
                         <span class="text-[9px] opacity-60">sw</span>
                     </div>
                 </div>
-                <div class="p-2 rounded-lg ${gridBg} border ${isLight ? 'border-transparent' : 'border-white/5'}">
+                <div class="p-2 rounded-lg ${gridBg} border ${isLight ? 'border-transparent' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
                     <div class="text-[9px] uppercase tracking-wider ${labelColor} mb-0.5">Examined</div>
                     <div class="flex items-baseline justify-between">
                         <span class="text-xs font-bold ${rowsExamined > rowsReturned * 10 ? 'text-yellow-500' : valueColor}">${formatNumber(rowsExamined)}</span>
@@ -301,35 +305,35 @@ export function QueryProfiler() {
                 <div class="mt-2 space-y-1 text-[10px] pl-1">
                     <div class="grid grid-cols-2 gap-x-4 gap-y-1">
                         <!-- Left Column -->
-                        <div class="flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
+                        <div class="flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
                             <span class="${labelColor}">Tmp Disk</span>
                             <span class="font-mono ${tmpDiskTables > 0 ? 'text-red-400 font-bold' : valueColor}">${tmpDiskTables}</span>
                         </div>
-                        <div class="flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
+                        <div class="flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
                             <span class="${labelColor}">Tmp Mem</span>
                             <span class="font-mono ${valueColor}">${tmpTables}</span>
                         </div>
                         
                         <!-- Right Column -->
-                        <div class="flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
+                        <div class="flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
                             <span class="${labelColor}">Sort Merge</span>
                             <span class="font-mono ${sortMerge > 0 ? 'text-yellow-400' : valueColor}">${sortMerge}</span>
                         </div>
-                        <div class="flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
+                        <div class="flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
                             <span class="${labelColor}">Sort Rows</span>
                             <span class="font-mono ${valueColor}">${formatNumber(sortRows)}</span>
                         </div>
 
                             <!-- Full Width Scans -->
-                        <div class="col-span-2 flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
+                        <div class="col-span-2 flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
                             <span class="${labelColor}">Full Join Scans</span>
                             <span class="font-mono ${selectFullJoin > 0 ? 'text-red-400 font-bold' : valueColor}">${selectFullJoin}</span>
                         </div>
-                        <div class="col-span-2 flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
+                        <div class="col-span-2 flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
                             <span class="${labelColor}">Full Table Scans</span>
                             <span class="font-mono ${selectScan > 0 ? 'text-yellow-400' : valueColor}">${selectScan}</span>
                         </div>
-                            <div class="col-span-2 flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
+                            <div class="col-span-2 flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
                             <span class="${labelColor}">Lock Wait</span>
                             <span class="font-mono ${lockTime > 0 ? 'text-red-400' : valueColor}">${lockTime}</span>
                         </div>
@@ -343,14 +347,14 @@ export function QueryProfiler() {
         const contentDiv = container.querySelector('#profiler-content');
         if (!contentDiv) return;
 
-        const labelColor = isLight ? 'text-gray-500' : 'text-gray-400';
-        const valueColor = isLight ? 'text-gray-800' : 'text-gray-200';
-        const hoverBg = isLight ? 'hover:bg-gray-50' : 'hover:bg-white/5';
-        const borderColor = isLight ? 'border-gray-100' : 'border-white/5';
+        const labelColor = (isLight || isDawn) ? 'text-gray-500' : 'text-gray-400';
+        const valueColor = isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-200');
+        const hoverBg = isLight ? 'hover:bg-gray-50' : (isDawn ? 'hover:bg-[#fffaf3]' : 'hover:bg-white/5');
+        const borderColor = isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5');
 
         if (monitorData.length === 0) {
             contentDiv.innerHTML = `
-                <div class="h-64 flex flex-col items-center justify-center text-center ${isLight ? 'text-gray-400' : 'text-gray-500'}">
+                <div class="h-64 flex flex-col items-center justify-center text-center ${(isLight || isDawn) ? 'text-gray-400' : 'text-gray-500'}">
                     <span class="material-symbols-outlined text-3xl opacity-50 mb-2">speed</span>
                     <span class="text-xs font-medium uppercase tracking-wider">No active processes</span>
                 </div>
@@ -364,7 +368,7 @@ export function QueryProfiler() {
         const listHtml = monitorData.map(p => {
             const isLocked = p.state && p.state.includes('Locked');
             const isLongRunning = p.time > 10; // >10 seconds
-            const rowClass = isLocked ? (isLight ? 'bg-red-50' : 'bg-red-900/20') : (isLongRunning ? (isLight ? 'bg-yellow-50' : 'bg-yellow-900/10') : '');
+            const rowClass = isLocked ? ((isLight || isDawn) ? 'bg-red-50' : 'bg-red-900/20') : (isLongRunning ? ((isLight || isDawn) ? 'bg-yellow-50' : 'bg-yellow-900/10') : '');
 
             return `
                 <div class="flex items-center gap-2 p-2 rounded border-b ${borderColor} ${rowClass} ${hoverBg} group relative">
@@ -413,13 +417,13 @@ export function QueryProfiler() {
         const contentDiv = container.querySelector('#profiler-content');
         if (!contentDiv) return;
 
-        const labelColor = isLight ? 'text-gray-500' : 'text-gray-400';
-        const valueColor = isLight ? 'text-gray-800' : 'text-gray-200';
-        const borderColor = isLight ? 'border-gray-100' : 'border-white/5';
+        const labelColor = (isLight || isDawn) ? 'text-gray-500' : 'text-gray-400';
+        const valueColor = isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-200');
+        const borderColor = isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5');
 
         if (locksData.length === 0) {
             contentDiv.innerHTML = `
-                <div class="h-64 flex flex-col items-center justify-center text-center ${isLight ? 'text-gray-400' : 'text-gray-500'}">
+                <div class="h-64 flex flex-col items-center justify-center text-center ${(isLight || isDawn) ? 'text-gray-400' : 'text-gray-500'}">
                     <span class="material-symbols-outlined text-3xl opacity-50 mb-2">check_circle</span>
                     <span class="text-xs font-medium uppercase tracking-wider">No active InnoDb locks</span>
                 </div>
@@ -429,7 +433,7 @@ export function QueryProfiler() {
 
         // We use a card layout for locks because there's a lot of info per item
         const listHtml = locksData.map(l => `
-            <div class="mb-3 p-3 rounded-lg border ${borderColor} ${isLight ? 'bg-gray-50' : 'bg-white/5'}">
+            <div class="mb-3 p-3 rounded-lg border ${borderColor} ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : 'bg-white/5')}">
                 
                 <!-- Waiting Side -->
                 <div class="mb-2 pb-2 border-b ${borderColor}">
@@ -596,16 +600,19 @@ export function QueryProfiler() {
     window.addEventListener('tactilesql:toggle-profiler', toggle);
 
     // Theme change
-    window.addEventListener('tactilesql:theme-change', (e) => {
-        theme = e.detail;
+    window.addEventListener('themechange', (e) => {
+        theme = e.detail.theme;
         isLight = theme === 'light';
+        isDawn = theme === 'dawn';
         isOceanic = theme === 'oceanic';
         // Re-apply container classes
         container.className = `query-profiler ${isVisible ? '' : 'hidden'} fixed bottom-4 right-4 w-[500px] max-h-[600px] overflow-hidden rounded-2xl shadow-2xl border z-50 transition-all duration-300 backdrop-blur-xl ${isLight
             ? 'bg-white/95 border-gray-200'
-            : (isOceanic
-                ? 'bg-ocean-panel/95 border-ocean-border'
-                : 'bg-[#1a1d23]/95 border-white/10')
+            : (isDawn
+                ? 'bg-[#faf4ed]/95 border-[#f2e9e1]'
+                : (isOceanic
+                    ? 'bg-ocean-panel/95 border-ocean-border'
+                    : 'bg-[#1a1d23]/95 border-white/10'))
             }`;
         render();
     });

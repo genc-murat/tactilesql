@@ -6,11 +6,12 @@ import { highlightSQL, formatSQL } from '../utils/SqlHighlighter.js';
 export function SchemaDiff() {
     let theme = ThemeManager.getCurrentTheme();
     let isLight = theme === 'light';
+    let isDawn = theme === 'dawn';
     let isOceanic = theme === 'oceanic';
 
     const container = document.createElement('div');
     const updateContainerClass = () => {
-        container.className = `min-h-full flex flex-col transition-colors duration-200 font-sans ${isLight ? 'bg-gray-50 text-gray-800' : (isOceanic ? 'bg-ocean-bg text-ocean-text' : 'bg-base-dark text-gray-300')}`;
+        container.className = `min-h-full flex flex-col transition-colors duration-200 font-sans ${isLight ? 'bg-gray-50 text-gray-800' : (isDawn ? 'bg-[#fffaf3] text-[#575279]' : (isOceanic ? 'bg-ocean-bg text-ocean-text' : 'bg-base-dark text-gray-300'))}`;
     };
     updateContainerClass();
 
@@ -208,6 +209,11 @@ export function SchemaDiff() {
             if (type === 'drop') return 'text-red-600';
             return 'text-amber-600';
         }
+        if (isDawn) {
+            if (type === 'create') return 'text-[#286983]'; // Pine
+            if (type === 'drop') return 'text-[#b4637a]'; // Love
+            return 'text-[#ea9d34]'; // Gold
+        }
         if (isOceanic) {
             if (type === 'create') return 'text-ocean-mint';
             if (type === 'drop') return 'text-red-400';
@@ -252,6 +258,22 @@ export function SchemaDiff() {
             iconPrimary: 'bg-ocean-frost/20 text-ocean-frost',
             buttonPrimary: 'bg-[#5E81AC] hover:bg-[#81A1C1] text-white shadow-lg'
         };
+        if (isDawn) return {
+            panel: 'bg-[#fffaf3] border-[#f2e9e1]',
+            border: 'border-[#f2e9e1]',
+            headerBg: 'bg-[#fffaf3]',
+            sectionBg: 'bg-[#fffaf3]',
+            textMain: 'text-[#575279]',
+            textMuted: 'text-[#9893a5]',
+            selectBg: 'bg-[#faf4ed]',
+            card: 'bg-[#fffaf3] border-[#f2e9e1] hover:border-[#ea9d34]/50',
+            itemHover: 'hover:bg-[#ea9d34]/5',
+            codeBg: 'bg-[#faf4ed]',
+            codeText: 'text-[#575279]',
+            badgeNeutral: 'bg-[#f2e9e1] text-[#797593]',
+            iconPrimary: 'bg-[#ea9d34]/20 text-[#ea9d34]',
+            buttonPrimary: 'bg-[#ea9d34] hover:bg-[#d7827e] text-[#fffaf3] shadow-[0_2px_10px_rgba(234,157,52,0.2)]'
+        };
         // Dark (Default)
         return {
             panel: 'bg-panel-dark border-white/5',
@@ -280,8 +302,8 @@ export function SchemaDiff() {
                 
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-3">
-                        <div class="p-1.5 rounded-lg ${isLight || isOceanic ? themeClasses.iconPrimary : 'bg-mysql-teal/10 border border-mysql-teal/20'}">
-                            <span class="material-symbols-outlined text-xl ${isLight ? 'text-white' : (isOceanic ? '' : 'text-mysql-teal')}">compare_arrows</span>
+                        <div class="p-1.5 rounded-lg ${isLight || isOceanic || isDawn ? themeClasses.iconPrimary : 'bg-mysql-teal/10 border border-mysql-teal/20'}">
+                            <span class="material-symbols-outlined text-xl ${isLight ? 'text-white' : (isDawn ? 'text-[#ea9d34]' : (isOceanic ? '' : 'text-mysql-teal'))}">compare_arrows</span>
                         </div>
                         <div>
                             <h1 class="font-bold text-base leading-tight ${themeClasses.textMain}">Schema Diff</h1>
@@ -290,10 +312,10 @@ export function SchemaDiff() {
                     
                      <!-- Mode Toggle -->
                      <div class="flex items-center gap-1 bg-black/5 dark:bg-white/5 p-0.5 rounded-md">
-                        <button id="mode-full" class="px-2.5 py-1 text-[11px] font-bold rounded transition-all ${comparisonMode === 'full' ? (isLight ? 'bg-white shadow text-indigo-600' : 'bg-mysql-teal text-black') : themeClasses.textMuted}">
+                        <button id="mode-full" class="px-2.5 py-1 text-[11px] font-bold rounded transition-all ${comparisonMode === 'full' ? (isLight ? 'bg-white shadow text-indigo-600' : (isDawn ? 'bg-white shadow text-[#ea9d34]' : 'bg-mysql-teal text-black')) : themeClasses.textMuted}">
                             Full DB
                         </button>
-                        <button id="mode-table" class="px-2.5 py-1 text-[11px] font-bold rounded transition-all ${comparisonMode === 'table' ? (isLight ? 'bg-white shadow text-indigo-600' : 'bg-mysql-teal text-black') : themeClasses.textMuted}">
+                        <button id="mode-table" class="px-2.5 py-1 text-[11px] font-bold rounded transition-all ${comparisonMode === 'table' ? (isLight ? 'bg-white shadow text-indigo-600' : (isDawn ? 'bg-white shadow text-[#ea9d34]' : 'bg-mysql-teal text-black')) : themeClasses.textMuted}">
                             Single Table
                         </button>
                     </div>
@@ -308,9 +330,9 @@ export function SchemaDiff() {
                 <div class="flex items-center gap-4 pb-1">
                      <!-- Source Group -->
                     <div class="flex items-center gap-2">
-                        <span class="text-[10px] bg-red-500/10 text-red-500 px-1.5 py-0.5 rounded font-bold uppercase">Source</span>
+                        <span class="text-[10px] ${isDawn ? 'bg-[#eb6f92]/10 text-[#eb6f92]' : 'bg-red-500/10 text-red-500'} px-1.5 py-0.5 rounded font-bold uppercase">Source</span>
                         <div class="relative">
-                            <select id="source-db-select" class="${themeClasses.selectBg} ${themeClasses.textMain} border-none rounded py-1 pl-2 pr-6 text-xs w-36 appearance-none outline-none cursor-pointer hover:bg-opacity-80 transition-colors">
+                            <select id="source-db-select" class="tactile-select !rounded !py-1 !pl-2 !pr-8 text-xs w-36 !outline-none transition-colors">
                                 <option value="" disabled ${!sourceDb ? 'selected' : ''}>Select Source</option>
                                 ${databases.map(db => `<option value="${db}" ${sourceDb === db ? 'selected' : ''}>${db}</option>`).join('')}
                             </select>
@@ -318,7 +340,7 @@ export function SchemaDiff() {
                         ${comparisonMode === 'table' ? `
                            <span class="text-slate-400 text-xs">/</span>
                             <div class="relative">
-                                 <select id="source-table-select" class="${themeClasses.selectBg} ${themeClasses.textMain} border-none rounded py-1 pl-2 pr-6 text-xs w-36 appearance-none outline-none cursor-pointer hover:bg-opacity-80 transition-colors">
+                                 <select id="source-table-select" class="tactile-select !rounded !py-1 !pl-2 !pr-8 text-xs w-36 !outline-none transition-colors">
                                     <option value="" disabled ${!selectedSourceTable ? 'selected' : ''}>Table</option>
                                     ${sourceTablesList.map(t => `<option value="${t}" ${selectedSourceTable === t ? 'selected' : ''}>${t}</option>`).join('')}
                                 </select>
@@ -330,9 +352,9 @@ export function SchemaDiff() {
                     
                     <!-- Target Group -->
                     <div class="flex items-center gap-2">
-                        <span class="text-[10px] bg-emerald-500/10 text-emerald-500 px-1.5 py-0.5 rounded font-bold uppercase">Target</span>
+                        <span class="text-[10px] ${isDawn ? 'bg-[#286983]/10 text-[#286983]' : 'bg-emerald-500/10 text-emerald-500'} px-1.5 py-0.5 rounded font-bold uppercase">Target</span>
                         <div class="relative">
-                            <select id="target-db-select" class="${themeClasses.selectBg} ${themeClasses.textMain} border-none rounded py-1 pl-2 pr-6 text-xs w-36 appearance-none outline-none cursor-pointer hover:bg-opacity-80 transition-colors">
+                            <select id="target-db-select" class="tactile-select !rounded !py-1 !pl-2 !pr-8 text-xs w-36 !outline-none transition-colors">
                                 <option value="" disabled ${!targetDb ? 'selected' : ''}>Select Target</option>
                                 ${databases.map(db => `<option value="${db}" ${targetDb === db ? 'selected' : ''}>${db}</option>`).join('')}
                             </select>
@@ -340,7 +362,7 @@ export function SchemaDiff() {
                          ${comparisonMode === 'table' ? `
                            <span class="text-slate-400 text-xs">/</span>
                             <div class="relative">
-                                 <select id="target-table-select" class="${themeClasses.selectBg} ${themeClasses.textMain} border-none rounded py-1 pl-2 pr-6 text-xs w-36 appearance-none outline-none cursor-pointer hover:bg-opacity-80 transition-colors">
+                                 <select id="target-table-select" class="tactile-select !rounded !py-1 !pl-2 !pr-8 text-xs w-36 !outline-none transition-colors">
                                     <option value="" disabled ${!selectedTargetTable ? 'selected' : ''}>Table</option>
                                     ${targetTablesList.map(t => `<option value="${t}" ${selectedTargetTable === t ? 'selected' : ''}>${t}</option>`).join('')}
                                 </select>
@@ -354,7 +376,7 @@ export function SchemaDiff() {
             <main class="flex-1 flex overflow-hidden">
                 <!-- Compact Sidebar: Diff List -->
                 <aside class="w-[350px] border-r ${themeClasses.border} flex flex-col ${themeClasses.panel}">
-                    <div class="px-4 py-3 border-b ${themeClasses.border} flex items-center justify-between ${isLight ? 'bg-gray-50/50' : 'bg-black/10'}">
+                    <div class="px-4 py-3 border-b ${themeClasses.border} flex items-center justify-between ${isLight ? 'bg-gray-50/50' : (isDawn ? 'bg-[#faf4ed]/50' : 'bg-black/10')}">
                         <h2 class="font-bold text-xs tracking-wide ${themeClasses.textMuted}">DIFFERENCES (${counts.total})</h2>
                         <div class="flex items-center gap-2 text-[10px]">
                             <span class="font-bold ${themeClasses.textMuted} opacity-80">
@@ -377,16 +399,16 @@ export function SchemaDiff() {
                                 <p class="text-xs ${themeClasses.textMuted}">Ready to compare</p>
                             </div>
                         ` : diffResults.length === 0 ? `
-                             <div class="flex flex-col items-center justify-center h-32 text-emerald-500 mt-10">
+                             <div class="flex flex-col items-center justify-center h-32 ${isDawn ? 'text-[#286983]' : 'text-emerald-500'} mt-10">
                                 <span class="material-symbols-outlined text-4xl mb-2">check_circle</span>
                                 <p class="font-bold text-sm">Fully Synced</p>
                             </div>
                         ` : `
                             <div class="divide-y ${themeClasses.border}">
                             ${diffResults.map(diff => `
-                                <div class="group px-4 py-2.5 ${themeClasses.itemHover} transition-colors cursor-pointer border-l-2 ${diff.type === 'create' ? 'border-l-emerald-500' :
-                diff.type === 'drop' ? 'border-l-red-500' :
-                    'border-l-amber-500'
+                                <div class="group px-4 py-2.5 ${themeClasses.itemHover} transition-colors cursor-pointer border-l-2 ${diff.type === 'create' ? (isDawn ? 'border-l-[#286983]' : 'border-l-emerald-500') :
+                diff.type === 'drop' ? (isDawn ? 'border-l-[#eb6f92]' : 'border-l-red-500') :
+                    (isDawn ? 'border-l-[#ea9d34]' : 'border-l-amber-500')
             }">
                                     <div class="flex items-start justify-between mb-1">
                                         <div class="flex items-center gap-2 min-w-0">
@@ -401,7 +423,7 @@ export function SchemaDiff() {
                                         <div class="mt-2 pl-6 space-y-1">
                                             ${diff.changes.map(c => `
                                                 <div class="flex items-center gap-1.5 text-[11px]">
-                                                    <span class="material-symbols-outlined text-[10px] ${c.type === 'add_col' ? 'text-emerald-500' : (c.type === 'drop_col' ? 'text-red-500' : 'text-amber-500')}">
+                                                    <span class="material-symbols-outlined text-[10px] ${c.type === 'add_col' ? (isDawn ? 'text-[#286983]' : 'text-emerald-500') : (c.type === 'drop_col' ? (isDawn ? 'text-[#eb6f92]' : 'text-red-500') : (isDawn ? 'text-[#ea9d34]' : 'text-amber-500'))}">
                                                         ${c.type === 'add_col' ? 'add' : (c.type === 'drop_col' ? 'remove' : 'edit')}
                                                     </span>
                                                     <span class="font-mono ${themeClasses.textMuted} text-[10px] truncate max-w-[120px]">${c.column}</span>
@@ -443,7 +465,7 @@ export function SchemaDiff() {
                         </div>
                         <div class="flex items-center gap-1.5">
                              ${sourceDb && targetDb ? `
-                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                <span class="w-1.5 h-1.5 rounded-full ${isDawn ? 'bg-[#286983]' : 'bg-emerald-500'} animate-pulse"></span>
                                 Connected
                              ` : `
                                 <span class="w-1.5 h-1.5 rounded-full bg-gray-500"></span>
@@ -504,6 +526,7 @@ export function SchemaDiff() {
     const onThemeChange = (e) => {
         theme = e.detail.theme;
         isLight = theme === 'light';
+        isDawn = theme === 'dawn';
         isOceanic = theme === 'oceanic';
         updateContainerClass();
         render();

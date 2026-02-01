@@ -9,8 +9,9 @@ export function ConnectionManager() {
     const container = document.createElement('div');
     const getContainerClass = (t) => {
         const isLight = t === 'light';
+        const isDawn = t === 'dawn';
         const isOceanic = t === 'oceanic';
-        return `flex-1 flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]')} selection:bg-mysql-cyan/30 transition-all duration-300`;
+        return `flex-1 flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]'))} selection:bg-mysql-cyan/30 transition-all duration-300`;
     };
     container.className = getContainerClass(theme);
 
@@ -64,6 +65,7 @@ export function ConnectionManager() {
 
     const renderGridView = () => {
         const isLight = theme === 'light';
+        const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic';
         const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
 
@@ -71,8 +73,8 @@ export function ConnectionManager() {
             <div class="w-full h-full flex flex-col px-6 py-4">
                 <header class="flex items-center justify-between mb-6 shrink-0">
                     <div>
-                        <h1 class="text-xl font-bold ${isLight ? 'text-gray-900' : 'text-white'} mb-1">Connections</h1>
-                        <p class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">Manage your database connections</p>
+                        <h1 class="text-xl font-bold ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} mb-1">Connections</h1>
+                        <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Manage your database connections</p>
                     </div>
                     <button id="create-btn" class="px-3 py-1.5 ${isLight ? 'bg-mysql-teal hover:bg-mysql-teal/90' : 'bg-mysql-teal/90 hover:bg-mysql-teal'} text-white text-xs font-medium rounded-lg flex items-center gap-1.5 transition-all">
                         <span class="material-symbols-outlined text-sm">add</span>
@@ -87,7 +89,7 @@ export function ConnectionManager() {
             const timeAgo = lastConnected ? formatTimeAgo(lastConnected) : 'Never';
 
             return `
-                        <div class="group relative p-4 rounded-xl border ${isActive ? 'border-green-500/50 bg-green-500/5' : (isLight ? 'border-gray-200 bg-white hover:border-mysql-teal/30' : (isOceanic ? 'border-ocean-border/50 bg-[#3B4252] hover:border-mysql-teal/30' : 'border-white/10 bg-[#13161b] hover:border-mysql-teal/30'))} transition-all duration-200 hover:shadow-lg cursor-pointer flex flex-col">
+                        <div class="group relative p-4 rounded-xl border ${isActive ? 'border-green-500/50 bg-green-500/5' : (isLight ? 'border-gray-200 bg-white hover:border-mysql-teal/30' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3] hover:border-[#ea9d34]/30' : (isOceanic ? 'border-ocean-border/50 bg-[#3B4252] hover:border-mysql-teal/30' : 'border-white/10 bg-[#13161b] hover:border-mysql-teal/30')))} transition-all duration-200 hover:shadow-lg cursor-pointer flex flex-col">
                             
                             ${isActive ? `
                                 <div class="absolute top-2 right-2 z-10">
@@ -202,9 +204,11 @@ export function ConnectionManager() {
         });
     };
 
-    const renderEditView = () => {        const isLight = theme === 'light';
+    const renderEditView = () => {
+        const isLight = theme === 'light';
+        const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic';
-                container.innerHTML = `
+        container.innerHTML = `
              <div class="w-full h-full flex flex-col px-4 py-2 overflow-y-auto custom-scrollbar">
                 <div class="max-w-2xl mx-auto w-full">
                 <button id="back-btn" class="self-start mb-2 flex items-center gap-1 ${isLight ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white'} transition-colors text-xs font-medium">
@@ -355,11 +359,11 @@ export function ConnectionManager() {
                     Dialog.alert('Please provide SSH host and username.', 'SSH Configuration');
                     return;
                 }
-                
+
                 testSSHBtn.disabled = true;
                 testSSHBtn.innerHTML = '<span class="material-symbols-outlined text-xs animate-spin">sync</span> Testing...';
                 sshTestStatus.textContent = '';
-                
+
                 try {
                     await invoke('test_ssh_connection', {
                         config: {
@@ -422,7 +426,7 @@ export function ConnectionManager() {
             Dialog.alert('Please provide a specific name for this connection.', 'Input Required');
             return false;
         }
-        
+
         try {
             const result = await invoke('save_connection', { config });
             await loadConnections();
@@ -490,14 +494,14 @@ export function ConnectionManager() {
     const handleConnect = async () => {
         // Check if connection needs to be saved
         const needsSave = !config.id || hasUnsavedChanges();
-        
+
         if (needsSave && config.name) {
             // Ask user if they want to save
             const shouldSave = await Dialog.confirm(
                 'Do you want to save this connection before connecting?',
                 'Save Connection?'
             );
-            
+
             if (shouldSave) {
                 const saved = await saveCurrentConnection();
                 if (!saved) {
@@ -518,10 +522,10 @@ export function ConnectionManager() {
                     config: { ...config, id: config.id || null }
                 });
                 localStorage.setItem('activeConnection', JSON.stringify(config));
-                
+
                 // Notify other components about connection change
                 window.dispatchEvent(new CustomEvent('tactilesql:connection-changed'));
-                
+
                 window.location.hash = '/workbench';
             } catch (err) {
                 Dialog.alert(`Connection failed: ${String(err).replace(/\n/g, '<br>')}`, 'Connection Error');
@@ -530,20 +534,20 @@ export function ConnectionManager() {
             }
         }
     };
-    
+
     // Helper to check if config has unsaved changes
     const hasUnsavedChanges = () => {
         if (!config.id) return true; // New connection
         const savedConn = connections.find(c => c.id === config.id);
         if (!savedConn) return true;
-        
+
         // Compare important fields
         return savedConn.name !== config.name ||
-               savedConn.host !== config.host ||
-               savedConn.port !== config.port ||
-               savedConn.username !== config.username ||
-               savedConn.password !== config.password ||
-               savedConn.database !== config.database;
+            savedConn.host !== config.host ||
+            savedConn.port !== config.port ||
+            savedConn.username !== config.username ||
+            savedConn.password !== config.password ||
+            savedConn.database !== config.database;
     };
 
     const verifyActiveConnection = async () => {

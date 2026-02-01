@@ -7,6 +7,7 @@ export function WorkbenchFooter() {
 
     const update = async () => {
         const isLight = theme === 'light';
+        const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic';
         const config = JSON.parse(localStorage.getItem('activeConnection') || 'null');
 
@@ -15,10 +16,10 @@ export function WorkbenchFooter() {
                 <div class="flex items-center gap-8 opacity-50">
                     <div class="flex items-center gap-2">
                         <div class="w-2 h-2 rounded-full bg-red-500"></div>
-                        <span class="${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-400')}">DISCONNECTED</span>
+                        <span class="${(isLight || isDawn) ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-400')}">DISCONNECTED</span>
                     </div>
                 </div>
-                <div class="px-3 py-0.5 rounded-full ${isLight ? 'bg-gray-100 text-gray-400 border-gray-200' : (isOceanic ? 'bg-ocean-bg text-ocean-text/40 border-ocean-border' : 'bg-gray-500/10 text-gray-500 border-gray-500/20')} font-bold border tracking-widest uppercase text-[9px]">
+                <div class="px-3 py-0.5 rounded-full ${isLight ? 'bg-gray-100 text-gray-400 border-gray-200' : (isDawn ? 'bg-[#fffaf3] text-gray-400 border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-bg text-ocean-text/40 border-ocean-border' : 'bg-gray-500/10 text-gray-500 border-gray-500/20'))} font-bold border tracking-widest uppercase text-[9px]">
                     OFFLINE
                 </div>
             `;
@@ -65,23 +66,23 @@ export function WorkbenchFooter() {
             <div class="flex items-center gap-8">
                 <div class="flex items-center gap-2">
                     <div class="w-2 h-2 rounded-full ${isOceanic ? 'bg-ocean-accent' : 'bg-cyan-400'} animate-pulse"></div>
-                    <span class="${isLight ? 'text-gray-700' : (isOceanic ? 'text-ocean-text' : 'text-gray-300')} uppercase font-bold tracking-wide">${dbName}</span>
+                    <span class="${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text' : 'text-gray-300'))} uppercase font-bold tracking-wide">${dbName}</span>
                 </div>
                 <div class="flex items-center gap-4">
-                    <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[14px] ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-400')}">storage</span> ${serverHost}:${serverPort}</span>
-                    <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[14px] ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-400')}">cable</span> ${connectionName}</span>
+                    <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[14px] ${(isLight || isDawn) ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-400')}">storage</span> ${serverHost}:${serverPort}</span>
+                    <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[14px] ${(isLight || isDawn) ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-400')}">cable</span> ${connectionName}</span>
                 </div>
                 <div class="flex items-center gap-4">
-                    <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[14px] ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-400')}">lock</span> SECURE</span>
-                    <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[14px] ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-400')}">memory</span> ${version}</span>
+                    <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[14px] ${(isLight || isDawn) ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-400')}">lock</span> SECURE</span>
+                    <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[14px] ${(isLight || isDawn) ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-400')}">memory</span> ${version}</span>
                 </div>
             </div>
             <div class="flex items-center gap-6">
                 <div class="flex items-center gap-4">
-                    <span>TIME: <span class="${isLight ? 'text-mysql-teal' : (isOceanic ? 'text-ocean-frost' : 'text-cyan-400')} font-bold">${latencyStr}</span></span>
-                    <span>MEMORY: <span class="${isLight ? 'text-mysql-teal' : (isOceanic ? 'text-ocean-frost' : 'text-cyan-400')} font-bold">${memStr}</span></span>
+                    <span>TIME: <span class="${(isLight || isDawn) ? 'text-mysql-teal' : (isOceanic ? 'text-ocean-frost' : 'text-cyan-400')} font-bold">${latencyStr}</span></span>
+                    <span>MEMORY: <span class="${(isLight || isDawn) ? 'text-mysql-teal' : (isOceanic ? 'text-ocean-frost' : 'text-cyan-400')} font-bold">${memStr}</span></span>
                 </div>
-                <div class="px-3 py-0.5 rounded-full ${isLight ? 'bg-green-50 text-green-600 border-green-200' : (isOceanic ? 'bg-ocean-mint/20 text-ocean-mint border-ocean-mint/30' : 'bg-green-500/10 text-green-500 border-green-500/20')} font-bold border tracking-widest uppercase text-[9px]">
+                <div class="px-3 py-0.5 rounded-full ${isLight ? 'bg-green-50 text-green-600 border-green-200' : (isDawn ? 'bg-green-50 text-green-600 border-green-200' : (isOceanic ? 'bg-ocean-mint/20 text-ocean-mint border-ocean-mint/30' : 'bg-green-500/10 text-green-500 border-green-500/20'))} font-bold border tracking-widest uppercase text-[9px]">
                     CONNECTED
                 </div>
             </div>
@@ -90,8 +91,9 @@ export function WorkbenchFooter() {
 
     const renderFooterStyle = () => {
         const isLight = theme === 'light';
+        const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic';
-        footer.className = `h-8 ${isLight ? 'bg-white border-gray-200 text-gray-500' : (isOceanic ? 'bg-ocean-panel border-ocean-border text-ocean-text/80' : 'bg-[#0a0c10] border-white/5 text-gray-400')} border-t px-4 flex items-center justify-between shrink-0 text-[10px] font-bold tracking-[0.1em] transition-all duration-300 uppercase select-none z-50 relative`;
+        footer.className = `h-8 ${isLight ? 'bg-white border-gray-200 text-gray-500' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-panel border-ocean-border text-ocean-text/80' : 'bg-[#0a0c10] border-white/5 text-gray-400'))} border-t px-4 flex items-center justify-between shrink-0 text-[10px] font-bold tracking-[0.1em] transition-all duration-300 uppercase select-none z-50 relative`;
         update();
     };
 

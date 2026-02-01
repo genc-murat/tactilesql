@@ -6,6 +6,7 @@ export function NavBar() {
 
     const render = () => {
         const isLight = theme === 'light';
+        const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic';
         // Get current path from hash
         const currentPath = window.location.hash.split('?')[0].slice(1) || '/';
@@ -27,7 +28,7 @@ export function NavBar() {
                     <a href="#${item.path}" class="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold tracking-widest transition-all rounded-md duration-300
                         ${isActive
                         ? 'text-mysql-cyan bg-mysql-teal/10 border border-mysql-teal/30'
-                        : isLight
+                        : (isLight || isDawn)
                             ? 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                             : isOceanic
                                 ? 'text-ocean-text/70 hover:text-ocean-text hover:bg-white/5'
@@ -40,7 +41,7 @@ export function NavBar() {
             }).join('');
         };
 
-        nav.className = `h-10 ${isLight ? 'bg-white border-gray-200' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#0a0c10] border-white/5')} border-b px-4 flex items-center justify-between z-40 relative transition-all duration-300`;
+        nav.className = `h-10 ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#0a0c10] border-white/5'))} border-b px-4 flex items-center justify-between z-40 relative transition-all duration-300`;
 
         nav.innerHTML = `
             <div class="flex items-center gap-3">
@@ -48,7 +49,7 @@ export function NavBar() {
                     <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-mysql-teal to-mysql-cyan flex items-center justify-center shadow-lg shadow-mysql-teal/20">
                         <span class="material-symbols-outlined text-white text-sm">database</span>
                     </div>
-                    <div class="text-[10px] font-black tracking-[0.2em] ${isLight ? 'text-gray-800' : (isOceanic ? 'text-ocean-text' : 'text-white/80')} uppercase transition-colors duration-300">TactileSQL</div>
+                    <div class="text-[10px] font-black tracking-[0.2em] ${(isLight || isDawn) ? 'text-gray-800' : (isOceanic ? 'text-ocean-text' : 'text-white/80')} uppercase transition-colors duration-300">TactileSQL</div>
                 </a>
             </div>
 
@@ -59,7 +60,7 @@ export function NavBar() {
             <div class="flex items-center gap-3">
                 <a href="#/settings" class="flex items-center justify-center w-8 h-8 rounded-md transition-all duration-300 ${currentPath === '/settings'
                 ? 'text-mysql-cyan bg-mysql-teal/10 border border-mysql-teal/30'
-                : isLight
+                : (isLight || isDawn)
                     ? 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
                     : isOceanic
                         ? 'text-ocean-text/50 hover:text-ocean-text hover:bg-white/5'

@@ -3,11 +3,17 @@ import { ThemeManager } from '../utils/ThemeManager.js';
 export function Settings() {
     let theme = ThemeManager.getCurrentTheme();
     const container = document.createElement('div');
-    const getBgClass = (t) => t === 'light' ? 'bg-gray-50' : (t === 'oceanic' ? 'bg-ocean-bg' : 'bg-base-dark');
+    const getBgClass = (t) => {
+        if (t === 'light') return 'bg-gray-50';
+        if (t === 'dawn') return 'bg-[#faf4ed]';
+        if (t === 'oceanic') return 'bg-ocean-bg';
+        return 'bg-base-dark';
+    };
     container.className = `h-full overflow-auto ${getBgClass(theme)} transition-colors duration-300`;
 
     const render = () => {
-        const isLight = theme === 'light';
+        const isLight = theme === 'light' || theme === 'dawn';
+        const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic';
         const currentTheme = ThemeManager.getCurrentTheme();
 
@@ -22,7 +28,7 @@ export function Settings() {
             <!-- Settings Sections -->
             <div class="space-y-6">
                 <!-- Appearance Section -->
-                <div class="tactile-card ${isLight ? 'bg-white border-gray-200 shadow-sm' : ''} rounded-xl p-6">
+                <div class="tactile-card ${isLight ? (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : 'bg-white border-gray-200') + ' shadow-sm' : ''} rounded-xl p-6">
                     <div class="flex items-center gap-3 mb-6">
                         <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
                             <span class="material-symbols-outlined text-white">palette</span>
@@ -49,6 +55,10 @@ export function Settings() {
                                     <span class="material-symbols-outlined text-lg">light_mode</span>
                                     Light
                                 </button>
+                                <button id="theme-dawn" class="theme-btn flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${currentTheme === 'dawn' ? 'bg-gradient-to-r from-mysql-teal to-mysql-cyan text-white shadow-lg shadow-mysql-teal/30' : (isLight ? 'text-gray-600 hover:text-gray-800' : 'text-gray-400 hover:text-gray-200')}">
+                                    <span class="material-symbols-outlined text-lg">wb_twilight</span>
+                                    Dawn
+                                </button>
                                 <button id="theme-oceanic" class="theme-btn flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${currentTheme === 'oceanic' ? 'bg-gradient-to-r from-mysql-teal to-mysql-cyan text-white shadow-lg shadow-mysql-teal/30' : (isLight ? 'text-gray-600 hover:text-gray-800' : 'text-gray-400 hover:text-gray-200')}">
                                     <span class="material-symbols-outlined text-lg">water</span>
                                     Oceanic
@@ -59,15 +69,15 @@ export function Settings() {
                         <!-- Theme Preview -->
                         <div class="mt-4">
                             <h4 class="text-xs font-medium ${isLight ? 'text-gray-600' : 'text-gray-400'} uppercase tracking-wider mb-3">Preview</h4>
-                            <div id="theme-preview" class="rounded-lg overflow-hidden border ${isLight ? 'border-gray-200' : 'border-white/10'}">
-                                ${currentTheme === 'dark' ? getDarkPreview() : (currentTheme === 'light' ? getLightPreview() : getOceanicPreview())}
+                            <div id="theme-preview" class="rounded-xl p-4 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))}">
+                                ${currentTheme === 'dark' ? getDarkPreview() : (currentTheme === 'light' ? getLightPreview() : (currentTheme === 'dawn' ? getDawnPreview() : getOceanicPreview()))}
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Editor Section -->
-                <div class="tactile-card ${isLight ? 'bg-white border-gray-200 shadow-sm' : ''} rounded-xl p-6">
+                <div class="tactile-card ${isLight ? (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : 'bg-white border-gray-200') + ' shadow-sm' : ''} rounded-xl p-6">
                     <div class="flex items-center gap-3 mb-6">
                         <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500 to-cyan-600 flex items-center justify-center">
                             <span class="material-symbols-outlined text-white">code</span>
@@ -84,7 +94,7 @@ export function Settings() {
                                 <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Font Size</h3>
                                 <p class="text-xs text-gray-500 mt-1">Adjust the editor font size</p>
                             </div>
-                            <select class="tactile-input ${isLight ? 'bg-white border-gray-300 text-gray-800' : ''} w-24 text-center">
+                            <select class="tactile-select w-24 !text-center">
                                 <option value="12">12px</option>
                                 <option value="14" selected>14px</option>
                                 <option value="16">16px</option>
@@ -115,7 +125,7 @@ export function Settings() {
                 </div>
 
                 <!-- About Section -->
-                <div class="tactile-card ${isLight ? 'bg-white border-gray-200 shadow-sm' : ''} rounded-xl p-6">
+                <div class="tactile-card ${isLight ? (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : 'bg-white border-gray-200') + ' shadow-sm' : ''} rounded-xl p-6">
                     <div class="flex items-center gap-3 mb-6">
                         <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center">
                             <span class="material-symbols-outlined text-white">info</span>
@@ -145,41 +155,47 @@ export function Settings() {
     const attachEvents = () => {
         const darkBtn = container.querySelector('#theme-dark');
         const lightBtn = container.querySelector('#theme-light');
+        const dawnBtn = container.querySelector('#theme-dawn');
         const oceanicBtn = container.querySelector('#theme-oceanic');
         const preview = container.querySelector('#theme-preview');
 
-        const updateButtons = (newTheme) => {
+        // Re-declaring updateButtons to include dawnBtn scope
+        const updateAllButtons = (newTheme) => {
             const activeClass = 'bg-gradient-to-r from-mysql-teal to-mysql-cyan text-white shadow-lg shadow-mysql-teal/30';
-            const getInactiveClass = (t) => t === 'light' ? 'text-gray-600 hover:text-gray-800' : (t === 'oceanic' ? 'text-ocean-text/60 hover:text-ocean-text' : 'text-gray-400 hover:text-gray-200');
+            const getInactiveClass = (t) => (t === 'light' || t === 'dawn') ? 'text-gray-600 hover:text-gray-800' : (t === 'oceanic' ? 'text-ocean-text/60 hover:text-ocean-text' : 'text-gray-400 hover:text-gray-200');
             const inactiveClass = getInactiveClass(newTheme);
 
-            [darkBtn, lightBtn, oceanicBtn].forEach(btn => btn.className = `theme-btn flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${inactiveClass}`);
+            [darkBtn, lightBtn, dawnBtn, oceanicBtn].forEach(btn => btn && (btn.className = `theme-btn flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${inactiveClass}`));
 
-            if (theme === 'dark') {
-                darkBtn.className = `theme-btn flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${activeClass}`;
-                preview.innerHTML = getDarkPreview();
-            } else if (theme === 'light') {
-                lightBtn.className = `theme-btn flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${activeClass}`;
-                preview.innerHTML = getLightPreview();
-            } else {
-                oceanicBtn.className = `theme-btn flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${activeClass}`;
-                preview.innerHTML = getOceanicPreview();
+            const activeBtn = newTheme === 'dark' ? darkBtn : (newTheme === 'light' ? lightBtn : (newTheme === 'dawn' ? dawnBtn : oceanicBtn));
+            if (activeBtn) {
+                activeBtn.className = `theme-btn flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${activeClass}`;
             }
+
+            if (newTheme === 'dark') preview.innerHTML = getDarkPreview();
+            else if (newTheme === 'light') preview.innerHTML = getLightPreview();
+            else if (newTheme === 'dawn') preview.innerHTML = getDawnPreview();
+            else preview.innerHTML = getOceanicPreview();
         };
 
         darkBtn?.addEventListener('click', () => {
             ThemeManager.setTheme('dark');
-            updateButtons('dark');
+            updateAllButtons('dark');
         });
 
         lightBtn?.addEventListener('click', () => {
             ThemeManager.setTheme('light');
-            updateButtons('light');
+            updateAllButtons('light');
+        });
+
+        dawnBtn?.addEventListener('click', () => {
+            ThemeManager.setTheme('dawn');
+            updateAllButtons('dawn');
         });
 
         oceanicBtn?.addEventListener('click', () => {
             ThemeManager.setTheme('oceanic');
-            updateButtons('oceanic');
+            updateAllButtons('oceanic');
         });
     };
 
@@ -261,6 +277,28 @@ function getOceanicPreview() {
                     <span class="syntax-keyword font-semibold">FROM</span>
                     <span class="syntax-string"> users</span>
                     <span class="text-[#D8DEE9]">;</span>
+                </code>
+            </div>
+        </div>
+    `;
+}
+
+function getDawnPreview() {
+    return `
+        <div class="bg-[#faf4ed] p-4 dawn">
+            <div class="flex items-center gap-2 mb-3">
+                <div class="w-3 h-3 rounded-full bg-[#eb6f92]"></div>
+                <div class="w-3 h-3 rounded-full bg-[#f6c177]"></div>
+                <div class="w-3 h-3 rounded-full bg-[#31748f]"></div>
+                <span class="ml-2 text-xs text-[#575279]">Dawn Theme Preview</span>
+            </div>
+            <div class="bg-[#fffaf3] rounded-lg p-3 border border-[#f2e9e1]">
+                <code class="text-sm font-mono">
+                    <span class="text-[#286983] font-semibold">SELECT</span>
+                    <span class="text-[#575279]"> * </span>
+                    <span class="text-[#286983] font-semibold">FROM</span>
+                    <span class="text-[#d7827e]"> users</span>
+                    <span class="text-[#575279]">;</span>
                 </code>
             </div>
         </div>

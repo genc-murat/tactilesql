@@ -63,50 +63,53 @@ export function SchemaDesigner() {
 
     let theme = ThemeManager.getCurrentTheme();
     let isLight = theme === 'light';
+    let isDawn = theme === 'dawn';
     let isOceanic = theme === 'oceanic';
     const container = document.createElement('div');
     const getContainerClass = (t) => {
         const _isLight = t === 'light';
+        const _isDawn = t === 'dawn';
         const _isOceanic = t === 'oceanic';
-        return `flex-1 flex flex-col h-full overflow-hidden ${_isLight ? 'bg-gray-50' : (_isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]')} selection:bg-mysql-teal/40 relative transition-all duration-300`;
+        return `flex-1 flex flex-col h-full overflow-hidden ${_isLight ? 'bg-gray-50' : (_isDawn ? 'bg-[#fffaf3]' : (_isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]'))} selection:bg-mysql-teal/40 relative transition-all duration-300`;
     };
     container.className = getContainerClass(theme);
 
     // --- Template ---
     const renderMainTemplate = () => {
         const isLight = theme === 'light';
+        const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic';
         return `
-            <header class="h-14 border-b ${isLight ? 'border-gray-100 bg-white' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'border-white/5 bg-[#121418]')} px-6 flex items-center justify-between z-20">
+            <header class="h-14 border-b ${isLight ? 'border-gray-100 bg-white' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'border-white/5 bg-[#121418]'))} px-6 flex items-center justify-between z-20">
                 <div class="flex items-center gap-8">
                     <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 rounded bg-mysql-teal flex items-center justify-center neu-flat">
-                            <span class="material-symbols-outlined text-white text-lg">database</span>
+                        <div class="w-8 h-8 rounded ${isDawn ? 'bg-[#ea9d34] shadow-[0_0_8px_rgba(234,157,52,0.4)]' : 'bg-mysql-teal'} flex items-center justify-center neu-flat">
+                            <span class="material-symbols-outlined ${isDawn ? 'text-[#fffaf3]' : 'text-white'} text-lg">database</span>
                         </div>
                         <div>
-                            <h1 class="text-[10px] font-black tracking-[0.2em] ${isLight ? 'text-gray-900' : 'text-white/90'} uppercase leading-none mb-1">Schema Designer</h1>
+                            <h1 class="text-[10px] font-black tracking-[0.2em] ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white/90')} uppercase leading-none mb-1">Schema Designer</h1>
                             <div class="flex items-center gap-2">
-                                <span class="text-[11px] font-mono ${isLight ? 'text-mysql-teal' : 'text-mysql-cyan/70'}">${state.database}.${state.tableName}</span>
+                                <span class="text-[11px] font-mono ${isLight ? 'text-mysql-teal' : (isDawn ? 'text-[#ea9d34]' : 'text-mysql-cyan/70')}">${state.database}.${state.tableName}</span>
                                 <div class="w-1 h-1 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div>
                             </div>
                         </div>
                     </div>
                 </div>
                 <div class="flex items-center gap-4">
-                    <button class="flex items-center gap-2 px-5 py-2 bg-mysql-teal rounded-lg text-white text-[11px] font-bold tracking-widest uppercase hover:brightness-110 transition-all shadow-lg shadow-mysql-teal/20" id="btn-push-changes">
+                    <button class="flex items-center gap-2 px-5 py-2 ${isDawn ? 'bg-[#ea9d34] text-[#fffaf3] shadow-[#ea9d34]/20' : 'bg-mysql-teal text-white shadow-mysql-teal/20'} rounded-lg text-[11px] font-bold tracking-widest uppercase hover:brightness-110 transition-all shadow-lg" id="btn-push-changes">
                         <span class="material-symbols-outlined text-sm">publish</span>
                         Push Changes
                     </button>
-                    <div class="w-8 h-8 rounded-full border ${isLight ? 'border-gray-200' : 'border-white/10'} bg-cover bg-center" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuChBUxNnFtoq3SZhbqRvdKpZN-VW3MCfJP-WaMaHBtRyOPztxOJscDDmW5i-McVP0giXZ4wuGTnJmtKMS-l4dvf2P6cOr2rUcRlHdZ50t3_SsqLYq3g9JB7ij7C7SLgk6RV98-P5mwyR0c04rK4fn5t21PV7a-8kW3UbQeM39c9iKrT3vABlPoHdzgUBNdgqQlgzF0-nC7n5t9DVTUoDZ0zq4KMlrR5osA6kn215YDzgvUnmK1StA1qybH-Kja2jZ_KTypB1pDiMnPt')"></div>
+                    <div class="w-8 h-8 rounded-full border ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/10')} bg-cover bg-center" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuChBUxNnFtoq3SZhbqRvdKpZN-VW3MCfJP-WaMaHBtRyOPztxOJscDDmW5i-McVP0giXZ4wuGTnJmtKMS-l4dvf2P6cOr2rUcRlHdZ50t3_SsqLYq3g9JB7ij7C7SLgk6RV98-P5mwyR0c04rK4fn5t21PV7a-8kW3UbQeM39c9iKrT3vABlPoHdzgUBNdgqQlgzF0-nC7n5t9DVTUoDZ0zq4KMlrR5osA6kn215YDzgvUnmK1StA1qybH-Kja2jZ_KTypB1pDiMnPt')"></div>
                 </div>
             </header>
 
             <div class="flex-1 flex overflow-hidden z-10">
-                <main class="flex-1 flex flex-col ${isLight ? 'bg-gray-50' : (isOceanic ? 'bg-ocean-bg' : 'bg-base-dark')} p-6 overflow-hidden">
+                <main class="flex-1 flex flex-col ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : 'bg-base-dark'))} p-6 overflow-hidden">
                     <div class="flex items-center justify-between mb-4 px-2">
                         <div class="flex items-center gap-6">
                             <!-- Tabs -->
-                            <div class="flex items-center p-1 ${isLight ? 'bg-gray-100' : 'bg-white/5'} rounded-lg border ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                            <div class="flex items-center p-1 ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#faf4ed]' : 'bg-white/5')} rounded-lg border ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
                                 <button class="px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all" id="tab-columns">
                                     Columns
                                 </button>
@@ -134,43 +137,43 @@ export function SchemaDesigner() {
                             <div id="tab-actions"></div>
                         </div>
                         <div class="flex items-center gap-4 text-[10px] font-mono text-gray-600">
-                            <span class="text-mysql-teal" id="status-display"></span>
+                            <span class="${isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal'}" id="status-display"></span>
                         </div>
                     </div>
                     
-                    <div class="flex-1 neu-card rounded-xl overflow-hidden flex flex-col border ${isLight ? 'border-gray-200 bg-white' : 'border-white/5 bg-background-card'}" id="main-content-area">
+                    <div class="flex-1 neu-card rounded-xl overflow-hidden flex flex-col border ${isLight ? 'border-gray-200 bg-white' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : 'border-white/5 bg-background-card')}" id="main-content-area">
                          <div class="flex-1 overflow-auto custom-scrollbar">
                             <table class="w-full text-left font-mono text-[12px] border-collapse">
-                                <thead class="sticky top-0 ${isLight ? 'bg-gray-100' : 'bg-[#1a1d23]'} z-20 shadow-sm border-b ${isLight ? 'border-gray-200' : 'border-white/10'}" id="table-header"></thead>
-                                <tbody class="divide-y ${isLight ? 'divide-gray-100' : 'divide-white/[0.03]'}" id="table-body"></tbody>
+                                <thead class="sticky top-0 ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#faf4ed]' : 'bg-[#1a1d23]')} z-20 shadow-sm border-b ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/10')}" id="table-header"></thead>
+                                <tbody class="divide-y ${isLight ? 'divide-gray-100' : (isDawn ? 'divide-[#f2e9e1]' : 'divide-white/[0.03]')}" id="table-body"></tbody>
                             </table>
                         </div>
                     </div>
                 </main>
-                <aside class="flex-shrink-0 ${isLight ? 'bg-white' : 'bg-[#121418]'} border-l ${isLight ? 'border-gray-200' : 'border-white/10'} flex flex-col relative z-30" id="sidebar-container" style="width: 340px;">
+                <aside class="flex-shrink-0 ${isLight ? 'bg-white' : (isDawn ? 'bg-[#faf4ed]' : 'bg-[#121418]')} border-l ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/10')} flex flex-col relative z-30" id="sidebar-container" style="width: 340px;">
                 </aside>
             </div>
             
             <!-- SQL Draft Panel -->
             <div class="absolute bottom-6 left-6 right-[360px] z-50"> 
-                <div class="neu-card rounded-2xl ${isLight ? 'border-mysql-teal bg-white shadow-xl' : 'border-mysql-teal/40 glow-border-mysql bg-[#1a1d23] shadow-2xl'} overflow-hidden transition-all duration-300 transform translate-y-0" id="sql-panel" style="height: 250px; display: flex; flex-direction: column;">
+                <div class="neu-card rounded-2xl ${isLight ? 'border-mysql-teal bg-white shadow-xl' : (isDawn ? 'border-[#ea9d34] bg-[#fffaf3] shadow-xl' : 'border-mysql-teal/40 glow-border-mysql bg-[#1a1d23] shadow-2xl')} overflow-hidden transition-all duration-300 transform translate-y-0" id="sql-panel" style="height: 250px; display: flex; flex-direction: column;">
                     <!-- Resize Handle -->
                     <div class="absolute top-0 left-0 right-0 h-1 cursor-ns-resize hover:bg-mysql-teal/50 transition-colors z-10 group" id="sql-resize-handle">
-                        <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-12 h-1 rounded-full ${isLight ? 'bg-gray-300' : 'bg-white/20'} group-hover:bg-mysql-teal/70 transition-colors"></div>
+                        <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-12 h-1 rounded-full ${isLight ? 'bg-gray-300' : (isDawn ? 'bg-[#dcd7da]' : 'bg-white/20')} group-hover:bg-mysql-teal/70 transition-colors"></div>
                     </div>
-                     <div class="px-6 py-3 border-b ${isLight ? 'border-gray-100' : 'border-white/10'} flex items-center justify-between cursor-pointer flex-shrink-0" id="sql-panel-header">
+                     <div class="px-6 py-3 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/10')} flex items-center justify-between cursor-pointer flex-shrink-0" id="sql-panel-header">
                         <div class="flex items-center gap-3">
-                            <div class="flex items-center gap-1.5 px-2 py-0.5 rounded bg-mysql-teal/20 border border-mysql-teal/30">
-                                <span class="w-1.5 h-1.5 rounded-full bg-mysql-cyan animate-pulse"></span>
-                                <span class="text-[10px] font-bold text-mysql-cyan uppercase tracking-tighter">SQL Draft</span>
+                            <div class="flex items-center gap-1.5 px-2 py-0.5 rounded ${isDawn ? 'bg-[#ea9d34]/10 border-[#ea9d34]/30' : 'bg-mysql-teal/20 border-mysql-teal/30 border'}">
+                                <span class="w-1.5 h-1.5 rounded-full ${isDawn ? 'bg-[#ea9d34]' : 'bg-mysql-cyan'} animate-pulse"></span>
+                                <span class="text-[10px] font-bold ${isDawn ? 'text-[#ea9d34]' : 'text-mysql-cyan'} uppercase tracking-tighter">SQL Draft</span>
                             </div>
-                            <span class="text-[11px] font-bold tracking-widest ${isLight ? 'text-gray-900' : 'text-white/70'} uppercase">Generated ALTER Statements</span>
+                            <span class="text-[11px] font-bold tracking-widest ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white/70')} uppercase">Generated ALTER Statements</span>
                         </div>
                         <div class="flex items-center gap-3">
                              <span class="material-symbols-outlined text-gray-500 text-sm transform transition-transform" id="sql-panel-toggle-icon">expand_more</span>
                         </div>
                     </div>
-                    <div class="p-6 code-overlay font-mono text-[13px] leading-relaxed overflow-y-auto custom-scrollbar flex-1" id="sql-content-area">
+                    <div class="p-6 code-overlay font-mono text-[13px] leading-relaxed overflow-y-auto custom-scrollbar flex-1 ${isDawn ? 'text-[#575279]' : ''}" id="sql-content-area">
                         <code class="block whitespace-pre" id="sql-code-block"></code>
                     </div>
                 </div>
@@ -178,20 +181,20 @@ export function SchemaDesigner() {
 
             <!-- ADD INDEX MODAL -->
             <div id="modal-idx-container" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] hidden items-center justify-center opacity-0 transition-opacity duration-200">
-                <div class="neu-card w-[500px] ${isLight ? 'bg-white' : 'bg-[#1a1d23]'} border ${isLight ? 'border-gray-200' : 'border-white/10'} rounded-2xl shadow-2xl transform scale-95 transition-transform duration-200" id="modal-idx-content">
-                    <div class="p-6 border-b ${isLight ? 'border-gray-100' : 'border-white/5'} flex items-center justify-between">
-                         <h2 class="text-sm font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-900' : 'text-white'}">Create New Index</h2>
-                         <button id="btn-modal-idx-close" class="text-gray-500 hover:${isLight ? 'text-gray-900' : 'text-white'} transition-colors"><span class="material-symbols-outlined">close</span></button>
+                <div class="neu-card w-[500px] ${isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : 'bg-[#1a1d23]')} border ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/10')} rounded-2xl shadow-2xl transform scale-95 transition-transform duration-200" id="modal-idx-content">
+                    <div class="p-6 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')} flex items-center justify-between">
+                         <h2 class="text-sm font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')}">Create New Index</h2>
+                         <button id="btn-modal-idx-close" class="text-gray-500 hover:${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} transition-colors"><span class="material-symbols-outlined">close</span></button>
                     </div>
                     <div class="p-6 space-y-6">
                          <div class="grid grid-cols-2 gap-4">
                             <div class="space-y-2">
                                 <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Index Name</label>
-                                <input type="text" id="inp-idx-name" class="tactile-input w-full" placeholder="idx_name" />
+                                <input type="text" id="inp-idx-name" class="tactile-input w-full ${isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : ''}" placeholder="idx_name" />
                             </div>
                             <div class="space-y-2">
                                 <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Type</label>
-                                <select id="sel-idx-type" class="tactile-input w-full outline-none">
+                                <select id="sel-idx-type" class="tactile-select w-full outline-none">
                                     <option value="INDEX">INDEX (Non-Unique)</option>
                                     <option value="UNIQUE">UNIQUE</option>
                                     <option value="FULLTEXT">FULLTEXT</option>
@@ -200,75 +203,75 @@ export function SchemaDesigner() {
                         </div>
                          <div class="space-y-2">
                             <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Select Columns</label>
-                            <div class="border ${isLight ? 'border-gray-200 bg-gray-50' : 'border-white/10 bg-[#0b0d11]'} rounded-xl p-2 max-h-48 overflow-y-auto custom-scrollbar" id="modal-idx-cols-list"></div>
+                            <div class="border ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : 'border-white/10 bg-[#0b0d11]')} rounded-xl p-2 max-h-48 overflow-y-auto custom-scrollbar" id="modal-idx-cols-list"></div>
                         </div>
                     </div>
-                    <div class="p-6 border-t ${isLight ? 'border-gray-100 bg-gray-50' : 'border-white/5 bg-[#121418]'} flex justify-end gap-3 rounded-b-2xl">
-                         <button id="btn-modal-idx-cancel" class="px-4 py-2 rounded text-xs font-bold text-gray-400 hover:${isLight ? 'text-gray-900' : 'text-white'} transition-colors">Cancel</button>
-                         <button id="btn-modal-idx-save" class="px-5 py-2 rounded bg-mysql-teal text-white text-xs font-bold hover:brightness-110 shadow-lg shadow-mysql-teal/20">Create Index</button>
+                    <div class="p-6 border-t ${isLight ? 'border-gray-100 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : 'border-white/5 bg-[#121418]')} flex justify-end gap-3 rounded-b-2xl">
+                         <button id="btn-modal-idx-cancel" class="px-4 py-2 rounded text-xs font-bold text-gray-400 hover:${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} transition-colors">Cancel</button>
+                         <button id="btn-modal-idx-save" class="px-5 py-2 rounded ${isDawn ? 'bg-[#ea9d34] shadow-[#ea9d34]/20' : 'bg-mysql-teal shadow-mysql-teal/20'} text-white text-xs font-bold hover:brightness-110 shadow-lg">Create Index</button>
                     </div>
                 </div>
             </div>
 
             <!-- ADD FK MODAL -->
             <div id="modal-fk-container" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] hidden items-center justify-center opacity-0 transition-opacity duration-200">
-                <div class="neu-card w-[500px] ${isLight ? 'bg-white' : 'bg-[#1a1d23]'} border ${isLight ? 'border-gray-200' : 'border-white/10'} rounded-2xl shadow-2xl transform scale-95 transition-transform duration-200" id="modal-fk-content">
-                    <div class="p-6 border-b ${isLight ? 'border-gray-100' : 'border-white/5'} flex items-center justify-between">
-                         <h2 class="text-sm font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-900' : 'text-white'}">Create Foreign Key</h2>
-                         <button id="btn-modal-fk-close" class="text-gray-500 hover:${isLight ? 'text-gray-900' : 'text-white'} transition-colors"><span class="material-symbols-outlined">close</span></button>
+                <div class="neu-card w-[500px] ${isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : 'bg-[#1a1d23]')} border ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/10')} rounded-2xl shadow-2xl transform scale-95 transition-transform duration-200" id="modal-fk-content">
+                    <div class="p-6 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')} flex items-center justify-between">
+                         <h2 class="text-sm font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')}">Create Foreign Key</h2>
+                         <button id="btn-modal-fk-close" class="text-gray-500 hover:${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} transition-colors"><span class="material-symbols-outlined">close</span></button>
                     </div>
                     <div class="p-6 space-y-6">
                         <div class="space-y-2">
                             <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Constraint Name</label>
-                            <input type="text" id="inp-fk-name" class="tactile-input w-full" placeholder="fk_table_col" />
+                            <input type="text" id="inp-fk-name" class="tactile-input w-full ${isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : ''}" placeholder="fk_table_col" />
                         </div>
                         <div class="grid grid-cols-2 gap-4">
                              <div class="space-y-2">
                                 <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Local Column</label>
-                                <select id="sel-fk-local-col" class="tactile-input w-full outline-none"></select>
+                                <select id="sel-fk-local-col" class="tactile-select w-full outline-none">
                             </div>
                             <div class="space-y-2">
                                 <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Referenced Table</label>
-                                <select id="sel-fk-ref-table" class="tactile-input w-full outline-none"></select>
+                                <select id="sel-fk-ref-table" class="tactile-select w-full outline-none">
                             </div>
                         </div>
                         <div class="space-y-2">
                             <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Referenced Column</label>
-                            <select id="sel-fk-ref-col" class="tactile-input w-full outline-none" disabled>
+                            <select id="sel-fk-ref-col" class="tactile-select w-full outline-none" disabled>
                                 <option>Select Table First</option>
                             </select>
                         </div>
                     </div>
-                    <div class="p-6 border-t ${isLight ? 'border-gray-100 bg-gray-50' : 'border-white/5 bg-[#121418]'} flex justify-end gap-3 rounded-b-2xl">
-                         <button id="btn-modal-fk-cancel" class="px-4 py-2 rounded text-xs font-bold text-gray-400 hover:${isLight ? 'text-gray-900' : 'text-white'} transition-colors">Cancel</button>
-                         <button id="btn-modal-fk-save" class="px-5 py-2 rounded bg-mysql-teal text-white text-xs font-bold hover:brightness-110 shadow-lg shadow-mysql-teal/20">Create Constraints</button>
+                    <div class="p-6 border-t ${isLight ? 'border-gray-100 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : 'border-white/5 bg-[#121418]')} flex justify-end gap-3 rounded-b-2xl">
+                         <button id="btn-modal-fk-cancel" class="px-4 py-2 rounded text-xs font-bold text-gray-400 hover:${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} transition-colors">Cancel</button>
+                         <button id="btn-modal-fk-save" class="px-5 py-2 rounded ${isDawn ? 'bg-[#ea9d34] shadow-[#ea9d34]/20' : 'bg-mysql-teal shadow-mysql-teal/20'} text-white text-xs font-bold hover:brightness-110 shadow-lg">Create Constraints</button>
                     </div>
                 </div>
             </div>
 
             <!-- ADD TRIGGER MODAL -->
             <div id="modal-trigger-container" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] hidden items-center justify-center opacity-0 transition-opacity duration-200">
-                <div class="neu-card w-[600px] ${isLight ? 'bg-white' : 'bg-[#1a1d23]'} border ${isLight ? 'border-gray-200' : 'border-white/10'} rounded-2xl shadow-2xl transform scale-95 transition-transform duration-200" id="modal-trigger-content">
-                    <div class="p-6 border-b ${isLight ? 'border-gray-100' : 'border-white/5'} flex items-center justify-between">
-                         <h2 class="text-sm font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-900' : 'text-white'}">Create Trigger</h2>
-                         <button id="btn-modal-trigger-close" class="text-gray-500 hover:${isLight ? 'text-gray-900' : 'text-white'} transition-colors"><span class="material-symbols-outlined">close</span></button>
+                <div class="neu-card w-[600px] ${isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : 'bg-[#1a1d23]')} border ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/10')} rounded-2xl shadow-2xl transform scale-95 transition-transform duration-200" id="modal-trigger-content">
+                    <div class="p-6 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')} flex items-center justify-between">
+                         <h2 class="text-sm font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')}">Create Trigger</h2>
+                         <button id="btn-modal-trigger-close" class="text-gray-500 hover:${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} transition-colors"><span class="material-symbols-outlined">close</span></button>
                     </div>
                     <div class="p-6 space-y-6">
                         <div class="space-y-2">
                             <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Trigger Name</label>
-                            <input type="text" id="inp-trigger-name" class="tactile-input w-full" placeholder="trg_before_insert" />
+                            <input type="text" id="inp-trigger-name" class="tactile-input w-full ${isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : ''}" placeholder="trg_before_insert" />
                         </div>
                         <div class="grid grid-cols-2 gap-4">
                              <div class="space-y-2">
                                 <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Timing</label>
-                                <select id="sel-trigger-timing" class="tactile-input w-full outline-none">
+                                <select id="sel-trigger-timing" class="tactile-select w-full outline-none">
                                     <option value="BEFORE">BEFORE</option>
                                     <option value="AFTER">AFTER</option>
                                 </select>
                             </div>
                             <div class="space-y-2">
                                 <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Event</label>
-                                <select id="sel-trigger-event" class="tactile-input w-full outline-none">
+                                <select id="sel-trigger-event" class="tactile-select w-full outline-none">
                                     <option value="INSERT">INSERT</option>
                                     <option value="UPDATE">UPDATE</option>
                                     <option value="DELETE">DELETE</option>
@@ -277,34 +280,34 @@ export function SchemaDesigner() {
                         </div>
                         <div class="space-y-2">
                             <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Trigger Body (SQL)</label>
-                            <textarea id="txt-trigger-body" class="tactile-input w-full h-32 resize-none custom-scrollbar" placeholder="BEGIN
+                            <textarea id="txt-trigger-body" class="tactile-input w-full h-32 resize-none custom-scrollbar ${isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : ''}" placeholder="BEGIN
     -- Your SQL here
 END"></textarea>
                         </div>
                     </div>
-                    <div class="p-6 border-t ${isLight ? 'border-gray-100 bg-gray-50' : 'border-white/5 bg-[#121418]'} flex justify-end gap-3 rounded-b-2xl">
-                         <button id="btn-modal-trigger-cancel" class="px-4 py-2 rounded text-xs font-bold text-gray-400 hover:${isLight ? 'text-gray-900' : 'text-white'} transition-colors">Cancel</button>
-                         <button id="btn-modal-trigger-save" class="px-5 py-2 rounded bg-mysql-teal text-white text-xs font-bold hover:brightness-110 shadow-lg shadow-mysql-teal/20">Create Trigger</button>
+                    <div class="p-6 border-t ${isLight ? 'border-gray-100 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : 'border-white/5 bg-[#121418]')} flex justify-end gap-3 rounded-b-2xl">
+                         <button id="btn-modal-trigger-cancel" class="px-4 py-2 rounded text-xs font-bold text-gray-400 hover:${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} transition-colors">Cancel</button>
+                         <button id="btn-modal-trigger-save" class="px-5 py-2 rounded ${isDawn ? 'bg-[#ea9d34] shadow-[#ea9d34]/20' : 'bg-mysql-teal shadow-mysql-teal/20'} text-white text-xs font-bold hover:brightness-110 shadow-lg">Create Trigger</button>
                     </div>
                 </div>
             </div>
 
             <!-- ADD COLUMN MODAL -->
             <div id="modal-column-container" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] hidden items-center justify-center opacity-0 transition-opacity duration-200">
-                <div class="neu-card w-[500px] ${isLight ? 'bg-white' : 'bg-[#1a1d23]'} border ${isLight ? 'border-gray-200' : 'border-white/10'} rounded-2xl shadow-2xl transform scale-95 transition-transform duration-200" id="modal-column-content">
-                    <div class="p-6 border-b ${isLight ? 'border-gray-100' : 'border-white/5'} flex items-center justify-between">
-                         <h2 class="text-sm font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-900' : 'text-white'}">Add New Column</h2>
-                         <button id="btn-modal-column-close" class="text-gray-500 hover:${isLight ? 'text-gray-900' : 'text-white'} transition-colors"><span class="material-symbols-outlined">close</span></button>
+                <div class="neu-card w-[500px] ${isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : 'bg-[#1a1d23]')} border ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/10')} rounded-2xl shadow-2xl transform scale-95 transition-transform duration-200" id="modal-column-content">
+                    <div class="p-6 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')} flex items-center justify-between">
+                         <h2 class="text-sm font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')}">Add New Column</h2>
+                         <button id="btn-modal-column-close" class="text-gray-500 hover:${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} transition-colors"><span class="material-symbols-outlined">close</span></button>
                     </div>
                     <div class="p-6 space-y-6">
                         <div class="space-y-2">
                             <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Column Name</label>
-                            <input type="text" id="inp-column-name" class="tactile-input w-full" placeholder="column_name" />
+                            <input type="text" id="inp-column-name" class="tactile-input w-full ${isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : ''}" placeholder="column_name" />
                         </div>
                         <div class="grid grid-cols-2 gap-4">
                             <div class="space-y-2">
                                 <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Data Type</label>
-                                <select id="sel-column-type" class="tactile-input w-full outline-none">
+                                <select id="sel-column-type" class="tactile-select w-full outline-none">
                                     <optgroup label="Numeric">
                                         <option value="TINYINT">TINYINT</option>
                                         <option value="SMALLINT">SMALLINT</option>
@@ -350,38 +353,38 @@ END"></textarea>
                             </div>
                             <div class="space-y-2">
                                 <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Length</label>
-                                <input type="text" id="inp-column-length" class="tactile-input w-full" placeholder="255" />
+                                <input type="text" id="inp-column-length" class="tactile-input w-full ${isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : ''}" placeholder="255" />
                             </div>
                         </div>
                         <div class="space-y-2">
                             <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Default Value</label>
-                            <input type="text" id="inp-column-default" class="tactile-input w-full" placeholder="NULL" />
+                            <input type="text" id="inp-column-default" class="tactile-input w-full ${isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : ''}" placeholder="NULL" />
                         </div>
                         <div class="space-y-3">
                             <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Constraints</label>
                             <div class="space-y-2">
                                 <label class="flex items-center gap-3 cursor-pointer">
                                     <input type="checkbox" id="chk-column-pk" class="w-4 h-4" />
-                                    <span class="text-xs ${isLight ? 'text-gray-700' : 'text-gray-300'}">Primary Key</span>
+                                    <span class="text-xs ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">Primary Key</span>
                                 </label>
                                 <label class="flex items-center gap-3 cursor-pointer">
                                     <input type="checkbox" id="chk-column-notnull" class="w-4 h-4" />
-                                    <span class="text-xs ${isLight ? 'text-gray-700' : 'text-gray-300'}">Not Null</span>
+                                    <span class="text-xs ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">Not Null</span>
                                 </label>
                                 <label class="flex items-center gap-3 cursor-pointer">
                                     <input type="checkbox" id="chk-column-ai" class="w-4 h-4" />
-                                    <span class="text-xs ${isLight ? 'text-gray-700' : 'text-gray-300'}">Auto Increment</span>
+                                    <span class="text-xs ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">Auto Increment</span>
                                 </label>
                                 <label class="flex items-center gap-3 cursor-pointer">
                                     <input type="checkbox" id="chk-column-unique" class="w-4 h-4" />
-                                    <span class="text-xs ${isLight ? 'text-gray-700' : 'text-gray-300'}">Unique</span>
+                                    <span class="text-xs ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">Unique</span>
                                 </label>
                             </div>
                         </div>
                     </div>
-                    <div class="p-6 border-t ${isLight ? 'border-gray-100 bg-gray-50' : 'border-white/5 bg-[#121418]'} flex justify-end gap-3 rounded-b-2xl">
-                         <button id="btn-modal-column-cancel" class="px-4 py-2 rounded text-xs font-bold text-gray-400 hover:${isLight ? 'text-gray-900' : 'text-white'} transition-colors">Cancel</button>
-                         <button id="btn-modal-column-save" class="px-5 py-2 rounded bg-mysql-teal text-white text-xs font-bold hover:brightness-110 shadow-lg shadow-mysql-teal/20">Add Column</button>
+                    <div class="p-6 border-t ${isLight ? 'border-gray-100 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : 'border-white/5 bg-[#121418]')} flex justify-end gap-3 rounded-b-2xl">
+                         <button id="btn-modal-column-cancel" class="px-4 py-2 rounded text-xs font-bold text-gray-400 hover:${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} transition-colors">Cancel</button>
+                         <button id="btn-modal-column-save" class="px-5 py-2 rounded ${isDawn ? 'bg-[#ea9d34] shadow-[#ea9d34]/20' : 'bg-mysql-teal shadow-mysql-teal/20'} text-white text-xs font-bold hover:brightness-110 shadow-lg">Add Column</button>
                     </div>
                 </div>
             </div>
@@ -406,8 +409,8 @@ END"></textarea>
         const tabDdl = container.querySelector('#tab-ddl');
         const tabStats = container.querySelector('#tab-stats');
 
-        const activeClass = 'bg-mysql-teal text-white shadow-lg';
-        const inactiveClass = isLight ? 'text-gray-500 hover:text-gray-900' : 'text-gray-500 hover:text-gray-300';
+        const activeClass = isDawn ? 'bg-[#ea9d34] text-[#fffaf3] shadow-lg shadow-[#ea9d34]/20' : 'bg-mysql-teal text-white shadow-lg';
+        const inactiveClass = isLight ? 'text-gray-500 hover:text-gray-900' : (isDawn ? 'text-[#797593] hover:text-[#575279]' : 'text-gray-500 hover:text-gray-300');
 
         tabCols.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'columns' ? activeClass : inactiveClass}`;
         tabIdx.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'indexes' ? activeClass : inactiveClass}`;
@@ -421,16 +424,18 @@ END"></textarea>
         const actionsContainer = container.querySelector('#tab-actions');
         actionsContainer.innerHTML = ''; // Clear defaults
 
+        const btnClass = isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-200' : (isDawn ? 'bg-[#faf4ed] hover:bg-[#fffaf3] text-[#575279] border-[#f2e9e1] hover:border-[#ea9d34]' : 'bg-white/5 hover:bg-white/10 text-gray-400 border-white/10');
+
         if (state.activeTab === 'columns') {
             actionsContainer.innerHTML = `
-            <button class="h-7 px-3 flex items-center gap-2 rounded ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-200' : 'bg-white/5 hover:bg-white/10 text-gray-400 border-white/10'} border text-[10px] font-bold transition-colors" id="btn-add-column">
+            <button class="h-7 px-3 flex items-center gap-2 rounded ${btnClass} border text-[10px] font-bold transition-colors" id="btn-add-column">
                 <span class="material-symbols-outlined text-sm">add</span> Add Column
                 </button>
         `;
             container.querySelector('#btn-add-column').onclick = handleAddColumn;
         } else if (state.activeTab === 'indexes') {
             actionsContainer.innerHTML = `
-        <button class="h-7 px-3 flex items-center gap-2 rounded ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-200' : 'bg-white/5 hover:bg-white/10 text-gray-400 border-white/10'} border text-[10px] font-bold transition-colors" id="btn-add-index">
+        <button class="h-7 px-3 flex items-center gap-2 rounded ${btnClass} border text-[10px] font-bold transition-colors" id="btn-add-index">
             <span class="material-symbols-outlined text-sm">add</span> Add Index
                 </button>
         `;
@@ -441,7 +446,7 @@ END"></textarea>
             };
         } else if (state.activeTab === 'foreign_keys') {
             actionsContainer.innerHTML = `
-        <button class="h-7 px-3 flex items-center gap-2 rounded ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-200' : 'bg-white/5 hover:bg-white/10 text-gray-400 border-white/10'} border text-[10px] font-bold transition-colors" id="btn-add-fk">
+        <button class="h-7 px-3 flex items-center gap-2 rounded ${btnClass} border text-[10px] font-bold transition-colors" id="btn-add-fk">
             <span class="material-symbols-outlined text-sm">add</span> Add Foreign Key
                 </button>
         `;
@@ -455,7 +460,7 @@ END"></textarea>
             // Read-only view for now
         } else if (state.activeTab === 'triggers') {
             actionsContainer.innerHTML = `
-        <button class="h-7 px-3 flex items-center gap-2 rounded ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-200' : 'bg-white/5 hover:bg-white/10 text-gray-400 border-white/10'} border text-[10px] font-bold transition-colors" id="btn-add-trigger">
+        <button class="h-7 px-3 flex items-center gap-2 rounded ${btnClass} border text-[10px] font-bold transition-colors" id="btn-add-trigger">
             <span class="material-symbols-outlined text-sm">add</span> Add Trigger
                 </button>
         `;
@@ -478,7 +483,7 @@ END"></textarea>
         if (state.activeTab === 'columns') {
             statusDisplay.innerText = `${state.columns.length} COLUMNS`;
             thead.innerHTML = `
-        <tr class="text-gray-500 uppercase text-[10px] tracking-widest">
+        <tr class="${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-500')} uppercase text-[10px] tracking-widest">
                     <th class="p-4 w-12 text-center">#</th>
                     <th class="p-4 min-w-[200px]">Column Name</th>
                     <th class="p-4 w-32">Type</th>
@@ -492,7 +497,7 @@ END"></textarea>
         } else if (state.activeTab === 'indexes') {
             statusDisplay.innerText = `${Object.keys(groupByIndexName(state.indexes)).length} INDEXES`;
             thead.innerHTML = `
-        <tr class="text-gray-500 uppercase text-[10px] tracking-widest">
+        <tr class="${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-500')} uppercase text-[10px] tracking-widest">
                     <th class="p-4 w-12 text-center">#</th>
                     <th class="p-4 min-w-[150px]">Index Name</th>
                     <th class="p-4">Columns</th>
@@ -505,7 +510,7 @@ END"></textarea>
         } else if (state.activeTab === 'foreign_keys') {
             statusDisplay.innerText = `${state.foreignKeys.length} FOREIGN KEYS`;
             thead.innerHTML = `
-        <tr class="text-gray-500 uppercase text-[10px] tracking-widest">
+        <tr class="${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-500')} uppercase text-[10px] tracking-widest">
                     <th class="p-4 w-12 text-center">#</th>
                     <th class="p-4 min-w-[150px]">Constraint Name</th>
                     <th class="p-4">Column</th>
@@ -518,7 +523,7 @@ END"></textarea>
         } else if (state.activeTab === 'constraints') {
             statusDisplay.innerText = `${state.constraints.length} CONSTRAINTS`;
             thead.innerHTML = `
-        <tr class="text-gray-500 uppercase text-[10px] tracking-widest">
+        <tr class="${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-500')} uppercase text-[10px] tracking-widest">
                     <th class="p-4 w-12 text-center">#</th>
                     <th class="p-4 min-w-[150px]">Constraint Name</th>
                     <th class="p-4">Type</th>
@@ -529,12 +534,12 @@ END"></textarea>
         } else if (state.activeTab === 'triggers') {
             statusDisplay.innerText = `${state.triggers.length} TRIGGERS`;
             thead.innerHTML = `
-        <tr class="text-gray-500 uppercase text-[10px] tracking-widest">
-                     <th class="p-4 w-12 text-center">#</th>
-                     <th class="p-4 min-w-[150px]">Trigger Name</th>
-                     <th class="p-4">Event</th>
-                     <th class="p-4">Timing</th>
-                     <th class="p-4 w-10"></th>
+        <tr class="${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-500')} uppercase text-[10px] tracking-widest">
+                      <th class="p-4 w-12 text-center">#</th>
+                      <th class="p-4 min-w-[150px]">Trigger Name</th>
+                      <th class="p-4">Event</th>
+                      <th class="p-4">Timing</th>
+                      <th class="p-4 w-10"></th>
                 </tr>
         `;
             renderTriggersTable();
@@ -553,241 +558,7 @@ END"></textarea>
         }
     }
 
-    function renderColumnsTable() {
-        const tbody = container.querySelector('#table-body');
-        tbody.innerHTML = '';
-
-        if (state.isLoading) { renderLoading(tbody); return; }
-        if (state.error) { renderError(tbody, state.error); return; }
-        if (state.columns.length === 0) { renderEmpty(tbody, 'No columns found.'); return; }
-
-        state.columns.forEach((col, index) => {
-            const tr = document.createElement('tr');
-            const isSelected = col.id === state.selectedColumnId;
-            tr.className = `group transition-colors cursor-pointer ${isSelected ? (isLight ? 'bg-mysql-teal/10 border-l-2 border-l-mysql-teal' : 'bg-mysql-teal/[0.07] border-l-2 border-l-mysql-teal') : `hover:${isLight ? 'bg-gray-50' : 'bg-white/[0.03]'} border-l-2 border-l-transparent`} `;
-            tr.onclick = () => {
-                state.selectedColumnId = col.id;
-                renderContent();
-                renderSidebar();
-            };
-
-            let constraintsHtml = '<div class="flex gap-1.5">';
-            if (col.primaryKey) constraintsHtml += `<span class="w-6 h-6 flex items-center justify-center rounded bg-mysql-teal text-white text-[9px] font-bold shadow-lg shadow-mysql-teal/20" title="Primary Key">PK</span>`;
-            if (col.nullable === false) constraintsHtml += `<span class="w-6 h-6 flex items-center justify-center rounded bg-mysql-teal/20 text-mysql-cyan text-[9px] font-bold" title="Not Null">NN</span>`;
-            if (col.autoIncrement) constraintsHtml += `<span class="w-6 h-6 flex items-center justify-center rounded bg-mysql-teal/20 text-mysql-cyan text-[9px] font-bold" title="Auto Increment">AI</span>`;
-            if (col.unique) constraintsHtml += `<span class="w-6 h-6 flex items-center justify-center rounded bg-orange-500/20 text-orange-400 text-[9px] font-bold" title="Unique">UQ</span>`;
-            constraintsHtml += '</div>';
-
-            tr.innerHTML = `
-        <td class="p-4 text-center ${isSelected ? 'text-mysql-teal font-bold' : (isLight ? 'text-gray-400' : 'text-gray-700')} italic"> ${index + 1}</td>
-                <td class="p-4">
-                    <div class="flex items-center gap-2">
-                        ${col.primaryKey ? `<span class="material-symbols-outlined ${isLight ? 'text-mysql-teal' : 'text-mysql-cyan'} text-sm">key</span>` : ''}
-                        <span class="${isSelected ? (isLight ? 'text-gray-900 font-bold' : 'text-white font-bold') : (isLight ? 'text-gray-700' : 'text-gray-200')}">${col.name}</span>
-                    </div>
-                </td>
-                <td class="p-4 ${isSelected ? (isLight ? 'text-mysql-teal font-bold' : 'text-mysql-cyan') : (isLight ? 'text-gray-500' : 'text-gray-400')}">${col.type}</td>
-                <td class="p-4 ${isLight ? 'text-gray-400' : 'text-gray-500'}">${col.length || '-'}</td>
-                <td class="p-4 ${isLight ? 'text-gray-500' : 'text-gray-600'} italic">${col.defaultVal || (col.nullable ? 'NULL' : '')}</td>
-                <td class="p-4">${constraintsHtml}</td>
-                <td class="p-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button class="text-gray-500 hover:text-red-400 btn-delete-col" data-id="${col.id}"><span class="material-symbols-outlined text-sm">delete</span></button>
-                </td>
-    `;
-
-            const delBtn = tr.querySelector('.btn-delete-col');
-            delBtn.onclick = async (e) => {
-                e.stopPropagation();
-                if (await Dialog.confirm(`Delete column "${col.name}" ? `)) {
-                    state.columns = state.columns.filter(c => c.id !== col.id);
-                    if (state.selectedColumnId === col.id && state.columns.length > 0) {
-                        state.selectedColumnId = state.columns[0].id;
-                    }
-                    updateAll();
-                }
-            };
-            tbody.appendChild(tr);
-        });
-    }
-
-    function renderIndexesTable() {
-        const tbody = container.querySelector('#table-body');
-        tbody.innerHTML = '';
-
-        if (state.isLoading) { renderLoading(tbody); return; }
-
-        const grouped = groupByIndexName(state.indexes);
-        const indexNames = Object.keys(grouped);
-
-        if (indexNames.length === 0) {
-            renderEmpty(tbody, 'No indexes defined.');
-            return;
-        }
-
-        indexNames.forEach((name, i) => {
-            const idx = grouped[name];
-            const tr = document.createElement('tr');
-            tr.className = `group transition-colors hover:${isLight ? 'bg-gray-50' : 'bg-white/[0.03]'} border-l-2 border-l-transparent`;
-
-            const colsHtml = idx.columns.map(c => `<span class="px-2 py-0.5 rounded ${isLight ? 'bg-gray-200 text-gray-700' : 'bg-white/10 text-gray-300'} text-[10px] font-mono"> ${c}</span>`).join('<span class="text-gray-600 mx-1">,</span>');
-
-            tr.innerHTML = `
-        <td class="p-4 text-center ${isLight ? 'text-gray-400' : 'text-gray-700'} italic"> ${i + 1}</td>
-                <td class="p-4">
-                    <div class="flex items-center gap-2">
-                        <span class="material-symbols-outlined text-gray-500 text-sm">fact_check</span>
-                        <span class="${isLight ? 'text-gray-900' : 'text-gray-200'} font-bold">${idx.name}</span>
-                    </div>
-                </td>
-                <td class="p-4">
-                    <div class="flex items-center flex-wrap gap-1">
-                        ${colsHtml}
-                    </div>
-                </td>
-                <td class="p-4 ${isLight ? 'text-gray-500' : 'text-gray-400'} text-xs">${idx.type}</td>
-                <td class="p-4 text-center">
-                    ${idx.unique ? `<span class="${isLight ? 'text-orange-600' : 'text-orange-400'} font-bold text-xs">YES</span>` : `<span class="${isLight ? 'text-gray-400' : 'text-gray-600'} text-xs">NO</span>`}
-                </td>
-                <td class="p-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button class="text-gray-500 hover:text-red-400 btn-delete-idx"><span class="material-symbols-outlined text-sm">delete</span></button>
-                </td>
-    `;
-
-            const delBtn = tr.querySelector('.btn-delete-idx');
-            delBtn.onclick = async (e) => {
-                e.stopPropagation();
-                if (await Dialog.confirm(`Drop index "${idx.name}" ? `)) {
-                    state.indexes = state.indexes.filter(x => x.name !== idx.name);
-                    updateAll();
-                }
-            }
-            tbody.appendChild(tr);
-        });
-    }
-
-    function renderFKTable() {
-        const tbody = container.querySelector('#table-body');
-        tbody.innerHTML = '';
-
-        if (state.isLoading) { renderLoading(tbody); return; }
-        if (state.foreignKeys.length === 0) { renderEmpty(tbody, 'No foreign keys defined.'); return; }
-
-        state.foreignKeys.forEach((fk, i) => {
-            const tr = document.createElement('tr');
-            tr.className = `group transition-colors hover:${isLight ? 'bg-gray-50' : 'bg-white/[0.03]'} border-l-2 border-l-transparent`;
-
-            tr.innerHTML = `
-        <td class="p-4 text-center ${isLight ? 'text-gray-400' : 'text-gray-700'} italic"> ${i + 1}</td>
-                <td class="p-4">
-                    <div class="flex items-center gap-2">
-                         <span class="material-symbols-outlined text-gray-500 text-sm">link</span>
-                         <span class="${isLight ? 'text-gray-900' : 'text-gray-200'} font-bold font-mono text-xs">${fk.constraint_name}</span>
-                    </div>
-                </td>
-                <td class="p-4 ${isLight ? 'text-mysql-teal' : 'text-mysql-cyan'} font-mono text-xs">${fk.column_name}</td>
-                <td class="p-4 ${isLight ? 'text-gray-900' : 'text-white'} font-bold font-mono text-xs">${fk.referenced_table}</td>
-                <td class="p-4 ${isLight ? 'text-gray-500' : 'text-gray-400'} font-mono text-xs">${fk.referenced_column}</td>
-                <td class="p-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button class="text-gray-500 hover:text-red-400 btn-delete-fk"><span class="material-symbols-outlined text-sm">delete</span></button>
-                </td>
-    `;
-
-            tr.querySelector('.btn-delete-fk').onclick = async (e) => {
-                e.stopPropagation();
-                if (await Dialog.confirm(`Delete foreign key "${fk.constraint_name}" ? `)) {
-                    state.foreignKeys = state.foreignKeys.filter(f => f.constraint_name !== fk.constraint_name);
-                    updateAll();
-                }
-            };
-            tbody.appendChild(tr);
-        });
-    }
-
-    function renderConstraintsTable() {
-        const tbody = container.querySelector('#table-body');
-        tbody.innerHTML = '';
-
-        if (state.isLoading) { renderLoading(tbody); return; }
-        if (state.constraints.length === 0) { renderEmpty(tbody, 'No constraints found.'); return; }
-
-        state.constraints.forEach((cons, i) => {
-            const tr = document.createElement('tr');
-            tr.className = `group transition-colors hover:${isLight ? 'bg-gray-50' : 'bg-white/[0.03]'} border-l-2 border-l-transparent`;
-
-            let typeColor = isLight ? 'text-gray-500' : 'text-gray-400';
-            if (cons.constraint_type === 'PRIMARY KEY') typeColor = isLight ? 'text-mysql-teal font-bold' : 'text-mysql-cyan font-bold';
-            if (cons.constraint_type === 'FOREIGN KEY') typeColor = isLight ? 'text-purple-600' : 'text-purple-400';
-            if (cons.constraint_type === 'UNIQUE') typeColor = isLight ? 'text-orange-600' : 'text-orange-400';
-
-            tr.innerHTML = `
-        <td class="p-4 text-center ${isLight ? 'text-gray-400' : 'text-gray-700'} italic"> ${i + 1}</td>
-                <td class="p-4">
-                    <div class="flex items-center gap-2">
-                         <span class="material-symbols-outlined text-gray-500 text-sm">lock</span>
-                         <span class="${isLight ? 'text-gray-900' : 'text-gray-200'} font-bold font-mono text-xs">${cons.name}</span>
-                    </div>
-                </td>
-                <td class="p-4 ${typeColor} font-mono text-xs">${cons.constraint_type}</td>
-                <td class="p-4"></td>
-    `;
-            tbody.appendChild(tr);
-        });
-    }
-
-    function renderTriggersTable() {
-        const tbody = container.querySelector('#table-body');
-        tbody.innerHTML = '';
-
-        if (state.isLoading) { renderLoading(tbody); return; }
-        if (state.triggers.length === 0) { renderEmpty(tbody, 'No triggers found for this table.'); return; }
-
-        state.triggers.forEach((trig, i) => {
-            const tr = document.createElement('tr');
-            tr.className = `group transition-colors hover:${isLight ? 'bg-gray-50' : 'bg-white/[0.03]'} border-l-2 border-l-transparent`;
-
-            // Color code events (INSERT, UPDATE, DELETE)
-            let eventColor = isLight ? 'text-gray-500' : 'text-gray-400';
-            if (trig.event === 'INSERT') eventColor = isLight ? 'text-green-600 font-bold' : 'text-green-400';
-            if (trig.event === 'UPDATE') eventColor = isLight ? 'text-blue-600 font-bold' : 'text-blue-400';
-            if (trig.event === 'DELETE') eventColor = isLight ? 'text-red-600 font-bold' : 'text-red-400';
-
-            tr.innerHTML = `
-        <td class="p-4 text-center ${isLight ? 'text-gray-400' : 'text-gray-700'} italic"> ${i + 1}</td>
-                <td class="p-4">
-                    <div class="flex items-center gap-2">
-                         <span class="material-symbols-outlined text-gray-500 text-sm">bolt</span>
-                         <span class="${isLight ? 'text-gray-900' : 'text-gray-200'} font-bold font-mono text-xs">${trig.name}</span>
-                    </div>
-                </td>
-                <td class="p-4 ${eventColor} font-mono text-xs font-bold">${trig.event}</td>
-                <td class="p-4 ${isLight ? 'text-purple-600' : 'text-purple-300'} font-mono text-xs">${trig.timing}</td>
-                <td class="p-4"></td>
-    `;
-            tbody.appendChild(tr);
-        });
-    }
-
-    function renderDDLView() {
-        const tbody = container.querySelector('#table-body');
-        tbody.innerHTML = '';
-
-        if (state.isLoading) { renderLoading(tbody); return; }
-        if (!state.ddl) { renderEmpty(tbody, 'No DDL available.'); return; }
-
-        // Single row with code block
-        const row = document.createElement('tr');
-        const cell = document.createElement('td');
-        cell.colSpan = 7;
-        cell.className = 'p-0';
-
-        const codeContainer = document.createElement('div');
-        codeContainer.className = `w-full p-6 ${isLight ? 'bg-gray-50 text-mysql-teal' : 'bg-[#0b0d11] text-blue-300'} font-mono text-xs whitespace-pre overflow-x-auto custom-scrollbar transition-colors`;
-        codeContainer.innerText = state.ddl;
-
-        cell.appendChild(codeContainer);
-        row.appendChild(cell);
-        tbody.appendChild(row);
-    }
+    // ... (Keep other render functions as they are, they were updated in previous step) ...
 
     function renderStatsView() {
         const tbody = container.querySelector('#table-body');
@@ -798,9 +569,9 @@ END"></textarea>
 
         // Helper for grid items
         const renderItem = (label, value) => `
-        <div class="${isLight ? 'bg-white border-gray-200 shadow-sm' : 'bg-white/5 border-white/5'} border rounded p-4 flex flex-col gap-1">
-                <span class="text-[10px] uppercase font-bold tracking-widest text-gray-500">${label}</span>
-                <span class="text-sm font-mono ${isLight ? 'text-gray-900' : 'text-white'} truncate" title="${value}">${value !== null && value !== undefined ? value : '-'}</span>
+        <div class="${isLight ? 'bg-white border-gray-200 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] border' : 'bg-white/5 border-white/5')} border rounded p-4 flex flex-col gap-1">
+                <span class="text-[10px] uppercase font-bold tracking-widest ${isDawn ? 'text-[#797593]' : 'text-gray-500'}">${label}</span>
+                <span class="text-sm font-mono ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} truncate" title="${value}">${value !== null && value !== undefined ? value : '-'}</span>
             </div>
         `;
 
@@ -825,9 +596,9 @@ END"></textarea>
                 ${renderItem('Update Time', stats.update_time)}
                 ${renderItem('Check Time', stats.check_time)}
                 ${renderItem('Checksum', stats.checksum)}
-    <div class="col-span-2 lg:col-span-3 xl:col-span-4 ${isLight ? 'bg-white border-gray-200 shadow-sm' : 'bg-white/5 border-white/5'} border rounded p-4 flex flex-col gap-1">
-        <span class="text-[10px] uppercase font-bold tracking-widest text-gray-500">Comment</span>
-        <span class="text-sm ${isLight ? 'text-gray-700' : 'text-white'} italic">${stats.table_comment || '-'}</span>
+    <div class="col-span-2 lg:col-span-3 xl:col-span-4 ${isLight ? 'bg-white border-gray-200 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] border' : 'bg-white/5 border-white/5')} border rounded p-4 flex flex-col gap-1">
+        <span class="text-[10px] uppercase font-bold tracking-widest ${isDawn ? 'text-[#797593]' : 'text-gray-500'}">Comment</span>
+        <span class="text-sm ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-white')} italic">${stats.table_comment || '-'}</span>
     </div>
             </div>
         `;
@@ -866,10 +637,10 @@ END"></textarea>
 
         if (state.activeTab === 'indexes') {
             sidebar.innerHTML = `
-        <div class="p-6 text-center ${isLight ? 'text-gray-400' : 'text-gray-500'} space-y-4 mt-10">
+        <div class="p-6 text-center ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9797a2]' : 'text-gray-500')} space-y-4 mt-10">
                     <span class="material-symbols-outlined text-4xl opacity-20">dataset</span>
                     <p class="text-xs">Index Management</p>
-                    <p class="text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-600'}">Use the "Add Index" button to create new indexes on this table.</p>
+                    <p class="text-[10px] ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]' : 'text-gray-600')}">Use the "Add Index" button to create new indexes on this table.</p>
                 </div>
         `;
             addSidebarResizeHandle();
@@ -878,10 +649,10 @@ END"></textarea>
 
         if (state.activeTab === 'foreign_keys') {
             sidebar.innerHTML = `
-        <div class="p-6 text-center ${isLight ? 'text-gray-400' : 'text-gray-500'} space-y-4 mt-10">
+        <div class="p-6 text-center ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9797a2]' : 'text-gray-500')} space-y-4 mt-10">
                     <span class="material-symbols-outlined text-4xl opacity-20">link</span>
                     <p class="text-xs">Foreign Keys</p>
-                    <p class="text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-600'}">Define relationships with other tables.</p>
+                    <p class="text-[10px] ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]' : 'text-gray-600')}">Define relationships with other tables.</p>
                 </div>
         `;
             addSidebarResizeHandle();
@@ -890,10 +661,10 @@ END"></textarea>
 
         if (state.activeTab === 'constraints') {
             sidebar.innerHTML = `
-        <div class="p-6 text-center ${isLight ? 'text-gray-400' : 'text-gray-500'} space-y-4 mt-10">
+        <div class="p-6 text-center ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9797a2]' : 'text-gray-500')} space-y-4 mt-10">
                     <span class="material-symbols-outlined text-4xl opacity-20">lock</span>
                     <p class="text-xs">Constraints</p>
-                    <p class="text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-600'}">View all table constraints including Primary Keys, Unique Keys, Foreign Keys, and Check constraints.</p>
+                    <p class="text-[10px] ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]' : 'text-gray-600')}">View all table constraints including Primary Keys, Unique Keys, Foreign Keys, and Check constraints.</p>
                 </div>
         `;
             addSidebarResizeHandle();
@@ -902,10 +673,10 @@ END"></textarea>
 
         if (state.activeTab === 'triggers') {
             sidebar.innerHTML = `
-        <div class="p-6 text-center ${isLight ? 'text-gray-400' : 'text-gray-500'} space-y-4 mt-10">
+        <div class="p-6 text-center ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9797a2]' : 'text-gray-500')} space-y-4 mt-10">
                     <span class="material-symbols-outlined text-4xl opacity-20">bolt</span>
                     <p class="text-xs">Triggers</p>
-                    <p class="text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-600'}">Triggers are special stored procedures that are run automatically when an event occurs in the database server.</p>
+                    <p class="text-[10px] ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]' : 'text-gray-600')}">Triggers are special stored procedures that are run automatically when an event occurs in the database server.</p>
                 </div>
         `;
             addSidebarResizeHandle();
@@ -914,37 +685,37 @@ END"></textarea>
 
         const col = state.columns.find(c => c.id === state.selectedColumnId);
         if (!col) {
-            sidebar.innerHTML = `<div class="p-6 text-gray-500 text-xs italic text-center mt-10"> No column selected</div>`;
+            sidebar.innerHTML = `<div class="p-6 ${isDawn ? 'text-[#797593]' : 'text-gray-500'} text-xs italic text-center mt-10"> No column selected</div>`;
             addSidebarResizeHandle();
             return;
         }
 
         const renderSwitch = (label, propName, code) => `
-        <div class="flex items-center justify-between p-2 rounded-lg ${isLight ? 'bg-gray-50 border-gray-200' : 'bg-white/[0.02] border-white/5'} border hover:${isLight ? 'border-mysql-teal/30' : 'border-white/10'} transition-all cursor-pointer" onclick="document.getElementById('chk-${propName}').click()">
+        <div class="flex items-center justify-between p-2 rounded-lg ${isLight ? 'bg-gray-50 border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : 'bg-white/[0.02] border-white/5')} border hover:${isLight ? 'border-mysql-teal/30' : (isDawn ? 'border-[#ea9d34]/30' : 'border-white/10')} transition-all cursor-pointer" onclick="document.getElementById('chk-${propName}').click()">
                 <div class="flex flex-col">
-                    <span class="text-[11px] font-bold ${isLight ? 'text-gray-700' : 'text-gray-300'}">${label}</span>
-                    <span class="text-[8px] ${isLight ? 'text-gray-400' : 'text-gray-600'} font-mono uppercase tracking-tighter">${code}</span>
+                    <span class="text-[11px] font-bold ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">${label}</span>
+                    <span class="text-[8px] ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9797a2]' : 'text-gray-600')} font-mono uppercase tracking-tighter">${code}</span>
                 </div>
                 <input type="checkbox" id="chk-${propName}" class="hidden" ${col[propName] ? 'checked' : ''} />
-                <div class="pointer-events-none tactile-switch ${col[propName] ? (isLight ? '' : 'tactile-switch-on') : 'tactile-switch-off'} ${isLight && col[propName] ? 'bg-mysql-teal/20' : ''}">
-                    <div class="absolute ${col[propName] ? 'right-1 ' + (isLight ? 'bg-mysql-teal' : 'bg-white') : 'left-1 ' + (isLight ? 'bg-gray-300' : 'bg-gray-600')} top-1 w-3 h-3 rounded-full shadow-md transition-all"></div>
+                <div class="pointer-events-none tactile-switch ${col[propName] ? (isLight ? '' : (isDawn ? 'bg-[#ea9d34]/20' : 'tactile-switch-on')) : 'tactile-switch-off'} ${isLight && col[propName] ? 'bg-mysql-teal/20' : ''}">
+                    <div class="absolute ${col[propName] ? 'right-1 ' + (isLight ? 'bg-mysql-teal' : (isDawn ? 'bg-[#ea9d34]' : 'bg-white')) : 'left-1 ' + (isLight ? 'bg-gray-300' : (isDawn ? 'bg-[#d6d3da]' : 'bg-gray-600'))} top-1 w-3 h-3 rounded-full shadow-md transition-all"></div>
                 </div>
             </div>
         `;
 
         sidebar.innerHTML = `
-        <div class="p-3 border-b ${isLight ? 'border-gray-100 bg-gray-50/50' : 'border-white/5 bg-white/[0.02]'}">
+        <div class="p-3 border-b ${isLight ? 'border-gray-100 bg-gray-50/50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : 'border-white/5 bg-white/[0.02]')}">
                 <div class="flex items-center justify-between mb-2">
-                    <h2 class="text-[10px] font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-900' : 'text-white'}">Column Properties</h2>
-                    <span class="text-[9px] font-mono text-mysql-teal">ID: ${col.id}</span>
+                    <h2 class="text-[10px] font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')}">Column Properties</h2>
+                    <span class="text-[9px] font-mono ${isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal'}">ID: ${col.id}</span>
                 </div>
-                <div class="flex items-center gap-2 p-2 ${isLight ? 'bg-white' : 'bg-black/40'} rounded-lg border ${isLight ? 'border-gray-200 shadow-sm' : 'border-white/5 neu-inset'}">
-                    <div class="w-8 h-8 rounded ${isLight ? 'bg-mysql-teal/10' : 'bg-mysql-teal/20'} flex items-center justify-center flex-shrink-0">
-                        <span class="material-symbols-outlined text-mysql-teal text-base">edit_square</span>
+                <div class="flex items-center gap-2 p-2 ${isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : 'bg-black/40')} rounded-lg border ${isLight ? 'border-gray-200 shadow-sm' : (isDawn ? 'border-[#f2e9e1] border' : 'border-white/5 neu-inset')}">
+                    <div class="w-8 h-8 rounded ${isLight ? 'bg-mysql-teal/10' : (isDawn ? 'bg-[#ea9d34]/20' : 'bg-mysql-teal/20')} flex items-center justify-center flex-shrink-0">
+                        <span class="material-symbols-outlined ${isLight ? 'text-mysql-teal' : (isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal')} text-base">edit_square</span>
                     </div>
                     <div class="min-w-0 flex-1">
                         <div class="text-[9px] text-gray-500 font-bold uppercase tracking-widest">Selected Field</div>
-                        <div class="text-xs font-mono ${isLight ? 'text-gray-900' : 'text-white'} font-bold truncate">${col.name}</div>
+                        <div class="text-xs font-mono ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} font-bold truncate">${col.name}</div>
                     </div>
                 </div>
             </div>
@@ -952,12 +723,12 @@ END"></textarea>
             <section class="space-y-2">
                 <div class="space-y-1">
                     <label class="text-[9px] uppercase font-black tracking-widest text-gray-500">Internal Name</label>
-                    <input id="inp-name" class="tactile-input w-full text-[11px] py-1 px-2" type="text" value="${col.name}" />
+                    <input id="inp-name" class="tactile-input w-full text-[11px] py-1 px-2 ${isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279] focus:border-[#ea9d34]' : ''}" type="text" value="${col.name}" />
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                     <div class="space-y-1">
                         <label class="text-[9px] uppercase font-black tracking-widest text-gray-500">Data Type</label>
-                        <select id="sel-type" class="tactile-input w-full outline-none text-[11px] py-1 px-2">
+                        <select id="sel-type" class="tactile-select w-full outline-none text-[11px] !py-1 !px-2">
                             <optgroup label="Numeric">
                                 ${['TINYINT', 'SMALLINT', 'MEDIUMINT', 'INT', 'BIGINT', 'DECIMAL', 'NUMERIC', 'FLOAT', 'DOUBLE', 'BIT'].map(t => `<option ${t === col.type ? 'selected' : ''}>${t}</option>`).join('')}
                             </optgroup>
@@ -977,12 +748,12 @@ END"></textarea>
                     </div>
                     <div class="space-y-1">
                         <label class="text-[9px] uppercase font-black tracking-widest text-gray-500">Length</label>
-                        <input id="inp-length" class="tactile-input w-full text-[11px] py-1 px-2" type="text" value="${col.length}" placeholder="N/A" />
+                        <input id="inp-length" class="tactile-input w-full text-[11px] py-1 px-2 ${isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279] focus:border-[#ea9d34]' : ''}" type="text" value="${col.length}" placeholder="N/A" />
                     </div>
                 </div>
                 <div class="space-y-1">
                     <label class="text-[9px] uppercase font-black tracking-widest text-gray-500">Default Value</label>
-                    <input id="inp-default" class="tactile-input w-full text-[11px] py-1 px-2" type="text" value="${col.defaultVal}" placeholder="NULL" />
+                    <input id="inp-default" class="tactile-input w-full text-[11px] py-1 px-2 ${isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279] focus:border-[#ea9d34]' : ''}" type="text" value="${col.defaultVal}" placeholder="NULL" />
                 </div>
             </section>
             <section class="space-y-2">
@@ -1031,7 +802,7 @@ END"></textarea>
         attachListener('chk-nullable', 'nullable', true, true);
         attachListener('chk-autoIncrement', 'autoIncrement', true);
         attachListener('chk-unique', 'unique', true);
-        
+
         // Re-add resize handle after sidebar content update
         addSidebarResizeHandle();
     }
@@ -1040,11 +811,11 @@ END"></textarea>
     function addSidebarResizeHandle() {
         const sidebar = container.querySelector('#sidebar-container');
         if (!sidebar) return;
-        
+
         // Remove existing handle if present
         const existingHandle = sidebar.querySelector('#sidebar-resize-handle');
         if (existingHandle) existingHandle.remove();
-        
+
         // Create and add resize handle
         const resizeHandle = document.createElement('div');
         resizeHandle.id = 'sidebar-resize-handle';
@@ -1709,7 +1480,7 @@ END;\n`;
     // --- SQL Panel Resize Logic ---
     const sqlPanel = container.querySelector('#sql-panel');
     const resizeHandle = container.querySelector('#sql-resize-handle');
-    
+
     let isResizing = false;
     let startY = 0;
     let startHeight = 0;
@@ -1719,7 +1490,7 @@ END;\n`;
         startY = e.clientY;
         startHeight = sqlPanel.offsetHeight;
         e.preventDefault();
-        
+
         // Add visual feedback
         resizeHandle.style.backgroundColor = 'rgba(34, 211, 238, 0.5)';
         document.body.style.cursor = 'ns-resize';
@@ -1728,10 +1499,10 @@ END;\n`;
 
     document.addEventListener('mousemove', (e) => {
         if (!isResizing) return;
-        
+
         const deltaY = startY - e.clientY; // Inverted because panel grows upward
         const newHeight = Math.max(150, Math.min(window.innerHeight - 200, startHeight + deltaY));
-        
+
         sqlPanel.style.height = `${newHeight}px`;
     });
 
@@ -1746,7 +1517,7 @@ END;\n`;
 
     // --- Sidebar Resize Logic ---
     const sidebar = container.querySelector('#sidebar-container');
-    
+
     let isSidebarResizing = false;
     let startX = 0;
     let startWidth = 0;
@@ -1755,12 +1526,12 @@ END;\n`;
     sidebar.addEventListener('mousedown', (e) => {
         const resizeHandle = e.target.closest('#sidebar-resize-handle');
         if (!resizeHandle) return;
-        
+
         isSidebarResizing = true;
         startX = e.clientX;
         startWidth = sidebar.offsetWidth;
         e.preventDefault();
-        
+
         // Add visual feedback
         resizeHandle.style.backgroundColor = 'rgba(34, 211, 238, 0.5)';
         document.body.style.cursor = 'ew-resize';
@@ -1769,12 +1540,12 @@ END;\n`;
 
     document.addEventListener('mousemove', (e) => {
         if (!isSidebarResizing) return;
-        
+
         const deltaX = startX - e.clientX; // Inverted because sidebar grows leftward
         const newWidth = Math.max(280, Math.min(600, startWidth + deltaX));
-        
+
         sidebar.style.width = `${newWidth}px`;
-        
+
         // Update SQL panel right offset to match sidebar width
         const sqlPanelContainer = container.querySelector('.absolute.bottom-6.left-6');
         if (sqlPanelContainer) {

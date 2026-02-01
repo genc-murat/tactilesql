@@ -29,6 +29,7 @@ export function showVisualExplainModal(queryResult) {
     // Remove existing
     const theme = ThemeManager.getCurrentTheme();
     const isLight = theme === 'light';
+    const isDawn = theme === 'dawn';
     const isOceanic = theme === 'oceanic';
 
     const overlay = document.createElement('div');
@@ -76,45 +77,45 @@ export function showVisualExplainModal(queryResult) {
     });
 
     overlay.innerHTML = `
-        <div class="${isLight ? 'bg-white border-gray-200' : (isOceanic ? 'bg-ocean-panel border-ocean-border' : 'bg-[#0f1115] border border-white/10')} rounded-xl shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden transform transition-all">
-            <div class="flex items-center justify-between px-6 py-4 border-b ${isLight ? 'border-gray-100 bg-gray-50' : (isOceanic ? 'border-ocean-border/30 bg-ocean-panel' : 'border-white/5 bg-[#13161b]')}">
+        <div class="${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border' : 'bg-[#0f1115] border border-white/10'))} rounded-xl shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden transform transition-all">
+            <div class="flex items-center justify-between px-6 py-4 border-b ${isLight ? 'border-gray-100 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border/30 bg-ocean-panel' : 'border-white/5 bg-[#13161b]'))}">
                 <div class="flex items-center gap-3">
                     <span class="material-symbols-outlined text-mysql-teal text-xl">account_tree</span>
                     <div>
-                        <h2 class="text-sm font-bold ${isLight ? 'text-gray-800' : 'text-white'} tracking-tight uppercase">Query Execution Plan</h2>
+                        <h2 class="text-sm font-bold ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-white')} tracking-tight uppercase">Query Execution Plan</h2>
                         <p class="text-[10px] text-gray-500">Visual analysis of query optimization</p>
                     </div>
                 </div>
                 <div class="flex items-center gap-3">
-                    <button id="copy-json-btn" class="flex items-center gap-1.5 px-3 py-1.5 ${isLight ? 'bg-gray-100 border-gray-200 text-gray-600' : 'bg-white/5 border-white/10 text-gray-400'} border text-[10px] font-bold uppercase tracking-wider hover:bg-white/10 rounded transition-all">
+                    <button id="copy-json-btn" class="flex items-center gap-1.5 px-3 py-1.5 ${isLight ? 'bg-gray-100 border-gray-200 text-gray-600' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279]' : 'bg-white/5 border-white/10 text-gray-400')} border text-[10px] font-bold uppercase tracking-wider hover:bg-white/10 rounded transition-all">
                         <span class="material-symbols-outlined text-sm">content_copy</span> Copy JSON
                     </button>
-                    <button id="close-modal" class="w-8 h-8 flex items-center justify-center rounded-lg ${isLight ? 'bg-gray-100 hover:bg-gray-200' : 'bg-white/5 hover:bg-white/10'} text-gray-400 hover:text-white transition-all">
+                    <button id="close-modal" class="w-8 h-8 flex items-center justify-center rounded-lg ${isLight ? 'bg-gray-100 hover:bg-gray-200' : (isDawn ? 'bg-[#fffaf3] hover:bg-[#f2e9e1] text-[#575279]' : 'bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white')} transition-all">
                         <span class="material-symbols-outlined text-base">close</span>
                     </button>
                 </div>
             </div>
             
             <!-- Summary Panel -->
-            <div class="px-6 py-3 border-b ${isLight ? 'border-gray-100 bg-gray-50/50' : (isOceanic ? 'border-ocean-border/20 bg-ocean-bg/50' : 'border-white/5 bg-[#0d0f13]')} flex items-center gap-6">
+            <div class="px-6 py-3 border-b ${isLight ? 'border-gray-100 bg-gray-50/50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]/50' : (isOceanic ? 'border-ocean-border/20 bg-ocean-bg/50' : 'border-white/5 bg-[#0d0f13]'))} flex items-center gap-6">
                 <div class="flex items-center gap-3 px-4 py-2 rounded-lg ${scoreBg} border">
                     <span class="text-2xl font-bold ${scoreColor}">${perfScore}</span>
                     <div>
-                        <div class="text-[9px] font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">Performance</div>
+                        <div class="text-[9px] font-bold uppercase tracking-wider ${(isLight || isDawn) ? 'text-gray-500' : 'text-gray-400'}">Performance</div>
                         <div class="text-[10px] ${scoreColor}">${perfScore >= 80 ? 'Excellent' : (perfScore >= 50 ? 'Needs Work' : 'Poor')}</div>
                     </div>
                 </div>
-                <div class="flex items-center gap-2 px-3 py-2 rounded-lg ${isLight ? 'bg-gray-100' : 'bg-white/5'}">
+                <div class="flex items-center gap-2 px-3 py-2 rounded-lg ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#faf4ed]' : 'bg-white/5')}">
                     <span class="material-symbols-outlined text-sm text-gray-500">table_rows</span>
                     <div>
-                        <div class="text-xs font-bold ${isLight ? 'text-gray-700' : 'text-white'}">${new Intl.NumberFormat().format(totalRows)}</div>
+                        <div class="text-xs font-bold ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-white')}">${new Intl.NumberFormat().format(totalRows)}</div>
                         <div class="text-[9px] text-gray-500">Total Rows</div>
                     </div>
                 </div>
-                <div class="flex items-center gap-2 px-3 py-2 rounded-lg ${isLight ? 'bg-gray-100' : 'bg-white/5'}">
+                <div class="flex items-center gap-2 px-3 py-2 rounded-lg ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#faf4ed]' : 'bg-white/5')}">
                     <span class="material-symbols-outlined text-sm text-gray-500">layers</span>
                     <div>
-                        <div class="text-xs font-bold ${isLight ? 'text-gray-700' : 'text-white'}">${explainData.length}</div>
+                        <div class="text-xs font-bold ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-white')}">${explainData.length}</div>
                         <div class="text-[9px] text-gray-500">Operations</div>
                     </div>
                 </div>
@@ -129,7 +130,7 @@ export function showVisualExplainModal(queryResult) {
                 ` : ''}
             </div>
             
-            <div class="flex-1 overflow-auto custom-scrollbar p-8 ${isLight ? 'bg-white' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]')} relative">
+            <div class="flex-1 overflow-auto custom-scrollbar p-8 ${isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]'))} relative">
                 <svg id="svg-visualization" class="w-full" style="min-height: 400px;">
                     <!-- SVG visualization will be generated here -->
                 </svg>
@@ -137,13 +138,13 @@ export function showVisualExplainModal(queryResult) {
 
             <!-- Suggestions Panel -->
             ${suggestions.length > 0 ? `
-            <div class="px-6 py-3 border-t ${isLight ? 'border-gray-100 bg-yellow-50/50' : (isOceanic ? 'border-ocean-border/30 bg-yellow-900/10' : 'border-white/5 bg-yellow-900/10')}">
-                <div class="text-[9px] font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'} mb-2 flex items-center gap-1.5">
+            <div class="px-6 py-3 border-t ${isLight ? 'border-gray-100 bg-yellow-50/50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border/30 bg-yellow-900/10' : 'border-white/5 bg-yellow-900/10'))}">
+                <div class="text-[9px] font-bold uppercase tracking-wider ${(isLight || isDawn) ? 'text-gray-500' : 'text-gray-400'} mb-2 flex items-center gap-1.5">
                     <span class="material-symbols-outlined text-xs">tips_and_updates</span> Optimization Suggestions
                 </div>
                 <div class="flex flex-wrap gap-2">
                     ${suggestions.slice(0, 3).map(s => `
-                        <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg ${s.severity === 'error' ? 'bg-red-500/10 border border-red-500/20' : 'bg-yellow-500/10 border border-yellow-500/20'} text-[10px] ${isLight ? 'text-gray-700' : 'text-gray-300'}">
+                        <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg ${s.severity === 'error' ? 'bg-red-500/10 border border-red-500/20' : 'bg-yellow-500/10 border border-yellow-500/20'} text-[10px] ${(isLight || isDawn) ? 'text-gray-700' : 'text-gray-300'}">
                             <span>${s.icon}</span>
                             <span>${s.text}</span>
                         </div>
@@ -153,7 +154,7 @@ export function showVisualExplainModal(queryResult) {
             </div>
             ` : ''}
 
-            <div class="px-6 py-2 border-t ${isLight ? 'border-gray-100 bg-gray-50' : (isOceanic ? 'border-ocean-border/30 bg-ocean-panel' : 'border-white/5 bg-[#13161b]')} flex justify-center gap-4 text-[10px] text-gray-500 font-medium">
+            <div class="px-6 py-2 border-t ${isLight ? 'border-gray-100 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border/30 bg-ocean-panel' : 'border-white/5 bg-[#13161b]'))} flex justify-center gap-4 text-[10px] text-gray-500 font-medium">
                  <div class="flex items-center gap-1.5"><div class="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.3)]"></div> Optimal (Index)</div>
                  <div class="flex items-center gap-1.5"><div class="w-1.5 h-1.5 rounded-full bg-yellow-500 shadow-[0_0_5px_rgba(234,179,8,0.3)]"></div> Moderate (Range)</div>
                  <div class="flex items-center gap-1.5"><div class="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_5px_rgba(239,68,68,0.3)]"></div> Slow (Full Scan)</div>
@@ -341,14 +342,14 @@ export function showVisualExplainModal(queryResult) {
         startCircle.setAttribute('cx', centerX);
         startCircle.setAttribute('cy', 30);
         startCircle.setAttribute('r', '20');
-        startCircle.setAttribute('fill', isLight ? '#10b981' : '#059669');
+        startCircle.setAttribute('fill', (isLight || isDawn) ? '#10b981' : '#059669');
         startCircle.setAttribute('opacity', '0.3');
 
         const startText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         startText.setAttribute('x', centerX);
         startText.setAttribute('y', 36);
         startText.setAttribute('text-anchor', 'middle');
-        startText.setAttribute('fill', isLight ? '#047857' : '#10b981');
+        startText.setAttribute('fill', (isLight || isDawn) ? '#047857' : '#10b981');
         startText.setAttribute('font-size', '12');
         startText.setAttribute('font-weight', 'bold');
         startText.textContent = 'START';
@@ -368,10 +369,10 @@ export function showVisualExplainModal(queryResult) {
             // Draw connecting arrow from previous node
             if (index > 0) {
                 const prevY = currentY - nodeHeight - verticalGap;
-                drawArrow(svg, centerX, prevY + nodeHeight / 2 + 10, centerX, currentY - 40, opInfo.color, isLight);
+                drawArrow(svg, centerX, prevY + nodeHeight / 2 + 10, centerX, currentY - 40, opInfo.color, (isLight || isDawn));
             } else {
                 // Arrow from start
-                drawArrow(svg, centerX, 50, centerX, currentY - 40, opInfo.color, isLight);
+                drawArrow(svg, centerX, 50, centerX, currentY - 40, opInfo.color, (isLight || isDawn));
             }
 
             // Draw node
@@ -387,7 +388,7 @@ export function showVisualExplainModal(queryResult) {
             rect.setAttribute('height', nodeHeight);
             rect.setAttribute('rx', '12');
             rect.setAttribute('ry', '12');
-            rect.setAttribute('fill', isLight ? '#ffffff' : '#13161b');
+            rect.setAttribute('fill', isLight ? '#ffffff' : (isDawn ? '#fffaf3' : '#13161b'));
             rect.setAttribute('stroke', opInfo.color);
             rect.setAttribute('stroke-width', '2');
             rect.setAttribute('filter', 'url(#glow)');
@@ -430,7 +431,7 @@ export function showVisualExplainModal(queryResult) {
             const tableText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
             tableText.setAttribute('x', centerX - nodeWidth / 2 + 15);
             tableText.setAttribute('y', currentY - nodeHeight / 2 + 55);
-            tableText.setAttribute('fill', isLight ? '#374151' : '#e5e7eb');
+            tableText.setAttribute('fill', (isLight || isDawn) ? '#374151' : '#e5e7eb');
             tableText.setAttribute('font-size', '11');
             tableText.setAttribute('font-weight', '600');
             tableText.textContent = `Table: ${table || 'N/A'}`;
@@ -441,7 +442,7 @@ export function showVisualExplainModal(queryResult) {
                 const keyText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
                 keyText.setAttribute('x', centerX - nodeWidth / 2 + 15);
                 keyText.setAttribute('y', currentY - nodeHeight / 2 + 72);
-                keyText.setAttribute('fill', isLight ? '#6366f1' : '#818cf8');
+                keyText.setAttribute('fill', (isLight || isDawn) ? '#6366f1' : '#818cf8');
                 keyText.setAttribute('font-size', '10');
                 keyText.textContent = `🔑 Index: ${key.substring(0, 20)}${key.length > 20 ? '...' : ''}`;
                 nodeGroup.appendChild(keyText);
@@ -451,7 +452,7 @@ export function showVisualExplainModal(queryResult) {
             const rowsText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
             rowsText.setAttribute('x', centerX - nodeWidth / 2 + 15);
             rowsText.setAttribute('y', currentY - nodeHeight / 2 + 92);
-            rowsText.setAttribute('fill', isLight ? '#059669' : '#10b981');
+            rowsText.setAttribute('fill', (isLight || isDawn) ? '#059669' : '#10b981');
             rowsText.setAttribute('font-size', '11');
             rowsText.setAttribute('font-weight', 'bold');
             rowsText.textContent = `📊 Rows: ${formatNumber(rows)}`;
@@ -469,7 +470,7 @@ export function showVisualExplainModal(queryResult) {
             barBg.setAttribute('width', barWidth);
             barBg.setAttribute('height', barHeight);
             barBg.setAttribute('rx', '4');
-            barBg.setAttribute('fill', isLight ? '#e5e7eb' : '#1f2937');
+            barBg.setAttribute('fill', (isLight || isDawn) ? '#e5e7eb' : '#1f2937');
             nodeGroup.appendChild(barBg);
 
             // Bar fill
@@ -490,7 +491,7 @@ export function showVisualExplainModal(queryResult) {
             costText.setAttribute('x', centerX + nodeWidth / 2 - 15);
             costText.setAttribute('y', barY + 7);
             costText.setAttribute('text-anchor', 'end');
-            costText.setAttribute('fill', isLight ? '#6b7280' : '#9ca3af');
+            costText.setAttribute('fill', (isLight || isDawn) ? '#6b7280' : '#9ca3af');
             costText.setAttribute('font-size', '9');
             costText.textContent = `${costPercent}%`;
             nodeGroup.appendChild(costText);
@@ -514,7 +515,7 @@ export function showVisualExplainModal(queryResult) {
             badgeCircle.setAttribute('cy', currentY);
             badgeCircle.setAttribute('r', '16');
             badgeCircle.setAttribute('fill', opInfo.color);
-            badgeCircle.setAttribute('stroke', isLight ? '#ffffff' : '#0a0c10');
+            badgeCircle.setAttribute('stroke', (isLight || isDawn) ? '#ffffff' : '#0a0c10');
             badgeCircle.setAttribute('stroke-width', '3');
             nodeGroup.appendChild(badgeCircle);
 
@@ -534,7 +535,7 @@ export function showVisualExplainModal(queryResult) {
 
         // Draw end indicator
         const endY = currentY - verticalGap / 2;
-        drawArrow(svg, centerX, currentY - nodeHeight - verticalGap + nodeHeight / 2 + 10, centerX, endY - 30, '#10b981', isLight);
+        drawArrow(svg, centerX, currentY - nodeHeight - verticalGap + nodeHeight / 2 + 10, centerX, endY - 30, '#10b981', (isLight || isDawn));
 
         const endGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
 
@@ -544,14 +545,14 @@ export function showVisualExplainModal(queryResult) {
         endRect.setAttribute('width', '100');
         endRect.setAttribute('height', '40');
         endRect.setAttribute('rx', '20');
-        endRect.setAttribute('fill', isLight ? '#10b981' : '#059669');
+        endRect.setAttribute('fill', (isLight || isDawn) ? '#10b981' : '#059669');
         endRect.setAttribute('opacity', '0.3');
 
         const endText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         endText.setAttribute('x', centerX);
         endText.setAttribute('y', endY + 6);
         endText.setAttribute('text-anchor', 'middle');
-        endText.setAttribute('fill', isLight ? '#047857' : '#10b981');
+        endText.setAttribute('fill', (isLight || isDawn) ? '#047857' : '#10b981');
         endText.setAttribute('font-size', '12');
         endText.setAttribute('font-weight', 'bold');
         endText.textContent = '✓ RESULT';

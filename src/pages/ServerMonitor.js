@@ -7,8 +7,9 @@ export function ServerMonitor() {
     const container = document.createElement('div');
     const getContainerClass = (t) => {
         const isLight = t === 'light';
+        const isDawn = t === 'dawn';
         const isOceanic = t === 'oceanic';
-        return `flex-1 flex flex-col h-full overflow-auto custom-scrollbar ${isLight ? 'bg-gray-50' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]')} p-6 transition-all duration-300`;
+        return `flex-1 flex flex-col h-full overflow-auto custom-scrollbar ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]'))} p-6 transition-all duration-300`;
     };
     container.className = getContainerClass(theme);
 
@@ -103,6 +104,7 @@ export function ServerMonitor() {
 
     const render = () => {
         const isLight = theme === 'light';
+        const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic';
 
         container.innerHTML = `
@@ -114,8 +116,8 @@ export function ServerMonitor() {
                             <span class="material-symbols-outlined text-white text-2xl">monitor_heart</span>
                         </div>
                         <div>
-                            <h1 class="text-xl font-bold ${isLight ? 'text-gray-900' : 'text-white'}">Server Monitor</h1>
-                            <p class="text-sm ${isLight ? 'text-gray-500' : 'text-gray-400'}">Real-time performance metrics</p>
+                            <h1 class="text-xl font-bold ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')}">Server Monitor</h1>
+                            <p class="text-sm ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Real-time performance metrics</p>
                         </div>
                     </div>
                     <div class="flex items-center gap-4">
@@ -123,7 +125,7 @@ export function ServerMonitor() {
                             <input type="checkbox" id="auto-refresh" ${autoRefresh ? 'checked' : ''} class="w-4 h-4 rounded border-gray-300 text-mysql-teal focus:ring-mysql-teal">
                             <span class="text-sm ${isLight ? 'text-gray-600' : 'text-gray-400'}">Auto-refresh (3s)</span>
                         </label>
-                        <button id="refresh-btn" class="flex items-center gap-2 px-4 py-2 rounded-lg ${isLight ? 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50' : (isOceanic ? 'bg-ocean-panel border border-ocean-border text-ocean-text hover:bg-ocean-panel/80' : 'bg-white/10 border border-white/20 text-gray-300 hover:bg-white/20')} transition-all">
+                        <button id="refresh-btn" class="flex items-center gap-2 px-4 py-2 rounded-lg ${isLight ? 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] text-[#575279] hover:bg-[#faf4ed]' : (isOceanic ? 'bg-ocean-panel border border-ocean-border text-ocean-text hover:bg-ocean-panel/80' : 'bg-white/10 border border-white/20 text-gray-300 hover:bg-white/20'))} transition-all">
                             <span class="material-symbols-outlined text-sm ${isLoading ? 'animate-spin' : ''}">refresh</span>
                             Refresh
                         </button>
@@ -131,28 +133,28 @@ export function ServerMonitor() {
                 </div>
 
                 <!-- Tabs -->
-                <div class="flex items-center gap-2 mb-6 p-1 rounded-lg ${isLight ? 'bg-gray-100' : (isOceanic ? 'bg-ocean-panel' : 'bg-white/5')} w-fit flex-shrink-0">
-                    <button class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'overview' ? 'bg-mysql-teal text-white shadow-lg' : (isLight ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white')}" data-tab="overview">
+                <div class="flex items-center gap-2 mb-6 p-1 rounded-lg ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel' : 'bg-white/5'))} w-fit flex-shrink-0">
+                    <button class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'overview' ? 'bg-mysql-teal text-white shadow-lg' : ((isLight || isDawn) ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white')}" data-tab="overview">
                         <span class="material-symbols-outlined text-base mr-1 align-middle">dashboard</span>
                         Overview
                     </button>
-                    <button class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'processes' ? 'bg-mysql-teal text-white shadow-lg' : (isLight ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white')}" data-tab="processes">
+                    <button class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'processes' ? 'bg-mysql-teal text-white shadow-lg' : ((isLight || isDawn) ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white')}" data-tab="processes">
                         <span class="material-symbols-outlined text-base mr-1 align-middle">list</span>
                         Processes
                     </button>
-                    <button class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'innodb' ? 'bg-mysql-teal text-white shadow-lg' : (isLight ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white')}" data-tab="innodb">
+                    <button class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'innodb' ? 'bg-mysql-teal text-white shadow-lg' : ((isLight || isDawn) ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white')}" data-tab="innodb">
                         <span class="material-symbols-outlined text-base mr-1 align-middle">storage</span>
                         InnoDB
                     </button>
-                    <button class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'slow' ? 'bg-mysql-teal text-white shadow-lg' : (isLight ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white')}" data-tab="slow">
+                    <button class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'slow' ? 'bg-mysql-teal text-white shadow-lg' : ((isLight || isDawn) ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white')}" data-tab="slow">
                         <span class="material-symbols-outlined text-base mr-1 align-middle">hourglass_empty</span>
                         Slow Queries
                     </button>
-                    <button class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'locks' ? 'bg-mysql-teal text-white shadow-lg' : (isLight ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white')}" data-tab="locks">
+                    <button class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'locks' ? 'bg-mysql-teal text-white shadow-lg' : ((isLight || isDawn) ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white')}" data-tab="locks">
                         <span class="material-symbols-outlined text-base mr-1 align-middle">lock</span>
                         Locks
                     </button>
-                    <button class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'replication' ? 'bg-mysql-teal text-white shadow-lg' : (isLight ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white')}" data-tab="replication">
+                    <button class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'replication' ? 'bg-mysql-teal text-white shadow-lg' : ((isLight || isDawn) ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white')}" data-tab="replication">
                         <span class="material-symbols-outlined text-base mr-1 align-middle">sync_alt</span>
                         Replication
                     </button>
@@ -194,6 +196,7 @@ export function ServerMonitor() {
 
     const renderOverview = () => {
         const isLight = theme === 'light';
+        const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic';
         const s = serverStatus;
 
@@ -202,7 +205,7 @@ export function ServerMonitor() {
         return `
             <div class="grid grid-cols-4 gap-4 mb-6">
                 <!-- Uptime -->
-                <div class="rounded-xl p-4 ${isLight ? 'bg-white border border-gray-200' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10')}">
+                <div class="rounded-xl p-4 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))}">
                     <div class="flex items-center gap-3 mb-2">
                         <div class="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center">
                             <span class="material-symbols-outlined text-green-500">schedule</span>
@@ -215,7 +218,7 @@ export function ServerMonitor() {
                 </div>
 
                 <!-- Connections -->
-                <div class="rounded-xl p-4 ${isLight ? 'bg-white border border-gray-200' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10')}">
+                <div class="rounded-xl p-4 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))}">
                     <div class="flex items-center gap-3 mb-2">
                         <div class="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
                             <span class="material-symbols-outlined text-blue-500">people</span>
@@ -228,7 +231,7 @@ export function ServerMonitor() {
                 </div>
 
                 <!-- Queries -->
-                <div class="rounded-xl p-4 ${isLight ? 'bg-white border border-gray-200' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10')}">
+                <div class="rounded-xl p-4 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))}">
                     <div class="flex items-center gap-3 mb-2">
                         <div class="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
                             <span class="material-symbols-outlined text-purple-500">query_stats</span>
@@ -241,7 +244,7 @@ export function ServerMonitor() {
                 </div>
 
                 <!-- Slow Queries -->
-                <div class="rounded-xl p-4 ${isLight ? 'bg-white border border-gray-200' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10')}">
+                <div class="rounded-xl p-4 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))}">
                     <div class="flex items-center gap-3 mb-2">
                         <div class="w-10 h-10 rounded-lg ${s.slow_queries > 0 ? 'bg-red-500/20' : 'bg-green-500/20'} flex items-center justify-center">
                             <span class="material-symbols-outlined ${s.slow_queries > 0 ? 'text-red-500' : 'text-green-500'}">hourglass_empty</span>
@@ -257,25 +260,25 @@ export function ServerMonitor() {
             <!-- Traffic & Connections -->
             <div class="grid grid-cols-2 gap-6 mb-6">
                 <!-- Network Traffic -->
-                <div class="rounded-xl p-6 ${isLight ? 'bg-white border border-gray-200' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10')}">
+                <div class="rounded-xl p-6 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))}">
                     <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} mb-4 flex items-center gap-2">
                         <span class="material-symbols-outlined text-mysql-teal">swap_vert</span>
                         Network Traffic
                     </h3>
                     <div class="grid grid-cols-2 gap-4">
-                        <div class="p-4 rounded-lg ${isLight ? 'bg-green-50' : 'bg-green-500/10'}">
-                            <p class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'} mb-1">Received</p>
-                            <p class="text-2xl font-bold text-green-500">${formatBytes(s.bytes_received)}</p>
+                        <div class="p-4 rounded-lg ${isLight ? 'bg-green-50' : (isDawn ? 'bg-[#56949f]/10' : 'bg-green-500/10')}">
+                            <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')} mb-1">Received</p>
+                            <p class="text-2xl font-bold ${isDawn ? 'text-[#56949f]' : 'text-green-500'}">${formatBytes(s.bytes_received)}</p>
                         </div>
-                        <div class="p-4 rounded-lg ${isLight ? 'bg-blue-50' : 'bg-blue-500/10'}">
-                            <p class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'} mb-1">Sent</p>
-                            <p class="text-2xl font-bold text-blue-500">${formatBytes(s.bytes_sent)}</p>
+                        <div class="p-4 rounded-lg ${isLight ? 'bg-blue-50' : (isDawn ? 'bg-[#286983]/10' : 'bg-blue-500/10')}">
+                            <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')} mb-1">Sent</p>
+                            <p class="text-2xl font-bold ${isDawn ? 'text-[#286983]' : 'text-blue-500'}">${formatBytes(s.bytes_sent)}</p>
                         </div>
                     </div>
                 </div>
 
                 <!-- Connection Stats -->
-                <div class="rounded-xl p-6 ${isLight ? 'bg-white border border-gray-200' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10')}">
+                <div class="rounded-xl p-6 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))}">
                     <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} mb-4 flex items-center gap-2">
                         <span class="material-symbols-outlined text-mysql-teal">link</span>
                         Connection Stats
@@ -298,19 +301,19 @@ export function ServerMonitor() {
             </div>
 
             <!-- Temp Tables -->
-            <div class="rounded-xl p-6 ${isLight ? 'bg-white border border-gray-200' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10')}">
+            <div class="rounded-xl p-6 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))}">
                 <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} mb-4 flex items-center gap-2">
                     <span class="material-symbols-outlined text-mysql-teal">table_chart</span>
                     Temporary Tables
                 </h3>
                 <div class="grid grid-cols-2 gap-4">
-                    <div class="flex items-center justify-between p-4 rounded-lg ${isLight ? 'bg-gray-50' : 'bg-white/5'}">
-                        <span class="${isLight ? 'text-gray-600' : 'text-gray-400'}">Created in Memory</span>
-                        <span class="text-xl font-bold ${isLight ? 'text-gray-900' : 'text-white'}">${formatNumber(s.created_tmp_tables)}</span>
+                    <div class="flex items-center justify-between p-4 rounded-lg ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#f2e9e1]' : 'bg-white/5')}">
+                        <span class="${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">Created in Memory</span>
+                        <span class="text-xl font-bold ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')}">${formatNumber(s.created_tmp_tables)}</span>
                     </div>
-                    <div class="flex items-center justify-between p-4 rounded-lg ${isLight ? 'bg-gray-50' : 'bg-white/5'}">
-                        <span class="${isLight ? 'text-gray-600' : 'text-gray-400'}">Created on Disk</span>
-                        <span class="text-xl font-bold ${s.created_tmp_disk_tables > 0 ? 'text-yellow-500' : (isLight ? 'text-gray-900' : 'text-white')}">${formatNumber(s.created_tmp_disk_tables)}</span>
+                    <div class="flex items-center justify-between p-4 rounded-lg ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#f2e9e1]' : 'bg-white/5')}">
+                        <span class="${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">Created on Disk</span>
+                        <span class="text-xl font-bold ${s.created_tmp_disk_tables > 0 ? (isDawn ? 'text-[#ea9d34]' : 'text-yellow-500') : (isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white'))}">${formatNumber(s.created_tmp_disk_tables)}</span>
                     </div>
                 </div>
             </div>
@@ -319,20 +322,21 @@ export function ServerMonitor() {
 
     const renderProcesses = () => {
         const isLight = theme === 'light';
+        const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic';
 
         return `
-            <div class="rounded-xl ${isLight ? 'bg-white border border-gray-200' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10')} overflow-hidden">
-                <div class="p-4 border-b ${isLight ? 'border-gray-200' : 'border-white/10'}">
+            <div class="rounded-xl ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))} overflow-hidden">
+                <div class="p-4 border-b ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/10')}">
                     <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} flex items-center gap-2">
                         <span class="material-symbols-outlined text-mysql-teal">list</span>
                         Process List
-                        <span class="px-2 py-0.5 text-xs rounded-full ${isLight ? 'bg-gray-100 text-gray-600' : 'bg-white/10 text-gray-400'}">${processList.length} processes</span>
+                        <span class="px-2 py-0.5 text-xs rounded-full ${isLight ? 'bg-gray-100 text-gray-600' : (isDawn ? 'bg-[#f2e9e1] text-[#575279]' : 'bg-white/10 text-gray-400')}">${processList.length} processes</span>
                     </h3>
                 </div>
                 <div class="overflow-auto max-h-[500px]">
                     <table class="w-full text-sm">
-                        <thead class="sticky top-0 ${isLight ? 'bg-gray-100' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]')}">
+                        <thead class="sticky top-0 ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#faf4ed]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]'))}">
                             <tr class="${isLight ? 'text-gray-600' : 'text-gray-400'} text-xs uppercase tracking-wider">
                                 <th class="px-4 py-3 text-left">ID</th>
                                 <th class="px-4 py-3 text-left">User</th>
@@ -345,9 +349,9 @@ export function ServerMonitor() {
                                 <th class="px-4 py-3 text-center">Action</th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y ${isLight ? 'divide-gray-100' : 'divide-white/5'}">
+                        <tbody class="divide-y ${isLight ? 'divide-gray-100' : (isDawn ? 'divide-[#f2e9e1]' : 'divide-white/5')}">
                             ${processList.map(p => `
-                                <tr class="${isLight ? 'hover:bg-gray-50' : 'hover:bg-white/5'} transition-colors">
+                                <tr class="${isLight ? 'hover:bg-gray-50' : (isDawn ? 'hover:bg-[#faf4ed]' : 'hover:bg-white/5')} transition-colors">
                                     <td class="px-4 py-3 ${isLight ? 'text-gray-900' : 'text-white'} font-mono">${p.id}</td>
                                     <td class="px-4 py-3 ${isLight ? 'text-gray-700' : 'text-gray-300'}">${p.user}</td>
                                     <td class="px-4 py-3 ${isLight ? 'text-gray-500' : 'text-gray-400'} font-mono text-xs">${p.host}</td>
@@ -372,6 +376,7 @@ export function ServerMonitor() {
 
     const renderInnoDB = () => {
         const isLight = theme === 'light';
+        const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic';
         const i = innodbStatus;
 
@@ -380,7 +385,7 @@ export function ServerMonitor() {
         return `
             <div class="grid grid-cols-2 gap-6">
                 <!-- Buffer Pool -->
-                <div class="rounded-xl p-6 ${isLight ? 'bg-white border border-gray-200' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10')}">
+                <div class="rounded-xl p-6 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))}">
                     <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} mb-4 flex items-center gap-2">
                         <span class="material-symbols-outlined text-mysql-teal">memory</span>
                         Buffer Pool
@@ -395,53 +400,53 @@ export function ServerMonitor() {
                                 <div class="h-full rounded-full bg-gradient-to-r from-mysql-teal to-mysql-cyan" style="width: ${i.buffer_pool_size > 0 ? (i.buffer_pool_used / i.buffer_pool_size * 100) : 0}%"></div>
                             </div>
                         </div>
-                        <div class="p-4 rounded-lg ${isLight ? 'bg-green-50' : 'bg-green-500/10'}">
-                            <p class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'} mb-1">Hit Rate</p>
-                            <p class="text-3xl font-bold text-green-500">${i.buffer_pool_hit_rate.toFixed(2)}%</p>
+                        <div class="p-4 rounded-lg ${isLight ? 'bg-green-50' : (isDawn ? 'bg-[#56949f]/10' : 'bg-green-500/10')}">
+                            <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')} mb-1">Hit Rate</p>
+                            <p class="text-3xl font-bold ${isDawn ? 'text-[#56949f]' : 'text-green-500'}">${i.buffer_pool_hit_rate.toFixed(2)}%</p>
                         </div>
                     </div>
                 </div>
 
                 <!-- Row Operations -->
-                <div class="rounded-xl p-6 ${isLight ? 'bg-white border border-gray-200' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10')}">
+                <div class="rounded-xl p-6 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))}">
                     <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} mb-4 flex items-center gap-2">
                         <span class="material-symbols-outlined text-mysql-teal">table_rows</span>
                         Row Operations
                     </h3>
                     <div class="grid grid-cols-2 gap-4">
-                        <div class="p-4 rounded-lg ${isLight ? 'bg-blue-50' : 'bg-blue-500/10'} text-center">
-                            <p class="text-2xl font-bold text-blue-500">${formatNumber(i.row_operations.reads)}</p>
-                            <p class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">Reads</p>
+                        <div class="p-4 rounded-lg ${isLight ? 'bg-blue-50' : (isDawn ? 'bg-[#286983]/10' : 'bg-blue-500/10')} text-center">
+                            <p class="text-2xl font-bold ${isDawn ? 'text-[#286983]' : 'text-blue-500'}">${formatNumber(i.row_operations.reads)}</p>
+                            <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Reads</p>
                         </div>
-                        <div class="p-4 rounded-lg ${isLight ? 'bg-green-50' : 'bg-green-500/10'} text-center">
-                            <p class="text-2xl font-bold text-green-500">${formatNumber(i.row_operations.inserts)}</p>
-                            <p class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">Inserts</p>
+                        <div class="p-4 rounded-lg ${isLight ? 'bg-green-50' : (isDawn ? 'bg-[#56949f]/10' : 'bg-green-500/10')} text-center">
+                            <p class="text-2xl font-bold ${isDawn ? 'text-[#56949f]' : 'text-green-500'}">${formatNumber(i.row_operations.inserts)}</p>
+                            <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Inserts</p>
                         </div>
-                        <div class="p-4 rounded-lg ${isLight ? 'bg-yellow-50' : 'bg-yellow-500/10'} text-center">
-                            <p class="text-2xl font-bold text-yellow-500">${formatNumber(i.row_operations.updates)}</p>
-                            <p class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">Updates</p>
+                        <div class="p-4 rounded-lg ${isLight ? 'bg-yellow-50' : (isDawn ? 'bg-[#ea9d34]/10' : 'bg-yellow-500/10')} text-center">
+                            <p class="text-2xl font-bold ${isDawn ? 'text-[#ea9d34]' : 'text-yellow-500'}">${formatNumber(i.row_operations.updates)}</p>
+                            <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Updates</p>
                         </div>
-                        <div class="p-4 rounded-lg ${isLight ? 'bg-red-50' : 'bg-red-500/10'} text-center">
-                            <p class="text-2xl font-bold text-red-500">${formatNumber(i.row_operations.deletes)}</p>
-                            <p class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">Deletes</p>
+                        <div class="p-4 rounded-lg ${isLight ? 'bg-red-50' : (isDawn ? 'bg-[#b4637a]/10' : 'bg-red-500/10')} text-center">
+                            <p class="text-2xl font-bold ${isDawn ? 'text-[#b4637a]' : 'text-red-500'}">${formatNumber(i.row_operations.deletes)}</p>
+                            <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Deletes</p>
                         </div>
                     </div>
                 </div>
 
                 <!-- I/O Stats -->
-                <div class="col-span-2 rounded-xl p-6 ${isLight ? 'bg-white border border-gray-200' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10')}">
+                <div class="col-span-2 rounded-xl p-6 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))}">
                     <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} mb-4 flex items-center gap-2">
                         <span class="material-symbols-outlined text-mysql-teal">hard_drive</span>
                         I/O Statistics
                     </h3>
                     <div class="grid grid-cols-2 gap-4">
-                        <div class="flex items-center justify-between p-4 rounded-lg ${isLight ? 'bg-gray-50' : 'bg-white/5'}">
-                            <span class="${isLight ? 'text-gray-600' : 'text-gray-400'}">Log Sequence Number</span>
-                            <span class="text-lg font-mono ${isLight ? 'text-gray-900' : 'text-white'}">${formatBytes(i.log_sequence_number)}</span>
+                        <div class="flex items-center justify-between p-4 rounded-lg ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#f2e9e1]' : 'bg-white/5')}">
+                            <span class="${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">Log Sequence Number</span>
+                            <span class="text-lg font-mono ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')}">${formatBytes(i.log_sequence_number)}</span>
                         </div>
-                        <div class="flex items-center justify-between p-4 rounded-lg ${isLight ? 'bg-gray-50' : 'bg-white/5'}">
-                            <span class="${isLight ? 'text-gray-600' : 'text-gray-400'}">Pending Writes</span>
-                            <span class="text-lg font-mono ${i.pending_writes > 0 ? 'text-yellow-500' : (isLight ? 'text-gray-900' : 'text-white')}">${i.pending_writes}</span>
+                        <div class="flex items-center justify-between p-4 rounded-lg ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#f2e9e1]' : 'bg-white/5')}">
+                            <span class="${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">Pending Writes</span>
+                            <span class="text-lg font-mono ${i.pending_writes > 0 ? (isDawn ? 'text-[#ea9d34]' : 'text-yellow-500') : (isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white'))}">${i.pending_writes}</span>
                         </div>
                     </div>
                 </div>
@@ -451,11 +456,12 @@ export function ServerMonitor() {
 
     const renderSlowQueries = () => {
         const isLight = theme === 'light';
+        const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic';
 
         if (slowQueries.length === 0) {
             return `
-                <div class="rounded-xl p-12 ${isLight ? 'bg-white border border-gray-200' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10')} text-center">
+                <div class="rounded-xl p-12 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))} text-center">
                     <span class="material-symbols-outlined text-5xl text-green-500 mb-4">check_circle</span>
                     <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} mb-2">No Slow Queries</h3>
                     <p class="${isLight ? 'text-gray-500' : 'text-gray-400'}">Slow query log is empty or not enabled.</p>
@@ -465,7 +471,7 @@ export function ServerMonitor() {
         }
 
         return `
-            <div class="rounded-xl ${isLight ? 'bg-white border border-gray-200' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10')} overflow-hidden">
+            <div class="rounded-xl ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))} overflow-hidden">
                 <div class="p-4 border-b ${isLight ? 'border-gray-200' : 'border-white/10'}">
                     <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} flex items-center gap-2">
                         <span class="material-symbols-outlined text-yellow-500">hourglass_empty</span>
@@ -505,11 +511,12 @@ export function ServerMonitor() {
 
     const renderLocks = () => {
         const isLight = theme === 'light';
+        const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic';
 
         if (locks.length === 0) {
             return `
-                <div class="rounded-xl p-12 ${isLight ? 'bg-white border border-gray-200' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10')} text-center">
+                <div class="rounded-xl p-12 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))} text-center">
                     <span class="material-symbols-outlined text-5xl text-green-500 mb-4">lock_open</span>
                     <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} mb-2">No Lock Waits</h3>
                     <p class="${isLight ? 'text-gray-500' : 'text-gray-400'}">No InnoDB lock waits detected. All transactions are running smoothly.</p>
@@ -518,7 +525,7 @@ export function ServerMonitor() {
         }
 
         return `
-            <div class="rounded-xl ${isLight ? 'bg-white border border-gray-200' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10')} overflow-hidden">
+            <div class="rounded-xl ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))} overflow-hidden">
                 <div class="p-4 border-b ${isLight ? 'border-gray-200' : 'border-white/10'}">
                     <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} flex items-center gap-2">
                         <span class="material-symbols-outlined text-red-500">lock</span>
@@ -563,9 +570,9 @@ export function ServerMonitor() {
                         </tbody>
                     </table>
                 </div>
-                <div class="p-4 border-t ${isLight ? 'border-gray-200 bg-gray-50' : 'border-white/10 bg-white/5'}">
-                    <p class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">
-                        <span class="material-symbols-outlined text-xs align-middle text-red-500">warning</span>
+                <div class="p-4 border-t ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : 'border-white/10 bg-white/5')}">
+                    <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">
+                        <span class="material-symbols-outlined text-xs align-middle ${isDawn ? 'text-[#b4637a]' : 'text-red-500'}">warning</span>
                         <span class="font-semibold">Uyarı:</span> Engelleyen thread'i kill etmek, o thread'in tüm işlemlerini iptal edecektir. Bu işlem geri alınamaz.
                     </p>
                 </div>
@@ -575,12 +582,13 @@ export function ServerMonitor() {
 
     const renderReplication = () => {
         const isLight = theme === 'light';
+        const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic';
         const r = replicationStatus;
 
         if (!r || !r.is_replica) {
             return `
-                <div class="rounded-xl p-12 ${isLight ? 'bg-white border border-gray-200' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10')} text-center">
+                <div class="rounded-xl p-12 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))} text-center">
                     <span class="material-symbols-outlined text-5xl ${isLight ? 'text-gray-400' : 'text-gray-600'} mb-4">sync_disabled</span>
                     <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} mb-2">Not a Replica</h3>
                     <p class="${isLight ? 'text-gray-500' : 'text-gray-400'}">This server is not configured as a replication replica.</p>
@@ -594,34 +602,34 @@ export function ServerMonitor() {
         return `
             <div class="space-y-6">
                 <!-- Status -->
-                <div class="rounded-xl p-6 ${isLight ? 'bg-white border border-gray-200' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10')}">
+                <div class="rounded-xl p-6 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))}">
                     <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} mb-4 flex items-center gap-2">
                         <span class="material-symbols-outlined text-mysql-teal">sync_alt</span>
                         Replication Status
                     </h3>
                     <div class="grid grid-cols-2 gap-4">
-                        <div class="p-4 rounded-lg ${ioRunning ? (isLight ? 'bg-green-50' : 'bg-green-500/10') : (isLight ? 'bg-red-50' : 'bg-red-500/10')}">
-                            <p class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'} mb-1">I/O Thread</p>
-                            <p class="text-xl font-bold ${ioRunning ? 'text-green-500' : 'text-red-500'}">${r.slave_io_running}</p>
+                        <div class="p-4 rounded-lg ${ioRunning ? (isLight ? 'bg-green-50' : (isDawn ? 'bg-[#56949f]/10' : 'bg-green-500/10')) : (isLight ? 'bg-red-50' : (isDawn ? 'bg-[#b4637a]/10' : 'bg-red-500/10'))}">
+                            <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')} mb-1">I/O Thread</p>
+                            <p class="text-xl font-bold ${ioRunning ? (isDawn ? 'text-[#56949f]' : 'text-green-500') : (isDawn ? 'text-[#b4637a]' : 'text-red-500')}">${r.slave_io_running}</p>
                         </div>
-                        <div class="p-4 rounded-lg ${sqlRunning ? (isLight ? 'bg-green-50' : 'bg-green-500/10') : (isLight ? 'bg-red-50' : 'bg-red-500/10')}">
-                            <p class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'} mb-1">SQL Thread</p>
-                            <p class="text-xl font-bold ${sqlRunning ? 'text-green-500' : 'text-red-500'}">${r.slave_sql_running}</p>
+                        <div class="p-4 rounded-lg ${sqlRunning ? (isLight ? 'bg-green-50' : (isDawn ? 'bg-[#56949f]/10' : 'bg-green-500/10')) : (isLight ? 'bg-red-50' : (isDawn ? 'bg-[#b4637a]/10' : 'bg-red-500/10'))}">
+                            <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')} mb-1">SQL Thread</p>
+                            <p class="text-xl font-bold ${sqlRunning ? (isDawn ? 'text-[#56949f]' : 'text-green-500') : (isDawn ? 'text-[#b4637a]' : 'text-red-500')}">${r.slave_sql_running}</p>
                         </div>
                     </div>
                 </div>
 
                 <!-- Master Info -->
-                <div class="rounded-xl p-6 ${isLight ? 'bg-white border border-gray-200' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10')}">
+                <div class="rounded-xl p-6 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))}">
                     <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} mb-4">Master Connection</h3>
                     <div class="grid grid-cols-2 gap-4">
-                        <div class="flex items-center justify-between p-4 rounded-lg ${isLight ? 'bg-gray-50' : 'bg-white/5'}">
-                            <span class="${isLight ? 'text-gray-600' : 'text-gray-400'}">Master Host</span>
-                            <span class="font-mono ${isLight ? 'text-gray-900' : 'text-white'}">${r.master_host}:${r.master_port}</span>
+                        <div class="flex items-center justify-between p-4 rounded-lg ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#f2e9e1]' : 'bg-white/5')}">
+                            <span class="${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">Master Host</span>
+                            <span class="font-mono ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')}">${r.master_host}:${r.master_port}</span>
                         </div>
-                        <div class="flex items-center justify-between p-4 rounded-lg ${isLight ? 'bg-gray-50' : 'bg-white/5'}">
-                            <span class="${isLight ? 'text-gray-600' : 'text-gray-400'}">Seconds Behind</span>
-                            <span class="font-mono ${r.seconds_behind_master > 0 ? 'text-yellow-500' : (isLight ? 'text-gray-900' : 'text-white')}">${r.seconds_behind_master ?? 'N/A'}</span>
+                        <div class="flex items-center justify-between p-4 rounded-lg ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#f2e9e1]' : 'bg-white/5')}">
+                            <span class="${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">Seconds Behind</span>
+                            <span class="font-mono ${r.seconds_behind_master > 0 ? (isDawn ? 'text-[#ea9d34]' : 'text-yellow-500') : (isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white'))}">${r.seconds_behind_master ?? 'N/A'}</span>
                         </div>
                     </div>
                     ${r.last_error ? `

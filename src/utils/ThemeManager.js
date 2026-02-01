@@ -6,6 +6,7 @@ export const ThemeManager = {
     THEMES: {
         DARK: 'dark',
         LIGHT: 'light',
+        DAWN: 'dawn',
         OCEANIC: 'oceanic'
     },
 
@@ -35,6 +36,7 @@ export const ThemeManager = {
     getCurrentTheme() {
         const root = document.documentElement;
         if (root.classList.contains(this.THEMES.LIGHT)) return this.THEMES.LIGHT;
+        if (root.classList.contains(this.THEMES.DAWN)) return this.THEMES.DAWN;
         if (root.classList.contains(this.THEMES.OCEANIC)) return this.THEMES.OCEANIC;
         return this.THEMES.DARK;
     },
@@ -58,14 +60,15 @@ export const ThemeManager = {
     },
 
     /**
-     * Toggle between dark and light theme
+     * Toggle between themes
      */
     toggle() {
         const current = this.getCurrentTheme();
         let newTheme;
 
         if (current === this.THEMES.DARK) newTheme = this.THEMES.LIGHT;
-        else if (current === this.THEMES.LIGHT) newTheme = this.THEMES.OCEANIC;
+        else if (current === this.THEMES.LIGHT) newTheme = this.THEMES.DAWN;
+        else if (current === this.THEMES.DAWN) newTheme = this.THEMES.OCEANIC;
         else newTheme = this.THEMES.DARK;
 
         this.applyTheme(newTheme);
