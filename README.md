@@ -6,11 +6,16 @@ TactileSQL is a modern, desktop-first MySQL workbench built with Tauri 2 and van
 
 - **SQL Workbench** with multi-tab editor, syntax highlighting, auto-format, and autocomplete.
 - **Visual Explain** and **Query Profiler** for performance insights.
+- **Query Analyzer** with optimization suggestions, index recommendations, and execution cost analysis.
+- **SSH Tunnel Support** for secure database connections through SSH servers.
 - **Editable Results Grid** with virtual scrolling, column visibility, CSV export, and clipboard copy.
 - **Object Explorer** with databases, tables, views, triggers, procedures, functions, and events.
 - **Schema Designer** for columns, indexes, foreign keys, triggers, DDL, and stats.
 - **Schema Diff** for database or single-table comparison with generated sync SQL.
-- **Connection Manager** with encrypted credential storage and connection testing.
+- **Data Import/Export Wizard** supporting CSV, SQL, and JSON formats with progress tracking.
+- **Backup & Restore** with scheduled backups, compression, and full/incremental backup modes.
+- **Real-time Server Monitor** with live metrics for CPU, memory, connections, queries, and InnoDB status.
+- **Connection Manager** with encrypted credential storage, connection testing, and SSH tunnel configuration.
 - **Access Control** viewer for MySQL users and privileges.
 - **Themes**: Dark, Light, and Oceanic.
 - **Global keyboard shortcuts** and shortcut help overlay.
@@ -48,6 +53,7 @@ src-tauri/
 - **Rust toolchain** (stable)
 - **MySQL server** accessible from your machine
 - **Tauri system dependencies** for your OS (see Tauri v2 docs)
+- **SSH access** (optional) for remote database connections via SSH tunnel
 
 ## Setup
 
@@ -81,7 +87,8 @@ npx tauri build
 ### Workbench
 
 - Multi-tab SQL editor with autocomplete and syntax highlighting
-- Format SQL and explain plan
+- Format SQL and explain plan with visual query analyzer
+- Query optimization suggestions with index recommendations
 - Query execution history and snippet library
 - Results grid with filtering, selection, and inline editing
 
@@ -90,6 +97,21 @@ npx tauri build
 - KPIs: threads, buffer pool, traffic
 - Database size overview
 - Active process list
+
+### Data Tools
+
+- **Import Wizard**: Upload CSV, SQL, or JSON files with field mapping and preview
+- **Export Tool**: Export databases or tables to CSV, SQL, or JSON formats
+- **Backup Manager**: Schedule automated backups with compression and encryption
+- **Restore Database**: Restore from previous backups with validation
+
+### Server Monitor
+
+- **Real-time Metrics**: Live CPU, memory, and disk usage monitoring
+- **Connection Stats**: Active connections, threads running, and connection pool status
+- **Query Performance**: Queries per second, slow query tracking, and execution stats
+- **InnoDB Status**: Buffer pool, transaction logs, and storage engine metrics
+- **Auto-refresh**: Configurable refresh intervals (1s, 5s, 10s, 30s, 60s)
 
 ### Schema Designer
 
@@ -105,7 +127,9 @@ npx tauri build
 ### Connection Manager
 
 - Create, edit, delete, and reorder connections
+- SSH Tunnel configuration for secure remote access
 - Test and establish connection pools
+- Color-coded connection groups
 
 ### Access Control
 
@@ -121,15 +145,38 @@ npx tauri build
 
 The Rust backend exposes the following commands (used by the UI):
 
-- `test_connection`
+### Connection Management
+- `test_connection`, `establish_connection`
 - `get_connections`, `save_connection`, `save_connections`, `delete_connection`
-- `establish_connection`
-- `execute_query`
+- `create_ssh_tunnel` — Establish SSH tunnel for remote database access
+
+### Query Execution
+- `execute_query` — Execute SQL statements
+- `analyze_query` — Analyze query performance and get optimization suggestions
+
+### Database Schema
 - `get_databases`, `get_tables`, `get_table_schema`
 - `get_table_indexes`, `get_table_foreign_keys`, `get_table_primary_keys`, `get_table_constraints`, `get_table_stats`, `get_table_ddl`
 - `get_views`, `get_view_definition`, `alter_view`
 - `get_triggers`, `get_table_triggers`
 - `get_procedures`, `get_functions`, `get_events`
+
+### Data Tools
+- `import_csv` — Import CSV files with field mapping
+- `import_sql` — Execute SQL dump files
+- `import_json` — Import JSON data with schema inference
+- `export_data` — Export to CSV, SQL, or JSON formats
+- `create_backup` — Create database backups with compression
+- `restore_backup` — Restore from backup files
+- `list_backups` — List available backup files
+- `schedule_backup` — Schedule automated backups
+
+### Monitoring
+- `get_server_metrics` — Real-time CPU, memory, and connection stats
+- `get_query_stats` — Query performance metrics
+- `get_innodb_status` — InnoDB storage engine status
+
+### User Management
 - `get_mysql_users`, `get_user_privileges`
 
 ## Keyboard Shortcuts
@@ -165,10 +212,20 @@ Common shortcuts (see the in-app help with `F1`):
 - `Esc` — Close active modal
 
 ## Data Storage
+**Connection profiles** are stored in the **Tauri app data directory** as `connections.json`.
+- **Backup files** are stored in `<app-data>/backups/` directory.
+- **SSH keys** and credentials are encrypted with AES-256-GCM.
+- **Passwords** are encrypted before saving (AES-256-GCM in Rust).
 
-- Connection profiles are stored in the **Tauri app data directory** as `connections.json`.
-- Passwords are **encrypted** before saving (AES-256-GCM in Rust).
+> Note: The encryption key is currently a static constant in [src-tauri/src/db.rs](src-tauri/src/db.rs). For production use, replace this with a key derived from the OS keychain or a user-provided secret.
 
+## Security Features
+
+- **Encrypted Credentials**: All database passwords and SSH credentials are encrypted at rest
+- **SSH Tunnel Support**: Secure connections through SSH bastion hosts
+- **Key-based Authentication**: Support for SSH private key authentication
+- **Connection Pooling**: Secure, reusable connection pools
+- **Backup Encryption**: Optional encryption for database backups
 > Note: The encryption key is currently a static constant in [src-tauri/src/db.rs](src-tauri/src/db.rs). For production use, replace this with a key derived from the OS keychain or a user-provided secret.
 
 ## Window Behavior
