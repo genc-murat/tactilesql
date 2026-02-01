@@ -123,6 +123,7 @@ export function QueryEditor() {
     let cachedDatabases = [];
     let cachedTables = {};
     let cachedColumns = {};
+    let currentGhostText = ''; // State for ghost text prediction
 
     // --- Autocomplete Logic ---
     const getCurrentWord = (textarea) => {
@@ -220,7 +221,7 @@ export function QueryEditor() {
             if (cachedDatabases.length === 0) {
                 await loadDatabasesForAutocomplete();
             }
-            
+
             // Try smart autocomplete
             await smartAutocomplete.loadDatabases();
             if (currentDb) {
@@ -229,11 +230,11 @@ export function QueryEditor() {
 
             // Get context-aware suggestions
             const smartSuggestions = await smartAutocomplete.getSuggestions(query, cursorPos, currentDb);
-            
+
             if (smartSuggestions && smartSuggestions.length > 0) {
                 return smartSuggestions;
             }
-            
+
             // Fallback if smart returned empty
             return await getBasicSuggestions();
         } catch (e) {
@@ -613,7 +614,29 @@ export function QueryEditor() {
         const updateSyntaxHighlight = () => {
             if (syntaxHighlight && textarea) {
                 const errors = detectSyntaxErrors(textarea.value);
-                syntaxHighlight.innerHTML = highlightSQL(textarea.value, errors) + '\n';
+                let html = highlightSQL(textarea.value, errors);
+
+                // --- Ghost Text Logic ---
+                currentGhostText = ''; // Reset
+                const text = textarea.value;
+                const cursorPos = textarea.selectionStart;
+
+                // Only show ghost text if cursor is at the end of the input
+                // And we are not showing the autocomplete popup
+                if (cursorPos === text.length && text.length > 0 && !autocompleteVisible) {
+                    const nextToken = smartAutocomplete.getNextTokenPrediction(text);
+                    if (nextToken) {
+                        currentGhostText = nextToken;
+                        // Add a space before if helpful, but usually user types space
+                        // If users types "SELEC", prediction might be "SELECT" ? 
+                        // No, prediction is next TOKEN. So if "SELECT", next is "*".
+                        // So we probably want a leading space if there isn't one
+                        const prefix = text.endsWith(' ') ? '' : ' ';
+                        html += `<span class="opacity-40 select-none pointer-events-none text-gray-500 italic" data-ghost="true">${prefix}${nextToken}</span>`;
+                    }
+                }
+
+                syntaxHighlight.innerHTML = html + '\n';
 
                 // Show error tooltip if any
                 if (errors.length > 0) {
@@ -715,6 +738,34 @@ export function QueryEditor() {
 
             // Keyboard handling for autocomplete
             textarea.addEventListener('keydown', (e) => {
+                // Ghost Text Acceptance
+                if (e.key === 'Tab' && currentGhostText && !autocompleteVisible) {
+                    e.preventDefault();
+
+                    const text = textarea.value;
+                    const prefix = text.endsWith(' ') ? '' : ' ';
+                    const newText = text + prefix + currentGhostText;
+
+                    textarea.value = newText;
+
+                    // Update state
+                    const activeTab = tabs.find(t => t.id === activeTabId);
+                    if (activeTab) {
+                        activeTab.content = newText;
+                        saveState();
+                    }
+
+                    // Move cursor to end
+                    textarea.selectionStart = textarea.selectionEnd = newText.length;
+
+                    // Train on the accepted word!
+                    smartAutocomplete.recordSelection(currentGhostText, 'ghost_text');
+
+                    currentGhostText = '';
+                    updateSyntaxHighlight();
+                    return;
+                }
+
                 if (autocompleteVisible) {
                     if (e.key === 'ArrowDown') {
                         e.preventDefault();

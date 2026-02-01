@@ -12,6 +12,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { SQL_KEYWORDS } from './SqlHighlighter.js';
+import { auditTrail } from './QueryAuditTrail.js';
 
 const STORAGE_KEYS = {
     FREQUENCY: 'tactilesql_autocomplete_frequency',
@@ -86,6 +87,69 @@ const TYPE_OPERATORS = {
     blob: ['IS NULL', 'IS NOT NULL'],
 };
 
+/**
+ * Simple N-Gram Model for next token prediction
+ */
+class NGramModel {
+    constructor(n = 2) {
+        this.n = n;
+        this.chains = {};
+    }
+
+    tokenize(text) {
+        // Remove comments
+        let clean = text.replace(/--.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+        // Collapse whitespace
+        clean = clean.replace(/\s+/g, ' ').trim();
+        // Split by common delimiters but keep them for context if needed?
+        // For now, simple space split is good enough for "sequencing"
+        return clean.split(/\s+/);
+    }
+
+    train(text) {
+        if (!text) return;
+        const tokens = this.tokenize(text);
+        if (tokens.length < 2) return;
+
+        for (let i = 0; i < tokens.length - 1; i++) {
+            const current = tokens[i].toUpperCase(); // Key is case-insensitive
+            const next = tokens[i + 1]; // Value preserves case
+
+            // Skip if tokens are too long (likely data blobs)
+            if (current.length > 50 || next.length > 50) continue;
+
+            if (!this.chains[current]) {
+                this.chains[current] = {};
+            }
+            this.chains[current][next] = (this.chains[current][next] || 0) + 1;
+        }
+    }
+
+    predict(currentWord) {
+        if (!currentWord) return null;
+        const key = currentWord.toUpperCase();
+        const candidates = this.chains[key];
+
+        if (!candidates) return null;
+
+        let bestToken = null;
+        let maxCount = 0;
+        let totalCount = 0;
+
+        for (const [token, count] of Object.entries(candidates)) {
+            totalCount += count;
+            if (count > maxCount) {
+                maxCount = count;
+                bestToken = token;
+            }
+        }
+
+        // Only return if confidence is high enough?
+        // For now, return the best match
+        return bestToken;
+    }
+}
+
 export class SmartAutocomplete {
     static #instance = null;
 
@@ -96,12 +160,13 @@ export class SmartAutocomplete {
     #columnDetails = {};
     #foreignKeys = {};
     #indexes = {};
-    
+
     // Learning data
     #frequencyData = {};
     #queryHistory = [];
     #userSnippets = [];
-    
+    #nGramModel = new NGramModel();
+
     // Parsed query state
     #query = '';
     #cursorPos = 0;
@@ -114,6 +179,8 @@ export class SmartAutocomplete {
         }
         SmartAutocomplete.#instance = this;
         this.#loadStoredData();
+        // Initial training from audit trail (async)
+        setTimeout(() => this.trainFromAuditTrail(), 1000);
     }
 
     static getInstance() {
@@ -136,7 +203,7 @@ export class SmartAutocomplete {
 
             // Parse the query to understand context
             this.#parsedQuery = this.#parseQuery();
-            
+
             const word = this.#getCurrentWord();
             const context = this.#getContext();
 
@@ -176,6 +243,26 @@ export class SmartAutocomplete {
     }
 
     /**
+     * Get prediction for the next token based on current context
+     */
+    getNextTokenPrediction(query) {
+        if (!query) return null;
+
+        // Simple tokenization to get the last word
+        // We really want the word BEFORE the cursor if we are typing space
+        // But predictNext takes the last complete word.
+
+        const trimmed = query.trimEnd();
+        if (!trimmed) return null;
+
+        // Split by whitespace
+        const tokens = trimmed.split(/\s+/);
+        const lastToken = tokens[tokens.length - 1];
+
+        return this.#nGramModel.predict(lastToken);
+    }
+
+    /**
      * Record that a suggestion was used (for learning)
      */
     recordUsage(item, type) {
@@ -196,18 +283,21 @@ export class SmartAutocomplete {
      */
     recordQuery(query) {
         if (!query || query.trim().length < 10) return;
-        
+
         this.#queryHistory.unshift({
             query: query.trim(),
             timestamp: Date.now(),
         });
-        
+
         // Keep last 500 queries
         if (this.#queryHistory.length > 500) {
             this.#queryHistory = this.#queryHistory.slice(0, 500);
         }
-        
+
         this.#saveQueryHistory();
+
+        // Train model with new query
+        this.#nGramModel.train(query.trim());
     }
 
     /**
@@ -216,6 +306,26 @@ export class SmartAutocomplete {
     addSnippet(trigger, name, template, description = '') {
         this.#userSnippets.push({ trigger, name, template, description, isUser: true });
         this.#saveUserSnippets();
+    }
+
+    /**
+     * Train the model from existing audit log
+     */
+    async trainFromAuditTrail() {
+        console.log('Training Smart Autocomplete model...');
+        try {
+            const { entries } = auditTrail.getEntries({ limit: 1000 });
+            let count = 0;
+            for (const entry of entries) {
+                if (entry.query && entry.status === 'SUCCESS') {
+                    this.#nGramModel.train(entry.query);
+                    count++;
+                }
+            }
+            console.log(`Smart Autocomplete trained on ${count} queries.`);
+        } catch (e) {
+            console.warn('Failed to train from audit trail:', e);
+        }
     }
 
     // ==================== SCHEMA LOADING ====================
@@ -350,7 +460,7 @@ export class SmartAutocomplete {
         const ctes = [];
         const cteDefRegex = /\b(\w+)\s*AS\s*\(\s*SELECT/gi;
         let match;
-        
+
         // Only look in WITH section
         const withMatch = query.match(/^WITH\s+(RECURSIVE\s+)?(.+?)\bSELECT\b(?!.*\bAS\s*\()/is);
         if (!withMatch) {
@@ -385,7 +495,7 @@ export class SmartAutocomplete {
 
             // Skip if table is a keyword
             if (this.#isKeyword(table)) continue;
-            
+
             // Skip if alias is a keyword or same as table
             if (alias && (this.#isKeyword(alias) || alias.toLowerCase() === table.toLowerCase())) {
                 alias = null;
@@ -406,13 +516,13 @@ export class SmartAutocomplete {
 
         // Pattern for simple table: FROM/JOIN table alias
         const simpleTablePattern = /\b(?:FROM|JOIN|UPDATE|INTO)\s+`?(\w+)`?(?:\s+(?:AS\s+)?`?(\w+)`?)?(?=\s|,|;|$|\)|WHERE|ON|SET|LEFT|RIGHT|INNER|OUTER|CROSS|NATURAL|ORDER|GROUP|HAVING|LIMIT)/gi;
-        
+
         // Second pass: find simple table references (avoid db.table matches)
         while ((match = simpleTablePattern.exec(query)) !== null) {
             const fullMatch = match[0];
             // Skip if this is a db.table pattern (contains dot)
             if (fullMatch.includes('.')) continue;
-            
+
             const table = match[1];
             let alias = match[2];
 
@@ -441,8 +551,8 @@ export class SmartAutocomplete {
     #isKeyword(word) {
         if (!word) return false;
         const upper = word.toUpperCase();
-        return SQL_KEYWORDS.includes(upper) || 
-               ['WHERE', 'AND', 'OR', 'ON', 'SET', 'VALUES', 'LEFT', 'RIGHT', 'INNER', 'OUTER', 'CROSS', 'NATURAL', 'ORDER', 'GROUP', 'HAVING', 'LIMIT', 'OFFSET', 'AS'].includes(upper);
+        return SQL_KEYWORDS.includes(upper) ||
+            ['WHERE', 'AND', 'OR', 'ON', 'SET', 'VALUES', 'LEFT', 'RIGHT', 'INNER', 'OUTER', 'CROSS', 'NATURAL', 'ORDER', 'GROUP', 'HAVING', 'LIMIT', 'OFFSET', 'AS'].includes(upper);
     }
 
     // ==================== CONTEXT DETECTION ====================
@@ -452,9 +562,9 @@ export class SmartAutocomplete {
         const trimmed = beforeCursor.replace(/\s+/g, ' ').trim();
 
         // Check for specific patterns in reverse order of priority
-        
+
         // After ON (join condition)
-        if (/\bON\s+[\w.`]*$/i.test(beforeCursor) || 
+        if (/\bON\s+[\w.`]*$/i.test(beforeCursor) ||
             /\bON\s+\S+\s*(=|<|>|!=)\s*$/i.test(beforeCursor)) {
             return CONTEXT.ON;
         }
@@ -552,31 +662,31 @@ export class SmartAutocomplete {
             case CONTEXT.SELECT:
                 suggestions.push(...await this.#getSelectSuggestions(word));
                 break;
-            
+
             case CONTEXT.FROM:
             case CONTEXT.JOIN:
             case CONTEXT.UPDATE:
                 suggestions.push(...await this.#getTableSuggestions(word));
                 break;
-            
+
             case CONTEXT.ON:
                 suggestions.push(...await this.#getJoinConditionSuggestions(word));
                 break;
-            
+
             case CONTEXT.WHERE:
             case CONTEXT.HAVING:
                 suggestions.push(...await this.#getWhereSuggestions(word));
                 break;
-            
+
             case CONTEXT.GROUP_BY:
             case CONTEXT.ORDER_BY:
                 suggestions.push(...await this.#getColumnSuggestions(word));
                 break;
-            
+
             case CONTEXT.SET:
                 suggestions.push(...await this.#getSetSuggestions(word));
                 break;
-            
+
             default:
                 suggestions.push(...await this.#getGeneralSuggestions(word));
         }
@@ -617,7 +727,7 @@ export class SmartAutocomplete {
         // SECOND: Check if prefix is an alias
         if (this.#parsedQuery?.aliases[prefixLower]) {
             const tableName = this.#parsedQuery.aliases[prefixLower];
-            
+
             // Handle CTE references
             if (tableName.startsWith('__cte__')) {
                 return this.#getCTEColumnSuggestions(tableName, prefix, suffix);
@@ -625,19 +735,19 @@ export class SmartAutocomplete {
 
             // Get database for this alias (or use current)
             const db = this.#parsedQuery.aliasToDb[prefixLower] || this.#currentDb;
-            
+
             console.log(`Prefix is an alias: ${prefix} -> ${db}.${tableName}`);
-            
+
             const columns = await this.loadColumns(db, tableName);
             console.log(`Got ${columns.length} columns:`, columns);
-            
+
             for (const col of columns) {
                 if (!suffix || col.toLowerCase().startsWith(suffix)) {
                     const details = this.#getColumnDetail(db, tableName, col);
                     suggestions.push(this.#createColumnSuggestion(col, details, `${prefix}.${col}`));
                 }
             }
-            
+
             // Also add * option
             if ('*'.startsWith(suffix) || !suffix) {
                 suggestions.unshift({
@@ -649,7 +759,7 @@ export class SmartAutocomplete {
                     color: 'text-gray-400',
                 });
             }
-            
+
             return suggestions;
         }
 
@@ -665,7 +775,7 @@ export class SmartAutocomplete {
                     suggestions.push(this.#createColumnSuggestion(col, details, `${prefix}.${col}`));
                 }
             }
-            
+
             // Also add * option
             if ('*'.startsWith(suffix) || !suffix) {
                 suggestions.unshift({
@@ -802,7 +912,7 @@ export class SmartAutocomplete {
         for (const ref of this.#parsedQuery?.tables || []) {
             const alias = ref.alias || ref.table;
             const db = ref.database || this.#currentDb;
-            
+
             if (alias.toLowerCase().startsWith(wordLower)) {
                 suggestions.push({
                     type: 'alias',
@@ -833,7 +943,7 @@ export class SmartAutocomplete {
     async #getFKJoinSuggestions(word) {
         const suggestions = [];
         const tables = this.#parsedQuery?.tables || [];
-        
+
         if (tables.length < 2) return suggestions;
 
         // Get last joined table
@@ -843,17 +953,17 @@ export class SmartAutocomplete {
 
         // Get FKs for the last table
         const fks = await this.loadForeignKeys(lastDb, lastTable.table);
-        
+
         for (const fk of fks) {
             // Find if referenced table is in our query
-            const refTable = tables.find(t => 
+            const refTable = tables.find(t =>
                 t.table.toLowerCase() === fk.referenced_table_name?.toLowerCase()
             );
-            
+
             if (refTable) {
                 const refAlias = refTable.alias || refTable.table;
                 const condition = `${lastAlias}.${fk.column_name} = ${refAlias}.${fk.referenced_column_name}`;
-                
+
                 suggestions.push({
                     type: 'join_hint',
                     value: condition,
@@ -915,7 +1025,7 @@ export class SmartAutocomplete {
         for (const ref of this.#parsedQuery?.tables || []) {
             const alias = ref.alias || ref.table;
             const db = ref.database || this.#currentDb;
-            
+
             const columns = await this.loadColumns(db, ref.table);
             for (const col of columns) {
                 if (col.toLowerCase().startsWith(wordLower)) {
@@ -936,12 +1046,12 @@ export class SmartAutocomplete {
 
     async #getSetSuggestions(word) {
         const suggestions = [];
-        
+
         // For UPDATE SET, show columns of the table being updated
         for (const ref of this.#parsedQuery?.tables || []) {
             const db = ref.database || this.#currentDb;
             const columns = await this.loadColumns(db, ref.table);
-            
+
             for (const col of columns) {
                 if (col.toLowerCase().startsWith(word.toLowerCase())) {
                     const details = this.#getColumnDetail(db, ref.table, col);
@@ -1039,7 +1149,7 @@ export class SmartAutocomplete {
         const suggestions = [];
         // Determine column type if possible
         let columnType = 'string'; // default
-        
+
         // Look up column type
         for (const ref of this.#parsedQuery?.tables || []) {
             const db = ref.database || this.#currentDb;
@@ -1099,10 +1209,10 @@ export class SmartAutocomplete {
         const isPK = details?.column_key === 'PRI';
         const isFK = details?.column_key === 'MUL';
         const isUnique = details?.column_key === 'UNI';
-        
+
         let icon = 'view_column';
         let color = 'text-orange-400';
-        
+
         if (isPK) {
             icon = 'key';
             color = 'text-yellow-400';
@@ -1144,7 +1254,7 @@ export class SmartAutocomplete {
     #sortAndDedupe(suggestions, word) {
         const seen = new Set();
         const unique = [];
-        
+
         for (const s of suggestions) {
             const key = `${s.type}:${s.value}`;
             if (!seen.has(key)) {
@@ -1165,7 +1275,7 @@ export class SmartAutocomplete {
 
         // Exact match bonus
         if (valueLower === wordLower) score += 100;
-        
+
         // Starts with bonus
         if (valueLower.startsWith(wordLower)) score += 50;
 
