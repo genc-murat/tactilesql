@@ -530,11 +530,8 @@ export function ObjectExplorer() {
 
             render(); // Re-render to show active state immediately
 
-            // Load databases for the new connection
+            // Load databases for the new connection (lazy-load objects on expand)
             await loadDatabases();
-            
-            // Auto-expand first user database after switching connection
-            await autoExpandFirstDatabase();
             
             // Notify other components about connection change
             window.dispatchEvent(new CustomEvent('tactilesql:connection-changed'));
@@ -830,11 +827,9 @@ export function ObjectExplorer() {
                 activeConnectionId = null;
             }
             render();
-            // If we have an active connection, load its dbs and auto-expand first user database
+            // If we have an active connection, load its dbs (lazy-load objects on expand)
             if (activeConnectionId) {
                 await loadDatabases();
-                // Auto-expand first user database after loading
-                await autoExpandFirstDatabase();
             }
         } catch (error) {
             console.error('Failed to load connections:', error);
@@ -851,23 +846,6 @@ export function ObjectExplorer() {
             console.error('Failed to load databases:', error);
             // It's possible the connection is dead, we could handle that by unsetting active status
             // but for now let's just log it.
-        }
-    };
-
-    // Auto-expand first user database when connection is established
-    const autoExpandFirstDatabase = async () => {
-        if (databases.length === 0) return;
-        
-        // Find first user database (non-system)
-        const userDbs = databases.filter(db => !systemDatabases.includes(db.toLowerCase()));
-        const firstDb = userDbs.length > 0 ? userDbs[0] : databases[0];
-        
-        if (firstDb && !expandedDbs.has(firstDb)) {
-            expandedDbs.add(firstDb);
-            if (!dbObjects[firstDb]) {
-                await loadDatabaseObjects(firstDb);
-            }
-            render();
         }
     };
 
