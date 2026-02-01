@@ -59,10 +59,38 @@ const detectSyntaxErrors = (sql) => {
 // Imported from SqlHighlighter.js
 
 // --- State (Module Scoped) ---
-let tabs = [
+// Try to load from localStorage
+const savedState = (() => {
+    try {
+        const stored = localStorage.getItem('workbench_tabs_state');
+        return stored ? JSON.parse(stored) : null;
+    } catch (e) {
+        console.warn('Failed to load tabs from localStorage', e);
+        return null;
+    }
+})();
+
+let tabs = savedState?.tabs || [
     { id: '1', title: 'Query 1', content: '' }
 ];
-let activeTabId = '1';
+let activeTabId = savedState?.activeTabId || (tabs[0]?.id || '1');
+
+// Ensure at least one tab exists if something went wrong
+if (tabs.length === 0) {
+    tabs = [{ id: '1', title: 'Query 1', content: '' }];
+    activeTabId = '1';
+}
+
+const saveState = () => {
+    try {
+        localStorage.setItem('workbench_tabs_state', JSON.stringify({
+            tabs,
+            activeTabId
+        }));
+    } catch (e) {
+        console.warn('Failed to save tabs to localStorage', e);
+    }
+};
 
 export function QueryEditor() {
     let theme = ThemeManager.getCurrentTheme();
@@ -72,7 +100,6 @@ export function QueryEditor() {
     container.className = `flex flex-col h-full border-b ${isLight ? 'border-gray-200 bg-white' : (isOceanic ? 'border-ocean-border/50 bg-ocean-bg' : 'border-white/5 bg-[#0f1115]')}`;
 
     // Local State
-
     let lastExecutionTime = null;
     const maxVisibleTabs = 5; // Fixed: always show 5 tabs max
 
@@ -324,6 +351,7 @@ export function QueryEditor() {
         const activeTab = tabs.find(t => t.id === activeTabId);
         if (activeTab) {
             activeTab.content = newText;
+            saveState(); // Save on autocomplete
         }
 
         // Update syntax highlighting immediately
@@ -429,6 +457,7 @@ export function QueryEditor() {
                 const id = item.dataset.id;
                 if (id !== activeTabId) {
                     activeTabId = id;
+                    saveState(); // Save active tab change
                     render();
                 }
             });
@@ -447,6 +476,7 @@ export function QueryEditor() {
                     const newIdx = Math.max(0, idx - 1);
                     activeTabId = tabs[newIdx].id;
                 }
+                saveState(); // Save tab removal
                 render();
             });
         });
@@ -480,6 +510,7 @@ export function QueryEditor() {
                 activeTabId = id;
                 // Close menu before render
                 if (overflowMenu) overflowMenu.classList.add('hidden');
+                saveState(); // Save activation and order change
                 render();
             });
         });
@@ -497,6 +528,7 @@ export function QueryEditor() {
                     const newIdx = Math.max(0, idx - 1);
                     activeTabId = tabs[newIdx].id;
                 }
+                saveState(); // Save removal
                 render();
             });
         });
@@ -509,9 +541,11 @@ export function QueryEditor() {
                 const num = tabs.length + 1;
                 tabs.push({ id: newId, title: `Query ${num}`, content: '' });
                 activeTabId = newId;
+                saveState(); // Save new tab
                 render();
             });
         }
+
 
         // Input Handling with Autocomplete
         const textarea = container.querySelector('#query-input');
@@ -558,10 +592,14 @@ export function QueryEditor() {
             });
 
             // Save content on input
+            let inputSaveTimeout;
             textarea.addEventListener('input', (e) => {
                 const activeTab = tabs.find(t => t.id === activeTabId);
                 if (activeTab) {
                     activeTab.content = e.target.value;
+                    // Debounced save
+                    clearTimeout(inputSaveTimeout);
+                    inputSaveTimeout = setTimeout(saveState, 1000);
                 }
                 // Update views
                 updateSyntaxHighlight();
@@ -689,7 +727,10 @@ export function QueryEditor() {
                     const newText = lines.join('\n');
                     textarea.value = newText;
                     const activeTab = tabs.find(t => t.id === activeTabId);
-                    if (activeTab) activeTab.content = newText;
+                    if (activeTab) {
+                        activeTab.content = newText;
+                        saveState(); // Save on comment toggle
+                    }
                     updateSyntaxHighlight();
                 }
 
@@ -716,7 +757,10 @@ export function QueryEditor() {
                     const newText = lines.join('\n');
                     textarea.value = newText;
                     const activeTab = tabs.find(t => t.id === activeTabId);
-                    if (activeTab) activeTab.content = newText;
+                    if (activeTab) {
+                        activeTab.content = newText;
+                        saveState(); // Save on duplicate line
+                    }
                     updateSyntaxHighlight();
                     updateLineNumbers();
                 }
@@ -743,7 +787,10 @@ export function QueryEditor() {
                         const newText = lines.join('\n');
                         textarea.value = newText;
                         const activeTab = tabs.find(t => t.id === activeTabId);
-                        if (activeTab) activeTab.content = newText;
+                        if (activeTab) {
+                            activeTab.content = newText;
+                            saveState(); // Save on move line up
+                        }
                         updateSyntaxHighlight();
                     }
                 }
@@ -770,7 +817,10 @@ export function QueryEditor() {
                         const newText = lines.join('\n');
                         textarea.value = newText;
                         const activeTab = tabs.find(t => t.id === activeTabId);
-                        if (activeTab) activeTab.content = newText;
+                        if (activeTab) {
+                            activeTab.content = newText;
+                            saveState(); // Save on move line down
+                        }
                         updateSyntaxHighlight();
                     }
                 }
@@ -803,6 +853,7 @@ export function QueryEditor() {
                     const activeTab = tabs.find(t => t.id === activeTabId);
                     if (activeTab) {
                         activeTab.content = newText;
+                        saveState(); // Save on drop
                     }
                     updateSyntaxHighlight();
 
@@ -827,7 +878,10 @@ export function QueryEditor() {
                     const formatted = formatSQL(textarea.value);
                     textarea.value = formatted;
                     const activeTab = tabs.find(t => t.id === activeTabId);
-                    if (activeTab) activeTab.content = formatted;
+                    if (activeTab) {
+                        activeTab.content = formatted;
+                        saveState(); // Save on format
+                    }
                     updateSyntaxHighlight();
                     updateLineNumbers();
                 }
@@ -1229,6 +1283,7 @@ export function QueryEditor() {
         const activeTab = tabs.find(t => t.id === activeTabId);
         if (activeTab) {
             activeTab.content = query;
+            saveState(); // Save on set-query
         }
 
         // Re-render to update the textarea
