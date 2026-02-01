@@ -21,7 +21,14 @@ export function ConnectionManager() {
         port: 3306,
         username: 'root',
         password: '',
-        database: ''
+        database: '',
+        // SSH Tunnel settings
+        useSSHTunnel: false,
+        sshHost: '',
+        sshPort: 22,
+        sshUsername: '',
+        sshPassword: '',
+        sshKeyPath: ''
     };
 
     let config = { ...DEFAULT_CONFIG };
@@ -198,78 +205,112 @@ export function ConnectionManager() {
     const renderEditView = () => {        const isLight = theme === 'light';
         const isOceanic = theme === 'oceanic';
                 container.innerHTML = `
-             <div class="w-full h-full flex flex-col px-6 py-4 justify-center max-w-2xl mx-auto">
-                <button id="back-btn" class="self-start mb-3 flex items-center gap-1.5 ${isLight ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white'} transition-colors text-xs font-medium">
+             <div class="w-full h-full flex flex-col px-4 py-2 overflow-y-auto custom-scrollbar">
+                <div class="max-w-2xl mx-auto w-full">
+                <button id="back-btn" class="self-start mb-2 flex items-center gap-1 ${isLight ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white'} transition-colors text-xs font-medium">
                     <span class="material-symbols-outlined text-sm">arrow_back</span>
                     <span>Back</span>
                 </button>
 
-                <div class="rounded-xl p-5 ${isLight ? 'bg-white border border-gray-200' : (isOceanic ? 'bg-[#3B4252] border border-ocean-border/50' : 'bg-[#13161b] border border-white/10')} shadow-lg">
+                <div class="rounded-xl p-4 ${isLight ? 'bg-white border border-gray-200' : (isOceanic ? 'bg-[#3B4252] border border-ocean-border/50' : 'bg-[#13161b] border border-white/10')} shadow-lg">
                     
-                    <h2 class="text-base font-semibold ${isLight ? 'text-gray-900' : 'text-white'} mb-4 flex items-center gap-2">
-                        <span class="material-symbols-outlined text-mysql-teal">settings_input_component</span>
+                    <h2 class="text-sm font-semibold ${isLight ? 'text-gray-900' : 'text-white'} mb-3 flex items-center gap-2">
+                        <span class="material-symbols-outlined text-mysql-teal text-base">settings_input_component</span>
                         ${config.id ? 'Edit Connection' : 'New Connection'}
                     </h2>
                     
-                    <div class="space-y-4 relative z-10">
-                        <div class="space-y-2">
-                            <label class="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] flex items-center gap-2">
-                                <span class="material-symbols-outlined text-xs">label</span> Connection Name
-                            </label>
-                            <input name="name" class="tactile-input w-full" placeholder="e.g. Production MySQL" type="text" value="${config.name || ''}" required />
-                        </div>
-
-                        <div class="grid grid-cols-3 gap-4">
-                            <div class="col-span-2 space-y-2">
-                                <label class="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] flex items-center gap-2">
-                                    <span class="material-symbols-outlined text-xs">dns</span> Host
-                                </label>
-                                <input name="host" class="tactile-input w-full" placeholder="127.0.0.1 or localhost" type="text" value="${config.host}" required />
+                    <div class="space-y-2.5 relative z-10">
+                        <div class="grid grid-cols-4 gap-3">
+                            <div class="col-span-2 space-y-1">
+                                <label class="text-[9px] font-black text-gray-500 uppercase tracking-wider">Connection Name</label>
+                                <input name="name" class="tactile-input w-full text-xs py-1.5" placeholder="e.g. Production MySQL" type="text" value="${config.name || ''}" required />
                             </div>
-                            <div class="space-y-2">
-                                <label class="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] flex items-center gap-2">
-                                    <span class="material-symbols-outlined text-xs">cable</span> Port
-                                </label>
-                                <input name="port" class="tactile-input w-full" placeholder="3306" type="number" value="${config.port}" required />
+                            <div class="col-span-2 space-y-1">
+                                <label class="text-[9px] font-black text-gray-500 uppercase tracking-wider">Default Database <span class="text-gray-400 font-normal">(opt)</span></label>
+                                <input name="database" class="tactile-input w-full text-xs py-1.5" placeholder="my_database" type="text" value="${config.database}" />
                             </div>
                         </div>
 
-                        <div class="grid grid-cols-2 gap-4">
-                            <div class="space-y-2">
-                                <label class="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] flex items-center gap-2">
-                                    <span class="material-symbols-outlined text-xs">person</span> Username
-                                </label>
-                                <input name="username" class="tactile-input w-full" placeholder="root" type="text" value="${config.username}" required />
+                        <div class="grid grid-cols-4 gap-3">
+                            <div class="col-span-2 space-y-1">
+                                <label class="text-[9px] font-black text-gray-500 uppercase tracking-wider">Host</label>
+                                <input name="host" class="tactile-input w-full text-xs py-1.5" placeholder="127.0.0.1" type="text" value="${config.host}" required />
                             </div>
-                            <div class="space-y-2">
-                                <label class="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] flex items-center gap-2">
-                                    <span class="material-symbols-outlined text-xs">key</span> Password
+                            <div class="space-y-1">
+                                <label class="text-[9px] font-black text-gray-500 uppercase tracking-wider">Port</label>
+                                <input name="port" class="tactile-input w-full text-xs py-1.5" placeholder="3306" type="number" value="${config.port}" required />
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[9px] font-black text-gray-500 uppercase tracking-wider">Username</label>
+                                <input name="username" class="tactile-input w-full text-xs py-1.5" placeholder="root" type="text" value="${config.username}" required />
+                            </div>
+                        </div>
+
+                        <div class="space-y-1">
+                            <label class="text-[9px] font-black text-gray-500 uppercase tracking-wider">Password</label>
+                            <div class="relative">
+                                <input name="password" id="password-input" class="tactile-input w-full text-xs py-1.5 pr-10" placeholder="••••••••" type="password" value="${config.password}" />
+                                <button type="button" id="toggle-password" class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-mysql-teal transition-colors" title="Show/Hide">
+                                    <span class="material-symbols-outlined text-sm">visibility</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- SSH Tunnel Section - Compact -->
+                        <div class="pt-2.5 border-t ${isLight ? 'border-gray-100' : 'border-white/10'}">
+                            <div class="flex items-center justify-between mb-2">
+                                <label class="text-[9px] font-black text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                                    <span class="material-symbols-outlined text-[11px]">security</span> SSH Tunnel
                                 </label>
-                                <div class="relative">
-                                    <input name="password" id="password-input" class="tactile-input w-full pr-12" placeholder="••••••••" type="password" value="${config.password}" />
-                                    <button type="button" id="toggle-password" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-mysql-teal transition-colors" title="Show/Hide Password">
-                                        <span class="material-symbols-outlined text-lg">visibility</span>
-                                    </button>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" name="useSSHTunnel" class="sr-only peer" ${config.useSSHTunnel ? 'checked' : ''} />
+                                    <div class="w-8 h-4 ${isLight ? 'bg-gray-200' : 'bg-gray-700'} rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-mysql-teal"></div>
+                                </label>
+                            </div>
+                            
+                            <div id="ssh-tunnel-fields" class="${config.useSSHTunnel ? '' : 'hidden'} space-y-2 transition-all">
+                                <div class="grid grid-cols-4 gap-2">
+                                    <div class="col-span-2 space-y-0.5">
+                                        <label class="text-[8px] font-bold text-gray-500 uppercase">SSH Host</label>
+                                        <input name="sshHost" class="tactile-input w-full text-[11px] py-1" placeholder="ssh.example.com" type="text" value="${config.sshHost || ''}" />
+                                    </div>
+                                    <div class="space-y-0.5">
+                                        <label class="text-[8px] font-bold text-gray-500 uppercase">SSH Port</label>
+                                        <input name="sshPort" class="tactile-input w-full text-[11px] py-1" placeholder="22" type="number" value="${config.sshPort || 22}" />
+                                    </div>
+                                    <div class="space-y-0.5">
+                                        <label class="text-[8px] font-bold text-gray-500 uppercase">SSH User</label>
+                                        <input name="sshUsername" class="tactile-input w-full text-[11px] py-1" placeholder="ubuntu" type="text" value="${config.sshUsername || ''}" />
+                                    </div>
                                 </div>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div class="space-y-0.5">
+                                        <label class="text-[8px] font-bold text-gray-500 uppercase">SSH Password <span class="text-gray-400">(opt)</span></label>
+                                        <input name="sshPassword" class="tactile-input w-full text-[11px] py-1" placeholder="••••••••" type="password" value="${config.sshPassword || ''}" />
+                                    </div>
+                                    <div class="space-y-0.5">
+                                        <label class="text-[8px] font-bold text-gray-500 uppercase">Key Path <span class="text-gray-400">(or password)</span></label>
+                                        <input name="sshKeyPath" class="tactile-input w-full text-[11px] py-1" placeholder="~/.ssh/id_rsa" type="text" value="${config.sshKeyPath || ''}" />
+                                    </div>
+                                </div>
+                                <button id="test-ssh-btn" class="px-2 py-1 text-[9px] font-bold ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700' : 'bg-white/5 hover:bg-white/10 text-gray-300'} rounded flex items-center gap-1 transition-all">
+                                    <span class="material-symbols-outlined text-[10px]">wifi_tethering</span>
+                                    Test SSH
+                                </button>
+                                <span id="ssh-test-status" class="text-[9px] ${isLight ? 'text-gray-500' : 'text-gray-400'}"></span>
                             </div>
                         </div>
-
-                        <div class="space-y-2">
-                            <label class="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] flex items-center gap-2">
-                                <span class="material-symbols-outlined text-xs">storage</span> Default Database <span class="text-gray-400 font-normal">(Optional)</span>
-                            </label>
-                            <input name="database" class="tactile-input w-full" placeholder="my_database" type="text" value="${config.database}" />
-                        </div>
                     </div>
 
-                    <div class="mt-6 pt-6 border-t ${isLight ? 'border-gray-100' : 'border-white/5'} flex items-center justify-between relative z-10">
-                        <button id="test-btn" class="text-gray-500 hover:${isLight ? 'text-gray-800' : 'text-white'} text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-colors">
-                            <span class="material-symbols-outlined text-base">wifi_tethering</span> Test Connection
+                    <div class="mt-4 pt-3 border-t ${isLight ? 'border-gray-100' : 'border-white/5'} flex items-center justify-between relative z-10">
+                        <button id="test-btn" class="text-gray-500 hover:${isLight ? 'text-gray-800' : 'text-white'} text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors">
+                            <span class="material-symbols-outlined text-sm">wifi_tethering</span> Test
                         </button>
-                        <button id="connect-now-btn" class="gloss-btn-cyan px-6 py-2.5 rounded-xl text-white text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-mysql-cyan/20">
-                            <span class="material-symbols-outlined text-base">bolt</span> Connect
+                        <button id="connect-now-btn" class="gloss-btn-cyan px-4 py-2 rounded-lg text-white text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-lg shadow-mysql-cyan/20">
+                            <span class="material-symbols-outlined text-sm">bolt</span> Connect
                         </button>
                     </div>
+                </div>
                 </div>
              </div>
         `;
@@ -277,8 +318,14 @@ export function ConnectionManager() {
         // Bind Edit Events
         container.querySelectorAll('input').forEach(input => {
             input.addEventListener('input', (e) => {
-                const { name, value } = e.target;
-                config[name] = name === 'port' ? (parseInt(value) || 3306) : value;
+                const { name, value, type, checked } = e.target;
+                if (type === 'checkbox') {
+                    config[name] = checked;
+                } else if (name === 'port' || name === 'sshPort') {
+                    config[name] = parseInt(value) || (name === 'port' ? 3306 : 22);
+                } else {
+                    config[name] = value;
+                }
             });
             // Enter key shortcut for Connect
             input.addEventListener('keydown', (e) => {
@@ -288,6 +335,50 @@ export function ConnectionManager() {
                 }
             });
         });
+
+        // SSH Tunnel toggle
+        const sshToggle = container.querySelector('input[name="useSSHTunnel"]');
+        const sshFields = container.querySelector('#ssh-tunnel-fields');
+        if (sshToggle && sshFields) {
+            sshToggle.addEventListener('change', (e) => {
+                config.useSSHTunnel = e.target.checked;
+                sshFields.classList.toggle('hidden', !e.target.checked);
+            });
+        }
+
+        // Test SSH Button
+        const testSSHBtn = container.querySelector('#test-ssh-btn');
+        const sshTestStatus = container.querySelector('#ssh-test-status');
+        if (testSSHBtn) {
+            testSSHBtn.onclick = async () => {
+                if (!config.sshHost || !config.sshUsername) {
+                    Dialog.alert('Please provide SSH host and username.', 'SSH Configuration');
+                    return;
+                }
+                
+                testSSHBtn.disabled = true;
+                testSSHBtn.innerHTML = '<span class="material-symbols-outlined text-xs animate-spin">sync</span> Testing...';
+                sshTestStatus.textContent = '';
+                
+                try {
+                    await invoke('test_ssh_connection', {
+                        config: {
+                            host: config.sshHost,
+                            port: config.sshPort || 22,
+                            username: config.sshUsername,
+                            password: config.sshPassword || null,
+                            key_path: config.sshKeyPath || null
+                        }
+                    });
+                    sshTestStatus.innerHTML = '<span class="text-green-500 flex items-center gap-1"><span class="material-symbols-outlined text-xs">check_circle</span> SSH connection successful!</span>';
+                } catch (error) {
+                    sshTestStatus.innerHTML = `<span class="text-red-400 flex items-center gap-1"><span class="material-symbols-outlined text-xs">error</span> ${String(error)}</span>`;
+                } finally {
+                    testSSHBtn.disabled = false;
+                    testSSHBtn.innerHTML = '<span class="material-symbols-outlined text-xs">wifi_tethering</span> Test SSH';
+                }
+            };
+        }
 
         // Password toggle handler
         const togglePassword = container.querySelector('#toggle-password');

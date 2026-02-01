@@ -9,6 +9,14 @@
     "devUrl": "http://localhost:1420",
     "frontendDist": "../dist"
   },
+  "plugins": {
+    "fs": {
+      "scope": {
+        "allow": ["$DOWNLOAD/**", "$DOCUMENT/**", "$HOME/**", "$APPDATA/**", "**"],
+        "deny": []
+      }
+    }
+  },
   "app": {
     "withGlobalTauri": true,
     "windows": [

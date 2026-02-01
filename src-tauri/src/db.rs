@@ -1136,3 +1136,1098 @@ pub async fn alter_view(
 
     Ok("View updated successfully".to_string())
 }
+
+// =====================================================
+// SSH TUNNEL SUPPORT
+// =====================================================
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SSHTunnelConfig {
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub password: Option<String>,
+    pub key_path: Option<String>,
+}
+
+#[tauri::command]
+pub async fn test_ssh_connection(config: SSHTunnelConfig) -> Result<String, String> {
+    use std::net::TcpStream;
+    use ssh2::Session;
+    
+    if config.host.is_empty() {
+        return Err("SSH host is required".to_string());
+    }
+    
+    if config.username.is_empty() {
+        return Err("SSH username is required".to_string());
+    }
+    
+    // Connect to SSH server
+    let tcp = TcpStream::connect(format!("{}:{}", config.host, config.port))
+        .map_err(|e| format!("Failed to connect to SSH server: {}", e))?;
+    
+    let mut sess = Session::new()
+        .map_err(|e| format!("Failed to create SSH session: {}", e))?;
+    
+    sess.set_tcp_stream(tcp);
+    sess.handshake()
+        .map_err(|e| format!("SSH handshake failed: {}", e))?;
+    
+    // Authenticate
+    if let Some(key_path) = &config.key_path {
+        if !key_path.is_empty() {
+            let key_path_expanded = if key_path.starts_with("~") {
+                dirs::home_dir()
+                    .map(|h| key_path.replacen("~", &h.to_string_lossy(), 1))
+                    .unwrap_or_else(|| key_path.clone())
+            } else {
+                key_path.clone()
+            };
+            
+            sess.userauth_pubkey_file(
+                &config.username,
+                None,
+                std::path::Path::new(&key_path_expanded),
+                None
+            ).map_err(|e| format!("SSH key authentication failed: {}", e))?;
+        }
+    } else if let Some(password) = &config.password {
+        if !password.is_empty() {
+            sess.userauth_password(&config.username, password)
+                .map_err(|e| format!("SSH password authentication failed: {}", e))?;
+        }
+    } else {
+        return Err("Either SSH password or key path is required".to_string());
+    }
+    
+    if sess.authenticated() {
+        Ok(format!("SSH connection successful to {}@{}:{}", 
+            config.username, config.host, config.port))
+    } else {
+        Err("SSH authentication failed".to_string())
+    }
+}
+
+// =====================================================
+// DATA IMPORT/EXPORT
+// =====================================================
+
+#[derive(Serialize, Debug)]
+pub struct ImportResult {
+    pub success: bool,
+    pub rows_imported: u64,
+    pub errors: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn export_table_csv(
+    state: State<'_, AppState>,
+    database: String,
+    table: String,
+    file_path: String,
+    include_headers: bool,
+) -> Result<String, String> {
+    let pool = get_pool(&state)?;
+    
+    let query = format!("SELECT * FROM `{}`.`{}`", database, table);
+    let rows = sqlx::query(&query)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("Failed to fetch data: {}", e))?;
+    
+    if rows.is_empty() {
+        return Ok("No data to export".to_string());
+    }
+    
+    let columns: Vec<String> = rows[0].columns().iter().map(|c| c.name().to_string()).collect();
+    
+    let mut wtr = csv::Writer::from_path(&file_path)
+        .map_err(|e| format!("Failed to create CSV file: {}", e))?;
+    
+    if include_headers {
+        wtr.write_record(&columns)
+            .map_err(|e| format!("Failed to write headers: {}", e))?;
+    }
+    
+    for row in &rows {
+        let mut record: Vec<String> = Vec::new();
+        for i in 0..columns.len() {
+            let val: String = row.try_get::<String, _>(i)
+                .or_else(|_| row.try_get::<i64, _>(i).map(|v| v.to_string()))
+                .or_else(|_| row.try_get::<f64, _>(i).map(|v| v.to_string()))
+                .or_else(|_| row.try_get::<bool, _>(i).map(|v| v.to_string()))
+                .unwrap_or_else(|_| "NULL".to_string());
+            record.push(val);
+        }
+        wtr.write_record(&record)
+            .map_err(|e| format!("Failed to write row: {}", e))?;
+    }
+    
+    wtr.flush().map_err(|e| format!("Failed to flush CSV: {}", e))?;
+    
+    Ok(format!("Exported {} rows to {}", rows.len(), file_path))
+}
+
+#[tauri::command]
+pub async fn export_table_json(
+    state: State<'_, AppState>,
+    database: String,
+    table: String,
+    file_path: String,
+) -> Result<String, String> {
+    let pool = get_pool(&state)?;
+    
+    let query = format!("SELECT * FROM `{}`.`{}`", database, table);
+    let rows = sqlx::query(&query)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("Failed to fetch data: {}", e))?;
+    
+    if rows.is_empty() {
+        return Ok("No data to export".to_string());
+    }
+    
+    let columns: Vec<String> = rows[0].columns().iter().map(|c| c.name().to_string()).collect();
+    
+    let mut json_rows: Vec<serde_json::Value> = Vec::new();
+    for row in &rows {
+        let mut obj = serde_json::Map::new();
+        for (i, col) in columns.iter().enumerate() {
+            let val: serde_json::Value = row.try_get::<i64, _>(i)
+                .map(|v| serde_json::json!(v))
+                .or_else(|_| row.try_get::<f64, _>(i).map(|v| serde_json::json!(v)))
+                .or_else(|_| row.try_get::<bool, _>(i).map(|v| serde_json::json!(v)))
+                .or_else(|_| row.try_get::<String, _>(i).map(|v| serde_json::json!(v)))
+                .unwrap_or(serde_json::Value::Null);
+            obj.insert(col.clone(), val);
+        }
+        json_rows.push(serde_json::Value::Object(obj));
+    }
+    
+    let json_str = serde_json::to_string_pretty(&json_rows)
+        .map_err(|e| format!("Failed to serialize JSON: {}", e))?;
+    
+    fs::write(&file_path, json_str)
+        .map_err(|e| format!("Failed to write JSON file: {}", e))?;
+    
+    Ok(format!("Exported {} rows to {}", rows.len(), file_path))
+}
+
+#[tauri::command]
+pub async fn export_table_sql(
+    state: State<'_, AppState>,
+    database: String,
+    table: String,
+    file_path: String,
+    include_create: bool,
+) -> Result<String, String> {
+    let pool = get_pool(&state)?;
+    
+    let mut sql_content = String::new();
+    
+    // Add CREATE TABLE if requested
+    if include_create {
+        let ddl_query = format!("SHOW CREATE TABLE `{}`.`{}`", database, table);
+        let ddl_row = sqlx::query(&ddl_query)
+            .fetch_one(&pool)
+            .await
+            .map_err(|e| format!("Failed to get DDL: {}", e))?;
+        
+        let ddl: String = ddl_row.try_get(1).unwrap_or_default();
+        sql_content.push_str(&format!("-- Table structure for `{}`\n", table));
+        sql_content.push_str(&format!("DROP TABLE IF EXISTS `{}`;\n", table));
+        sql_content.push_str(&ddl);
+        sql_content.push_str(";\n\n");
+    }
+    
+    // Get data
+    let query = format!("SELECT * FROM `{}`.`{}`", database, table);
+    let rows = sqlx::query(&query)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("Failed to fetch data: {}", e))?;
+    
+    if !rows.is_empty() {
+        let columns: Vec<String> = rows[0].columns().iter().map(|c| c.name().to_string()).collect();
+        
+        sql_content.push_str(&format!("-- Data for `{}`\n", table));
+        
+        for row in &rows {
+            let mut values: Vec<String> = Vec::new();
+            for i in 0..columns.len() {
+                let val: String = row.try_get::<String, _>(i)
+                    .map(|v| format!("'{}'", v.replace('\'', "\\'")))
+                    .or_else(|_| row.try_get::<i64, _>(i).map(|v| v.to_string()))
+                    .or_else(|_| row.try_get::<f64, _>(i).map(|v| v.to_string()))
+                    .or_else(|_| row.try_get::<bool, _>(i).map(|v| if v { "1".to_string() } else { "0".to_string() }))
+                    .unwrap_or_else(|_| "NULL".to_string());
+                values.push(val);
+            }
+            sql_content.push_str(&format!(
+                "INSERT INTO `{}` (`{}`) VALUES ({});\n",
+                table,
+                columns.join("`, `"),
+                values.join(", ")
+            ));
+        }
+    }
+    
+    fs::write(&file_path, &sql_content)
+        .map_err(|e| format!("Failed to write SQL file: {}", e))?;
+    
+    Ok(format!("Exported {} rows to {}", rows.len(), file_path))
+}
+
+#[tauri::command]
+pub async fn import_csv(
+    state: State<'_, AppState>,
+    database: String,
+    table: String,
+    file_path: String,
+    has_headers: bool,
+) -> Result<ImportResult, String> {
+    let pool = get_pool(&state)?;
+    
+    let mut rdr = csv::ReaderBuilder::new()
+        .has_headers(has_headers)
+        .from_path(&file_path)
+        .map_err(|e| format!("Failed to open CSV: {}", e))?;
+    
+    // Get table columns
+    let schema = get_table_schema_internal(&pool, &database, &table).await?;
+    let column_names: Vec<String> = schema.iter().map(|c| c.name.clone()).collect();
+    
+    let mut rows_imported = 0u64;
+    let mut errors: Vec<String> = Vec::new();
+    
+    for (idx, result) in rdr.records().enumerate() {
+        match result {
+            Ok(record) => {
+                let values: Vec<String> = record.iter()
+                    .map(|v| {
+                        if v.is_empty() || v == "NULL" {
+                            "NULL".to_string()
+                        } else {
+                            format!("'{}'", v.replace('\'', "\\'"))
+                        }
+                    })
+                    .collect();
+                
+                let cols_to_use: Vec<&str> = column_names.iter()
+                    .take(values.len())
+                    .map(|s| s.as_str())
+                    .collect();
+                
+                let insert_query = format!(
+                    "INSERT INTO `{}`.`{}` (`{}`) VALUES ({})",
+                    database, table,
+                    cols_to_use.join("`, `"),
+                    values.join(", ")
+                );
+                
+                match sqlx::query(&insert_query).execute(&pool).await {
+                    Ok(_) => rows_imported += 1,
+                    Err(e) => errors.push(format!("Row {}: {}", idx + 1, e)),
+                }
+            },
+            Err(e) => errors.push(format!("Row {}: {}", idx + 1, e)),
+        }
+    }
+    
+    Ok(ImportResult {
+        success: errors.is_empty(),
+        rows_imported,
+        errors,
+    })
+}
+
+async fn get_table_schema_internal(pool: &Pool<MySql>, database: &str, table: &str) -> Result<Vec<ColumnSchema>, String> {
+    let query = format!("SHOW COLUMNS FROM `{}`.`{}`", database, table);
+    let rows = sqlx::query(&query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch schema: {}", e))?;
+    
+    let mut columns = Vec::new();
+    for row in rows {
+        let name: String = row.try_get("Field").unwrap_or_default();
+        let full_type: String = row.try_get::<String, _>("Type")
+            .or_else(|_| row.try_get::<Vec<u8>, _>("Type").map(|b| String::from_utf8_lossy(&b).to_string()))
+            .unwrap_or_default();
+        let data_type = full_type.split('(').next().unwrap_or(&full_type).to_string();
+        
+        columns.push(ColumnSchema {
+            name,
+            data_type,
+            column_type: full_type,
+            is_nullable: row.try_get::<String, _>("Null").unwrap_or_default() == "YES",
+            column_key: row.try_get("Key").unwrap_or_default(),
+            column_default: row.try_get("Default").ok(),
+            extra: row.try_get("Extra").unwrap_or_default(),
+        });
+    }
+    
+    Ok(columns)
+}
+
+// =====================================================
+// DATABASE BACKUP & RESTORE
+// =====================================================
+
+#[tauri::command]
+pub async fn backup_database(
+    state: State<'_, AppState>,
+    database: String,
+    file_path: String,
+    include_data: bool,
+) -> Result<String, String> {
+    let pool = get_pool(&state)?;
+    
+    let mut backup_content = String::new();
+    
+    // Header
+    backup_content.push_str(&format!("-- TactileSQL Database Backup\n"));
+    backup_content.push_str(&format!("-- Database: {}\n", database));
+    backup_content.push_str(&format!("-- Date: {}\n", chrono::Local::now().format("%Y-%m-%d %H:%M:%S")));
+    backup_content.push_str("-- ------------------------------------------------------\n\n");
+    
+    backup_content.push_str(&format!("CREATE DATABASE IF NOT EXISTS `{}`;\n", database));
+    backup_content.push_str(&format!("USE `{}`;\n\n", database));
+    
+    // Get tables
+    let tables_query = format!("SHOW TABLES FROM `{}`", database);
+    let tables_rows = sqlx::query(&tables_query)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("Failed to get tables: {}", e))?;
+    
+    let tables: Vec<String> = tables_rows.iter()
+        .map(|r| r.try_get::<String, _>(0).unwrap_or_default())
+        .collect();
+    
+    for table in &tables {
+        // Get CREATE TABLE
+        let ddl_query = format!("SHOW CREATE TABLE `{}`.`{}`", database, table);
+        if let Ok(ddl_row) = sqlx::query(&ddl_query).fetch_one(&pool).await {
+            let ddl: String = ddl_row.try_get(1).unwrap_or_default();
+            backup_content.push_str(&format!("\n-- Table: {}\n", table));
+            backup_content.push_str(&format!("DROP TABLE IF EXISTS `{}`;\n", table));
+            backup_content.push_str(&ddl);
+            backup_content.push_str(";\n");
+        }
+        
+        // Get data if requested
+        if include_data {
+            let data_query = format!("SELECT * FROM `{}`.`{}`", database, table);
+            if let Ok(data_rows) = sqlx::query(&data_query).fetch_all(&pool).await {
+                if !data_rows.is_empty() {
+                    let columns: Vec<String> = data_rows[0].columns().iter()
+                        .map(|c| c.name().to_string())
+                        .collect();
+                    
+                    backup_content.push_str(&format!("\n-- Data for {}\n", table));
+                    
+                    for row in &data_rows {
+                        let mut values: Vec<String> = Vec::new();
+                        for i in 0..columns.len() {
+                            let val: String = row.try_get::<String, _>(i)
+                                .map(|v| format!("'{}'", v.replace('\'', "\\'")))
+                                .or_else(|_| row.try_get::<i64, _>(i).map(|v| v.to_string()))
+                                .or_else(|_| row.try_get::<f64, _>(i).map(|v| v.to_string()))
+                                .or_else(|_| row.try_get::<bool, _>(i).map(|v| if v { "1".to_string() } else { "0".to_string() }))
+                                .unwrap_or_else(|_| "NULL".to_string());
+                            values.push(val);
+                        }
+                        backup_content.push_str(&format!(
+                            "INSERT INTO `{}` (`{}`) VALUES ({});\n",
+                            table,
+                            columns.join("`, `"),
+                            values.join(", ")
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    
+    // Get views
+    let views_query = format!("SHOW FULL TABLES FROM `{}` WHERE Table_type = 'VIEW'", database);
+    if let Ok(views_rows) = sqlx::query(&views_query).fetch_all(&pool).await {
+        for view_row in &views_rows {
+            let view_name: String = view_row.try_get(0).unwrap_or_default();
+            let view_ddl_query = format!("SHOW CREATE VIEW `{}`.`{}`", database, view_name);
+            if let Ok(view_ddl_row) = sqlx::query(&view_ddl_query).fetch_one(&pool).await {
+                let view_ddl: String = view_ddl_row.try_get(1).unwrap_or_default();
+                backup_content.push_str(&format!("\n-- View: {}\n", view_name));
+                backup_content.push_str(&format!("DROP VIEW IF EXISTS `{}`;\n", view_name));
+                backup_content.push_str(&view_ddl);
+                backup_content.push_str(";\n");
+            }
+        }
+    }
+    
+    // Get triggers
+    let triggers_query = format!("SHOW TRIGGERS FROM `{}`", database);
+    if let Ok(triggers_rows) = sqlx::query(&triggers_query).fetch_all(&pool).await {
+        for trigger_row in &triggers_rows {
+            let trigger_name: String = trigger_row.try_get("Trigger").unwrap_or_default();
+            let trigger_ddl_query = format!("SHOW CREATE TRIGGER `{}`.`{}`", database, trigger_name);
+            if let Ok(trigger_ddl_row) = sqlx::query(&trigger_ddl_query).fetch_one(&pool).await {
+                let trigger_ddl: String = trigger_ddl_row.try_get(2).unwrap_or_default();
+                backup_content.push_str(&format!("\n-- Trigger: {}\n", trigger_name));
+                backup_content.push_str(&format!("DROP TRIGGER IF EXISTS `{}`;\n", trigger_name));
+                backup_content.push_str("DELIMITER ;;\n");
+                backup_content.push_str(&trigger_ddl);
+                backup_content.push_str(";;\nDELIMITER ;\n");
+            }
+        }
+    }
+    
+    // Get procedures
+    let procs_query = format!("SHOW PROCEDURE STATUS WHERE Db = '{}'", database);
+    if let Ok(procs_rows) = sqlx::query(&procs_query).fetch_all(&pool).await {
+        for proc_row in &procs_rows {
+            let proc_name: String = proc_row.try_get("Name").unwrap_or_default();
+            let proc_ddl_query = format!("SHOW CREATE PROCEDURE `{}`.`{}`", database, proc_name);
+            if let Ok(proc_ddl_row) = sqlx::query(&proc_ddl_query).fetch_one(&pool).await {
+                let proc_ddl: String = proc_ddl_row.try_get(2).unwrap_or_default();
+                backup_content.push_str(&format!("\n-- Procedure: {}\n", proc_name));
+                backup_content.push_str(&format!("DROP PROCEDURE IF EXISTS `{}`;\n", proc_name));
+                backup_content.push_str("DELIMITER ;;\n");
+                backup_content.push_str(&proc_ddl);
+                backup_content.push_str(";;\nDELIMITER ;\n");
+            }
+        }
+    }
+    
+    // Get functions
+    let funcs_query = format!("SHOW FUNCTION STATUS WHERE Db = '{}'", database);
+    if let Ok(funcs_rows) = sqlx::query(&funcs_query).fetch_all(&pool).await {
+        for func_row in &funcs_rows {
+            let func_name: String = func_row.try_get("Name").unwrap_or_default();
+            let func_ddl_query = format!("SHOW CREATE FUNCTION `{}`.`{}`", database, func_name);
+            if let Ok(func_ddl_row) = sqlx::query(&func_ddl_query).fetch_one(&pool).await {
+                let func_ddl: String = func_ddl_row.try_get(2).unwrap_or_default();
+                backup_content.push_str(&format!("\n-- Function: {}\n", func_name));
+                backup_content.push_str(&format!("DROP FUNCTION IF EXISTS `{}`;\n", func_name));
+                backup_content.push_str("DELIMITER ;;\n");
+                backup_content.push_str(&func_ddl);
+                backup_content.push_str(";;\nDELIMITER ;\n");
+            }
+        }
+    }
+    
+    fs::write(&file_path, &backup_content)
+        .map_err(|e| format!("Failed to write backup file: {}", e))?;
+    
+    Ok(format!("Backup completed: {} tables exported to {}", tables.len(), file_path))
+}
+
+#[tauri::command]
+pub async fn restore_database(
+    state: State<'_, AppState>,
+    file_path: String,
+) -> Result<String, String> {
+    let pool = get_pool(&state)?;
+    
+    let sql_content = fs::read_to_string(&file_path)
+        .map_err(|e| format!("Failed to read backup file: {}", e))?;
+    
+    // Split by semicolons but be careful with DELIMITER
+    let mut statements: Vec<String> = Vec::new();
+    let mut current_stmt = String::new();
+    let mut delimiter = ";".to_string();
+    
+    for line in sql_content.lines() {
+        let trimmed = line.trim();
+        
+        if trimmed.starts_with("--") || trimmed.is_empty() {
+            continue;
+        }
+        
+        if trimmed.to_uppercase().starts_with("DELIMITER") {
+            let parts: Vec<&str> = trimmed.split_whitespace().collect();
+            if parts.len() > 1 {
+                delimiter = parts[1].to_string();
+            }
+            continue;
+        }
+        
+        current_stmt.push_str(line);
+        current_stmt.push('\n');
+        
+        if trimmed.ends_with(&delimiter) {
+            let stmt = current_stmt.trim_end_matches(&delimiter).trim().to_string();
+            if !stmt.is_empty() {
+                statements.push(stmt);
+            }
+            current_stmt.clear();
+        }
+    }
+    
+    let mut executed = 0;
+    let mut errors: Vec<String> = Vec::new();
+    
+    for stmt in &statements {
+        match sqlx::query(stmt).execute(&pool).await {
+            Ok(_) => executed += 1,
+            Err(e) => errors.push(format!("Error: {}", e)),
+        }
+    }
+    
+    if errors.is_empty() {
+        Ok(format!("Restore completed: {} statements executed", executed))
+    } else {
+        Ok(format!("Restore completed with errors: {} succeeded, {} failed. First error: {}", 
+            executed, errors.len(), errors.first().unwrap_or(&"Unknown".to_string())))
+    }
+}
+
+// =====================================================
+// QUERY OPTIMIZATION SUGGESTIONS
+// =====================================================
+
+#[derive(Serialize, Debug)]
+pub struct QueryAnalysis {
+    pub explain_plan: Vec<ExplainRow>,
+    pub suggestions: Vec<OptimizationSuggestion>,
+    pub estimated_cost: f64,
+    pub uses_index: bool,
+    pub table_scan: bool,
+}
+
+#[derive(Serialize, Debug)]
+pub struct ExplainRow {
+    pub id: Option<i64>,
+    pub select_type: String,
+    pub table: Option<String>,
+    pub partitions: Option<String>,
+    pub access_type: Option<String>,
+    pub possible_keys: Option<String>,
+    pub key_used: Option<String>,
+    pub key_len: Option<String>,
+    pub ref_col: Option<String>,
+    pub rows: Option<i64>,
+    pub filtered: Option<f64>,
+    pub extra: Option<String>,
+}
+
+#[derive(Serialize, Debug)]
+pub struct OptimizationSuggestion {
+    pub severity: String, // "high", "medium", "low"
+    pub category: String, // "index", "query", "schema"
+    pub title: String,
+    pub description: String,
+    pub suggestion: String,
+}
+
+#[tauri::command]
+pub async fn analyze_query(
+    state: State<'_, AppState>,
+    query: String,
+) -> Result<QueryAnalysis, String> {
+    let pool = get_pool(&state)?;
+    
+    let explain_query = format!("EXPLAIN {}", query);
+    let rows = sqlx::query(&explain_query)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("Failed to analyze query: {}", e))?;
+    
+    let mut explain_plan: Vec<ExplainRow> = Vec::new();
+    let mut suggestions: Vec<OptimizationSuggestion> = Vec::new();
+    let mut uses_index = false;
+    let mut table_scan = false;
+    let mut estimated_cost = 0.0;
+    
+    for row in &rows {
+        let id: Option<i64> = row.try_get("id").ok();
+        let select_type: String = row.try_get("select_type").unwrap_or_default();
+        let table: Option<String> = row.try_get("table").ok();
+        let partitions: Option<String> = row.try_get("partitions").ok();
+        let access_type: Option<String> = row.try_get("type").ok();
+        let possible_keys: Option<String> = row.try_get("possible_keys").ok();
+        let key_used: Option<String> = row.try_get("key").ok();
+        let key_len: Option<String> = row.try_get("key_len").ok();
+        let ref_col: Option<String> = row.try_get("ref").ok();
+        let rows_est: Option<i64> = row.try_get("rows").ok();
+        let filtered: Option<f64> = row.try_get("filtered").ok();
+        let extra: Option<String> = row.try_get("Extra").ok();
+        
+        // Check for index usage
+        if key_used.is_some() && key_used.as_ref().map(|k| !k.is_empty()).unwrap_or(false) {
+            uses_index = true;
+        }
+        
+        // Check for table scan
+        if let Some(ref at) = access_type {
+            if at == "ALL" {
+                table_scan = true;
+                if let Some(ref tbl) = table {
+                    suggestions.push(OptimizationSuggestion {
+                        severity: "high".to_string(),
+                        category: "index".to_string(),
+                        title: format!("Full table scan on `{}`", tbl),
+                        description: "The query is scanning all rows in the table which is very slow for large tables.".to_string(),
+                        suggestion: "Consider adding an index on the columns used in WHERE, JOIN, or ORDER BY clauses.".to_string(),
+                    });
+                }
+            }
+        }
+        
+        // Check for filesort
+        if let Some(ref ex) = extra {
+            if ex.contains("Using filesort") {
+                suggestions.push(OptimizationSuggestion {
+                    severity: "medium".to_string(),
+                    category: "index".to_string(),
+                    title: "Using filesort".to_string(),
+                    description: "MySQL needs to do an extra pass to sort the results.".to_string(),
+                    suggestion: "Consider adding an index that matches your ORDER BY clause.".to_string(),
+                });
+            }
+            if ex.contains("Using temporary") {
+                suggestions.push(OptimizationSuggestion {
+                    severity: "medium".to_string(),
+                    category: "query".to_string(),
+                    title: "Using temporary table".to_string(),
+                    description: "MySQL needs to create a temporary table to process this query.".to_string(),
+                    suggestion: "Review GROUP BY and DISTINCT operations. Consider adding appropriate indexes.".to_string(),
+                });
+            }
+            if ex.contains("Using where") && key_used.is_none() {
+                suggestions.push(OptimizationSuggestion {
+                    severity: "low".to_string(),
+                    category: "index".to_string(),
+                    title: "WHERE clause without index".to_string(),
+                    description: "The WHERE clause is filtering rows but not using an index.".to_string(),
+                    suggestion: "Add an index on the columns used in the WHERE clause.".to_string(),
+                });
+            }
+        }
+        
+        // Estimate cost
+        if let Some(r) = rows_est {
+            estimated_cost += r as f64;
+        }
+        
+        explain_plan.push(ExplainRow {
+            id,
+            select_type,
+            table,
+            partitions,
+            access_type,
+            possible_keys,
+            key_used,
+            key_len,
+            ref_col,
+            rows: rows_est,
+            filtered,
+            extra,
+        });
+    }
+    
+    // Add general suggestions based on query
+    let query_upper = query.to_uppercase();
+    
+    if query_upper.contains("SELECT *") {
+        suggestions.push(OptimizationSuggestion {
+            severity: "low".to_string(),
+            category: "query".to_string(),
+            title: "Using SELECT *".to_string(),
+            description: "Selecting all columns may fetch more data than needed.".to_string(),
+            suggestion: "Specify only the columns you need to reduce I/O and memory usage.".to_string(),
+        });
+    }
+    
+    if !query_upper.contains("LIMIT") && query_upper.contains("SELECT") {
+        suggestions.push(OptimizationSuggestion {
+            severity: "low".to_string(),
+            category: "query".to_string(),
+            title: "No LIMIT clause".to_string(),
+            description: "Query has no row limit which may return excessive data.".to_string(),
+            suggestion: "Add a LIMIT clause if you don't need all results.".to_string(),
+        });
+    }
+    
+    if query_upper.contains("LIKE '%") {
+        suggestions.push(OptimizationSuggestion {
+            severity: "medium".to_string(),
+            category: "query".to_string(),
+            title: "Leading wildcard in LIKE".to_string(),
+            description: "LIKE patterns starting with % cannot use indexes.".to_string(),
+            suggestion: "If possible, avoid leading wildcards or consider full-text search.".to_string(),
+        });
+    }
+    
+    Ok(QueryAnalysis {
+        explain_plan,
+        suggestions,
+        estimated_cost,
+        uses_index,
+        table_scan,
+    })
+}
+
+#[tauri::command]
+pub async fn get_index_suggestions(
+    state: State<'_, AppState>,
+    database: String,
+    table: String,
+) -> Result<Vec<OptimizationSuggestion>, String> {
+    let pool = get_pool(&state)?;
+    
+    let mut suggestions: Vec<OptimizationSuggestion> = Vec::new();
+    
+    // Get current indexes
+    let idx_query = format!("SHOW INDEX FROM `{}`.`{}`", database, table);
+    let idx_rows = sqlx::query(&idx_query)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("Failed to get indexes: {}", e))?;
+    
+    let mut indexed_columns: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for row in &idx_rows {
+        let col: String = row.try_get("Column_name").unwrap_or_default();
+        indexed_columns.insert(col);
+    }
+    
+    // Get foreign keys
+    let fk_query = format!(
+        "SELECT COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE 
+         WHERE TABLE_SCHEMA = '{}' AND TABLE_NAME = '{}' AND REFERENCED_TABLE_NAME IS NOT NULL",
+        database, table
+    );
+    if let Ok(fk_rows) = sqlx::query(&fk_query).fetch_all(&pool).await {
+        for row in &fk_rows {
+            let col: String = row.try_get(0).unwrap_or_default();
+            if !indexed_columns.contains(&col) {
+                suggestions.push(OptimizationSuggestion {
+                    severity: "high".to_string(),
+                    category: "index".to_string(),
+                    title: format!("Missing index on foreign key `{}`", col),
+                    description: "Foreign key columns should be indexed for better JOIN performance.".to_string(),
+                    suggestion: format!("CREATE INDEX idx_{} ON `{}`.`{}`(`{}`);", col, database, table, col),
+                });
+            }
+        }
+    }
+    
+    // Check table stats
+    let stats_query = format!("SHOW TABLE STATUS FROM `{}` WHERE Name = '{}'", database, table);
+    if let Ok(stats_row) = sqlx::query(&stats_query).fetch_one(&pool).await {
+        let row_count: u64 = stats_row.try_get("Rows").unwrap_or(0);
+        let data_length: u64 = stats_row.try_get("Data_length").unwrap_or(0);
+        let index_length: u64 = stats_row.try_get("Index_length").unwrap_or(0);
+        
+        if row_count > 10000 && index_length == 0 {
+            suggestions.push(OptimizationSuggestion {
+                severity: "high".to_string(),
+                category: "index".to_string(),
+                title: "Large table with no indexes".to_string(),
+                description: format!("Table has {} rows but no indexes.", row_count),
+                suggestion: "Add indexes on frequently queried columns.".to_string(),
+            });
+        }
+        
+        if data_length > 0 && index_length as f64 / data_length as f64 > 2.0 {
+            suggestions.push(OptimizationSuggestion {
+                severity: "low".to_string(),
+                category: "schema".to_string(),
+                title: "Index size larger than data".to_string(),
+                description: "Index size is significantly larger than data size.".to_string(),
+                suggestion: "Review indexes and remove unused or redundant ones.".to_string(),
+            });
+        }
+    }
+    
+    Ok(suggestions)
+}
+
+// =====================================================
+// REAL-TIME DATABASE MONITORING
+// =====================================================
+
+#[derive(Serialize, Debug)]
+pub struct ServerStatus {
+    pub uptime: u64,
+    pub threads_connected: u64,
+    pub threads_running: u64,
+    pub queries: u64,
+    pub slow_queries: u64,
+    pub bytes_received: u64,
+    pub bytes_sent: u64,
+    pub connections: u64,
+    pub aborted_connects: u64,
+    pub aborted_clients: u64,
+    pub innodb_buffer_pool_size: u64,
+    pub innodb_buffer_pool_bytes_data: u64,
+    pub innodb_buffer_pool_read_requests: u64,
+    pub innodb_buffer_pool_reads: u64,
+    pub table_open_cache_hits: u64,
+    pub table_open_cache_misses: u64,
+    pub created_tmp_tables: u64,
+    pub created_tmp_disk_tables: u64,
+}
+
+#[tauri::command]
+pub async fn get_server_status(
+    state: State<'_, AppState>,
+) -> Result<ServerStatus, String> {
+    let pool = get_pool(&state)?;
+    
+    let query = "SHOW GLOBAL STATUS";
+    let rows = sqlx::query(query)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("Failed to get server status: {}", e))?;
+    
+    let mut status_map: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+    
+    for row in &rows {
+        let name: String = row.try_get(0).unwrap_or_default();
+        let value: String = row.try_get(1).unwrap_or_default();
+        if let Ok(v) = value.parse::<u64>() {
+            status_map.insert(name, v);
+        }
+    }
+    
+    Ok(ServerStatus {
+        uptime: *status_map.get("Uptime").unwrap_or(&0),
+        threads_connected: *status_map.get("Threads_connected").unwrap_or(&0),
+        threads_running: *status_map.get("Threads_running").unwrap_or(&0),
+        queries: *status_map.get("Queries").unwrap_or(&0),
+        slow_queries: *status_map.get("Slow_queries").unwrap_or(&0),
+        bytes_received: *status_map.get("Bytes_received").unwrap_or(&0),
+        bytes_sent: *status_map.get("Bytes_sent").unwrap_or(&0),
+        connections: *status_map.get("Connections").unwrap_or(&0),
+        aborted_connects: *status_map.get("Aborted_connects").unwrap_or(&0),
+        aborted_clients: *status_map.get("Aborted_clients").unwrap_or(&0),
+        innodb_buffer_pool_size: *status_map.get("Innodb_buffer_pool_bytes_data").unwrap_or(&0),
+        innodb_buffer_pool_bytes_data: *status_map.get("Innodb_buffer_pool_bytes_data").unwrap_or(&0),
+        innodb_buffer_pool_read_requests: *status_map.get("Innodb_buffer_pool_read_requests").unwrap_or(&0),
+        innodb_buffer_pool_reads: *status_map.get("Innodb_buffer_pool_reads").unwrap_or(&0),
+        table_open_cache_hits: *status_map.get("Table_open_cache_hits").unwrap_or(&0),
+        table_open_cache_misses: *status_map.get("Table_open_cache_misses").unwrap_or(&0),
+        created_tmp_tables: *status_map.get("Created_tmp_tables").unwrap_or(&0),
+        created_tmp_disk_tables: *status_map.get("Created_tmp_disk_tables").unwrap_or(&0),
+    })
+}
+
+#[derive(Serialize, Debug)]
+pub struct ProcessInfo {
+    pub id: u64,
+    pub user: String,
+    pub host: String,
+    pub db: Option<String>,
+    pub command: String,
+    pub time: u64,
+    pub state: Option<String>,
+    pub info: Option<String>,
+}
+
+#[tauri::command]
+pub async fn get_process_list(
+    state: State<'_, AppState>,
+) -> Result<Vec<ProcessInfo>, String> {
+    let pool = get_pool(&state)?;
+    
+    let query = "SELECT ID, USER, HOST, DB, COMMAND, TIME, STATE, INFO FROM information_schema.PROCESSLIST ORDER BY TIME DESC";
+    let rows = sqlx::query(query)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("Failed to get process list: {}", e))?;
+    
+    let mut processes: Vec<ProcessInfo> = Vec::new();
+    
+    for row in &rows {
+        processes.push(ProcessInfo {
+            id: row.try_get::<u64, _>("ID").unwrap_or(0),
+            user: row.try_get("USER").unwrap_or_default(),
+            host: row.try_get("HOST").unwrap_or_default(),
+            db: row.try_get("DB").ok(),
+            command: row.try_get("COMMAND").unwrap_or_default(),
+            time: row.try_get::<u64, _>("TIME").unwrap_or(0),
+            state: row.try_get("STATE").ok(),
+            info: row.try_get("INFO").ok(),
+        });
+    }
+    
+    Ok(processes)
+}
+
+#[tauri::command]
+pub async fn kill_process(
+    state: State<'_, AppState>,
+    process_id: u64,
+) -> Result<String, String> {
+    let pool = get_pool(&state)?;
+    
+    let query = format!("KILL {}", process_id);
+    sqlx::query(&query)
+        .execute(&pool)
+        .await
+        .map_err(|e| format!("Failed to kill process: {}", e))?;
+    
+    Ok(format!("Process {} killed successfully", process_id))
+}
+
+#[derive(Serialize, Debug)]
+pub struct SlowQueryLog {
+    pub start_time: String,
+    pub user_host: String,
+    pub query_time: f64,
+    pub lock_time: f64,
+    pub rows_sent: u64,
+    pub rows_examined: u64,
+    pub sql_text: String,
+}
+
+#[tauri::command]
+pub async fn get_slow_queries(
+    state: State<'_, AppState>,
+    limit: u32,
+) -> Result<Vec<SlowQueryLog>, String> {
+    let pool = get_pool(&state)?;
+    
+    // Try to get from mysql.slow_log if available
+    let query = format!(
+        "SELECT start_time, user_host, query_time, lock_time, rows_sent, rows_examined, sql_text 
+         FROM mysql.slow_log ORDER BY start_time DESC LIMIT {}",
+        limit
+    );
+    
+    match sqlx::query(&query).fetch_all(&pool).await {
+        Ok(rows) => {
+            let mut logs: Vec<SlowQueryLog> = Vec::new();
+            for row in &rows {
+                logs.push(SlowQueryLog {
+                    start_time: row.try_get::<String, _>("start_time")
+                        .or_else(|_| row.try_get::<sqlx::types::chrono::NaiveDateTime, _>("start_time").map(|d| d.to_string()))
+                        .unwrap_or_default(),
+                    user_host: row.try_get("user_host").unwrap_or_default(),
+                    query_time: row.try_get::<f64, _>("query_time").unwrap_or(0.0),
+                    lock_time: row.try_get::<f64, _>("lock_time").unwrap_or(0.0),
+                    rows_sent: row.try_get("rows_sent").unwrap_or(0),
+                    rows_examined: row.try_get("rows_examined").unwrap_or(0),
+                    sql_text: row.try_get::<String, _>("sql_text")
+                        .or_else(|_| row.try_get::<Vec<u8>, _>("sql_text").map(|b| String::from_utf8_lossy(&b).to_string()))
+                        .unwrap_or_default(),
+                });
+            }
+            Ok(logs)
+        },
+        Err(_) => {
+            // Slow query log table not enabled or accessible
+            Ok(Vec::new())
+        }
+    }
+}
+
+#[derive(Serialize, Debug)]
+pub struct InnoDBStatus {
+    pub buffer_pool_size: u64,
+    pub buffer_pool_used: u64,
+    pub buffer_pool_hit_rate: f64,
+    pub row_operations: RowOperations,
+    pub log_sequence_number: u64,
+    pub pending_writes: u64,
+}
+
+#[derive(Serialize, Debug)]
+pub struct RowOperations {
+    pub reads: u64,
+    pub inserts: u64,
+    pub updates: u64,
+    pub deletes: u64,
+}
+
+#[tauri::command]
+pub async fn get_innodb_status(
+    state: State<'_, AppState>,
+) -> Result<InnoDBStatus, String> {
+    let pool = get_pool(&state)?;
+    
+    let query = "SHOW GLOBAL STATUS WHERE Variable_name LIKE 'Innodb%'";
+    let rows = sqlx::query(query)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("Failed to get InnoDB status: {}", e))?;
+    
+    let mut status_map: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+    
+    for row in &rows {
+        let name: String = row.try_get(0).unwrap_or_default();
+        let value: String = row.try_get(1).unwrap_or_default();
+        if let Ok(v) = value.parse::<u64>() {
+            status_map.insert(name, v);
+        }
+    }
+    
+    let read_requests = *status_map.get("Innodb_buffer_pool_read_requests").unwrap_or(&1);
+    let reads = *status_map.get("Innodb_buffer_pool_reads").unwrap_or(&0);
+    let hit_rate = if read_requests > 0 {
+        ((read_requests - reads) as f64 / read_requests as f64) * 100.0
+    } else {
+        100.0
+    };
+    
+    Ok(InnoDBStatus {
+        buffer_pool_size: *status_map.get("Innodb_buffer_pool_pages_total").unwrap_or(&0) * 16384,
+        buffer_pool_used: *status_map.get("Innodb_buffer_pool_bytes_data").unwrap_or(&0),
+        buffer_pool_hit_rate: hit_rate,
+        row_operations: RowOperations {
+            reads: *status_map.get("Innodb_rows_read").unwrap_or(&0),
+            inserts: *status_map.get("Innodb_rows_inserted").unwrap_or(&0),
+            updates: *status_map.get("Innodb_rows_updated").unwrap_or(&0),
+            deletes: *status_map.get("Innodb_rows_deleted").unwrap_or(&0),
+        },
+        log_sequence_number: *status_map.get("Innodb_os_log_written").unwrap_or(&0),
+        pending_writes: *status_map.get("Innodb_data_pending_writes").unwrap_or(&0),
+    })
+}
+
+#[derive(Serialize, Debug)]
+pub struct ReplicationStatus {
+    pub is_replica: bool,
+    pub master_host: Option<String>,
+    pub master_port: Option<u16>,
+    pub slave_io_running: Option<String>,
+    pub slave_sql_running: Option<String>,
+    pub seconds_behind_master: Option<u64>,
+    pub last_error: Option<String>,
+}
+
+#[tauri::command]
+pub async fn get_replication_status(
+    state: State<'_, AppState>,
+) -> Result<ReplicationStatus, String> {
+    let pool = get_pool(&state)?;
+    
+    let query = "SHOW SLAVE STATUS";
+    match sqlx::query(query).fetch_optional(&pool).await {
+        Ok(Some(row)) => {
+            Ok(ReplicationStatus {
+                is_replica: true,
+                master_host: row.try_get("Master_Host").ok(),
+                master_port: row.try_get("Master_Port").ok(),
+                slave_io_running: row.try_get("Slave_IO_Running").ok(),
+                slave_sql_running: row.try_get("Slave_SQL_Running").ok(),
+                seconds_behind_master: row.try_get("Seconds_Behind_Master").ok(),
+                last_error: row.try_get("Last_Error").ok(),
+            })
+        },
+        _ => {
+            Ok(ReplicationStatus {
+                is_replica: false,
+                master_host: None,
+                master_port: None,
+                slave_io_running: None,
+                slave_sql_running: None,
+                seconds_behind_master: None,
+                last_error: None,
+            })
+        }
+    }
+}

@@ -10,6 +10,8 @@ import { SchemaDiff } from './pages/SchemaDiff.js';
 import { ConnectionManager } from './pages/ConnectionManager.js';
 import { AccessControl } from './pages/AccessControl.js';
 import { Settings } from './pages/Settings.js';
+import { DataTools } from './pages/DataTools.js';
+import { ServerMonitor } from './pages/ServerMonitor.js';
 import { ThemeManager } from './utils/ThemeManager.js';
 import { initKeyboardShortcuts, registerHandler, showShortcutsHelp } from './utils/KeyboardShortcuts.js';
 
@@ -138,6 +140,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         '/connections': { component: ConnectionManager },
         '/access-control': { component: AccessControl },
         '/settings': { component: Settings },
+        '/data-tools': { component: DataTools },
+        '/monitor': { component: ServerMonitor },
     };
 
     const router = new Router(routes, mainContent);

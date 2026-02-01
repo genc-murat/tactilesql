@@ -361,6 +361,9 @@ export function QueryEditor() {
                         <button id="explain-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-gray-700 shadow-sm' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text' : 'bg-[#1a1d23] border-white/10 text-gray-300')} border rounded hover:opacity-80 active:scale-95 transition-all" title="Explain Query Plan">
                             <span class="material-symbols-outlined text-sm">analytics</span>
                         </button>
+                        <button id="analyze-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-amber-600 shadow-sm' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-amber-400' : 'bg-[#1a1d23] border-white/10 text-amber-400')} border rounded hover:opacity-80 active:scale-95 transition-all" title="Analyze & Optimize Query">
+                            <span class="material-symbols-outlined text-sm">speed</span>
+                        </button>
                         <button id="execute-btn" class="relative flex items-center justify-center p-0.5 bg-mysql-teal text-black rounded shadow-[0_0_8px_rgba(0,200,255,0.15)] hover:shadow-[0_0_20px_rgba(0,200,255,0.4)] hover:brightness-110 active:scale-95 transition-all duration-300 overflow-hidden group" title="Execute Query (Ctrl+Enter)">
                             <span class="material-symbols-outlined text-sm relative z-10 group-hover:scale-110 transition-transform duration-200">play_arrow</span>
                             <span class="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-out"></span>
@@ -879,6 +882,45 @@ export function QueryEditor() {
                     explainBtn.innerHTML = originalHTML;
                     explainBtn.classList.remove('opacity-70');
                     isExplaining = false;
+                }
+            });
+        }
+
+        // Analyze Query Logic
+        const analyzeBtn = container.querySelector('#analyze-btn');
+        if (analyzeBtn) {
+            let isAnalyzing = false;
+            analyzeBtn.addEventListener('click', async () => {
+                if (isAnalyzing) return;
+                isAnalyzing = true;
+
+                const textarea = container.querySelector('#query-input');
+                const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
+                const queryToAnalyze = selectedText.trim() ? selectedText : textarea.value;
+
+                if (!queryToAnalyze.trim()) {
+                    isAnalyzing = false;
+                    Dialog.alert('Please enter a query to analyze.', 'Info');
+                    return;
+                }
+
+                const originalHTML = analyzeBtn.innerHTML;
+                try {
+                    analyzeBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span>';
+                    analyzeBtn.classList.add('opacity-70');
+
+                    const sqlString = queryToAnalyze.trim();
+
+                    // Show Query Analyzer Modal
+                    const { showQueryAnalyzerModal } = await import('../UI/QueryAnalyzerModal.js');
+                    showQueryAnalyzerModal(sqlString);
+
+                } catch (error) {
+                    Dialog.alert(`Query analysis failed: ${String(error).replace(/\n/g, '<br>')}`, 'Analysis Error');
+                } finally {
+                    analyzeBtn.innerHTML = originalHTML;
+                    analyzeBtn.classList.remove('opacity-70');
+                    isAnalyzing = false;
                 }
             });
         }

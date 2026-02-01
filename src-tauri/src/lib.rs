@@ -53,7 +53,27 @@ pub fn run() {
             db::get_functions,
             db::get_events,
             db::get_view_definition,
-            db::alter_view
+            db::alter_view,
+            // SSH Tunnel
+            db::test_ssh_connection,
+            // Data Import/Export
+            db::export_table_csv,
+            db::export_table_json,
+            db::export_table_sql,
+            db::import_csv,
+            // Backup & Restore
+            db::backup_database,
+            db::restore_database,
+            // Query Optimization
+            db::analyze_query,
+            db::get_index_suggestions,
+            // Real-time Monitoring
+            db::get_server_status,
+            db::get_process_list,
+            db::kill_process,
+            db::get_slow_queries,
+            db::get_innodb_status,
+            db::get_replication_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

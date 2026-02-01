@@ -14,6 +14,8 @@ export function NavBar() {
             { path: '/dashboard', label: 'DASHBOARD', icon: 'dashboard' },
             { path: '/workbench', label: 'EXPLORER', icon: 'code' },
             { path: '/diff', label: 'SCHEMA DIFF', icon: 'compare_arrows' },
+            { path: '/data-tools', label: 'DATA TOOLS', icon: 'swap_horiz' },
+            { path: '/monitor', label: 'MONITOR', icon: 'monitor_heart' },
             { path: '/connections', label: 'CONNECTIONS', icon: 'cable' },
             { path: '/access-control', label: 'SECURITY', icon: 'shield' },
             { path: '/settings', label: 'SETTINGS', icon: 'settings' },
