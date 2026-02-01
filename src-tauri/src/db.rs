@@ -364,7 +364,7 @@ pub async fn execute_query(
                 Ok(either) => {
                     use sqlx::Either;
                     match either {
-                        Either::Left(done) => {
+                        Either::Left(_done) => {
                             // This is a "Done" report (rows affected), equivalent to a result set with no rows for our purpose?
                             // Or should we ignore it if it has no rows?
                             // DBeaver shows "Update Count" tab. 
