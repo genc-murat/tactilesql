@@ -114,6 +114,7 @@ export function QueryEditor() {
 
     // Local State
     let lastExecutionTime = null;
+    let estimatedExecutionTime = null;
     const maxVisibleTabs = 5; // Fixed: always show 5 tabs max
 
     // Autocomplete state
@@ -432,6 +433,10 @@ export function QueryEditor() {
                             <option value="" disabled selected>Loading...</option>
                         </select>
                     </div>
+                    ${estimatedExecutionTime ? `<div class="px-1 py-0.5 text-[8px] ${isLight ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-blue-900/20 text-blue-400 border border-blue-500/30'} rounded font-mono flex items-center gap-0.5">
+                        <span class="material-symbols-outlined" style="font-size: 10px;">insights</span>
+                        ~${estimatedExecutionTime}ms
+                    </div>` : ''}
                     ${lastExecutionTime ? `<div class="px-1 py-0.5 text-[8px] ${isLight ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-green-900/20 text-green-400 border border-green-500/30'} rounded font-mono flex items-center gap-0.5">
                         <span class="material-symbols-outlined" style="font-size: 10px;">schedule</span>
                         ${lastExecutionTime}ms
@@ -589,8 +594,13 @@ export function QueryEditor() {
         return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
     };
 
+    const SLOW_MIN_DURATION_MS = 300;
+    const SLOW_MULTIPLIER = 2.0;
+    const SLOW_ABS_BUFFER_MS = 300;
+    const ESTIMATE_MIN_SAMPLES = 2;
+
     const detectSlowQuery = (query, duration, database) => {
-        if (!duration || duration < 500) return null;
+        if (!duration || duration < SLOW_MIN_DURATION_MS) return null;
 
         const queryType = detectQueryType(query);
         const tables = extractTables(query);
@@ -600,7 +610,7 @@ export function QueryEditor() {
             status: 'SUCCESS',
             database,
             queryType,
-            table,
+            ...(table ? { table } : {}),
             limit: 200,
         });
 
@@ -609,10 +619,10 @@ export function QueryEditor() {
             .filter(d => typeof d === 'number' && d > 0)
             .slice(0, 50);
 
-        const baseline = durations.length >= 5 ? median(durations) : auditTrail.getStatistics({ database, queryType }).avgDuration;
+        const baseline = durations.length >= 3 ? median(durations) : auditTrail.getStatistics({ database, queryType }).avgDuration;
         if (!baseline || baseline <= 0) return null;
 
-        const threshold = Math.max(baseline * 3, baseline + 500);
+        const threshold = Math.max(baseline * SLOW_MULTIPLIER, baseline + SLOW_ABS_BUFFER_MS);
         if (duration > threshold) {
             return {
                 baseline: Math.round(baseline),
@@ -621,6 +631,31 @@ export function QueryEditor() {
         }
 
         return null;
+    };
+
+    const estimateQueryLatency = (query, database) => {
+        if (!query || !database) return null;
+        const queryType = detectQueryType(query);
+        const tables = extractTables(query);
+        const table = tables[0];
+
+        const { entries } = auditTrail.getEntries({
+            status: 'SUCCESS',
+            database,
+            queryType,
+            ...(table ? { table } : {}),
+            limit: 200,
+        });
+
+        const durations = entries
+            .map(e => e.duration)
+            .filter(d => typeof d === 'number' && d > 0)
+            .slice(0, 50);
+
+        if (durations.length < ESTIMATE_MIN_SAMPLES) return null;
+
+        const estimate = Math.round(median(durations));
+        return { estimate, sampleCount: durations.length };
     };
 
     const attachEvents = async () => {
@@ -1178,6 +1213,11 @@ export function QueryEditor() {
                 isExecuting = true;
 
                 const editorContent = container.querySelector('#query-input').value;
+                const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+                const database = activeConfig.database || '';
+                const estimate = estimateQueryLatency(editorContent, database);
+                estimatedExecutionTime = estimate?.estimate || null;
+                render();
                 const startTime = performance.now();
                 const originalHTML = executeBtn.innerHTML;
                 try {
@@ -1218,8 +1258,6 @@ export function QueryEditor() {
 
                     // Log to Audit Trail
                     const totalRows = resultsArray.reduce((sum, r) => sum + (r.rows?.length || 0), 0);
-                    const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
-                    const database = activeConfig.database || '';
                     const slowSignal = detectSlowQuery(editorContent, lastExecutionTime, database);
 
                     auditTrail.logQuery({
@@ -1470,6 +1508,20 @@ export function QueryEditor() {
         }
     };
 
+    const createNewTabWithQuery = (query) => {
+        const newId = Date.now().toString();
+        const num = tabs.length + 1;
+        tabs.push({ id: newId, title: `Query ${num}`, content: query || '', pinned: false });
+        activeTabId = newId;
+        saveState();
+        render();
+    };
+
+    const applyQueryToEditor = (query) => {
+        if (!query) return;
+        createNewTabWithQuery(query);
+    };
+
     // --- Theme Change Handling ---
     const onThemeChange = (e) => {
         theme = e.detail.theme;
@@ -1624,18 +1676,15 @@ export function QueryEditor() {
     // Listen for set-query requests (from ObjectExplorer context menu)
     window.addEventListener('tactilesql:set-query', (e) => {
         const query = e.detail?.query;
-        if (!query) return;
-
-        // Update active tab content
-        const activeTab = tabs.find(t => t.id === activeTabId);
-        if (activeTab) {
-            activeTab.content = query;
-            saveState(); // Save on set-query
-        }
-
-        // Re-render to update the textarea
-        render();
+        applyQueryToEditor(query);
     });
+
+    // Load pending open query from other pages (e.g., Audit Trail)
+    const pendingQuery = localStorage.getItem('tactilesql_open_query');
+    if (pendingQuery) {
+        localStorage.removeItem('tactilesql_open_query');
+        applyQueryToEditor(pendingQuery);
+    }
 
     // Listen for connection changes to reload database list
     window.addEventListener('tactilesql:connection-changed', async () => {

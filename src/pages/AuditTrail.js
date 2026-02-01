@@ -19,6 +19,7 @@ export function AuditTrail() {
     let entries = [];
     let totalEntries = 0;
     let statistics = null;
+    let similarGroups = [];
     let filters = {
         searchTerm: '',
         status: '',
@@ -44,9 +45,71 @@ export function AuditTrail() {
             totalEntries = result.total;
             statistics = auditTrail.getStatistics(filters);
             filterOptions = auditTrail.getFilterOptions();
+            const similaritySource = auditTrail.getEntries({ ...filters, limit: 1000, offset: 0 }).entries;
+            similarGroups = buildSimilarityGroups(similaritySource);
             isLoading = false;
             render();
         }, 50);
+    };
+
+    const normalizeQuery = (query) => {
+        if (!query) return '';
+        let q = query;
+        q = q.replace(/--.*$/gm, '');
+        q = q.replace(/\/\*[\s\S]*?\*\//g, '');
+        q = q.replace(/'([^'\\]|\\.)*'/g, '?');
+        q = q.replace(/"([^"\\]|\\.)*"/g, '?');
+        q = q.replace(/\b\d+(?:\.\d+)?\b/g, '?');
+        q = q.replace(/\bIN\s*\(([^)]*)\)/gi, 'IN (?)');
+        q = q.replace(/\bVALUES\s*\(([^)]*)\)/gi, 'VALUES (?)');
+        q = q.replace(/\bVALUES\s*(\([^)]*\)\s*,\s*)+\([^)]*\)/gi, 'VALUES (?)');
+        q = q.replace(/\b(FROM|JOIN)\s+(`?[\w.]+`?)\s+(?:AS\s+)?(\w+)/gi, '$1 $2');
+        q = q.replace(/\b\w+\./g, 'T.');
+        q = q.replace(/\s+/g, ' ').trim();
+        return q.toUpperCase();
+    };
+
+    const buildSimilarityGroups = (entriesToGroup) => {
+        const groups = new Map();
+
+        for (const entry of entriesToGroup) {
+            if (!entry?.query || entry.status !== 'SUCCESS') continue;
+            const signature = normalizeQuery(entry.query);
+            if (!signature || signature.length < 10) continue;
+
+            if (!groups.has(signature)) {
+                groups.set(signature, {
+                    signature,
+                    count: 0,
+                    totalDuration: 0,
+                    sampleQuery: entry.query,
+                    lastSeen: entry.timestamp,
+                    databases: new Set(),
+                    users: new Set(),
+                });
+            }
+
+            const group = groups.get(signature);
+            group.count += 1;
+            group.totalDuration += entry.duration || 0;
+            if (new Date(entry.timestamp) > new Date(group.lastSeen)) {
+                group.lastSeen = entry.timestamp;
+                group.sampleQuery = entry.query;
+            }
+            if (entry.connection?.database) group.databases.add(entry.connection.database);
+            if (entry.connection?.user) group.users.add(entry.connection.user);
+        }
+
+        return Array.from(groups.values())
+            .filter(g => g.count > 1)
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 8)
+            .map(g => ({
+                ...g,
+                avgDuration: g.count > 0 ? Math.round(g.totalDuration / g.count) : 0,
+                databases: Array.from(g.databases),
+                users: Array.from(g.users),
+            }));
     };
 
     const formatDuration = (ms) => {
@@ -417,6 +480,37 @@ export function AuditTrail() {
                             `).join('')}
                         </div>
                     </div>
+
+                    <!-- Similar Query Groups -->
+                    <div class="p-4 rounded-xl col-span-2 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1]' : 'bg-white/5 border border-white/10')}">
+                        <h3 class="text-sm font-bold ${isLight ? 'text-gray-800' : 'text-white'} mb-4 flex items-center gap-2">
+                            <span class="material-symbols-outlined text-mysql-teal">content_copy</span>
+                            Similar / Duplicate Queries
+                        </h3>
+                        <div class="space-y-3">
+                            ${similarGroups.length === 0 ? `
+                                <div class="text-center py-6 ${isLight ? 'text-gray-400' : 'text-gray-500'}">
+                                    <span class="material-symbols-outlined text-2xl text-green-400 mb-2 block">check_circle</span>
+                                    No repeated query patterns detected
+                                </div>
+                            ` : similarGroups.map((g, idx) => `
+                                <div class="similar-item p-3 rounded-lg ${isLight ? 'bg-gray-50 border border-gray-100' : 'bg-white/5 border border-white/10'}" data-group-index="${idx}">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <div class="flex items-center gap-2">
+                                            <span class="px-2 py-0.5 rounded text-[10px] font-bold ${isLight ? 'bg-indigo-100 text-indigo-700' : 'bg-indigo-500/20 text-indigo-400'}">${g.count}x</span>
+                                            <span class="text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-400'}">Avg ${formatDuration(g.avgDuration)}</span>
+                                            <span class="text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-500'}">Last: ${formatTimestamp(g.lastSeen)}</span>
+                                        </div>
+                                        <button class="similar-open px-2 py-1 rounded text-[10px] ${isLight ? 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100' : 'bg-white/10 text-gray-300 border border-white/10 hover:bg-white/20'}" data-group-index="${idx}">Open</button>
+                                    </div>
+                                    <div class="text-xs font-mono ${isLight ? 'text-gray-700' : 'text-gray-300'} truncate">${g.sampleQuery}</div>
+                                    <div class="text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-400'} mt-1">
+                                        DBs: ${g.databases.join(', ') || '-'} • Users: ${g.users.join(', ') || '-'}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
                 </div>
             </div>
         `;
@@ -556,6 +650,19 @@ export function AuditTrail() {
                 filters.offset += filters.limit;
                 loadData();
             }
+        });
+
+        // Similar query group actions
+        container.querySelectorAll('.similar-open').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const idx = parseInt(btn.dataset.groupIndex, 10);
+                const group = similarGroups[idx];
+                if (group?.sampleQuery) {
+                    localStorage.setItem('tactilesql_open_query', group.sampleQuery);
+                    window.location.hash = '/workbench';
+                }
+            });
         });
 
         // Row clicks
