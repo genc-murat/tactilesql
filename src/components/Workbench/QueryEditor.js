@@ -451,6 +451,9 @@ export function QueryEditor() {
                         <button id="analyze-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-amber-600 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#ea9d34]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-amber-400' : 'bg-[#1a1d23] border-white/10 text-amber-400'))} border rounded hover:opacity-80 active:scale-95 transition-all" title="Analyze & Optimize Query">
                             <span class="material-symbols-outlined text-sm">speed</span>
                         </button>
+                        <button id="param-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-indigo-600 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#56949f]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-frost' : 'bg-[#1a1d23] border-white/10 text-indigo-400'))} border rounded hover:opacity-80 active:scale-95 transition-all" title="Parameter Suggestions">
+                            <span class="material-symbols-outlined text-sm">filter_alt</span>
+                        </button>
                         <button id="sample-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-emerald-600 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#3e8fb0]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-mint' : 'bg-[#1a1d23] border-white/10 text-emerald-400'))} border rounded hover:opacity-80 active:scale-95 transition-all" title="Generate Sample Queries">
                             <span class="material-symbols-outlined text-sm">auto_awesome</span>
                         </button>
@@ -656,6 +659,89 @@ export function QueryEditor() {
 
         const estimate = Math.round(median(durations));
         return { estimate, sampleCount: durations.length };
+    };
+
+    const normalizeParamQuery = (query) => {
+        if (!query) return '';
+        let q = query;
+        q = q.replace(/--.*$/gm, '');
+        q = q.replace(/\/\*[\s\S]*?\*\//g, '');
+        q = q.replace(/'([^'\\]|\\.)*'/g, '?');
+        q = q.replace(/"([^"\\]|\\.)*"/g, '?');
+        q = q.replace(/\b\d+(?:\.\d+)?\b/g, '?');
+        q = q.replace(/\s+/g, ' ').trim();
+        return q.toUpperCase();
+    };
+
+    const stripIdentifier = (raw) => {
+        return raw
+            .replace(/`/g, '')
+            .replace(/^\w+\./, '')
+            .trim();
+    };
+
+    const extractParamPairs = (query) => {
+        const pairs = [];
+        if (!query) return pairs;
+
+        const regex = /([`\w.]+)\s*(=|IN)\s*(\([^)]*\)|'[^']*'|"[^"]*"|\b\d+(?:\.\d+)?\b)/gi;
+        let match;
+        while ((match = regex.exec(query)) !== null) {
+            const column = stripIdentifier(match[1]);
+            const op = match[2].toUpperCase();
+            const rawValue = match[3].trim();
+
+            if (op === 'IN' && rawValue.startsWith('(') && rawValue.endsWith(')')) {
+                const values = rawValue
+                    .slice(1, -1)
+                    .split(',')
+                    .map(v => v.trim())
+                    .filter(Boolean);
+                values.forEach(v => pairs.push({ column, value: v }));
+            } else {
+                pairs.push({ column, value: rawValue });
+            }
+        }
+
+        return pairs;
+    };
+
+    const buildParamSuggestions = (query, database) => {
+        const signature = normalizeParamQuery(query);
+        if (!signature) return null;
+
+        const { entries } = auditTrail.getEntries({
+            status: 'SUCCESS',
+            database,
+            limit: 1000,
+        });
+
+        const valueMap = new Map();
+
+        for (const entry of entries) {
+            if (!entry?.query) continue;
+            if (normalizeParamQuery(entry.query) !== signature) continue;
+
+            const pairs = extractParamPairs(entry.query);
+            for (const { column, value } of pairs) {
+                if (!valueMap.has(column)) valueMap.set(column, new Map());
+                const counts = valueMap.get(column);
+                counts.set(value, (counts.get(value) || 0) + 1);
+            }
+        }
+
+        const suggestions = [];
+        for (const [column, counts] of valueMap.entries()) {
+            const topValues = Array.from(counts.entries())
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 3)
+                .map(([value, count]) => `${value} (${count})`);
+            if (topValues.length > 0) {
+                suggestions.push({ column, values: topValues });
+            }
+        }
+
+        return suggestions;
     };
 
     const attachEvents = async () => {
@@ -1396,6 +1482,52 @@ export function QueryEditor() {
                     analyzeBtn.innerHTML = originalHTML;
                     analyzeBtn.classList.remove('opacity-70');
                     isAnalyzing = false;
+                }
+            });
+        }
+
+        // Parameter Suggestions
+        const paramBtn = container.querySelector('#param-btn');
+        if (paramBtn) {
+            let isSuggesting = false;
+            paramBtn.addEventListener('click', async () => {
+                if (isSuggesting) return;
+                isSuggesting = true;
+
+                const originalHTML = paramBtn.innerHTML;
+                paramBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span>';
+                paramBtn.classList.add('opacity-70');
+
+                try {
+                    const textarea = container.querySelector('#query-input');
+                    const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
+                    const queryToSuggest = selectedText.trim() ? selectedText : textarea.value;
+
+                    if (!queryToSuggest.trim()) {
+                        Dialog.alert('Please enter a query to analyze parameters.', 'Info');
+                        return;
+                    }
+
+                    const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+                    const database = activeConfig.database || '';
+                    const suggestions = buildParamSuggestions(queryToSuggest.trim(), database);
+
+                    if (!suggestions || suggestions.length === 0) {
+                        Dialog.alert('No parameter history found for this query pattern yet.', 'No Suggestions');
+                        return;
+                    }
+
+                    const message = suggestions
+                        .map(s => `${s.column}: ${s.values.join(', ')}`)
+                        .join('\n');
+
+                    Dialog.alert(message, 'Parameter Suggestions');
+                } catch (error) {
+                    Dialog.alert(`Parameter suggestion failed: ${String(error).replace(/\n/g, '<br>')}`, 'Suggestion Error');
+                } finally {
+                    paramBtn.innerHTML = originalHTML;
+                    paramBtn.classList.remove('opacity-70');
+                    isSuggesting = false;
                 }
             });
         }
