@@ -550,6 +550,79 @@ export function QueryEditor() {
         return samples.join('\n\n');
     };
 
+    const detectQueryType = (query) => {
+        const trimmed = query.trim().toUpperCase();
+        if (trimmed.startsWith('SELECT') || trimmed.startsWith('SHOW') || trimmed.startsWith('DESCRIBE') || trimmed.startsWith('EXPLAIN')) return 'SELECT';
+        if (trimmed.startsWith('INSERT')) return 'INSERT';
+        if (trimmed.startsWith('UPDATE')) return 'UPDATE';
+        if (trimmed.startsWith('DELETE')) return 'DELETE';
+        if (trimmed.startsWith('CREATE') || trimmed.startsWith('ALTER') || trimmed.startsWith('DROP') || trimmed.startsWith('TRUNCATE')) return 'DDL';
+        if (trimmed.startsWith('GRANT') || trimmed.startsWith('REVOKE')) return 'DCL';
+        if (trimmed.startsWith('BEGIN') || trimmed.startsWith('COMMIT') || trimmed.startsWith('ROLLBACK')) return 'TCL';
+        return 'OTHER';
+    };
+
+    const extractTables = (query) => {
+        const tables = new Set();
+        const patterns = [
+            /FROM\s+`?(\w+)`?(?:\s+AS\s+\w+)?/gi,
+            /JOIN\s+`?(\w+)`?(?:\s+AS\s+\w+)?/gi,
+            /INTO\s+`?(\w+)`?/gi,
+            /UPDATE\s+`?(\w+)`?/gi,
+            /TABLE\s+`?(\w+)`?/gi,
+        ];
+
+        for (const pattern of patterns) {
+            let match;
+            while ((match = pattern.exec(query)) !== null) {
+                if (match[1]) tables.add(match[1]);
+            }
+        }
+
+        return Array.from(tables);
+    };
+
+    const median = (values) => {
+        if (!values.length) return 0;
+        const sorted = [...values].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+    };
+
+    const detectSlowQuery = (query, duration, database) => {
+        if (!duration || duration < 500) return null;
+
+        const queryType = detectQueryType(query);
+        const tables = extractTables(query);
+        const table = tables[0];
+
+        const { entries } = auditTrail.getEntries({
+            status: 'SUCCESS',
+            database,
+            queryType,
+            table,
+            limit: 200,
+        });
+
+        const durations = entries
+            .map(e => e.duration)
+            .filter(d => typeof d === 'number' && d > 0)
+            .slice(0, 50);
+
+        const baseline = durations.length >= 5 ? median(durations) : auditTrail.getStatistics({ database, queryType }).avgDuration;
+        if (!baseline || baseline <= 0) return null;
+
+        const threshold = Math.max(baseline * 3, baseline + 500);
+        if (duration > threshold) {
+            return {
+                baseline: Math.round(baseline),
+                threshold: Math.round(threshold),
+            };
+        }
+
+        return null;
+    };
+
     const attachEvents = async () => {
         // Tab switching
         container.querySelectorAll('.tab-item').forEach(item => {
@@ -1145,12 +1218,23 @@ export function QueryEditor() {
 
                     // Log to Audit Trail
                     const totalRows = resultsArray.reduce((sum, r) => sum + (r.rows?.length || 0), 0);
+                    const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+                    const database = activeConfig.database || '';
+                    const slowSignal = detectSlowQuery(editorContent, lastExecutionTime, database);
+
                     auditTrail.logQuery({
                         query: editorContent,
                         status: 'SUCCESS',
                         duration: lastExecutionTime,
                         rowsReturned: totalRows,
                     });
+
+                    if (slowSignal) {
+                        Dialog.alert(
+                            `This query took ${lastExecutionTime}ms, which is unusually slow for similar queries.\nBaseline: ~${slowSignal.baseline}ms (alert threshold ${slowSignal.threshold}ms).`,
+                            'Slow Query Warning'
+                        );
+                    }
 
                     // Re-render to show execution time badge
                     render();
