@@ -11,7 +11,7 @@ export function NavBar() {
         const currentPath = window.location.hash.split('?')[0].slice(1) || '/';
 
         const navItems = [
-            { path: '/dashboard', label: 'DASHBOARD', icon: 'dashboard' },
+
             { path: '/workbench', label: 'EXPLORER', icon: 'code' },
             { path: '/diff', label: 'SCHEMA DIFF', icon: 'compare_arrows' },
             { path: '/data-tools', label: 'DATA TOOLS', icon: 'swap_horiz' },

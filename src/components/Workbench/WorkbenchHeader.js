@@ -19,8 +19,7 @@ export function WorkbenchHeader() {
                     <a class="px-4 flex items-center h-full hover:text-white transition-colors border-b-2 border-transparent" href="#">Cluster-EU-01</a>
                     <span class="text-gray-700">/</span>
                     <a class="px-4 flex items-center h-full text-mysql-teal border-b-2 border-mysql-teal bg-mysql-teal/5" href="#">Explorer</a>
-                    <span class="text-gray-700">/</span>
-                    <a class="px-4 flex items-center h-full hover:text-white transition-colors border-b-2 border-transparent" href="#/">Dashboard</a>
+
                 </div>
             </nav>
         </div>

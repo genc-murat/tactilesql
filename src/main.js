@@ -3,7 +3,7 @@ import { getCurrentWindow, LogicalPosition, LogicalSize } from '@tauri-apps/api/
 import { Router } from './router.js';
 import { TitleBar } from './components/TitleBar.js';
 import { NavBar } from './components/Layout/NavBar.js';
-import { Dashboard } from './pages/Dashboard.js';
+
 import { SqlWorkbench } from './pages/SqlWorkbench.js';
 import { SchemaDesigner } from './pages/SchemaDesigner.js';
 import { SchemaDiff } from './pages/SchemaDiff.js';
@@ -134,7 +134,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const routes = {
         '/': { component: SqlWorkbench },
         '/workbench': { component: SqlWorkbench },
-        '/dashboard': { component: Dashboard },
+
         '/schema': { component: SchemaDesigner },
         '/diff': { component: SchemaDiff },
         '/connections': { component: ConnectionManager },
@@ -145,7 +145,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     const router = new Router(routes, mainContent);
-    
+
     // Manually trigger initial route since 'load' event already fired
     router.handleRoute();
 });

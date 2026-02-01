@@ -17,7 +17,7 @@ export function Header() {
                 </div>
             </div>
             <nav class="flex items-center gap-1">
-                <a class="px-6 py-2 text-[11px] font-bold tracking-widest text-cyan-400 bg-cyan-400/10 border border-cyan-400/20 rounded-lg transition-all" href="#/">DASHBOARD</a>
+
                 <a class="px-6 py-2 text-[11px] font-bold tracking-widest text-gray-500 hover:text-gray-300 transition-colors" href="#/workbench">EXPLORER</a>
 
                 <a class="px-6 py-2 text-[11px] font-bold tracking-widest text-gray-500 hover:text-gray-300 transition-colors" href="#/connections">CONNECTIONS</a>
