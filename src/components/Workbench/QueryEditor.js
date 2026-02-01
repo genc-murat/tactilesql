@@ -454,6 +454,9 @@ export function QueryEditor() {
                         <button id="param-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-indigo-600 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#56949f]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-frost' : 'bg-[#1a1d23] border-white/10 text-indigo-400'))} border rounded hover:opacity-80 active:scale-95 transition-all" title="Parameter Suggestions">
                             <span class="material-symbols-outlined text-sm">filter_alt</span>
                         </button>
+                        <button id="whatif-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-purple-600 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#c4a7e7]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-lavender' : 'bg-[#1a1d23] border-white/10 text-purple-400'))} border rounded hover:opacity-80 active:scale-95 transition-all" title="What-If Optimizer">
+                            <span class="material-symbols-outlined text-sm">lightbulb</span>
+                        </button>
                         <button id="sample-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-emerald-600 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#3e8fb0]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-mint' : 'bg-[#1a1d23] border-white/10 text-emerald-400'))} border rounded hover:opacity-80 active:scale-95 transition-all" title="Generate Sample Queries">
                             <span class="material-symbols-outlined text-sm">auto_awesome</span>
                         </button>
@@ -742,6 +745,116 @@ export function QueryEditor() {
         }
 
         return suggestions;
+    };
+
+    const buildWhatIfVariants = async (query, database) => {
+        const trimmed = query.trim();
+        if (!trimmed) return [];
+
+        const variants = [{ label: 'Original', query: trimmed }];
+        const queryType = detectQueryType(trimmed);
+
+        if (queryType === 'SELECT') {
+            if (!/\bLIMIT\b/i.test(trimmed)) {
+                variants.push({
+                    label: 'Add LIMIT 100',
+                    query: `${trimmed.replace(/;\s*$/, '')}\nLIMIT 100;`,
+                });
+            }
+
+            if (/SELECT\s+\*/i.test(trimmed)) {
+                const tables = extractTables(trimmed);
+                const table = tables[0];
+                if (table && database) {
+                    const columns = await loadColumnsForAutocomplete(database, table);
+                    const cols = columns.slice(0, 5).map(c => `\`${c}\``).join(', ');
+                    if (cols) {
+                        variants.push({
+                            label: 'Replace SELECT *',
+                            query: trimmed.replace(/SELECT\s+\*/i, `SELECT ${cols}`),
+                        });
+                    }
+                }
+            }
+        }
+
+        return variants;
+    };
+
+    const showWhatIfModal = (variants) => {
+        const existing = document.getElementById('whatif-optimizer-modal');
+        if (existing) existing.remove();
+
+        const theme = ThemeManager.getCurrentTheme();
+        const isLight = theme === 'light';
+        const isDawn = theme === 'dawn';
+        const isOceanic = theme === 'oceanic';
+
+        const overlay = document.createElement('div');
+        overlay.id = 'whatif-optimizer-modal';
+        overlay.className = 'fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-center justify-center p-8';
+
+        overlay.innerHTML = `
+            <div class="${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border' : 'bg-[#0f1115] border border-white/10'))} rounded-xl shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden">
+                <div class="flex items-center justify-between px-6 py-4 border-b ${isLight ? 'border-gray-100 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border/30 bg-ocean-panel' : 'border-white/10 bg-[#16191e]'))}">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-lg ${isLight ? 'bg-purple-100 text-purple-600' : (isDawn ? 'bg-[#f2e9e1] text-[#907aa9]' : 'bg-purple-500/20 text-purple-400')} flex items-center justify-center">
+                            <span class="material-symbols-outlined text-lg">lightbulb</span>
+                        </div>
+                        <div>
+                            <h2 class="text-sm font-bold ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-white')} uppercase tracking-wider">What-If Optimizer</h2>
+                            <div class="flex items-center gap-2 mt-0.5">
+                                <span class="text-[10px] text-gray-400 font-mono">Variants & impact preview</span>
+                            </div>
+                        </div>
+                    </div>
+                    <button id="close-whatif" class="w-8 h-8 flex items-center justify-center rounded-lg ${isLight ? 'hover:bg-gray-100 text-gray-500' : (isDawn ? 'hover:bg-[#f2e9e1] text-[#797593]' : 'hover:bg-white/10 text-gray-400')} transition-colors">
+                        <span class="material-symbols-outlined">close</span>
+                    </button>
+                </div>
+                <div class="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-4">
+                    ${variants.map((v, idx) => `
+                        <div class="p-4 rounded-lg ${isLight ? 'bg-gray-50 border border-gray-100' : 'bg-white/5 border border-white/10'}">
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="text-xs font-bold ${isLight ? 'text-gray-700' : 'text-gray-200'}">${v.label}</div>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-400'}">Est. Cost: ${v.estimatedCost ?? 'N/A'}</span>
+                                    <button class="whatif-use px-2 py-1 rounded text-[10px] ${isLight ? 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100' : 'bg-white/10 text-gray-300 border border-white/10 hover:bg-white/20'}" data-whatif-index="${idx}">Use</button>
+                                </div>
+                            </div>
+                            <pre class="text-[11px] font-mono ${isLight ? 'text-gray-700' : 'text-gray-300'} whitespace-pre-wrap">${v.query.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+
+        overlay.querySelector('#close-whatif')?.addEventListener('click', () => overlay.remove());
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) overlay.remove();
+        });
+
+        overlay.querySelectorAll('.whatif-use').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idx = parseInt(btn.dataset.whatifIndex, 10);
+                const variant = variants[idx];
+                if (variant?.query) {
+                    const textarea = container.querySelector('#query-input');
+                    if (textarea) {
+                        textarea.value = variant.query;
+                        const activeTab = tabs.find(t => t.id === activeTabId);
+                        if (activeTab) {
+                            activeTab.content = variant.query;
+                            saveState();
+                        }
+                        render();
+                    }
+                    overlay.remove();
+                }
+            });
+        });
     };
 
     const attachEvents = async () => {
@@ -1528,6 +1641,58 @@ export function QueryEditor() {
                     paramBtn.innerHTML = originalHTML;
                     paramBtn.classList.remove('opacity-70');
                     isSuggesting = false;
+                }
+            });
+        }
+
+        // What-If Optimizer
+        const whatIfBtn = container.querySelector('#whatif-btn');
+        if (whatIfBtn) {
+            let isOptimizing = false;
+            whatIfBtn.addEventListener('click', async () => {
+                if (isOptimizing) return;
+                isOptimizing = true;
+
+                const originalHTML = whatIfBtn.innerHTML;
+                whatIfBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span>';
+                whatIfBtn.classList.add('opacity-70');
+
+                try {
+                    const textarea = container.querySelector('#query-input');
+                    const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
+                    const baseQuery = selectedText.trim() ? selectedText : textarea.value;
+
+                    if (!baseQuery.trim()) {
+                        Dialog.alert('Please enter a query to optimize.', 'Info');
+                        return;
+                    }
+
+                    const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+                    const database = activeConfig.database || '';
+                    let variants = await buildWhatIfVariants(baseQuery, database);
+
+                    if (!variants || variants.length === 0) {
+                        Dialog.alert('No variants could be generated.', 'What-If Optimizer');
+                        return;
+                    }
+
+                    variants = await Promise.all(variants.map(async (variant) => {
+                        try {
+                            const cleanQuery = variant.query.replace(/;\s*$/, '');
+                            const analysis = await invoke('analyze_query', { query: cleanQuery });
+                            return { ...variant, estimatedCost: analysis?.estimated_cost ?? null };
+                        } catch {
+                            return { ...variant, estimatedCost: null };
+                        }
+                    }));
+
+                    showWhatIfModal(variants);
+                } catch (error) {
+                    Dialog.alert(`What-If optimization failed: ${String(error).replace(/\n/g, '<br>')}`, 'Optimizer Error');
+                } finally {
+                    whatIfBtn.innerHTML = originalHTML;
+                    whatIfBtn.classList.remove('opacity-70');
+                    isOptimizing = false;
                 }
             });
         }
