@@ -1,6 +1,7 @@
-// Query Profiler Component - Shows detailed query execution metrics
+// Query Profiler & Monitor & Locks Component
 import { invoke } from '@tauri-apps/api/core';
 import { ThemeManager } from '../../utils/ThemeManager.js';
+import { Dialog } from '../UI/Dialog.js';
 
 export function QueryProfiler() {
     let theme = ThemeManager.getCurrentTheme();
@@ -8,17 +9,21 @@ export function QueryProfiler() {
     let isOceanic = theme === 'oceanic';
 
     const container = document.createElement('div');
-    // Compact width (w-80), glassmorphism, modern rounded aesthetics
-    container.className = `query-profiler hidden fixed bottom-4 right-4 w-80 max-h-[500px] overflow-hidden rounded-2xl shadow-2xl border z-50 transition-all duration-300 backdrop-blur-xl ${isLight
-            ? 'bg-white/90 border-gray-200'
-            : (isOceanic
-                ? 'bg-ocean-panel/90 border-ocean-border'
-                : 'bg-[#1a1d23]/90 border-white/10')
+    // Compact width (w-96 to w-[500px] for locks view), glassmorphism
+    container.className = `query-profiler hidden fixed bottom-4 right-4 w-[500px] max-h-[600px] overflow-hidden rounded-2xl shadow-2xl border z-50 transition-all duration-300 backdrop-blur-xl ${isLight
+        ? 'bg-white/95 border-gray-200'
+        : (isOceanic
+            ? 'bg-ocean-panel/95 border-ocean-border'
+            : 'bg-[#1a1d23]/95 border-white/10')
         }`;
 
     // State
     let isVisible = false;
+    let activeTab = 'profile'; // 'profile' | 'monitor' | 'locks'
     let profileData = null;
+    let monitorData = [];
+    let locksData = [];
+    let monitorInterval = null;
     let statusBefore = {};
     let statusAfter = {};
 
@@ -47,12 +52,156 @@ export function QueryProfiler() {
         return after - before;
     };
 
-    const render = () => {
+    const fetchMonitorData = async () => {
+        try {
+            const result = await invoke('execute_query', { query: 'SHOW FULL PROCESSLIST' });
+            if (result && result.rows) {
+                // Map rows to objects
+                monitorData = result.rows.map(row => ({
+                    id: row[0],
+                    user: row[1],
+                    host: row[2],
+                    db: row[3],
+                    command: row[4],
+                    time: row[5],
+                    state: row[6],
+                    info: row[7]
+                }));
+                // Sort by Time desc (longest running first)
+                monitorData.sort((a, b) => b.time - a.time);
+                if (activeTab === 'monitor' && isVisible) {
+                    renderMonitorContent();
+                }
+            }
+        } catch (e) {
+            console.error('Failed to fetch process list:', e);
+        }
+    };
+
+    const fetchLocksData = async () => {
+        const query = `
+            SELECT
+              w.requesting_trx_id AS 'BekleyenIslemID',
+              r.trx_mysql_thread_id AS 'BekleyenThreadID',
+              TIMESTAMPDIFF(SECOND, r.trx_started, NOW()) AS 'BeklemeSuresi_sn',
+              r.trx_query AS 'BekleyenSorgu',
+              w.blocking_trx_id AS 'EngelleyenIslemID',
+              b.trx_mysql_thread_id AS 'EngelleyenThreadID',
+              b.trx_query AS 'EngelleyenSorgu'
+            FROM
+              information_schema.innodb_lock_waits w
+            JOIN
+              information_schema.innodb_trx r ON r.trx_id = w.requesting_trx_id
+            JOIN
+              information_schema.innodb_trx b ON b.trx_id = w.blocking_trx_id;
+        `;
+
+        try {
+            const result = await invoke('execute_query', { query });
+            if (result && result.rows) {
+                locksData = result.rows.map(row => ({
+                    waitingTrxId: row[0],
+                    waitingThreadId: row[1],
+                    waitTime: row[2],
+                    waitingQuery: row[3],
+                    blockingTrxId: row[4],
+                    blockingThreadId: row[5],
+                    blockingQuery: row[6]
+                }));
+                if (activeTab === 'locks' && isVisible) {
+                    renderLocksContent();
+                }
+            }
+        } catch (e) {
+            console.error('Failed to fetch locks:', e);
+            // Some permissions might block accessing information_schema
+        }
+    };
+
+    const startMonitor = () => {
+        if (monitorInterval) clearInterval(monitorInterval);
+
+        if (activeTab === 'monitor') {
+            fetchMonitorData();
+            monitorInterval = setInterval(fetchMonitorData, 2000);
+        } else if (activeTab === 'locks') {
+            fetchLocksData();
+            monitorInterval = setInterval(fetchLocksData, 3000);
+        }
+    };
+
+    const stopMonitor = () => {
+        if (monitorInterval) {
+            clearInterval(monitorInterval);
+            monitorInterval = null;
+        }
+    };
+
+    const handleKillProcess = async (id, info) => {
+        const message = activeTab === 'locks'
+            ? `Kill BLOCKING Process ${id}?\n\nThis will terminate the transaction that is blocking others.`
+            : `Kill Process ${id}?\n\nQuery: ${info ? (info.substring(0, 100) + (info.length > 100 ? '...' : '')) : 'Unknown'}`;
+
+        const confirmed = await Dialog.confirm({
+            title: 'Kill Process',
+            message: message,
+            type: 'danger',
+            confirmText: 'Kill',
+            cancelText: 'Cancel'
+        });
+
+        if (confirmed) {
+            try {
+                await invoke('execute_query', { query: `KILL ${id}` });
+                // Optimistic update
+                if (activeTab === 'monitor') {
+                    monitorData = monitorData.filter(p => p.id !== id);
+                    renderMonitorContent();
+                } else if (activeTab === 'locks') {
+                    // Force refresh
+                    fetchLocksData();
+                }
+            } catch (e) {
+                Dialog.alert('Failed to kill process: ' + e);
+            }
+        }
+    };
+
+    const renderHeader = () => {
+        const labelColor = isLight ? 'text-gray-500' : 'text-gray-400';
+        const activeColor = isLight ? 'text-mysql-teal bg-mysql-teal/10' : 'text-mysql-teal bg-mysql-teal/20';
+        const inactiveColor = isLight ? 'text-gray-400 hover:text-gray-600' : 'text-gray-500 hover:text-gray-300';
+        const dangerActiveColor = isLight ? 'text-red-500 bg-red-50' : 'text-red-400 bg-red-900/20';
+
+        return `
+            <div class="flex items-center justify-between px-3 py-2 border-b ${isLight ? 'border-gray-200/50' : 'border-white/5'}">
+                <div class="flex items-center gap-1">
+                    <button id="tab-profile" class="px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest transition-colors ${activeTab === 'profile' ? activeColor : inactiveColor}">
+                        Profile
+                    </button>
+                    <button id="tab-monitor" class="px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest transition-colors ${activeTab === 'monitor' ? activeColor : inactiveColor}">
+                        Monitor
+                    </button>
+                    <button id="tab-locks" class="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest transition-colors ${activeTab === 'locks' ? dangerActiveColor : inactiveColor}">
+                        <span class="material-symbols-outlined text-[12px]">lock</span> Locks
+                    </button>
+                </div>
+                <button id="close-profiler" class="p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
+                    <span class="material-symbols-outlined text-[14px] ${isLight ? 'text-gray-400' : 'text-gray-500'}">close</span>
+                </button>
+            </div>
+        `;
+    };
+
+    const renderProfileContent = () => {
+        const contentDiv = container.querySelector('#profiler-content');
+        if (!contentDiv) return;
+
         if (!profileData) {
-            container.innerHTML = `
-                <div class="h-24 flex flex-col items-center justify-center text-center ${isLight ? 'text-gray-400' : 'text-gray-500'}">
-                    <span class="material-symbols-outlined text-2xl opacity-50 mb-1">query_stats</span>
-                    <span class="text-[10px] font-medium uppercase tracking-wider">Ready</span>
+            contentDiv.innerHTML = `
+                <div class="h-64 flex flex-col items-center justify-center text-center ${isLight ? 'text-gray-400' : 'text-gray-500'}">
+                    <span class="material-symbols-outlined text-3xl opacity-50 mb-2">query_stats</span>
+                    <span class="text-xs font-medium uppercase tracking-wider">Execute a query to see stats</span>
                 </div>
             `;
             return;
@@ -93,144 +242,301 @@ export function QueryProfiler() {
         // Check for issues to auto-expand details
         const hasIssues = tmpDiskTables > 0 || selectFullJoin > 0 || sortMerge > 0 || selectScan > 0;
 
-        container.innerHTML = `
-            <!-- Compact Header -->
-            <div class="flex items-center justify-between px-3 py-2 border-b ${isLight ? 'border-gray-200/50' : 'border-white/5'}">
-                <span class="text-[10px] font-black uppercase tracking-widest ${isLight ? 'text-gray-400' : 'text-white/40'}">Query Profile</span>
-                <button id="close-profiler" class="p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
-                    <span class="material-symbols-outlined text-[14px] ${isLight ? 'text-gray-400' : 'text-gray-500'}">close</span>
-                </button>
+        contentDiv.innerHTML = `
+            <div class="flex items-start gap-3 mb-3">
+                <!-- Score Circle -->
+                <div class="w-12 h-12 rounded-full flex items-center justify-center border-2 ${scoreBorder} ${scoreBg} shrink-0">
+                    <span class="text-sm font-black ${scoreColor}">${score}</span>
+                </div>
+                
+                <!-- Main Stats -->
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-baseline justify-between">
+                        <span class="text-xs font-bold ${valueColor} truncate" title="Duration">Duration</span>
+                        <span class="text-lg font-black bg-clip-text text-transparent bg-gradient-to-r from-mysql-teal to-cyan-400">${formatDuration(duration)}</span>
+                    </div>
+                    <div class="text-[10px] ${labelColor} truncate font-mono mt-0.5" title="${query}">${query || 'Unknown Query'}</div>
+                </div>
             </div>
-            
-            <div class="p-3 overflow-y-auto max-h-[400px] custom-scrollbar">
-                <!-- Top Section: Score & Time -->
-                <div class="flex items-start gap-3 mb-3">
-                    <!-- Score Circle -->
-                    <div class="w-12 h-12 rounded-full flex items-center justify-center border-2 ${scoreBorder} ${scoreBg} shrink-0">
-                        <span class="text-sm font-black ${scoreColor}">${score}</span>
+
+            <!-- Primary Metrics Grid (Compact 2x2) -->
+            <div class="grid grid-cols-2 gap-2 mb-3">
+                <div class="p-2 rounded-lg ${gridBg} border ${isLight ? 'border-transparent' : 'border-white/5'}">
+                    <div class="text-[9px] uppercase tracking-wider ${labelColor} mb-0.5">Rows</div>
+                    <div class="flex items-baseline justify-between">
+                        <span class="text-xs font-bold ${valueColor}">${formatNumber(rowsReturned)}</span>
+                        <span class="text-[9px] opacity-60">sw</span>
                     </div>
-                    
-                    <!-- Main Stats -->
+                </div>
+                <div class="p-2 rounded-lg ${gridBg} border ${isLight ? 'border-transparent' : 'border-white/5'}">
+                    <div class="text-[9px] uppercase tracking-wider ${labelColor} mb-0.5">Examined</div>
+                    <div class="flex items-baseline justify-between">
+                        <span class="text-xs font-bold ${rowsExamined > rowsReturned * 10 ? 'text-yellow-500' : valueColor}">${formatNumber(rowsExamined)}</span>
+                        <span class="text-[9px] opacity-60">scan</span>
+                    </div>
+                </div>
+                <div class="p-2 rounded-lg ${gridBg} border ${isLight ? 'border-transparent' : 'border-white/5'}">
+                    <div class="text-[9px] uppercase tracking-wider ${labelColor} mb-0.5">Network</div>
+                    <div class="flex items-baseline justify-between">
+                        <span class="text-[10px] font-bold ${valueColor}">${formatBytes(bytesSent)}</span>
+                        <span class="text-[9px] opacity-60">up</span>
+                    </div>
+                </div>
+                <div class="p-2 rounded-lg ${gridBg} border ${isLight ? 'border-transparent' : 'border-white/5'}">
+                    <div class="text-[9px] uppercase tracking-wider ${labelColor} mb-0.5">Network</div>
+                    <div class="flex items-baseline justify-between">
+                        <span class="text-[10px] font-bold ${valueColor}">${formatBytes(bytesReceived)}</span>
+                        <span class="text-[9px] opacity-60">down</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Collapsible Details -->
+            <details class="group" ${hasIssues ? 'open' : ''}>
+                <summary class="flex items-center justify-between cursor-pointer p-1.5 rounded hover:bg-black/5 dark:hover:bg-white/5 transition-colors select-none">
+                    <span class="text-[10px] font-bold uppercase tracking-wider ${labelColor}">Deep Dive Metrics</span>
+                    <span class="material-symbols-outlined text-sm ${labelColor} transform group-open:rotate-180 transition-transform">expand_more</span>
+                </summary>
+                
+                <div class="mt-2 space-y-1 text-[10px] pl-1">
+                    <div class="grid grid-cols-2 gap-x-4 gap-y-1">
+                        <!-- Left Column -->
+                        <div class="flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
+                            <span class="${labelColor}">Tmp Disk</span>
+                            <span class="font-mono ${tmpDiskTables > 0 ? 'text-red-400 font-bold' : valueColor}">${tmpDiskTables}</span>
+                        </div>
+                        <div class="flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
+                            <span class="${labelColor}">Tmp Mem</span>
+                            <span class="font-mono ${valueColor}">${tmpTables}</span>
+                        </div>
+                        
+                        <!-- Right Column -->
+                        <div class="flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
+                            <span class="${labelColor}">Sort Merge</span>
+                            <span class="font-mono ${sortMerge > 0 ? 'text-yellow-400' : valueColor}">${sortMerge}</span>
+                        </div>
+                        <div class="flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
+                            <span class="${labelColor}">Sort Rows</span>
+                            <span class="font-mono ${valueColor}">${formatNumber(sortRows)}</span>
+                        </div>
+
+                            <!-- Full Width Scans -->
+                        <div class="col-span-2 flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
+                            <span class="${labelColor}">Full Join Scans</span>
+                            <span class="font-mono ${selectFullJoin > 0 ? 'text-red-400 font-bold' : valueColor}">${selectFullJoin}</span>
+                        </div>
+                        <div class="col-span-2 flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
+                            <span class="${labelColor}">Full Table Scans</span>
+                            <span class="font-mono ${selectScan > 0 ? 'text-yellow-400' : valueColor}">${selectScan}</span>
+                        </div>
+                            <div class="col-span-2 flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
+                            <span class="${labelColor}">Lock Wait</span>
+                            <span class="font-mono ${lockTime > 0 ? 'text-red-400' : valueColor}">${lockTime}</span>
+                        </div>
+                    </div>
+                </div>
+            </details>
+        `;
+    };
+
+    const renderMonitorContent = () => {
+        const contentDiv = container.querySelector('#profiler-content');
+        if (!contentDiv) return;
+
+        const labelColor = isLight ? 'text-gray-500' : 'text-gray-400';
+        const valueColor = isLight ? 'text-gray-800' : 'text-gray-200';
+        const hoverBg = isLight ? 'hover:bg-gray-50' : 'hover:bg-white/5';
+        const borderColor = isLight ? 'border-gray-100' : 'border-white/5';
+
+        if (monitorData.length === 0) {
+            contentDiv.innerHTML = `
+                <div class="h-64 flex flex-col items-center justify-center text-center ${isLight ? 'text-gray-400' : 'text-gray-500'}">
+                    <span class="material-symbols-outlined text-3xl opacity-50 mb-2">speed</span>
+                    <span class="text-xs font-medium uppercase tracking-wider">No active processes</span>
+                </div>
+            `;
+            return;
+        }
+
+        // Count locked processes
+        const lockedCount = monitorData.filter(p => p.state && p.state.includes('Locked')).length;
+
+        const listHtml = monitorData.map(p => {
+            const isLocked = p.state && p.state.includes('Locked');
+            const isLongRunning = p.time > 10; // >10 seconds
+            const rowClass = isLocked ? (isLight ? 'bg-red-50' : 'bg-red-900/20') : (isLongRunning ? (isLight ? 'bg-yellow-50' : 'bg-yellow-900/10') : '');
+
+            return `
+                <div class="flex items-center gap-2 p-2 rounded border-b ${borderColor} ${rowClass} ${hoverBg} group relative">
                     <div class="flex-1 min-w-0">
-                        <div class="flex items-baseline justify-between">
-                            <span class="text-xs font-bold ${valueColor} truncate" title="Duration">Duration</span>
-                            <span class="text-lg font-black bg-clip-text text-transparent bg-gradient-to-r from-mysql-teal to-cyan-400">${formatDuration(duration)}</span>
+                        <div class="flex items-center justify-between mb-0.5">
+                            <span class="text-[10px] font-bold ${valueColor} truncate mr-2" title="${p.info || p.command}">${p.id} • ${p.user}</span>
+                            <span class="text-[9px] font-mono ${p.time > 5 ? 'text-yellow-500' : 'text-green-500'}">${p.time}s</span>
                         </div>
-                        <div class="text-[10px] ${labelColor} truncate font-mono mt-0.5" title="${query}">${query || 'Unknown Query'}</div>
+                        <div class="flex items-center justify-between text-[9px] ${labelColor}">
+                            <span class="truncate block max-w-[150px]" title="${p.state}">${p.state || p.command}</span>
+                            <span class="truncate block max-w-[80px] opacity-70">${p.db || '-'}</span>
+                        </div>
+                        ${p.info ? `<div class="text-[8px] font-mono opacity-50 truncate mt-0.5 w-full">${p.info}</div>` : ''}
                     </div>
+                    <button class="kill-btn opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-500 hover:text-white text-red-400 transition-all absolute right-2 top-1/2 -translate-y-1/2" data-id="${p.id}" title="Kill Process">
+                        <span class="material-symbols-outlined text-[16px]">cancel</span>
+                    </button>
                 </div>
+            `;
+        }).join('');
 
-                <!-- Primary Metrics Grid (Compact 2x2) -->
-                <div class="grid grid-cols-2 gap-2 mb-3">
-                    <div class="p-2 rounded-lg ${gridBg} border ${isLight ? 'border-transparent' : 'border-white/5'}">
-                        <div class="text-[9px] uppercase tracking-wider ${labelColor} mb-0.5">Rows</div>
-                        <div class="flex items-baseline justify-between">
-                            <span class="text-xs font-bold ${valueColor}">${formatNumber(rowsReturned)}</span>
-                            <span class="text-[9px] opacity-60">sw</span>
-                        </div>
-                    </div>
-                    <div class="p-2 rounded-lg ${gridBg} border ${isLight ? 'border-transparent' : 'border-white/5'}">
-                        <div class="text-[9px] uppercase tracking-wider ${labelColor} mb-0.5">Examined</div>
-                        <div class="flex items-baseline justify-between">
-                            <span class="text-xs font-bold ${rowsExamined > rowsReturned * 10 ? 'text-yellow-500' : valueColor}">${formatNumber(rowsExamined)}</span>
-                            <span class="text-[9px] opacity-60">scan</span>
-                        </div>
-                    </div>
-                    <div class="p-2 rounded-lg ${gridBg} border ${isLight ? 'border-transparent' : 'border-white/5'}">
-                        <div class="text-[9px] uppercase tracking-wider ${labelColor} mb-0.5">Network</div>
-                        <div class="flex items-baseline justify-between">
-                            <span class="text-[10px] font-bold ${valueColor}">${formatBytes(bytesSent)}</span>
-                            <span class="text-[9px] opacity-60">up</span>
-                        </div>
-                    </div>
-                    <div class="p-2 rounded-lg ${gridBg} border ${isLight ? 'border-transparent' : 'border-white/5'}">
-                        <div class="text-[9px] uppercase tracking-wider ${labelColor} mb-0.5">Network</div>
-                        <div class="flex items-baseline justify-between">
-                            <span class="text-[10px] font-bold ${valueColor}">${formatBytes(bytesReceived)}</span>
-                            <span class="text-[9px] opacity-60">down</span>
-                        </div>
-                    </div>
+        contentDiv.innerHTML = `
+            ${lockedCount > 0 ? `
+                <div class="mb-2 px-2 py-1 bg-red-500/10 border border-red-500/20 rounded text-[10px] text-red-500 flex items-center gap-2">
+                    <span class="material-symbols-outlined text-sm">lock</span>
+                    <span class="font-bold">${lockedCount} Locked Process${lockedCount > 1 ? 'es' : ''} Detected</span>
                 </div>
-
-                <!-- Collapsible Details -->
-                <details class="group" ${hasIssues ? 'open' : ''}>
-                    <summary class="flex items-center justify-between cursor-pointer p-1.5 rounded hover:bg-black/5 dark:hover:bg-white/5 transition-colors select-none">
-                        <span class="text-[10px] font-bold uppercase tracking-wider ${labelColor}">Deep Dive Metrics</span>
-                        <span class="material-symbols-outlined text-sm ${labelColor} transform group-open:rotate-180 transition-transform">expand_more</span>
-                    </summary>
-                    
-                    <div class="mt-2 space-y-1 text-[10px] pl-1">
-                        <div class="grid grid-cols-2 gap-x-4 gap-y-1">
-                            <!-- Left Column -->
-                            <div class="flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
-                                <span class="${labelColor}">Tmp Disk</span>
-                                <span class="font-mono ${tmpDiskTables > 0 ? 'text-red-400 font-bold' : valueColor}">${tmpDiskTables}</span>
-                            </div>
-                            <div class="flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
-                                <span class="${labelColor}">Tmp Mem</span>
-                                <span class="font-mono ${valueColor}">${tmpTables}</span>
-                            </div>
-                            
-                            <!-- Right Column -->
-                            <div class="flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
-                                <span class="${labelColor}">Sort Merge</span>
-                                <span class="font-mono ${sortMerge > 0 ? 'text-yellow-400' : valueColor}">${sortMerge}</span>
-                            </div>
-                            <div class="flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
-                                <span class="${labelColor}">Sort Rows</span>
-                                <span class="font-mono ${valueColor}">${formatNumber(sortRows)}</span>
-                            </div>
-
-                             <!-- Full Width Scans -->
-                            <div class="col-span-2 flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
-                                <span class="${labelColor}">Full Join Scans</span>
-                                <span class="font-mono ${selectFullJoin > 0 ? 'text-red-400 font-bold' : valueColor}">${selectFullJoin}</span>
-                            </div>
-                            <div class="col-span-2 flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
-                                <span class="${labelColor}">Full Table Scans</span>
-                                <span class="font-mono ${selectScan > 0 ? 'text-yellow-400' : valueColor}">${selectScan}</span>
-                            </div>
-                             <div class="col-span-2 flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
-                                <span class="${labelColor}">Lock Wait</span>
-                                <span class="font-mono ${lockTime > 0 ? 'text-red-400' : valueColor}">${lockTime}</span>
-                            </div>
-                        </div>
-                    </div>
-                </details>
-
-                <!-- Footer Recommendations (Only if needed) -->
-                 ${score < 100 ? `
-                <div class="mt-3 pt-2 text-[10px] border-t ${isLight ? 'border-gray-100' : 'border-white/5'}">
-                    <div class="flex items-center gap-1.5 ${scoreColor} mb-1">
-                        <span class="material-symbols-outlined text-[12px]">lightbulb</span>
-                        <span class="font-bold uppercase">Optimization Tip</span>
-                    </div>
-                    <div class="${labelColor} leading-tight opacity-90">
-                         ${tmpDiskTables > 0 ? 'Increase tmp_table_size to avoid disk writes.' :
-                    selectFullJoin > 0 ? 'Missing indexes on JOIN columns.' :
-                        selectScan > 0 && rowsExamined > 1000 ? 'Query is scanning too many rows. Add index?' :
-                            sortMerge > 0 ? 'Sort buffer is too small.' : 'Query could be optimized.'}
-                    </div>
-                </div>
-                ` : ''}
-
+            ` : ''}
+            <div class="space-y-1">
+                ${listHtml}
             </div>
         `;
 
-        // Bind close button
+        // Bind kill buttons
+        contentDiv.querySelectorAll('.kill-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const id = btn.dataset.id;
+                const info = monitorData.find(p => p.id == id)?.info;
+                handleKillProcess(id, info);
+            });
+        });
+    };
+
+    const renderLocksContent = () => {
+        const contentDiv = container.querySelector('#profiler-content');
+        if (!contentDiv) return;
+
+        const labelColor = isLight ? 'text-gray-500' : 'text-gray-400';
+        const valueColor = isLight ? 'text-gray-800' : 'text-gray-200';
+        const borderColor = isLight ? 'border-gray-100' : 'border-white/5';
+
+        if (locksData.length === 0) {
+            contentDiv.innerHTML = `
+                <div class="h-64 flex flex-col items-center justify-center text-center ${isLight ? 'text-gray-400' : 'text-gray-500'}">
+                    <span class="material-symbols-outlined text-3xl opacity-50 mb-2">check_circle</span>
+                    <span class="text-xs font-medium uppercase tracking-wider">No active InnoDb locks</span>
+                </div>
+            `;
+            return;
+        }
+
+        // We use a card layout for locks because there's a lot of info per item
+        const listHtml = locksData.map(l => `
+            <div class="mb-3 p-3 rounded-lg border ${borderColor} ${isLight ? 'bg-gray-50' : 'bg-white/5'}">
+                
+                <!-- Waiting Side -->
+                <div class="mb-2 pb-2 border-b ${borderColor}">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-[9px] font-black uppercase text-yellow-500">Waiting Transaction</span>
+                        <span class="text-[9px] font-mono ${labelColor}">ID: ${l.waitingTrxId} (Thread ${l.waitingThreadId})</span>
+                    </div>
+                    <div class="text-[10px] ${valueColor} font-mono bg-black/5 dark:bg-black/20 p-1.5 rounded mb-1">
+                        ${l.waitingQuery || 'NULL'}
+                    </div>
+                    <div class="text-[9px] ${labelColor} flex justify-end">
+                        Waited: <span class="font-bold text-yellow-500 ml-1">${l.waitTime}s</span>
+                    </div>
+                </div>
+
+                <!-- Blocking Side -->
+                <div class="relative">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-[9px] font-black uppercase text-red-500">Blocking Transaction</span>
+                        <span class="text-[9px] font-mono ${labelColor}">ID: ${l.blockingTrxId} (Thread ${l.blockingThreadId})</span>
+                    </div>
+                     <div class="text-[10px] ${valueColor} font-mono bg-black/5 dark:bg-black/20 p-1.5 rounded mb-1">
+                        ${l.blockingQuery || 'NULL'}
+                    </div>
+                    
+                    <button class="kill-block-btn mt-2 w-full py-1 rounded bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white transition-all text-[10px] font-bold uppercase tracking-wider border border-red-500/20" data-id="${l.blockingThreadId}">
+                        Kill Blocking Thread (${l.blockingThreadId})
+                    </button>
+                </div>
+
+            </div>
+        `).join('');
+
+        contentDiv.innerHTML = `
+            <div class="space-y-1">
+                ${listHtml}
+            </div>
+        `;
+
+        // Bind Kill Buttons
+        contentDiv.querySelectorAll('.kill-block-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const id = btn.dataset.id;
+                handleKillProcess(id, 'Blocking Thread');
+            });
+        });
+    };
+
+    const render = () => {
+        container.innerHTML = `
+            ${renderHeader()}
+            <div id="profiler-content" class="p-3 overflow-y-auto max-h-[500px] custom-scrollbar">
+                <!-- Content injected here -->
+            </div>
+        `;
+
+        // Bind header events
         container.querySelector('#close-profiler')?.addEventListener('click', hide);
+
+        container.querySelector('#tab-profile')?.addEventListener('click', () => {
+            if (activeTab !== 'profile') {
+                activeTab = 'profile';
+                stopMonitor();
+                render();
+            }
+        });
+
+        container.querySelector('#tab-monitor')?.addEventListener('click', () => {
+            if (activeTab !== 'monitor') {
+                activeTab = 'monitor';
+                startMonitor();
+                render();
+            }
+        });
+
+        container.querySelector('#tab-locks')?.addEventListener('click', () => {
+            if (activeTab !== 'locks') {
+                activeTab = 'locks';
+                startMonitor();
+                render();
+            }
+        });
+
+        // Initial content render
+        if (activeTab === 'profile') {
+            renderProfileContent();
+        } else if (activeTab === 'monitor') {
+            renderMonitorContent();
+        } else {
+            renderLocksContent();
+        }
     };
 
     const show = () => {
         isVisible = true;
         container.classList.remove('hidden');
         container.classList.add('animate-slideUp');
+        if (activeTab !== 'profile') {
+            startMonitor();
+        }
     };
 
     const hide = () => {
         isVisible = false;
         container.classList.add('hidden');
         container.classList.remove('animate-slideUp');
+        stopMonitor();
     };
 
     const toggle = () => {
@@ -266,7 +572,7 @@ export function QueryProfiler() {
     // Update profile with new data
     const updateProfile = (data) => {
         profileData = data;
-        render();
+        if (activeTab === 'profile' && isVisible) renderProfileContent();
     };
 
     // Listen for query execution events
@@ -282,7 +588,7 @@ export function QueryProfiler() {
                 rowsReturned: e.detail.rows?.length || 0,
                 duration: e.detail.duration || 0
             });
-            if (isVisible) render();
+            if (isVisible && activeTab === 'profile') render();
         }
     });
 
@@ -295,11 +601,11 @@ export function QueryProfiler() {
         isLight = theme === 'light';
         isOceanic = theme === 'oceanic';
         // Re-apply container classes
-        container.className = `query-profiler ${isVisible ? '' : 'hidden'} fixed bottom-4 right-4 w-80 max-h-[500px] overflow-hidden rounded-xl shadow-2xl border z-50 transition-all duration-300 backdrop-blur-xl ${isLight
-                ? 'bg-white/90 border-gray-200'
-                : (isOceanic
-                    ? 'bg-ocean-panel/90 border-ocean-border'
-                    : 'bg-[#1a1d23]/90 border-white/10')
+        container.className = `query-profiler ${isVisible ? '' : 'hidden'} fixed bottom-4 right-4 w-[500px] max-h-[600px] overflow-hidden rounded-2xl shadow-2xl border z-50 transition-all duration-300 backdrop-blur-xl ${isLight
+            ? 'bg-white/95 border-gray-200'
+            : (isOceanic
+                ? 'bg-ocean-panel/95 border-ocean-border'
+                : 'bg-[#1a1d23]/95 border-white/10')
             }`;
         render();
     });

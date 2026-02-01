@@ -18,10 +18,11 @@ export function ServerMonitor() {
     let innodbStatus = null;
     let replicationStatus = null;
     let slowQueries = [];
+    let locks = [];
     let isLoading = true;
     let autoRefresh = true;
     let refreshInterval = null;
-    let activeTab = 'overview'; // 'overview' | 'processes' | 'innodb' | 'slow' | 'replication'
+    let activeTab = 'overview'; // 'overview' | 'processes' | 'innodb' | 'slow' | 'locks' | 'replication'
 
     // Previous values for delta calculations
     let prevStatus = null;
@@ -53,12 +54,13 @@ export function ServerMonitor() {
 
     const loadData = async () => {
         try {
-            const [status, processes, innodb, replication, slow] = await Promise.all([
+            const [status, processes, innodb, replication, slow, lockData] = await Promise.all([
                 invoke('get_server_status'),
                 invoke('get_process_list'),
                 invoke('get_innodb_status'),
                 invoke('get_replication_status'),
-                invoke('get_slow_queries', { limit: 50 })
+                invoke('get_slow_queries', { limit: 50 }),
+                invoke('get_locks')
             ]);
 
             prevStatus = serverStatus;
@@ -69,6 +71,7 @@ export function ServerMonitor() {
             innodbStatus = innodb;
             replicationStatus = replication;
             slowQueries = slow;
+            locks = lockData;
             isLoading = false;
             render();
         } catch (error) {
@@ -145,6 +148,10 @@ export function ServerMonitor() {
                         <span class="material-symbols-outlined text-base mr-1 align-middle">hourglass_empty</span>
                         Slow Queries
                     </button>
+                    <button class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'locks' ? 'bg-mysql-teal text-white shadow-lg' : (isLight ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white')}" data-tab="locks">
+                        <span class="material-symbols-outlined text-base mr-1 align-middle">lock</span>
+                        Locks
+                    </button>
                     <button class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'replication' ? 'bg-mysql-teal text-white shadow-lg' : (isLight ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white')}" data-tab="replication">
                         <span class="material-symbols-outlined text-base mr-1 align-middle">sync_alt</span>
                         Replication
@@ -179,6 +186,7 @@ export function ServerMonitor() {
             case 'processes': return renderProcesses();
             case 'innodb': return renderInnoDB();
             case 'slow': return renderSlowQueries();
+            case 'locks': return renderLocks();
             case 'replication': return renderReplication();
             default: return renderOverview();
         }
@@ -495,6 +503,76 @@ export function ServerMonitor() {
         `;
     };
 
+    const renderLocks = () => {
+        const isLight = theme === 'light';
+        const isOceanic = theme === 'oceanic';
+
+        if (locks.length === 0) {
+            return `
+                <div class="rounded-xl p-12 ${isLight ? 'bg-white border border-gray-200' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10')} text-center">
+                    <span class="material-symbols-outlined text-5xl text-green-500 mb-4">lock_open</span>
+                    <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} mb-2">No Lock Waits</h3>
+                    <p class="${isLight ? 'text-gray-500' : 'text-gray-400'}">No InnoDB lock waits detected. All transactions are running smoothly.</p>
+                </div>
+            `;
+        }
+
+        return `
+            <div class="rounded-xl ${isLight ? 'bg-white border border-gray-200' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10')} overflow-hidden">
+                <div class="p-4 border-b ${isLight ? 'border-gray-200' : 'border-white/10'}">
+                    <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} flex items-center gap-2">
+                        <span class="material-symbols-outlined text-red-500">lock</span>
+                        InnoDB Lock Waits
+                        <span class="px-2 py-0.5 text-xs rounded-full bg-red-500/20 text-red-500">${locks.length} waiting</span>
+                    </h3>
+                </div>
+                <div class="overflow-auto max-h-[500px]">
+                    <table class="w-full text-sm">
+                        <thead class="sticky top-0 ${isLight ? 'bg-gray-100' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]')}">
+                            <tr class="${isLight ? 'text-gray-600' : 'text-gray-400'} text-xs uppercase tracking-wider">
+                                <th class="px-4 py-3 text-left">Bekleyen İşlem ID</th>
+                                <th class="px-4 py-3 text-left">Bekleyen Thread ID</th>
+                                <th class="px-4 py-3 text-left">Bekleme Süresi</th>
+                                <th class="px-4 py-3 text-left">Bekleyen Sorgu</th>
+                                <th class="px-4 py-3 text-left">Engelleyen İşlem ID</th>
+                                <th class="px-4 py-3 text-left">Engelleyen Thread ID</th>
+                                <th class="px-4 py-3 text-left">Engelleyen Sorgu</th>
+                                <th class="px-4 py-3 text-center">İşlem</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y ${isLight ? 'divide-gray-100' : 'divide-white/5'}">
+                            ${locks.map(lock => `
+                                <tr class="${isLight ? 'hover:bg-gray-50' : 'hover:bg-white/5'} transition-colors">
+                                    <td class="px-4 py-3 ${isLight ? 'text-gray-900' : 'text-white'} font-mono text-xs">${lock.requesting_trx_id}</td>
+                                    <td class="px-4 py-3 ${isLight ? 'text-gray-700' : 'text-gray-300'} font-mono">${lock.requesting_thread_id}</td>
+                                    <td class="px-4 py-3">
+                                        <span class="px-2 py-0.5 rounded text-xs font-mono ${lock.wait_time_seconds > 10 ? 'bg-red-500/20 text-red-500' : (lock.wait_time_seconds > 5 ? 'bg-yellow-500/20 text-yellow-500' : 'bg-blue-500/20 text-blue-500')}">${lock.wait_time_seconds}s</span>
+                                    </td>
+                                    <td class="px-4 py-3 ${isLight ? 'text-gray-600' : 'text-gray-300'} max-w-[250px] truncate font-mono text-xs" title="${(lock.requesting_query || '-').replace(/"/g, '&quot;')}">${lock.requesting_query || '-'}</td>
+                                    <td class="px-4 py-3 ${isLight ? 'text-gray-900' : 'text-white'} font-mono text-xs">${lock.blocking_trx_id}</td>
+                                    <td class="px-4 py-3 ${isLight ? 'text-gray-700' : 'text-gray-300'} font-mono font-semibold text-red-500">${lock.blocking_thread_id}</td>
+                                    <td class="px-4 py-3 ${isLight ? 'text-gray-600' : 'text-gray-300'} max-w-[250px] truncate font-mono text-xs" title="${(lock.blocking_query || '-').replace(/"/g, '&quot;')}">${lock.blocking_query || '-'}</td>
+                                    <td class="px-4 py-3 text-center">
+                                        <button class="kill-blocking-btn px-2 py-1 rounded text-xs bg-red-500/20 text-red-500 hover:bg-red-500/30 transition-colors flex items-center gap-1 mx-auto" data-id="${lock.blocking_thread_id}">
+                                            <span class="material-symbols-outlined text-xs">cancel</span>
+                                            Kill
+                                        </button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="p-4 border-t ${isLight ? 'border-gray-200 bg-gray-50' : 'border-white/10 bg-white/5'}">
+                    <p class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">
+                        <span class="material-symbols-outlined text-xs align-middle text-red-500">warning</span>
+                        <span class="font-semibold">Uyarı:</span> Engelleyen thread'i kill etmek, o thread'in tüm işlemlerini iptal edecektir. Bu işlem geri alınamaz.
+                    </p>
+                </div>
+            </div>
+        `;
+    };
+
     const renderReplication = () => {
         const isLight = theme === 'light';
         const isOceanic = theme === 'oceanic';
@@ -580,6 +658,13 @@ export function ServerMonitor() {
 
         // Kill process buttons
         container.querySelectorAll('.kill-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                killProcess(parseInt(btn.dataset.id));
+            });
+        });
+
+        // Kill blocking thread buttons (for locks)
+        container.querySelectorAll('.kill-blocking-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 killProcess(parseInt(btn.dataset.id));
             });

@@ -73,7 +73,8 @@ pub fn run() {
             db::kill_process,
             db::get_slow_queries,
             db::get_innodb_status,
-            db::get_replication_status
+            db::get_replication_status,
+            db::get_locks
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -2231,3 +2231,62 @@ pub async fn get_replication_status(
         }
     }
 }
+
+#[derive(Serialize, Debug)]
+pub struct LockInfo {
+    pub requesting_trx_id: String,
+    pub requesting_thread_id: u64,
+    pub wait_time_seconds: i64,
+    pub requesting_query: String,
+    pub blocking_trx_id: String,
+    pub blocking_thread_id: u64,
+    pub blocking_query: String,
+}
+
+#[tauri::command]
+pub async fn get_locks(
+    state: State<'_, AppState>,
+) -> Result<Vec<LockInfo>, String> {
+    let pool = get_pool(&state)?;
+    
+    // Get InnoDB lock waits
+    let query = r#"
+        SELECT
+          w.requesting_trx_id AS 'BekleyenIslemID',
+          r.trx_mysql_thread_id AS 'BekleyenThreadID',
+          TIMESTAMPDIFF(SECOND, r.trx_started, NOW()) AS 'BeklemeSuresi_sn',
+          COALESCE(r.trx_query, '') AS 'BekleyenSorgu',
+          w.blocking_trx_id AS 'EngelleyenIslemID',
+          b.trx_mysql_thread_id AS 'EngelleyenThreadID',
+          COALESCE(b.trx_query, '') AS 'EngelleyenSorgu'
+        FROM
+          information_schema.innodb_lock_waits w
+        JOIN
+          information_schema.innodb_trx r ON r.trx_id = w.requesting_trx_id
+        JOIN
+          information_schema.innodb_trx b ON b.trx_id = w.blocking_trx_id
+    "#;
+    
+    match sqlx::query(query).fetch_all(&pool).await {
+        Ok(rows) => {
+            let mut locks: Vec<LockInfo> = Vec::new();
+            for row in &rows {
+                locks.push(LockInfo {
+                    requesting_trx_id: row.try_get("BekleyenIslemID").unwrap_or_default(),
+                    requesting_thread_id: row.try_get("BekleyenThreadID").unwrap_or(0),
+                    wait_time_seconds: row.try_get("BeklemeSuresi_sn").unwrap_or(0),
+                    requesting_query: row.try_get("BekleyenSorgu").unwrap_or_default(),
+                    blocking_trx_id: row.try_get("EngelleyenIslemID").unwrap_or_default(),
+                    blocking_thread_id: row.try_get("EngelleyenThreadID").unwrap_or(0),
+                    blocking_query: row.try_get("EngelleyenSorgu").unwrap_or_default(),
+                });
+            }
+            Ok(locks)
+        },
+        Err(e) => {
+            // If query fails (e.g., no locks or unsupported), return empty list
+            eprintln!("Failed to get locks: {}", e);
+            Ok(Vec::new())
+        }
+    }
+}
