@@ -446,6 +446,9 @@ export function QueryEditor() {
                         <button id="analyze-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-amber-600 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#ea9d34]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-amber-400' : 'bg-[#1a1d23] border-white/10 text-amber-400'))} border rounded hover:opacity-80 active:scale-95 transition-all" title="Analyze & Optimize Query">
                             <span class="material-symbols-outlined text-sm">speed</span>
                         </button>
+                        <button id="sample-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-emerald-600 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#3e8fb0]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-mint' : 'bg-[#1a1d23] border-white/10 text-emerald-400'))} border rounded hover:opacity-80 active:scale-95 transition-all" title="Generate Sample Queries">
+                            <span class="material-symbols-outlined text-sm">auto_awesome</span>
+                        </button>
                         <button id="execute-btn" class="relative flex items-center justify-center p-0.5 bg-mysql-teal text-black rounded shadow-[0_0_8px_rgba(0,200,255,0.15)] hover:shadow-[0_0_20px_rgba(0,200,255,0.4)] hover:brightness-110 active:scale-95 transition-all duration-300 overflow-hidden group" title="Execute Query (Ctrl+Enter)">
                             <span class="material-symbols-outlined text-sm relative z-10 group-hover:scale-110 transition-transform duration-200">play_arrow</span>
                             <span class="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-out"></span>
@@ -466,6 +469,85 @@ export function QueryEditor() {
         `;
 
         attachEvents();
+    };
+
+    const pickBestColumns = (schema, max = 4) => {
+        const cols = Array.isArray(schema) ? schema : [];
+        const primary = cols.filter(c => c.column_key === 'PRI').map(c => c.name);
+        const indexed = cols.filter(c => c.column_key === 'UNI' || c.column_key === 'MUL').map(c => c.name);
+        const others = cols.map(c => c.name);
+        const ordered = [...primary, ...indexed, ...others];
+        return [...new Set(ordered)].slice(0, max);
+    };
+
+    const inferValueForColumn = (column) => {
+        const type = (column?.data_type || '').toLowerCase();
+        if (type.includes('int') || type.includes('decimal') || type.includes('numeric') || type.includes('float') || type.includes('double')) {
+            return '100';
+        }
+        if (type.includes('date') || type.includes('time') || type.includes('year')) {
+            return "'2024-01-01'";
+        }
+        if (type.includes('bool') || type.includes('tinyint')) {
+            return '1';
+        }
+        return "'example'";
+    };
+
+    const buildSelectQuery = (database, table, schema) => {
+        const cols = pickBestColumns(schema, 4).map(c => `\`${c}\``).join(', ');
+        return `SELECT ${cols || '*'}\nFROM \`${database}\`.\`${table}\`\nLIMIT 50;`;
+    };
+
+    const buildFilterQuery = (database, table, schema) => {
+        const cols = Array.isArray(schema) ? schema : [];
+        const filterCol = cols.find(c => c.is_nullable === false) || cols[0];
+        if (!filterCol) return null;
+        const value = inferValueForColumn(filterCol);
+        return `SELECT *\nFROM \`${database}\`.\`${table}\`\nWHERE \`${filterCol.name}\` = ${value}\nLIMIT 50;`;
+    };
+
+    const buildJoinQuery = (database, table, refTable, fk, schema, refSchema) => {
+        const leftCols = pickBestColumns(schema, 2).map(c => `t1.\`${c}\``);
+        const rightCols = pickBestColumns(refSchema, 2).map(c => `t2.\`${c}\``);
+        const selectCols = [...leftCols, ...rightCols].join(', ');
+        return `SELECT ${selectCols || 't1.*, t2.*'}\nFROM \`${database}\`.\`${table}\` t1\nJOIN \`${database}\`.\`${refTable}\` t2 ON t1.\`${fk.column_name}\` = t2.\`${fk.referenced_column}\`\nLIMIT 50;`;
+    };
+
+    const buildAggregateQuery = (database, table, schema) => {
+        const cols = Array.isArray(schema) ? schema : [];
+        const groupCol = cols.find(c => c.column_key !== 'PRI') || cols[0];
+        if (!groupCol) return null;
+        return `SELECT \`${groupCol.name}\`, COUNT(*) AS cnt\nFROM \`${database}\`.\`${table}\`\nGROUP BY \`${groupCol.name}\`\nORDER BY cnt DESC\nLIMIT 20;`;
+    };
+
+    const generateSampleQueries = async (database) => {
+        const tables = await invoke('get_tables', { database });
+        if (!tables || tables.length === 0) return '';
+
+        const primaryTable = tables[0];
+        const primarySchema = await invoke('get_table_schema', { database, table: primaryTable });
+        const samples = [];
+
+        samples.push(`-- Basic SELECT\n${buildSelectQuery(database, primaryTable, primarySchema)}`);
+
+        const filterQuery = buildFilterQuery(database, primaryTable, primarySchema);
+        if (filterQuery) {
+            samples.push(`-- Filtered SELECT\n${filterQuery}`);
+        }
+
+        const fks = await invoke('get_table_foreign_keys', { database, table: primaryTable });
+        if (Array.isArray(fks) && fks.length > 0) {
+            const fk = fks[0];
+            const refTable = fk.referenced_table;
+            const refSchema = await invoke('get_table_schema', { database, table: refTable });
+            samples.push(`-- JOIN using FK\n${buildJoinQuery(database, primaryTable, refTable, fk, primarySchema, refSchema)}`);
+        } else {
+            const aggQuery = buildAggregateQuery(database, primaryTable, primarySchema);
+            if (aggQuery) samples.push(`-- Aggregate Example\n${aggQuery}`);
+        }
+
+        return samples.join('\n\n');
     };
 
     const attachEvents = async () => {
@@ -1192,6 +1274,61 @@ export function QueryEditor() {
                     analyzeBtn.innerHTML = originalHTML;
                     analyzeBtn.classList.remove('opacity-70');
                     isAnalyzing = false;
+                }
+            });
+        }
+
+        // Sample Query Generator
+        const sampleBtn = container.querySelector('#sample-btn');
+        if (sampleBtn) {
+            let isGenerating = false;
+            sampleBtn.addEventListener('click', async () => {
+                if (isGenerating) return;
+                isGenerating = true;
+
+                const originalHTML = sampleBtn.innerHTML;
+                sampleBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span>';
+                sampleBtn.classList.add('opacity-70');
+
+                try {
+                    const dbSelector = container.querySelector('#db-selector');
+                    const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+                    const database = dbSelector?.value || activeConfig.database;
+
+                    if (!database) {
+                        Dialog.alert('Please select a database first.', 'Selection Required');
+                        return;
+                    }
+
+                    const sql = await generateSampleQueries(database);
+                    if (!sql) {
+                        Dialog.alert('No tables found to generate samples.', 'No Data');
+                        return;
+                    }
+
+                    const textarea = container.querySelector('#query-input');
+                    if (textarea) {
+                        const current = textarea.value.trim();
+                        const newText = current ? `${current}\n\n${sql}` : sql;
+                        textarea.value = newText;
+
+                        const activeTab = tabs.find(t => t.id === activeTabId);
+                        if (activeTab) {
+                            activeTab.content = newText;
+                            saveState();
+                        }
+
+                        updateSyntaxHighlight();
+                        updateLineNumbers();
+                        textarea.focus();
+                        textarea.setSelectionRange(newText.length, newText.length);
+                    }
+                } catch (error) {
+                    Dialog.alert(`Sample generation failed: ${String(error).replace(/\n/g, '<br>')}`, 'Generation Error');
+                } finally {
+                    sampleBtn.innerHTML = originalHTML;
+                    sampleBtn.classList.remove('opacity-70');
+                    isGenerating = false;
                 }
             });
         }
