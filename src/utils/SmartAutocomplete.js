@@ -1,45 +1,119 @@
 /**
- * Smart Autocomplete++ Module
+ * Smart Autocomplete++ v2
  * 
- * Context-aware SQL autocomplete with:
- * - Table/column context detection
- * - FK-based JOIN suggestions
- * - Frequency learning
- * - Smart alias handling
- * - Query pattern recognition
+ * Advanced context-aware SQL autocomplete with:
+ * - AST-like query parsing
+ * - CTE and Subquery support
+ * - FK-based intelligent JOIN suggestions
+ * - Data-type aware operators
+ * - Query history learning
+ * - Snippet engine
  */
 
 import { invoke } from '@tauri-apps/api/core';
 import { SQL_KEYWORDS } from './SqlHighlighter.js';
 
-const FREQUENCY_STORAGE_KEY = 'tactilesql_autocomplete_frequency';
-const FK_CACHE_KEY = 'tactilesql_fk_cache';
+const STORAGE_KEYS = {
+    FREQUENCY: 'tactilesql_autocomplete_frequency',
+    FK_CACHE: 'tactilesql_fk_cache',
+    HISTORY: 'tactilesql_query_history',
+    SNIPPETS: 'tactilesql_user_snippets',
+};
+
+// SQL Context Types
+const CONTEXT = {
+    SELECT: 'select',
+    FROM: 'from',
+    JOIN: 'join',
+    ON: 'on',
+    WHERE: 'where',
+    GROUP_BY: 'group_by',
+    ORDER_BY: 'order_by',
+    HAVING: 'having',
+    INSERT: 'insert',
+    UPDATE: 'update',
+    SET: 'set',
+    VALUES: 'values',
+    CREATE: 'create',
+    ALTER: 'alter',
+    UNKNOWN: 'unknown',
+};
+
+// Built-in SQL Snippets
+const BUILTIN_SNIPPETS = [
+    { trigger: 'sel', name: 'SELECT basic', template: 'SELECT * FROM ${1:table} WHERE ${2:condition}', description: 'Basic SELECT query' },
+    { trigger: 'selc', name: 'SELECT columns', template: 'SELECT ${1:columns}\nFROM ${2:table}\nWHERE ${3:condition}', description: 'SELECT with columns' },
+    { trigger: 'selj', name: 'SELECT with JOIN', template: 'SELECT ${1:t1}.*, ${2:t2}.*\nFROM ${3:table1} ${1:t1}\nINNER JOIN ${4:table2} ${2:t2} ON ${1:t1}.${5:id} = ${2:t2}.${6:fk_id}\nWHERE ${7:1=1}', description: 'SELECT with JOIN' },
+    { trigger: 'sellj', name: 'SELECT LEFT JOIN', template: 'SELECT ${1:t1}.*, ${2:t2}.*\nFROM ${3:table1} ${1:t1}\nLEFT JOIN ${4:table2} ${2:t2} ON ${1:t1}.${5:id} = ${2:t2}.${6:fk_id}', description: 'SELECT with LEFT JOIN' },
+    { trigger: 'ins', name: 'INSERT INTO', template: 'INSERT INTO ${1:table} (${2:columns})\nVALUES (${3:values})', description: 'Insert row' },
+    { trigger: 'upd', name: 'UPDATE', template: 'UPDATE ${1:table}\nSET ${2:column} = ${3:value}\nWHERE ${4:condition}', description: 'Update rows' },
+    { trigger: 'del', name: 'DELETE', template: 'DELETE FROM ${1:table}\nWHERE ${2:condition}', description: 'Delete rows' },
+    { trigger: 'cte', name: 'WITH CTE', template: 'WITH ${1:cte_name} AS (\n    SELECT ${2:columns}\n    FROM ${3:table}\n    WHERE ${4:condition}\n)\nSELECT * FROM ${1:cte_name}', description: 'Common Table Expression' },
+    { trigger: 'ctm', name: 'WITH Multiple CTE', template: 'WITH ${1:cte1} AS (\n    SELECT ${2:*} FROM ${3:table1}\n),\n${4:cte2} AS (\n    SELECT ${5:*} FROM ${6:table2}\n)\nSELECT * FROM ${1:cte1}\nJOIN ${4:cte2} ON ${7:condition}', description: 'Multiple CTEs' },
+    { trigger: 'case', name: 'CASE WHEN', template: 'CASE\n    WHEN ${1:condition} THEN ${2:result}\n    ELSE ${3:default}\nEND', description: 'CASE expression' },
+    { trigger: 'ifnull', name: 'IFNULL', template: 'IFNULL(${1:column}, ${2:default})', description: 'IFNULL function' },
+    { trigger: 'coal', name: 'COALESCE', template: 'COALESCE(${1:col1}, ${2:col2}, ${3:default})', description: 'COALESCE function' },
+    { trigger: 'count', name: 'COUNT GROUP BY', template: 'SELECT ${1:column}, COUNT(*) as count\nFROM ${2:table}\nGROUP BY ${1:column}\nORDER BY count DESC', description: 'Count with grouping' },
+    { trigger: 'pag', name: 'Pagination', template: 'SELECT *\nFROM ${1:table}\nORDER BY ${2:id}\nLIMIT ${3:10} OFFSET ${4:0}', description: 'Paginated query' },
+    { trigger: 'exist', name: 'EXISTS subquery', template: 'SELECT *\nFROM ${1:table1} t1\nWHERE EXISTS (\n    SELECT 1 FROM ${2:table2} t2\n    WHERE t2.${3:fk} = t1.${4:id}\n)', description: 'EXISTS subquery' },
+    { trigger: 'notex', name: 'NOT EXISTS', template: 'SELECT *\nFROM ${1:table1} t1\nWHERE NOT EXISTS (\n    SELECT 1 FROM ${2:table2} t2\n    WHERE t2.${3:fk} = t1.${4:id}\n)', description: 'NOT EXISTS subquery' },
+    { trigger: 'dup', name: 'Find duplicates', template: 'SELECT ${1:column}, COUNT(*) as cnt\nFROM ${2:table}\nGROUP BY ${1:column}\nHAVING cnt > 1', description: 'Find duplicate values' },
+    { trigger: 'pivot', name: 'Pivot query', template: 'SELECT ${1:group_col},\n    SUM(CASE WHEN ${2:pivot_col} = \'${3:val1}\' THEN ${4:value_col} ELSE 0 END) as ${3:val1},\n    SUM(CASE WHEN ${2:pivot_col} = \'${5:val2}\' THEN ${4:value_col} ELSE 0 END) as ${5:val2}\nFROM ${6:table}\nGROUP BY ${1:group_col}', description: 'Pivot table query' },
+    { trigger: 'rank', name: 'ROW_NUMBER / RANK', template: 'SELECT *,\n    ROW_NUMBER() OVER (PARTITION BY ${1:partition_col} ORDER BY ${2:order_col}) as rn\nFROM ${3:table}', description: 'Window function ranking' },
+    { trigger: 'sub', name: 'Subquery', template: 'SELECT * FROM (\n    SELECT ${1:columns}\n    FROM ${2:table}\n    WHERE ${3:condition}\n) AS ${4:subq}', description: 'Subquery in FROM' },
+];
+
+// MySQL Functions by category
+const MYSQL_FUNCTIONS = {
+    string: ['CONCAT', 'CONCAT_WS', 'SUBSTRING', 'SUBSTR', 'LEFT', 'RIGHT', 'LENGTH', 'CHAR_LENGTH', 'UPPER', 'LOWER', 'TRIM', 'LTRIM', 'RTRIM', 'REPLACE', 'REVERSE', 'REPEAT', 'SPACE', 'LPAD', 'RPAD', 'INSTR', 'LOCATE', 'POSITION', 'FORMAT', 'INSERT', 'FIELD', 'FIND_IN_SET'],
+    numeric: ['ABS', 'CEIL', 'CEILING', 'FLOOR', 'ROUND', 'TRUNCATE', 'MOD', 'POW', 'POWER', 'SQRT', 'EXP', 'LOG', 'LOG10', 'LOG2', 'LN', 'PI', 'RAND', 'SIGN', 'GREATEST', 'LEAST'],
+    date: ['NOW', 'CURDATE', 'CURTIME', 'CURRENT_DATE', 'CURRENT_TIME', 'CURRENT_TIMESTAMP', 'DATE', 'TIME', 'YEAR', 'MONTH', 'DAY', 'HOUR', 'MINUTE', 'SECOND', 'DAYNAME', 'MONTHNAME', 'DAYOFWEEK', 'DAYOFMONTH', 'DAYOFYEAR', 'WEEK', 'WEEKDAY', 'QUARTER', 'DATE_ADD', 'DATE_SUB', 'DATEDIFF', 'TIMEDIFF', 'TIMESTAMPDIFF', 'DATE_FORMAT', 'TIME_FORMAT', 'STR_TO_DATE', 'FROM_UNIXTIME', 'UNIX_TIMESTAMP', 'LAST_DAY'],
+    aggregate: ['COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'GROUP_CONCAT', 'STD', 'STDDEV', 'VARIANCE', 'BIT_AND', 'BIT_OR', 'BIT_XOR', 'JSON_ARRAYAGG', 'JSON_OBJECTAGG'],
+    window: ['ROW_NUMBER', 'RANK', 'DENSE_RANK', 'NTILE', 'LEAD', 'LAG', 'FIRST_VALUE', 'LAST_VALUE', 'NTH_VALUE', 'PERCENT_RANK', 'CUME_DIST'],
+    json: ['JSON_EXTRACT', 'JSON_UNQUOTE', 'JSON_SET', 'JSON_INSERT', 'JSON_REPLACE', 'JSON_REMOVE', 'JSON_CONTAINS', 'JSON_CONTAINS_PATH', 'JSON_KEYS', 'JSON_LENGTH', 'JSON_DEPTH', 'JSON_TYPE', 'JSON_VALID', 'JSON_ARRAY', 'JSON_OBJECT', 'JSON_MERGE_PATCH', 'JSON_SEARCH', 'JSON_PRETTY'],
+    control: ['IF', 'IFNULL', 'NULLIF', 'COALESCE', 'CASE', 'ISNULL'],
+    conversion: ['CAST', 'CONVERT', 'BINARY'],
+    encryption: ['MD5', 'SHA1', 'SHA2', 'AES_ENCRYPT', 'AES_DECRYPT', 'UUID', 'UUID_SHORT'],
+    info: ['DATABASE', 'USER', 'CURRENT_USER', 'VERSION', 'CONNECTION_ID', 'LAST_INSERT_ID', 'ROW_COUNT', 'FOUND_ROWS'],
+};
+
+// Data type to operators mapping
+const TYPE_OPERATORS = {
+    numeric: ['=', '!=', '<>', '<', '>', '<=', '>=', 'BETWEEN', 'IN', 'NOT IN', 'IS NULL', 'IS NOT NULL'],
+    string: ['=', '!=', '<>', 'LIKE', 'NOT LIKE', 'REGEXP', 'IN', 'NOT IN', 'IS NULL', 'IS NOT NULL'],
+    date: ['=', '!=', '<>', '<', '>', '<=', '>=', 'BETWEEN', 'IS NULL', 'IS NOT NULL'],
+    json: ['->', '->>', 'IS NULL', 'IS NOT NULL'],
+    blob: ['IS NULL', 'IS NOT NULL'],
+};
 
 export class SmartAutocomplete {
     static #instance = null;
 
-    // Caches
+    // Schema Cache
     #databases = [];
-    #tables = {}; // { database: [table1, table2, ...] }
-    #columns = {}; // { 'database.table': [col1, col2, ...] }
-    #columnDetails = {}; // { 'database.table': [{name, type, key, ...}] }
-    #foreignKeys = {}; // { 'database.table': [{column, refTable, refColumn}] }
-    #frequencyData = {}; // { item: count }
-    #aliases = {}; // Current query aliases { alias: tableName }
-    #aliasDatabase = {}; // { alias: databaseName } for db.table alias format
-
-    // Context state
-    #currentQuery = '';
-    #cursorPosition = 0;
-    #currentDatabase = '';
+    #tables = {};
+    #columns = {};
+    #columnDetails = {};
+    #foreignKeys = {};
+    #indexes = {};
+    
+    // Learning data
+    #frequencyData = {};
+    #queryHistory = [];
+    #userSnippets = [];
+    
+    // Parsed query state
+    #query = '';
+    #cursorPos = 0;
+    #currentDb = '';
+    #parsedQuery = null;
 
     constructor() {
         if (SmartAutocomplete.#instance) {
             return SmartAutocomplete.#instance;
         }
         SmartAutocomplete.#instance = this;
-        this.#loadFrequencyData();
-        this.#loadFKCache();
+        this.#loadStoredData();
     }
 
     static getInstance() {
@@ -49,351 +123,489 @@ export class SmartAutocomplete {
         return SmartAutocomplete.#instance;
     }
 
-    // ==================== Data Loading ====================
+    // ==================== PUBLIC API ====================
+
+    /**
+     * Main entry point for getting suggestions
+     */
+    async getSuggestions(query, cursorPosition, currentDatabase) {
+        try {
+            this.#query = query || '';
+            this.#cursorPos = cursorPosition || query?.length || 0;
+            this.#currentDb = currentDatabase || '';
+
+            // Parse the query to understand context
+            this.#parsedQuery = this.#parseQuery();
+            
+            const word = this.#getCurrentWord();
+            const context = this.#getContext();
+
+            console.log('SmartAutocomplete v2:', { word, context, parsedQuery: this.#parsedQuery });
+
+            // Empty word? Check if after dot
+            if (!word && this.#isAfterDot()) {
+                return await this.#getDotSuggestions(this.#getWordBeforeDot() + '.');
+            }
+
+            // Minimum 1 character for suggestions
+            if (!word || word.length < 1) {
+                return [];
+            }
+
+            let suggestions = [];
+
+            // Check for snippet triggers first (2+ chars)
+            if (word.length >= 2 && !word.includes('.')) {
+                const snippetSuggestions = this.#getSnippetSuggestions(word);
+                if (snippetSuggestions.length > 0) {
+                    suggestions.push(...snippetSuggestions);
+                }
+            }
+
+            // Get context-specific suggestions
+            suggestions.push(...await this.#getContextSuggestions(word, context));
+
+            // Sort and deduplicate
+            suggestions = this.#sortAndDedupe(suggestions, word);
+
+            return suggestions.slice(0, 20);
+        } catch (error) {
+            console.error('SmartAutocomplete error:', error);
+            return this.#getFallbackSuggestions();
+        }
+    }
+
+    /**
+     * Record that a suggestion was used (for learning)
+     */
+    recordUsage(item, type) {
+        const key = `${type}:${item}`;
+        this.#frequencyData[key] = (this.#frequencyData[key] || 0) + 1;
+        this.#saveFrequencyData();
+    }
+
+    /**
+     * Record selection for frequency learning (alias for recordUsage)
+     */
+    recordSelection(item, type = 'general') {
+        this.recordUsage(item, type);
+    }
+
+    /**
+     * Record a completed query for history learning
+     */
+    recordQuery(query) {
+        if (!query || query.trim().length < 10) return;
+        
+        this.#queryHistory.unshift({
+            query: query.trim(),
+            timestamp: Date.now(),
+        });
+        
+        // Keep last 500 queries
+        if (this.#queryHistory.length > 500) {
+            this.#queryHistory = this.#queryHistory.slice(0, 500);
+        }
+        
+        this.#saveQueryHistory();
+    }
+
+    /**
+     * Add a user snippet
+     */
+    addSnippet(trigger, name, template, description = '') {
+        this.#userSnippets.push({ trigger, name, template, description, isUser: true });
+        this.#saveUserSnippets();
+    }
+
+    // ==================== SCHEMA LOADING ====================
 
     async loadDatabases() {
+        if (this.#databases.length > 0) return this.#databases;
         try {
             this.#databases = await invoke('get_databases');
-            return this.#databases;
         } catch (e) {
-            console.warn('Failed to load databases:', e);
-            return [];
+            console.error('Failed to load databases:', e);
+            this.#databases = [];
         }
+        return this.#databases;
     }
 
     async loadTables(database) {
+        if (!database) return [];
         if (this.#tables[database]) return this.#tables[database];
         try {
-            const tables = await invoke('get_tables', { database });
-            this.#tables[database] = tables;
-            return tables;
+            this.#tables[database] = await invoke('get_tables', { database });
         } catch (e) {
-            console.warn(`Failed to load tables for ${database}:`, e);
-            return [];
+            console.error('Failed to load tables:', e);
+            this.#tables[database] = [];
         }
+        return this.#tables[database] || [];
     }
 
     async loadColumns(database, table) {
+        if (!database || !table) return [];
         const key = `${database}.${table}`;
         if (this.#columns[key]) return this.#columns[key];
-        
         try {
-            const schema = await invoke('get_table_schema', { database, table });
-            this.#columnDetails[key] = schema;
-            this.#columns[key] = schema.map(c => c.name);
-            return this.#columns[key];
+            const details = await invoke('get_table_schema', { database, table });
+            this.#columnDetails[key] = details;
+            // Backend returns 'name' not 'column_name'
+            this.#columns[key] = details.map(c => c.name);
+            console.log(`Loaded ${this.#columns[key].length} columns for ${key}:`, this.#columns[key]);
         } catch (e) {
-            console.warn(`Failed to load columns for ${key}:`, e);
-            return [];
+            console.error('Failed to load columns:', e);
+            this.#columns[key] = [];
         }
+        return this.#columns[key] || [];
     }
 
     async loadForeignKeys(database, table) {
+        if (!database || !table) return [];
         const key = `${database}.${table}`;
         if (this.#foreignKeys[key]) return this.#foreignKeys[key];
-
         try {
-            const fks = await invoke('get_table_foreign_keys', { database, table });
-            this.#foreignKeys[key] = fks;
-            this.#saveFKCache();
-            return fks;
+            this.#foreignKeys[key] = await invoke('get_foreign_keys', { database, table });
         } catch (e) {
-            console.warn(`Failed to load foreign keys for ${key}:`, e);
-            return [];
+            this.#foreignKeys[key] = [];
         }
+        return this.#foreignKeys[key] || [];
     }
 
-    #loadFrequencyData() {
+    async loadIndexes(database, table) {
+        if (!database || !table) return [];
+        const key = `${database}.${table}`;
+        if (this.#indexes[key]) return this.#indexes[key];
         try {
-            const stored = localStorage.getItem(FREQUENCY_STORAGE_KEY);
-            if (stored) {
-                this.#frequencyData = JSON.parse(stored);
-            }
+            this.#indexes[key] = await invoke('get_indexes', { database, table });
         } catch (e) {
-            this.#frequencyData = {};
+            this.#indexes[key] = [];
         }
+        return this.#indexes[key] || [];
     }
 
-    #saveFrequencyData() {
-        try {
-            // Keep only top 1000 items by frequency
-            const entries = Object.entries(this.#frequencyData);
-            if (entries.length > 1000) {
-                entries.sort((a, b) => b[1] - a[1]);
-                this.#frequencyData = Object.fromEntries(entries.slice(0, 1000));
-            }
-            localStorage.setItem(FREQUENCY_STORAGE_KEY, JSON.stringify(this.#frequencyData));
-        } catch (e) {
-            console.warn('Failed to save frequency data:', e);
-        }
+    setCurrentDatabase(db) {
+        this.#currentDb = db;
     }
 
-    #loadFKCache() {
-        try {
-            const stored = localStorage.getItem(FK_CACHE_KEY);
-            if (stored) {
-                this.#foreignKeys = JSON.parse(stored);
-            }
-        } catch (e) {
-            this.#foreignKeys = {};
-        }
+    clearCache() {
+        this.#databases = [];
+        this.#tables = {};
+        this.#columns = {};
+        this.#columnDetails = {};
+        this.#foreignKeys = {};
+        this.#indexes = {};
     }
 
-    #saveFKCache() {
-        try {
-            localStorage.setItem(FK_CACHE_KEY, JSON.stringify(this.#foreignKeys));
-        } catch (e) {
-            console.warn('Failed to save FK cache:', e);
-        }
-    }
+    // ==================== QUERY PARSING ====================
 
-    // ==================== Context Analysis ====================
-
-    /**
-     * Update context for autocomplete
-     */
-    setContext(query, cursorPosition, currentDatabase) {
-        this.#currentQuery = query;
-        this.#cursorPosition = cursorPosition;
-        this.#currentDatabase = currentDatabase;
-        this.#parseAliases();
-    }
-
-    /**
-     * Parse table aliases from the query
-     */
-    #parseAliases() {
-        this.#aliases = {};
-        
-        // Store database info for aliases too
-        this.#aliasDatabase = {};
-        
-        // Pattern 1: FROM/JOIN db.table alias or FROM/JOIN db.table AS alias
-        const dbTableAliasPattern = /(?:FROM|JOIN)\s+`?(\w+)`?\.`?(\w+)`?\s+(?:AS\s+)?`?(\w+)`?(?=\s|,|$|WHERE|ON|LEFT|RIGHT|INNER|OUTER|JOIN|ORDER|GROUP|HAVING|LIMIT)/gi;
-        
-        // Pattern 2: FROM/JOIN table alias or FROM/JOIN table AS alias (no database prefix)
-        const tableAliasPattern = /(?:FROM|JOIN)\s+`?(\w+)`?\s+(?:AS\s+)?`?(\w+)`?(?=\s|,|$|WHERE|ON|LEFT|RIGHT|INNER|OUTER|JOIN|ORDER|GROUP|HAVING|LIMIT)/gi;
-        
-        // First, try to match db.table alias pattern
-        let match;
-        while ((match = dbTableAliasPattern.exec(this.#currentQuery)) !== null) {
-            const dbName = match[1];
-            const tableName = match[2];
-            const alias = match[3];
-            
-            if (alias && !this.#isKeyword(alias) && alias.toLowerCase() !== tableName.toLowerCase()) {
-                this.#aliases[alias.toLowerCase()] = tableName;
-                this.#aliasDatabase[alias.toLowerCase()] = dbName;
-                console.log(`Parsed alias: ${alias} -> ${dbName}.${tableName}`);
-            }
-        }
-        
-        // Then, try simple table alias pattern
-        while ((match = tableAliasPattern.exec(this.#currentQuery)) !== null) {
-            const tableName = match[1];
-            const alias = match[2];
-            
-            // Skip if this looks like db.table (contains a dot in original match)
-            // or if alias is a keyword or same as table
-            if (alias && 
-                !this.#isKeyword(alias) && 
-                !this.#isKeyword(tableName) &&
-                alias.toLowerCase() !== tableName.toLowerCase() &&
-                !this.#aliases[alias.toLowerCase()]) { // Don't override db.table aliases
-                this.#aliases[alias.toLowerCase()] = tableName;
-                console.log(`Parsed simple alias: ${alias} -> ${tableName}`);
-            }
-        }
-    }
-
-    #isKeyword(word) {
-        return SQL_KEYWORDS.includes(word.toUpperCase());
-    }
-
-    /**
-     * Detect what the user is typing (context detection)
-     */
-    #detectContext() {
-        const beforeCursor = this.#currentQuery.substring(0, this.#cursorPosition);
-        const upperBefore = beforeCursor.toUpperCase().trim();
-
-        // Check for specific SQL contexts
-        const contexts = {
-            // After SELECT - expecting columns
-            isSelectClause: /SELECT\s+(?:(?!FROM|WHERE|GROUP|ORDER|HAVING|LIMIT|JOIN).)*$/i.test(beforeCursor),
-            
-            // After FROM/JOIN - expecting tables
-            isFromClause: /(?:FROM|JOIN)\s+(?:\w+\.\s*)?$/i.test(beforeCursor),
-            
-            // After WHERE/AND/OR - expecting columns or conditions
-            isWhereClause: /(?:WHERE|AND|OR|ON)\s+(?:\w+\.\s*)?$/i.test(beforeCursor),
-            
-            // After ORDER BY/GROUP BY
-            isOrderByClause: /ORDER\s+BY\s+(?:\w+\.\s*)?$/i.test(beforeCursor),
-            isGroupByClause: /GROUP\s+BY\s+(?:\w+\.\s*)?$/i.test(beforeCursor),
-            
-            // After INSERT INTO - expecting table
-            isInsertInto: /INSERT\s+INTO\s+$/i.test(beforeCursor),
-            
-            // After INSERT INTO table ( - expecting columns
-            isInsertColumns: /INSERT\s+INTO\s+\w+\s*\(\s*(?:\w+\s*,\s*)*$/i.test(beforeCursor),
-            
-            // After UPDATE - expecting table
-            isUpdateTable: /UPDATE\s+$/i.test(beforeCursor),
-            
-            // After SET - expecting column = value
-            isSetClause: /SET\s+(?:\w+\s*=\s*[^,]+,\s*)*$/i.test(beforeCursor),
-            
-            // Typing table.column
-            isDotNotation: /\w+\.$/i.test(beforeCursor),
-            
-            // After JOIN expecting ON
-            isJoinOn: /JOIN\s+\w+(?:\s+\w+)?\s+$/i.test(beforeCursor),
+    #parseQuery() {
+        const query = this.#query;
+        const result = {
+            type: this.#detectQueryType(query),
+            ctes: this.#parseCTEs(query),
+            tables: this.#parseTableReferences(query),
+            aliases: {},
+            aliasToDb: {},
+            subqueries: [],
         };
 
-        return contexts;
-    }
-
-    /**
-     * Get the current word being typed
-     */
-    #getCurrentWord() {
-        const beforeCursor = this.#currentQuery.substring(0, this.#cursorPosition);
-        const match = beforeCursor.match(/[\w.`]+$/);
-        return match ? match[0].replace(/`/g, '') : '';
-    }
-
-    /**
-     * Get tables referenced in the current query
-     */
-    #getReferencedTables() {
-        const tables = new Set();
-        
-        // Extract table names
-        const patterns = [
-            /(?:FROM|JOIN|UPDATE|INTO)\s+`?(\w+)`?/gi,
-            /(?:FROM|JOIN)\s+`?\w+`?\.`?(\w+)`?/gi,
-        ];
-
-        for (const pattern of patterns) {
-            let match;
-            while ((match = pattern.exec(this.#currentQuery)) !== null) {
-                if (match[1] && !this.#isKeyword(match[1])) {
-                    tables.add(match[1]);
+        // Build alias map from parsed tables
+        for (const ref of result.tables) {
+            if (ref.alias) {
+                result.aliases[ref.alias.toLowerCase()] = ref.table;
+                if (ref.database) {
+                    result.aliasToDb[ref.alias.toLowerCase()] = ref.database;
                 }
             }
+            // Also add table name itself as a potential prefix
+            result.aliases[ref.table.toLowerCase()] = ref.table;
+            if (ref.database) {
+                result.aliasToDb[ref.table.toLowerCase()] = ref.database;
+            }
         }
 
-        return Array.from(tables);
+        // Add CTE names as virtual tables
+        for (const cte of result.ctes) {
+            result.aliases[cte.name.toLowerCase()] = `__cte__${cte.name}`;
+        }
+
+        console.log('Parsed query:', result);
+        return result;
     }
 
-    // ==================== Suggestion Generation ====================
-
-    /**
-     * Get autocomplete suggestions
-     */
-    async getSuggestions(query, cursorPosition, currentDatabase) {
-        this.setContext(query, cursorPosition, currentDatabase);
-        
-        const word = this.#getCurrentWord();
-        const context = this.#detectContext();
-        
-        let suggestions = [];
-
-        // If no word typed yet, return empty (let user type at least 1 char)
-        if (!word || word.length < 1) {
-            return [];
-        }
-
-        try {
-            // Handle dot notation (table.column or db.table)
-            if (context.isDotNotation || word.includes('.')) {
-                suggestions = await this.#getDotNotationSuggestions(word);
-            } 
-            // SELECT clause - suggest columns from referenced tables
-            else if (context.isSelectClause) {
-                suggestions = await this.#getSelectSuggestions(word);
-            }
-            // FROM/JOIN clause - suggest tables
-            else if (context.isFromClause || context.isUpdateTable || context.isInsertInto) {
-                suggestions = await this.#getTableSuggestions(word);
-            }
-            // WHERE/ON clause - suggest columns
-            else if (context.isWhereClause || context.isSetClause) {
-                suggestions = await this.#getColumnSuggestions(word);
-            }
-            // ORDER BY / GROUP BY
-            else if (context.isOrderByClause || context.isGroupByClause) {
-                suggestions = await this.#getColumnSuggestions(word);
-            }
-            // INSERT columns
-            else if (context.isInsertColumns) {
-                suggestions = await this.#getInsertColumnSuggestions(word);
-            }
-            // After JOIN - suggest ON with FK hints
-            else if (context.isJoinOn) {
-                suggestions = this.#getJoinOnSuggestions();
-            }
-            // Default - mix of keywords, tables, columns
-            else {
-                suggestions = await this.#getGeneralSuggestions(word);
-            }
-        } catch (e) {
-            console.warn('SmartAutocomplete suggestion error:', e);
-            // Fallback to general suggestions on error
-            suggestions = await this.#getGeneralSuggestions(word);
-        }
-
-        // Sort by frequency and relevance
-        suggestions = this.#sortByRelevance(suggestions, word);
-
-        return suggestions.slice(0, 15);
+    #detectQueryType(query) {
+        const upper = query.trim().toUpperCase();
+        if (upper.startsWith('SELECT') || upper.startsWith('WITH')) return 'SELECT';
+        if (upper.startsWith('INSERT')) return 'INSERT';
+        if (upper.startsWith('UPDATE')) return 'UPDATE';
+        if (upper.startsWith('DELETE')) return 'DELETE';
+        if (upper.startsWith('CREATE')) return 'CREATE';
+        if (upper.startsWith('ALTER')) return 'ALTER';
+        if (upper.startsWith('DROP')) return 'DROP';
+        return 'UNKNOWN';
     }
 
-    async #getDotNotationSuggestions(word) {
-        const [prefix, suffix] = word.split('.');
-        const filterLower = (suffix || '').toLowerCase();
-        const suggestions = [];
+    #parseCTEs(query) {
+        const ctes = [];
+        const cteDefRegex = /\b(\w+)\s*AS\s*\(\s*SELECT/gi;
+        let match;
         
-        const prefixLower = prefix.toLowerCase();
-        
-        console.log(`Dot notation: prefix=${prefix}, suffix=${suffix}`);
-        console.log(`Available aliases:`, this.#aliases);
-
-        // Check if prefix is an alias
-        const aliasTable = this.#aliases[prefixLower];
-        if (aliasTable) {
-            // Use the database from alias if available, otherwise current database
-            const aliasDb = this.#aliasDatabase?.[prefixLower] || this.#currentDatabase;
-            console.log(`Found alias: ${prefix} -> ${aliasDb}.${aliasTable}`);
-            
-            const columns = await this.loadColumns(aliasDb, aliasTable);
-            for (const col of columns) {
-                if (col.toLowerCase().startsWith(filterLower)) {
-                    const details = this.#getColumnDetails(aliasDb, aliasTable, col);
-                    suggestions.push({
-                        type: 'column',
-                        value: `${prefix}.${col}`,
-                        display: col,
-                        detail: details?.column_type || '',
-                        icon: details?.column_key === 'PRI' ? 'key' : 'view_column',
-                        color: details?.column_key === 'PRI' ? 'text-yellow-400' : 'text-orange-400',
-                        isKey: details?.column_key === 'PRI',
+        // Only look in WITH section
+        const withMatch = query.match(/^WITH\s+(RECURSIVE\s+)?(.+?)\bSELECT\b(?!.*\bAS\s*\()/is);
+        if (!withMatch) {
+            // Alternative: find all CTE definitions
+            while ((match = cteDefRegex.exec(query)) !== null) {
+                if (!this.#isKeyword(match[1])) {
+                    ctes.push({
+                        name: match[1],
+                        position: match.index,
                     });
                 }
             }
-            return suggestions;
         }
 
-        // Check if prefix is a database
-        if (this.#databases.includes(prefix)) {
-            const tables = await this.loadTables(prefix);
+        return ctes;
+    }
+
+    #parseTableReferences(query) {
+        const tables = [];
+        const seen = new Set();
+
+        // Pattern for: FROM/JOIN db.table alias or db.table AS alias
+        // Use lookahead to stop before keywords
+        const dbTablePattern = /\b(?:FROM|JOIN|UPDATE|INTO)\s+`?(\w+)`?\.`?(\w+)`?(?:\s+(?:AS\s+)?`?(\w+)`?)?(?=\s|,|;|$|\)|WHERE|ON|SET|LEFT|RIGHT|INNER|OUTER|CROSS|NATURAL|ORDER|GROUP|HAVING|LIMIT)/gi;
+
+        // First pass: find db.table references
+        let match;
+        while ((match = dbTablePattern.exec(query)) !== null) {
+            const database = match[1];
+            const table = match[2];
+            let alias = match[3];
+
+            // Skip if table is a keyword
+            if (this.#isKeyword(table)) continue;
+            
+            // Skip if alias is a keyword or same as table
+            if (alias && (this.#isKeyword(alias) || alias.toLowerCase() === table.toLowerCase())) {
+                alias = null;
+            }
+
+            const key = `${database}.${table}`;
+            if (!seen.has(key)) {
+                seen.add(key);
+                tables.push({
+                    database,
+                    table,
+                    alias,
+                    position: match.index,
+                });
+                console.log(`Parsed db.table ref: ${database}.${table} alias=${alias}`);
+            }
+        }
+
+        // Pattern for simple table: FROM/JOIN table alias
+        const simpleTablePattern = /\b(?:FROM|JOIN|UPDATE|INTO)\s+`?(\w+)`?(?:\s+(?:AS\s+)?`?(\w+)`?)?(?=\s|,|;|$|\)|WHERE|ON|SET|LEFT|RIGHT|INNER|OUTER|CROSS|NATURAL|ORDER|GROUP|HAVING|LIMIT)/gi;
+        
+        // Second pass: find simple table references (avoid db.table matches)
+        while ((match = simpleTablePattern.exec(query)) !== null) {
+            const fullMatch = match[0];
+            // Skip if this is a db.table pattern (contains dot)
+            if (fullMatch.includes('.')) continue;
+            
+            const table = match[1];
+            let alias = match[2];
+
+            // Skip keywords
+            if (this.#isKeyword(table)) continue;
+            if (alias && (this.#isKeyword(alias) || alias.toLowerCase() === table.toLowerCase())) {
+                alias = null;
+            }
+
+            const key = `.${table}`;
+            if (!seen.has(key)) {
+                seen.add(key);
+                tables.push({
+                    database: null,
+                    table,
+                    alias,
+                    position: match.index,
+                });
+                console.log(`Parsed simple table ref: ${table} alias=${alias}`);
+            }
+        }
+
+        return tables;
+    }
+
+    #isKeyword(word) {
+        if (!word) return false;
+        const upper = word.toUpperCase();
+        return SQL_KEYWORDS.includes(upper) || 
+               ['WHERE', 'AND', 'OR', 'ON', 'SET', 'VALUES', 'LEFT', 'RIGHT', 'INNER', 'OUTER', 'CROSS', 'NATURAL', 'ORDER', 'GROUP', 'HAVING', 'LIMIT', 'OFFSET', 'AS'].includes(upper);
+    }
+
+    // ==================== CONTEXT DETECTION ====================
+
+    #getContext() {
+        const beforeCursor = this.#query.substring(0, this.#cursorPos).toUpperCase();
+        const trimmed = beforeCursor.replace(/\s+/g, ' ').trim();
+
+        // Check for specific patterns in reverse order of priority
+        
+        // After ON (join condition)
+        if (/\bON\s+[\w.`]*$/i.test(beforeCursor) || 
+            /\bON\s+\S+\s*(=|<|>|!=)\s*$/i.test(beforeCursor)) {
+            return CONTEXT.ON;
+        }
+
+        // After SET (update)
+        if (/\bSET\s+[\w,\s=`'"]*$/i.test(beforeCursor)) {
+            return CONTEXT.SET;
+        }
+
+        // After WHERE/AND/OR
+        if (/\b(WHERE|AND|OR)\s+[\w.`]*$/i.test(beforeCursor) ||
+            /\b(WHERE|AND|OR)\s+\S+\s*(=|<|>|!=|LIKE|IN|BETWEEN)\s*$/i.test(beforeCursor)) {
+            return CONTEXT.WHERE;
+        }
+
+        // After GROUP BY
+        if (/\bGROUP\s+BY\s+[\w.,`\s]*$/i.test(beforeCursor)) {
+            return CONTEXT.GROUP_BY;
+        }
+
+        // After ORDER BY
+        if (/\bORDER\s+BY\s+[\w.,`\s]*$/i.test(beforeCursor)) {
+            return CONTEXT.ORDER_BY;
+        }
+
+        // After HAVING
+        if (/\bHAVING\s+[\w.`]*$/i.test(beforeCursor)) {
+            return CONTEXT.HAVING;
+        }
+
+        // After FROM
+        if (/\bFROM\s+[\w.,`\s]*$/i.test(beforeCursor) && !/\bSELECT\b.*\bFROM\b.*\bWHERE\b/i.test(beforeCursor)) {
+            return CONTEXT.FROM;
+        }
+
+        // After JOIN
+        if (/\b(JOIN|INNER\s+JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|OUTER\s+JOIN|CROSS\s+JOIN)\s+[\w.`]*$/i.test(beforeCursor)) {
+            return CONTEXT.JOIN;
+        }
+
+        // After SELECT
+        if (/\bSELECT\s+(DISTINCT\s+)?[\w.,`*\s()]*$/i.test(beforeCursor) && !/\bFROM\b/i.test(beforeCursor)) {
+            return CONTEXT.SELECT;
+        }
+
+        // INSERT context
+        if (/\bINSERT\s+INTO\s+/i.test(beforeCursor)) {
+            return CONTEXT.INSERT;
+        }
+
+        // UPDATE context
+        if (/\bUPDATE\s+[\w.`]*$/i.test(beforeCursor)) {
+            return CONTEXT.UPDATE;
+        }
+
+        // VALUES context
+        if (/\bVALUES\s*\(/i.test(beforeCursor)) {
+            return CONTEXT.VALUES;
+        }
+
+        return CONTEXT.UNKNOWN;
+    }
+
+    #getCurrentWord() {
+        const before = this.#query.substring(0, this.#cursorPos);
+        // Match word characters, dots, and backticks
+        const match = before.match(/[\w.`]+$/);
+        return match ? match[0].replace(/`/g, '') : '';
+    }
+
+    #isAfterDot() {
+        const before = this.#query.substring(0, this.#cursorPos);
+        return before.endsWith('.');
+    }
+
+    #getWordBeforeDot() {
+        const before = this.#query.substring(0, this.#cursorPos);
+        const match = before.match(/(\w+)\.$/);
+        return match ? match[1] : '';
+    }
+
+    // ==================== SUGGESTION GENERATORS ====================
+
+    async #getContextSuggestions(word, context) {
+        const suggestions = [];
+        const wordLower = word.toLowerCase();
+
+        // Handle dot notation (alias.column or db.table)
+        if (word.includes('.')) {
+            return await this.#getDotSuggestions(word);
+        }
+
+        // Context-specific suggestions
+        switch (context) {
+            case CONTEXT.SELECT:
+                suggestions.push(...await this.#getSelectSuggestions(word));
+                break;
+            
+            case CONTEXT.FROM:
+            case CONTEXT.JOIN:
+            case CONTEXT.UPDATE:
+                suggestions.push(...await this.#getTableSuggestions(word));
+                break;
+            
+            case CONTEXT.ON:
+                suggestions.push(...await this.#getJoinConditionSuggestions(word));
+                break;
+            
+            case CONTEXT.WHERE:
+            case CONTEXT.HAVING:
+                suggestions.push(...await this.#getWhereSuggestions(word));
+                break;
+            
+            case CONTEXT.GROUP_BY:
+            case CONTEXT.ORDER_BY:
+                suggestions.push(...await this.#getColumnSuggestions(word));
+                break;
+            
+            case CONTEXT.SET:
+                suggestions.push(...await this.#getSetSuggestions(word));
+                break;
+            
+            default:
+                suggestions.push(...await this.#getGeneralSuggestions(word));
+        }
+
+        return suggestions;
+    }
+
+    async #getDotSuggestions(word) {
+        const suggestions = [];
+        const parts = word.split('.');
+        const prefix = parts[0];
+        const prefixLower = prefix.toLowerCase();
+        const suffix = (parts[1] || '').toLowerCase();
+
+        console.log('Dot suggestions for:', { prefix, suffix, aliases: this.#parsedQuery?.aliases, aliasToDb: this.#parsedQuery?.aliasToDb });
+
+        // FIRST: Check if prefix is a database name (priority over aliases)
+        await this.loadDatabases();
+        const matchedDb = this.#databases.find(d => d.toLowerCase() === prefixLower);
+        if (matchedDb) {
+            console.log(`Prefix is a database: ${matchedDb}`);
+            const tables = await this.loadTables(matchedDb);
             for (const table of tables) {
-                if (table.toLowerCase().startsWith(filterLower)) {
+                if (!suffix || table.toLowerCase().startsWith(suffix)) {
                     suggestions.push({
                         type: 'table',
                         value: `${prefix}.${table}`,
                         display: table,
+                        detail: matchedDb,
                         icon: 'table_rows',
                         color: 'text-cyan-400',
                     });
@@ -402,155 +614,66 @@ export class SmartAutocomplete {
             return suggestions;
         }
 
-        // Check if prefix is a table in current database
-        const tables = await this.loadTables(this.#currentDatabase);
-        if (tables.includes(prefix)) {
-            const columns = await this.loadColumns(this.#currentDatabase, prefix);
+        // SECOND: Check if prefix is an alias
+        if (this.#parsedQuery?.aliases[prefixLower]) {
+            const tableName = this.#parsedQuery.aliases[prefixLower];
+            
+            // Handle CTE references
+            if (tableName.startsWith('__cte__')) {
+                return this.#getCTEColumnSuggestions(tableName, prefix, suffix);
+            }
+
+            // Get database for this alias (or use current)
+            const db = this.#parsedQuery.aliasToDb[prefixLower] || this.#currentDb;
+            
+            console.log(`Prefix is an alias: ${prefix} -> ${db}.${tableName}`);
+            
+            const columns = await this.loadColumns(db, tableName);
+            console.log(`Got ${columns.length} columns:`, columns);
+            
             for (const col of columns) {
-                if (col.toLowerCase().startsWith(filterLower)) {
-                    const details = this.#getColumnDetails(this.#currentDatabase, prefix, col);
-                    suggestions.push({
-                        type: 'column',
-                        value: `${prefix}.${col}`,
-                        display: col,
-                        detail: details?.column_type || '',
-                        icon: details?.column_key === 'PRI' ? 'key' : 'view_column',
-                        color: details?.column_key === 'PRI' ? 'text-yellow-400' : 'text-orange-400',
-                        isKey: details?.column_key === 'PRI',
-                    });
+                if (!suffix || col.toLowerCase().startsWith(suffix)) {
+                    const details = this.#getColumnDetail(db, tableName, col);
+                    suggestions.push(this.#createColumnSuggestion(col, details, `${prefix}.${col}`));
                 }
             }
+            
+            // Also add * option
+            if ('*'.startsWith(suffix) || !suffix) {
+                suggestions.unshift({
+                    type: 'column',
+                    value: `${prefix}.*`,
+                    display: '*',
+                    detail: 'All columns',
+                    icon: 'select_all',
+                    color: 'text-gray-400',
+                });
+            }
+            
+            return suggestions;
         }
 
-        return suggestions;
-    }
-
-    async #getSelectSuggestions(word) {
-        const suggestions = [];
-        const tables = this.#getReferencedTables();
-        const filterLower = word.toLowerCase();
-
-        // Add columns from referenced tables
-        for (const table of tables) {
-            const columns = await this.loadColumns(this.#currentDatabase, table);
+        // THIRD: Check if prefix is a table in current database
+        const tables = await this.loadTables(this.#currentDb);
+        const matchedTable = tables.find(t => t.toLowerCase() === prefixLower);
+        if (matchedTable) {
+            console.log(`Prefix is a table in current db: ${matchedTable}`);
+            const columns = await this.loadColumns(this.#currentDb, matchedTable);
             for (const col of columns) {
-                if (col.toLowerCase().startsWith(filterLower)) {
-                    const details = this.#getColumnDetails(this.#currentDatabase, table, col);
-                    const alias = this.#findAliasForTable(table);
-                    const prefix = alias || table;
-                    
-                    suggestions.push({
-                        type: 'column',
-                        value: tables.length > 1 ? `${prefix}.${col}` : col,
-                        display: col,
-                        detail: `${table}.${col} (${details?.column_type || ''})`,
-                        icon: details?.column_key === 'PRI' ? 'key' : 'view_column',
-                        color: details?.column_key === 'PRI' ? 'text-yellow-400' : 'text-orange-400',
-                        isKey: details?.column_key === 'PRI',
-                    });
+                if (!suffix || col.toLowerCase().startsWith(suffix)) {
+                    const details = this.#getColumnDetail(this.#currentDb, matchedTable, col);
+                    suggestions.push(this.#createColumnSuggestion(col, details, `${prefix}.${col}`));
                 }
             }
-        }
-
-        // Add aggregate functions
-        const aggregates = ['COUNT(*)', 'SUM()', 'AVG()', 'MIN()', 'MAX()', 'GROUP_CONCAT()'];
-        for (const agg of aggregates) {
-            if (agg.toLowerCase().startsWith(filterLower)) {
-                suggestions.push({
-                    type: 'function',
-                    value: agg,
-                    display: agg,
-                    icon: 'function',
-                    color: 'text-pink-400',
-                });
-            }
-        }
-
-        // Add SQL keywords like DISTINCT
-        if ('distinct'.startsWith(filterLower)) {
-            suggestions.push({
-                type: 'keyword',
-                value: 'DISTINCT',
-                display: 'DISTINCT',
-                icon: 'code',
-                color: 'text-purple-400',
-            });
-        }
-
-        return suggestions;
-    }
-
-    async #getTableSuggestions(word) {
-        const suggestions = [];
-        const filterLower = word.toLowerCase();
-
-        // Tables from current database
-        const tables = await this.loadTables(this.#currentDatabase);
-        for (const table of tables) {
-            if (table.toLowerCase().startsWith(filterLower)) {
-                suggestions.push({
-                    type: 'table',
-                    value: table,
-                    display: table,
-                    detail: this.#currentDatabase,
-                    icon: 'table_rows',
-                    color: 'text-cyan-400',
-                });
-            }
-        }
-
-        // Database names (for db.table notation)
-        for (const db of this.#databases) {
-            if (db.toLowerCase().startsWith(filterLower)) {
-                suggestions.push({
-                    type: 'database',
-                    value: db + '.',
-                    display: db,
-                    detail: 'database',
-                    icon: 'database',
-                    color: 'text-mysql-teal',
-                });
-            }
-        }
-
-        return suggestions;
-    }
-
-    async #getColumnSuggestions(word) {
-        const suggestions = [];
-        const tables = this.#getReferencedTables();
-        const filterLower = word.toLowerCase();
-
-        for (const table of tables) {
-            const columns = await this.loadColumns(this.#currentDatabase, table);
-            for (const col of columns) {
-                if (col.toLowerCase().startsWith(filterLower)) {
-                    const details = this.#getColumnDetails(this.#currentDatabase, table, col);
-                    const alias = this.#findAliasForTable(table);
-                    const prefix = alias || table;
-
-                    suggestions.push({
-                        type: 'column',
-                        value: tables.length > 1 ? `${prefix}.${col}` : col,
-                        display: col,
-                        detail: `${table} (${details?.column_type || ''})`,
-                        icon: details?.column_key === 'PRI' ? 'key' : 'view_column',
-                        color: details?.column_key === 'PRI' ? 'text-yellow-400' : 'text-orange-400',
-                        isKey: details?.column_key === 'PRI',
-                    });
-                }
-            }
-        }
-
-        // Add comparison operators and SQL keywords
-        const operators = ['=', '!=', '<>', '>', '<', '>=', '<=', 'LIKE', 'IN', 'BETWEEN', 'IS NULL', 'IS NOT NULL'];
-        for (const op of operators) {
-            if (op.toLowerCase().startsWith(filterLower)) {
-                suggestions.push({
-                    type: 'operator',
-                    value: op,
-                    display: op,
-                    icon: 'code',
+            
+            // Also add * option
+            if ('*'.startsWith(suffix) || !suffix) {
+                suggestions.unshift({
+                    type: 'column',
+                    value: `${prefix}.*`,
+                    display: '*',
+                    detail: 'All columns',
+                    icon: 'select_all',
                     color: 'text-gray-400',
                 });
             }
@@ -559,27 +682,251 @@ export class SmartAutocomplete {
         return suggestions;
     }
 
-    async #getInsertColumnSuggestions(word) {
+    async #getSelectSuggestions(word) {
         const suggestions = [];
-        const filterLower = word.toLowerCase();
+        const wordLower = word.toLowerCase();
 
-        // Find the target table from INSERT INTO
-        const match = this.#currentQuery.match(/INSERT\s+INTO\s+`?(\w+)`?/i);
-        if (match && match[1]) {
-            const table = match[1];
-            const columns = await this.loadColumns(this.#currentDatabase, table);
-            
-            for (const col of columns) {
-                if (col.toLowerCase().startsWith(filterLower)) {
-                    const details = this.#getColumnDetails(this.#currentDatabase, table, col);
+        // Add aliases for quick access
+        if (this.#parsedQuery?.tables) {
+            for (const ref of this.#parsedQuery.tables) {
+                const name = ref.alias || ref.table;
+                if (name.toLowerCase().startsWith(wordLower)) {
                     suggestions.push({
-                        type: 'column',
-                        value: col,
-                        display: col,
-                        detail: details?.column_type || '',
-                        icon: 'view_column',
-                        color: 'text-orange-400',
+                        type: 'alias',
+                        value: name,
+                        display: name,
+                        detail: ref.alias ? `→ ${ref.table}` : 'table',
+                        icon: 'label',
+                        color: 'text-purple-400',
                     });
+                }
+            }
+        }
+
+        // Add columns from referenced tables
+        suggestions.push(...await this.#getColumnSuggestions(word));
+
+        // Add aggregate functions
+        for (const func of MYSQL_FUNCTIONS.aggregate) {
+            if (func.toLowerCase().startsWith(wordLower)) {
+                suggestions.push({
+                    type: 'function',
+                    value: `${func}()`,
+                    display: func,
+                    detail: 'Aggregate',
+                    icon: 'functions',
+                    color: 'text-pink-400',
+                });
+            }
+        }
+
+        // Add window functions
+        for (const func of MYSQL_FUNCTIONS.window) {
+            if (func.toLowerCase().startsWith(wordLower)) {
+                suggestions.push({
+                    type: 'function',
+                    value: `${func}() OVER ()`,
+                    display: func,
+                    detail: 'Window',
+                    icon: 'functions',
+                    color: 'text-pink-400',
+                });
+            }
+        }
+
+        // Add keywords
+        suggestions.push(...this.#getKeywordSuggestions(word, ['DISTINCT', 'ALL', 'AS', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'FROM']));
+
+        return suggestions;
+    }
+
+    async #getTableSuggestions(word) {
+        const suggestions = [];
+        const wordLower = word.toLowerCase();
+
+        // Add CTEs first
+        for (const cte of this.#parsedQuery?.ctes || []) {
+            if (cte.name.toLowerCase().startsWith(wordLower)) {
+                suggestions.push({
+                    type: 'cte',
+                    value: cte.name,
+                    display: cte.name,
+                    detail: 'CTE',
+                    icon: 'view_list',
+                    color: 'text-amber-400',
+                });
+            }
+        }
+
+        // Add databases
+        await this.loadDatabases();
+        for (const db of this.#databases) {
+            if (db.toLowerCase().startsWith(wordLower)) {
+                suggestions.push({
+                    type: 'database',
+                    value: db,
+                    display: db,
+                    detail: 'Database',
+                    icon: 'database',
+                    color: 'text-blue-400',
+                });
+            }
+        }
+
+        // Add tables from current database
+        const tables = await this.loadTables(this.#currentDb);
+        for (const table of tables) {
+            if (table.toLowerCase().startsWith(wordLower)) {
+                suggestions.push({
+                    type: 'table',
+                    value: table,
+                    display: table,
+                    detail: this.#currentDb,
+                    icon: 'table_rows',
+                    color: 'text-cyan-400',
+                });
+            }
+        }
+
+        // Add JOIN keywords if in JOIN context
+        suggestions.push(...this.#getKeywordSuggestions(word, ['INNER', 'LEFT', 'RIGHT', 'OUTER', 'CROSS', 'NATURAL', 'JOIN', 'ON']));
+
+        return suggestions;
+    }
+
+    async #getJoinConditionSuggestions(word) {
+        const suggestions = [];
+        const wordLower = word.toLowerCase();
+
+        // Get columns from all referenced tables with their aliases
+        for (const ref of this.#parsedQuery?.tables || []) {
+            const alias = ref.alias || ref.table;
+            const db = ref.database || this.#currentDb;
+            
+            if (alias.toLowerCase().startsWith(wordLower)) {
+                suggestions.push({
+                    type: 'alias',
+                    value: alias,
+                    display: alias,
+                    detail: `→ ${ref.table}`,
+                    icon: 'label',
+                    color: 'text-purple-400',
+                });
+            }
+
+            const columns = await this.loadColumns(db, ref.table);
+            for (const col of columns) {
+                const fullName = `${alias}.${col}`;
+                if (fullName.toLowerCase().startsWith(wordLower) || col.toLowerCase().startsWith(wordLower)) {
+                    const details = this.#getColumnDetail(db, ref.table, col);
+                    suggestions.push(this.#createColumnSuggestion(col, details, fullName));
+                }
+            }
+        }
+
+        // Suggest FK-based join conditions
+        suggestions.push(...await this.#getFKJoinSuggestions(word));
+
+        return suggestions;
+    }
+
+    async #getFKJoinSuggestions(word) {
+        const suggestions = [];
+        const tables = this.#parsedQuery?.tables || [];
+        
+        if (tables.length < 2) return suggestions;
+
+        // Get last joined table
+        const lastTable = tables[tables.length - 1];
+        const lastDb = lastTable.database || this.#currentDb;
+        const lastAlias = lastTable.alias || lastTable.table;
+
+        // Get FKs for the last table
+        const fks = await this.loadForeignKeys(lastDb, lastTable.table);
+        
+        for (const fk of fks) {
+            // Find if referenced table is in our query
+            const refTable = tables.find(t => 
+                t.table.toLowerCase() === fk.referenced_table_name?.toLowerCase()
+            );
+            
+            if (refTable) {
+                const refAlias = refTable.alias || refTable.table;
+                const condition = `${lastAlias}.${fk.column_name} = ${refAlias}.${fk.referenced_column_name}`;
+                
+                suggestions.push({
+                    type: 'join_hint',
+                    value: condition,
+                    display: condition,
+                    detail: '🔗 FK relationship',
+                    icon: 'link',
+                    color: 'text-green-400',
+                    priority: 100,
+                });
+            }
+        }
+
+        return suggestions;
+    }
+
+    async #getWhereSuggestions(word) {
+        const suggestions = [];
+        const wordLower = word.toLowerCase();
+
+        // Add aliases
+        for (const ref of this.#parsedQuery?.tables || []) {
+            const name = ref.alias || ref.table;
+            if (name.toLowerCase().startsWith(wordLower)) {
+                suggestions.push({
+                    type: 'alias',
+                    value: name,
+                    display: name,
+                    detail: ref.alias ? `→ ${ref.table}` : 'table',
+                    icon: 'label',
+                    color: 'text-purple-400',
+                });
+            }
+        }
+
+        // Add columns
+        suggestions.push(...await this.#getColumnSuggestions(word));
+
+        // Add operators based on context
+        const prevWord = this.#getPreviousWord();
+        if (prevWord && !this.#isKeyword(prevWord)) {
+            // Might be after a column name, suggest operators
+            suggestions.push(...this.#getOperatorSuggestions(word, prevWord));
+        }
+
+        // Add logical operators
+        suggestions.push(...this.#getKeywordSuggestions(word, ['AND', 'OR', 'NOT', 'IN', 'BETWEEN', 'LIKE', 'IS', 'NULL', 'EXISTS']));
+
+        // Add functions
+        suggestions.push(...this.#getFunctionSuggestions(word));
+
+        return suggestions;
+    }
+
+    async #getColumnSuggestions(word) {
+        const suggestions = [];
+        const wordLower = word.toLowerCase();
+        const addedCols = new Set();
+
+        for (const ref of this.#parsedQuery?.tables || []) {
+            const alias = ref.alias || ref.table;
+            const db = ref.database || this.#currentDb;
+            
+            const columns = await this.loadColumns(db, ref.table);
+            for (const col of columns) {
+                if (col.toLowerCase().startsWith(wordLower)) {
+                    const key = col.toLowerCase();
+                    if (!addedCols.has(key)) {
+                        addedCols.add(key);
+                        const details = this.#getColumnDetail(db, ref.table, col);
+                        const suggestion = this.#createColumnSuggestion(col, details, col);
+                        suggestion.detail = `${alias} • ${details?.column_type || ''}`;
+                        suggestions.push(suggestion);
+                    }
                 }
             }
         }
@@ -587,40 +934,18 @@ export class SmartAutocomplete {
         return suggestions;
     }
 
-    #getJoinOnSuggestions() {
+    async #getSetSuggestions(word) {
         const suggestions = [];
-
-        // Suggest "ON" keyword
-        suggestions.push({
-            type: 'keyword',
-            value: 'ON',
-            display: 'ON',
-            detail: 'Join condition',
-            icon: 'code',
-            color: 'text-purple-400',
-        });
-
-        // Try to find FK-based suggestions
-        const tables = this.#getReferencedTables();
-        if (tables.length >= 2) {
-            const lastTable = tables[tables.length - 1];
-            const key = `${this.#currentDatabase}.${lastTable}`;
-            const fks = this.#foreignKeys[key] || [];
-
-            for (const fk of fks) {
-                // Check if referenced table is in our query
-                if (tables.includes(fk.referenced_table)) {
-                    const alias1 = this.#findAliasForTable(lastTable) || lastTable;
-                    const alias2 = this.#findAliasForTable(fk.referenced_table) || fk.referenced_table;
-                    
-                    suggestions.push({
-                        type: 'join-hint',
-                        value: `ON ${alias1}.${fk.column_name} = ${alias2}.${fk.referenced_column}`,
-                        display: `${alias1}.${fk.column_name} = ${alias2}.${fk.referenced_column}`,
-                        detail: 'FK relationship',
-                        icon: 'link',
-                        color: 'text-green-400',
-                    });
+        
+        // For UPDATE SET, show columns of the table being updated
+        for (const ref of this.#parsedQuery?.tables || []) {
+            const db = ref.database || this.#currentDb;
+            const columns = await this.loadColumns(db, ref.table);
+            
+            for (const col of columns) {
+                if (col.toLowerCase().startsWith(word.toLowerCase())) {
+                    const details = this.#getColumnDetail(db, ref.table, col);
+                    suggestions.push(this.#createColumnSuggestion(col, details, `${col} = `));
                 }
             }
         }
@@ -630,51 +955,57 @@ export class SmartAutocomplete {
 
     async #getGeneralSuggestions(word) {
         const suggestions = [];
-        const filterUpper = (word || '').toUpperCase();
-        const filterLower = (word || '').toLowerCase();
 
-        // SQL Keywords (always show matching keywords)
-        for (const keyword of SQL_KEYWORDS.slice(0, 100)) {
-            if (!filterUpper || keyword.startsWith(filterUpper)) {
+        // Keywords
+        suggestions.push(...this.#getKeywordSuggestions(word, null));
+
+        // Tables
+        suggestions.push(...await this.#getTableSuggestions(word));
+
+        // Functions
+        suggestions.push(...this.#getFunctionSuggestions(word));
+
+        return suggestions;
+    }
+
+    #getSnippetSuggestions(word) {
+        const suggestions = [];
+        const wordLower = word.toLowerCase();
+        const allSnippets = [...BUILTIN_SNIPPETS, ...this.#userSnippets];
+
+        for (const snippet of allSnippets) {
+            if (snippet.trigger.toLowerCase().startsWith(wordLower) ||
+                snippet.name.toLowerCase().includes(wordLower)) {
+                suggestions.push({
+                    type: 'snippet',
+                    value: snippet.template,
+                    display: snippet.trigger,
+                    detail: snippet.name,
+                    description: snippet.description,
+                    icon: 'code',
+                    color: 'text-emerald-400',
+                    isSnippet: true,
+                    priority: 90,
+                });
+            }
+        }
+
+        return suggestions;
+    }
+
+    #getKeywordSuggestions(word, keywords = null) {
+        const suggestions = [];
+        const wordLower = word.toLowerCase();
+        const keywordList = keywords || SQL_KEYWORDS;
+
+        for (const kw of keywordList) {
+            if (kw.toLowerCase().startsWith(wordLower)) {
                 suggestions.push({
                     type: 'keyword',
-                    value: keyword,
-                    display: keyword,
+                    value: kw,
+                    display: kw,
                     icon: 'code',
-                    color: 'text-purple-400',
-                });
-            }
-        }
-
-        // Tables from current database
-        if (this.#currentDatabase) {
-            try {
-                const tables = await this.loadTables(this.#currentDatabase);
-                for (const table of tables) {
-                    if (!filterLower || table.toLowerCase().startsWith(filterLower)) {
-                        suggestions.push({
-                            type: 'table',
-                            value: table,
-                            display: table,
-                            icon: 'table_rows',
-                            color: 'text-cyan-400',
-                        });
-                    }
-                }
-            } catch (e) {
-                console.warn('Failed to load tables for suggestions:', e);
-            }
-        }
-
-        // Database names
-        for (const db of this.#databases) {
-            if (!filterLower || db.toLowerCase().startsWith(filterLower)) {
-                suggestions.push({
-                    type: 'database',
-                    value: db,
-                    display: db,
-                    icon: 'database',
-                    color: 'text-mysql-teal',
+                    color: 'text-violet-400',
                 });
             }
         }
@@ -682,124 +1013,242 @@ export class SmartAutocomplete {
         return suggestions;
     }
 
-    // ==================== Helpers ====================
+    #getFunctionSuggestions(word) {
+        const suggestions = [];
+        const wordLower = word.toLowerCase();
 
-    #getColumnDetails(database, table, column) {
+        for (const [category, funcs] of Object.entries(MYSQL_FUNCTIONS)) {
+            for (const func of funcs) {
+                if (func.toLowerCase().startsWith(wordLower)) {
+                    suggestions.push({
+                        type: 'function',
+                        value: `${func}()`,
+                        display: func,
+                        detail: category,
+                        icon: 'functions',
+                        color: 'text-pink-400',
+                    });
+                }
+            }
+        }
+
+        return suggestions;
+    }
+
+    #getOperatorSuggestions(word, contextColumn) {
+        const suggestions = [];
+        // Determine column type if possible
+        let columnType = 'string'; // default
+        
+        // Look up column type
+        for (const ref of this.#parsedQuery?.tables || []) {
+            const db = ref.database || this.#currentDb;
+            const key = `${db}.${ref.table}`;
+            const details = this.#columnDetails[key];
+            if (details) {
+                const col = details.find(c => c.column_name.toLowerCase() === contextColumn.toLowerCase());
+                if (col) {
+                    const type = col.data_type?.toLowerCase() || '';
+                    if (['int', 'bigint', 'smallint', 'tinyint', 'decimal', 'float', 'double', 'numeric'].some(t => type.includes(t))) {
+                        columnType = 'numeric';
+                    } else if (['date', 'time', 'datetime', 'timestamp', 'year'].some(t => type.includes(t))) {
+                        columnType = 'date';
+                    } else if (type.includes('json')) {
+                        columnType = 'json';
+                    } else if (type.includes('blob') || type.includes('binary')) {
+                        columnType = 'blob';
+                    }
+                    break;
+                }
+            }
+        }
+
+        const operators = TYPE_OPERATORS[columnType] || TYPE_OPERATORS.string;
+        for (const op of operators) {
+            if (op.toLowerCase().startsWith(word.toLowerCase())) {
+                suggestions.push({
+                    type: 'operator',
+                    value: ` ${op} `,
+                    display: op,
+                    detail: `${columnType} operator`,
+                    icon: 'calculate',
+                    color: 'text-orange-400',
+                });
+            }
+        }
+
+        return suggestions;
+    }
+
+    #getCTEColumnSuggestions(cteName, prefix, suffix) {
+        // For CTEs, we'd need to parse the CTE definition to get columns
+        // For now, return generic suggestions
+        return [{
+            type: 'column',
+            value: `${prefix}.*`,
+            display: '*',
+            detail: 'All columns from CTE',
+            icon: 'view_column',
+            color: 'text-orange-400',
+        }];
+    }
+
+    // ==================== HELPERS ====================
+
+    #createColumnSuggestion(column, details, value) {
+        const isPK = details?.column_key === 'PRI';
+        const isFK = details?.column_key === 'MUL';
+        const isUnique = details?.column_key === 'UNI';
+        
+        let icon = 'view_column';
+        let color = 'text-orange-400';
+        
+        if (isPK) {
+            icon = 'key';
+            color = 'text-yellow-400';
+        } else if (isFK) {
+            icon = 'link';
+            color = 'text-green-400';
+        } else if (isUnique) {
+            icon = 'fingerprint';
+            color = 'text-blue-400';
+        }
+
+        return {
+            type: 'column',
+            value: value,
+            display: column,
+            detail: details?.column_type || '',
+            icon,
+            color,
+            isKey: isPK,
+            isFK,
+            isNullable: details?.is_nullable === true,
+        };
+    }
+
+    #getColumnDetail(database, table, column) {
         const key = `${database}.${table}`;
         const details = this.#columnDetails[key];
-        if (details) {
-            return details.find(c => c.name === column);
-        }
-        return null;
+        if (!details) return null;
+        // Backend returns 'name' not 'column_name'
+        return details.find(c => c.name === column);
     }
 
-    #findAliasForTable(table) {
-        for (const [alias, tableName] of Object.entries(this.#aliases)) {
-            if (tableName === table) {
-                return alias;
+    #getPreviousWord() {
+        const before = this.#query.substring(0, this.#cursorPos).trim();
+        const words = before.split(/\s+/);
+        return words.length >= 2 ? words[words.length - 2] : null;
+    }
+
+    #sortAndDedupe(suggestions, word) {
+        const seen = new Set();
+        const unique = [];
+        
+        for (const s of suggestions) {
+            const key = `${s.type}:${s.value}`;
+            if (!seen.has(key)) {
+                seen.add(key);
+                // Calculate score
+                s.score = this.#calculateScore(s, word);
+                unique.push(s);
             }
         }
-        return null;
+
+        return unique.sort((a, b) => b.score - a.score);
     }
 
-    #sortByRelevance(suggestions, word) {
-        return suggestions.sort((a, b) => {
-            // Primary key columns first
-            if (a.isKey && !b.isKey) return -1;
-            if (!a.isKey && b.isKey) return 1;
+    #calculateScore(suggestion, word) {
+        let score = 0;
+        const wordLower = word.toLowerCase();
+        const valueLower = (suggestion.display || suggestion.value).toLowerCase();
 
-            // Then by frequency
-            const freqA = this.#frequencyData[a.value] || 0;
-            const freqB = this.#frequencyData[b.value] || 0;
-            if (freqA !== freqB) return freqB - freqA;
+        // Exact match bonus
+        if (valueLower === wordLower) score += 100;
+        
+        // Starts with bonus
+        if (valueLower.startsWith(wordLower)) score += 50;
 
-            // Then by exact match
-            const exactA = a.value.toLowerCase() === word.toLowerCase();
-            const exactB = b.value.toLowerCase() === word.toLowerCase();
-            if (exactA && !exactB) return -1;
-            if (!exactA && exactB) return 1;
+        // Priority bonus (for FK hints, snippets, etc.)
+        score += suggestion.priority || 0;
 
-            // Then alphabetically
-            return a.value.localeCompare(b.value);
-        });
+        // Type priority
+        const typePriority = {
+            'snippet': 45,
+            'join_hint': 40,
+            'alias': 35,
+            'column': 30,
+            'table': 25,
+            'cte': 20,
+            'function': 15,
+            'keyword': 10,
+            'database': 5,
+            'operator': 3,
+        };
+        score += typePriority[suggestion.type] || 0;
+
+        // Frequency bonus
+        const freqKey = `${suggestion.type}:${suggestion.value}`;
+        score += (this.#frequencyData[freqKey] || 0) * 2;
+
+        // PK/FK bonus
+        if (suggestion.isKey) score += 15;
+        if (suggestion.isFK) score += 10;
+
+        return score;
     }
 
-    /**
-     * Record a selection to learn from
-     */
-    recordSelection(value) {
-        this.#frequencyData[value] = (this.#frequencyData[value] || 0) + 1;
-        this.#saveFrequencyData();
+    #getFallbackSuggestions() {
+        return SQL_KEYWORDS.slice(0, 15).map(kw => ({
+            type: 'keyword',
+            value: kw,
+            display: kw,
+            icon: 'code',
+            color: 'text-violet-400',
+        }));
     }
 
-    /**
-     * Get JOIN suggestions based on foreign keys
-     */
-    async getJoinSuggestions(table) {
-        const fks = await this.loadForeignKeys(this.#currentDatabase, table);
-        const suggestions = [];
+    // ==================== STORAGE ====================
 
-        for (const fk of fks) {
-            suggestions.push({
-                type: 'join',
-                joinType: 'INNER JOIN',
-                table: fk.referenced_table,
-                condition: `${table}.${fk.column_name} = ${fk.referenced_table}.${fk.referenced_column}`,
-                snippet: `INNER JOIN ${fk.referenced_table} ON ${table}.${fk.column_name} = ${fk.referenced_table}.${fk.referenced_column}`,
-            });
-            
-            suggestions.push({
-                type: 'join',
-                joinType: 'LEFT JOIN',
-                table: fk.referenced_table,
-                condition: `${table}.${fk.column_name} = ${fk.referenced_table}.${fk.referenced_column}`,
-                snippet: `LEFT JOIN ${fk.referenced_table} ON ${table}.${fk.column_name} = ${fk.referenced_table}.${fk.referenced_column}`,
-            });
+    #loadStoredData() {
+        try {
+            const freq = localStorage.getItem(STORAGE_KEYS.FREQUENCY);
+            if (freq) this.#frequencyData = JSON.parse(freq);
+
+            const history = localStorage.getItem(STORAGE_KEYS.HISTORY);
+            if (history) this.#queryHistory = JSON.parse(history);
+
+            const snippets = localStorage.getItem(STORAGE_KEYS.SNIPPETS);
+            if (snippets) this.#userSnippets = JSON.parse(snippets);
+        } catch (e) {
+            console.error('Failed to load stored autocomplete data:', e);
         }
-
-        return suggestions;
     }
 
-    /**
-     * Generate smart snippets based on table structure
-     */
-    async generateSelectSnippet(table) {
-        const columns = await this.loadColumns(this.#currentDatabase, table);
-        const columnList = columns.join(', ');
-        return `SELECT ${columnList}\nFROM ${table}\nWHERE 1=1`;
+    #saveFrequencyData() {
+        try {
+            localStorage.setItem(STORAGE_KEYS.FREQUENCY, JSON.stringify(this.#frequencyData));
+        } catch (e) {
+            console.error('Failed to save frequency data:', e);
+        }
     }
 
-    async generateInsertSnippet(table) {
-        const columns = await this.loadColumns(this.#currentDatabase, table);
-        const columnList = columns.join(', ');
-        const placeholders = columns.map(() => '?').join(', ');
-        return `INSERT INTO ${table} (${columnList})\nVALUES (${placeholders})`;
+    #saveQueryHistory() {
+        try {
+            localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(this.#queryHistory));
+        } catch (e) {
+            console.error('Failed to save query history:', e);
+        }
     }
 
-    async generateUpdateSnippet(table) {
-        const columns = await this.loadColumns(this.#currentDatabase, table);
-        const key = `${this.#currentDatabase}.${table}`;
-        const details = this.#columnDetails[key] || [];
-        
-        const pkColumn = details.find(c => c.column_key === 'PRI')?.name || columns[0];
-        const setClauses = columns
-            .filter(c => c !== pkColumn)
-            .map(c => `    ${c} = ?`)
-            .join(',\n');
-        
-        return `UPDATE ${table}\nSET\n${setClauses}\nWHERE ${pkColumn} = ?`;
-    }
-
-    /**
-     * Clear caches
-     */
-    clearCache() {
-        this.#tables = {};
-        this.#columns = {};
-        this.#columnDetails = {};
-        this.#foreignKeys = {};
+    #saveUserSnippets() {
+        try {
+            localStorage.setItem(STORAGE_KEYS.SNIPPETS, JSON.stringify(this.#userSnippets));
+        } catch (e) {
+            console.error('Failed to save user snippets:', e);
+        }
     }
 }
 
-// Initialize singleton
+// Export singleton instance
 export const smartAutocomplete = SmartAutocomplete.getInstance();
