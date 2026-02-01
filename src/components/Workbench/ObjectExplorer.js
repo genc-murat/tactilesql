@@ -29,6 +29,10 @@ export function ObjectExplorer() {
     let userDbsExpanded = true; // State for user databases fold
     let systemDbsExpanded = true; // State for system databases fold
 
+    // Drag and Drop state (persisted outside render)
+    let draggedConnId = null;
+    let draggedNode = null;
+
     const systemDatabases = ['mysql', 'information_schema', 'performance_schema', 'sys'];
 
     // --- Helper to render table details ---
@@ -253,7 +257,7 @@ export function ObjectExplorer() {
         }
 
         return `
-            <div class="connection-node cursor-move" data-conn-id="${conn.id}" draggable="true">
+            <div class="connection-node cursor-move select-none" data-conn-id="${conn.id}" draggable="true">
                 <div class="conn-item flex items-center gap-2 py-1.5 px-2 rounded-md ${bgClass} transition-colors group" data-id="${conn.id}" style="${customStyle}">
                     <span class="drag-handle material-symbols-outlined text-xs ${arrowColor} cursor-grab">drag_indicator</span>
                     <span class="material-symbols-outlined text-xs transition-transform ${isActive ? 'rotate-90' : ''} ${arrowColor}">arrow_right</span>
@@ -306,8 +310,6 @@ export function ObjectExplorer() {
         `;
 
         // Connection Interaction
-        let draggedConnId = null;
-        let draggedNode = null;
 
         // Setup drag and drop on connection nodes
         explorer.querySelectorAll('.connection-node').forEach(connNode => {
@@ -336,6 +338,11 @@ export function ObjectExplorer() {
                 connNode.style.opacity = '0.5';
                 e.dataTransfer.effectAllowed = 'move';
                 e.dataTransfer.setData('text/plain', draggedConnId);
+
+                // For some browsers, we need to explicitly set the drag image or at least ensure it's not selecting text
+                if (e.dataTransfer.setDragImage && e.currentTarget.querySelector('.conn-item')) {
+                    // This can help ensure the whole item is dragged visually
+                }
             });
 
             connNode.addEventListener('dragend', (e) => {
@@ -352,6 +359,13 @@ export function ObjectExplorer() {
 
         // Handle drag over, drop on connection nodes
         explorer.querySelectorAll('.connection-node').forEach(connNode => {
+            connNode.addEventListener('dragenter', (e) => {
+                e.preventDefault();
+                if (draggedConnId && draggedConnId !== connNode.dataset.connId) {
+                    e.dataTransfer.dropEffect = 'move';
+                }
+            });
+
             connNode.addEventListener('dragover', (e) => {
                 e.preventDefault();
                 if (!draggedConnId) return;
