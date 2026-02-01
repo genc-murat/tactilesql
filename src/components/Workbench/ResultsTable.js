@@ -177,7 +177,7 @@ export function ResultsTable() {
     let selectedRows = new Set();
     let hiddenColumns = new Set();
     let showColumnMenu = false;
-    
+
     // Virtual scrolling state
     let useVirtualScroll = false;
     let virtualScrollState = {
@@ -195,9 +195,13 @@ export function ResultsTable() {
 
     const generateTabId = () => `tab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-    const addResultTab = (query, data) => {
+    const addResultTab = (query, data, titleOverride = null) => {
         const id = generateTabId();
-        const title = query.trim().substring(0, 30) + (query.length > 30 ? '...' : '');
+        let title = titleOverride;
+
+        if (!title) {
+            title = query.trim().substring(0, 30) + (query.length > 30 ? '...' : '');
+        }
 
         // Remove oldest unpinned tab if at max
         if (resultTabs.length >= MAX_TABS) {
@@ -256,8 +260,6 @@ export function ResultsTable() {
             hiddenColumns.clear();
         }
     };
-
-    const getActiveTab = () => resultTabs.find(t => t.id === activeTabId);
 
     // --- Helpers ---
     const formatCellForTitle = (cell) => {
@@ -350,7 +352,7 @@ export function ResultsTable() {
         // Attach column toggle events
         columnList.querySelectorAll('.column-toggle-checkbox').forEach(checkbox => {
             checkbox.addEventListener('change', (e) => {
-                const colIdx = parseInt(e.target.dataset.colIdx);
+                const colIdx = parseInt(e.target.dataset.col - idx);
                 if (e.target.checked) {
                     hiddenColumns.delete(colIdx);
                 } else {
@@ -375,15 +377,18 @@ export function ResultsTable() {
     };
 
     const checkIfEditable = async (query) => {
+        // Strip comments for check
+        const cleanQuery = query.replace(/--.*$|\/\*[\s\S]*?\*\//gm, '').trim();
+
         // Only editable if it's a simple SELECT query (no JOIN, etc.)
-        if (!query || !/^\s*SELECT/i.test(query)) {
+        if (!cleanQuery || !/^\s*SELECT/i.test(cleanQuery)) {
             return false;
         }
-        if (/JOIN/i.test(query)) {
+        if (/JOIN/i.test(cleanQuery) || /UNION/i.test(cleanQuery) || /GROUP BY/i.test(cleanQuery)) {
             return false;
         }
 
-        tableName = extractTableName(query);
+        tableName = extractTableName(cleanQuery);
         if (!tableName) {
             return false;
         }
@@ -586,7 +591,7 @@ export function ResultsTable() {
         // Create loading overlay
         const overlay = LoadingStates.overlay('Executing query...');
         overlay.id = 'query-loading-overlay';
-        
+
         // Add to table container
         tableContainer.style.position = 'relative';
         tableContainer.appendChild(overlay);
@@ -608,7 +613,7 @@ export function ResultsTable() {
     // Virtual scroll render function
     const renderVirtualRows = () => {
         if (!useVirtualScroll) return;
-        
+
         const tbody = container.querySelector('tbody');
         const tableWrapper = container.querySelector('.flex-1.overflow-auto');
         if (!tbody || !tableWrapper) return;
@@ -621,7 +626,7 @@ export function ResultsTable() {
         // Calculate visible range
         const startIdx = Math.max(0, Math.floor(scrollTop / rowHeight) - overscan);
         const endIdx = Math.min(totalRows - 1, Math.ceil((scrollTop + viewportHeight) / rowHeight) + overscan);
-        
+
         virtualScrollState.visibleStart = startIdx;
         virtualScrollState.visibleEnd = endIdx;
 
@@ -636,7 +641,7 @@ export function ResultsTable() {
 
         // Build visible rows
         const visibleRowsHtml = [];
-        
+
         // Top spacer
         if (startIdx > 0) {
             visibleRowsHtml.push(`<tr class="virtual-top-spacer"><td colspan="100" style="height: ${startIdx * rowHeight}px; padding: 0; border: none;"></td></tr>`);
@@ -645,7 +650,7 @@ export function ResultsTable() {
         for (let idx = startIdx; idx <= endIdx; idx++) {
             const row = currentData.rows[idx];
             if (!row) continue;
-            
+
             visibleRowsHtml.push(renderSingleRow(row, idx));
         }
 
@@ -656,7 +661,7 @@ export function ResultsTable() {
         }
 
         tbody.innerHTML = visibleRowsHtml.join('');
-        
+
         // Reattach events for visible rows
         attachRowEvents(tbody);
     };
@@ -816,7 +821,7 @@ export function ResultsTable() {
             } else if (useVirtualScroll) {
                 // Use virtual scrolling for large datasets
                 renderVirtualRows();
-                
+
                 // Attach scroll listener for virtual scrolling
                 const tableWrapper = container.querySelector('.flex-1.overflow-auto');
                 if (tableWrapper && !tableWrapper._vsScrollAttached) {
@@ -884,7 +889,7 @@ export function ResultsTable() {
 
                 tbody.innerHTML = insertRows + dataRows;
             }
-            
+
             // Attach row events (for non-virtual scroll mode)
             if (!useVirtualScroll) {
                 attachRowEvents(tbody);
@@ -969,7 +974,6 @@ export function ResultsTable() {
                 }
                 updateSelectionIndicator();
 
-                // Update row highlight
                 const row = e.target.closest('tr');
                 if (row) {
                     if (e.target.checked) {
@@ -1070,11 +1074,11 @@ export function ResultsTable() {
         if (copySelectedBtn) {
             copySelectedBtn.addEventListener('click', () => {
                 if (selectedRows.size === 0) return;
-                
+
                 const selectedRowsData = Array.from(selectedRows)
                     .sort((a, b) => a - b)
                     .map(rowIdx => currentData.rows[rowIdx]);
-                
+
                 copyToClipboard(currentData.columns, selectedRowsData);
             });
         }
@@ -1192,23 +1196,6 @@ export function ResultsTable() {
                 }
             });
         }
-    }
-
-    // --- Theme Change Handling ---
-    const onThemeChange = (e) => {
-        theme = e.detail.theme;
-        isLight = theme === 'light';
-        isOceanic = theme === 'oceanic';
-        renderControls();
-        if (currentData.columns.length > 0) {
-            renderTable(currentData);
-        }
-    };
-    window.addEventListener('themechange', onThemeChange);
-
-    // Patch for cleanup
-    container.onUnmount = () => {
-        window.removeEventListener('themechange', onThemeChange);
     };
 
     // Listen for results
@@ -1219,12 +1206,29 @@ export function ResultsTable() {
             hiddenColumns.clear(); // Reset column visibility on new query
             updateSelectionIndicator();
 
-            // Add to result tabs
-            const query = e.detail.query || e.detail.metadata?.query || 'Query Result';
-            addResultTab(query, e.detail);
+            const results = Array.isArray(e.detail) ? e.detail : [e.detail];
 
+            if (results.length === 0) {
+                // Cleared results / loading state only
+                hideLoadingSkeleton();
+                return;
+            }
+
+            results.forEach((res, idx) => {
+                const query = res.query || res.metadata?.query || 'Query Result';
+                // If multiple results, try to give distinct titles
+                let title = res.title;
+                if (!title && results.length > 1) {
+                    title = `Result ${idx + 1}`;
+                }
+
+                addResultTab(query, res, title);
+            });
+
+            // The last added tab is active
+            const lastRes = results[results.length - 1];
             renderControls(); // Re-render to show new tab
-            renderTable(e.detail);
+            renderTable(lastRes);
         }
     });
 

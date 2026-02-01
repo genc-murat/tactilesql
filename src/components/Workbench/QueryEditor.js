@@ -204,6 +204,38 @@ export function QueryEditor() {
         return results.slice(0, 10);
     };
 
+    const getWordAtPosition = (text, index) => {
+        if (index < 0 || index >= text.length && index !== 0) return null;
+
+        // Characters allowed in identifiers
+        const isWordChar = (char) => /[a-zA-Z0-9_]/.test(char);
+
+        let start = index;
+        let end = index;
+
+        // If clicking exactly at the end of a word or in whitespace, adjust strategy?
+        // Textarea selection correlates to cursor position.
+        // If cursor is at "table|" we want "table".
+        // If cursor is at "|table" we want "table".
+
+        // 1. Check if current char is word char. If not, maybe we are at end of word? check prev char.
+        if (index > 0 && !isWordChar(text[index]) && isWordChar(text[index - 1])) {
+            start--;
+            end--;
+        }
+
+        while (start > 0 && isWordChar(text[start - 1])) {
+            start--;
+        }
+        while (end < text.length && isWordChar(text[end])) {
+            end++;
+        }
+
+        if (start === end) return null; // No word found
+
+        return text.substring(start, end);
+    };
+
     const showAutocomplete = async (textarea) => {
         const word = getCurrentWord(textarea);
         suggestions = await getSuggestions(word);
@@ -536,6 +568,53 @@ export function QueryEditor() {
                 showAutocomplete(textarea);
             });
 
+            // Ctrl+Click Navigation
+            textarea.addEventListener('click', async (e) => {
+                if (!e.ctrlKey) return;
+
+                const cursorIndex = textarea.selectionStart;
+                const word = getWordAtPosition(textarea.value, cursorIndex);
+                if (!word) return;
+
+                const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+                const currentDb = activeConfig.database;
+
+                let targetDb = currentDb;
+                let targetTable = word;
+
+                let found = false;
+
+                // 1. Check in current DB
+                if (currentDb && cachedTables[currentDb] && cachedTables[currentDb].includes(targetTable)) {
+                    found = true;
+                }
+
+                // 2. If not found, check if it's a known table in ANY db
+                if (!found) {
+                    for (const db of Object.keys(cachedTables)) {
+                        if (cachedTables[db].includes(targetTable)) {
+                            targetDb = db;
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (found) {
+                    e.preventDefault();
+                    // Show temporary toast
+                    const toast = document.createElement('div');
+                    toast.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-black/80 text-white px-4 py-2 rounded-lg z-[9999] text-sm font-bold flex items-center gap-2';
+                    toast.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span> Opening Schema...';
+                    document.body.appendChild(toast);
+
+                    setTimeout(() => {
+                        window.location.hash = `/schema?db=${targetDb}&table=${targetTable}`;
+                        setTimeout(() => toast.remove(), 500);
+                    }, 100);
+                }
+            });
+
             // Keyboard handling for autocomplete
             textarea.addEventListener('keydown', (e) => {
                 if (autocompleteVisible) {
@@ -789,14 +868,22 @@ export function QueryEditor() {
                     window.dispatchEvent(new CustomEvent('tactilesql:query-executing'));
 
                     // Execute query - UI stays responsive due to async/await
-                    const result = await invoke('execute_query', { query: editorContent });
+                    const results = await invoke('execute_query', { query: editorContent });
                     const endTime = performance.now();
                     lastExecutionTime = Math.round(endTime - startTime);
 
-                    // Add query to result for editability detection
-                    result.query = editorContent;
+                    // Ensure results is always an array
+                    const resultsArray = Array.isArray(results) ? results : [results];
 
-                    const event = new CustomEvent('tactilesql:query-result', { detail: result });
+                    // Add query to each result for context
+                    resultsArray.forEach((res, idx) => {
+                        res.query = editorContent;
+                        if (resultsArray.length > 1) {
+                            res.title = `Result ${idx + 1}`;
+                        }
+                    });
+
+                    const event = new CustomEvent('tactilesql:query-result', { detail: resultsArray });
                     window.dispatchEvent(event);
 
                     // Dispatch History Success
@@ -813,6 +900,7 @@ export function QueryEditor() {
                     render();
 
                 } catch (error) {
+                    console.error(error);
                     const endTime = performance.now();
                     lastExecutionTime = Math.round(endTime - startTime);
 

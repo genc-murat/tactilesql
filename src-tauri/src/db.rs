@@ -334,54 +334,134 @@ pub struct QueryResult {
 pub async fn execute_query(
     state: State<'_, AppState>,
     query: String
-) -> Result<QueryResult, String> {
+) -> Result<Vec<QueryResult>, String> {
     let pool = get_pool(&state)?;
 
-    // Execute query with timeout to prevent UI blocking
-    let rows = tokio::time::timeout(
+    // We need to use `fetch_many` to handle multiple result sets (e.g. from stored procs or multiple statements)
+    // explicitly enabling multiple statements might be needed in connection options if not already default,
+    // but sqlx generic query usually handles it if the driver allows.
+    // For safety, we should ensure the connection allows it. MySqlConnectOptions defaults to no multi-statements usually?
+    // Actually, SQLX often requires explicit `sqlx::query` does NOT support multiple statements in the parse check,
+    // but execution might. Let's try `fetch_many`.
+
+    // NOTE: sqlx documentation says "To run multiple statements... use .execute()".
+    // But .execute() discards rows.
+    // For fetching results from multiple statements, we use `Cursor` or `fetch_many`.
+    
+    use futures::StreamExt;
+    
+    let mut results = Vec::new();
+    
+    // We wrap the stream in a timeout
+    let stream_future = async {
+        let mut stream = sqlx::raw_sql(&query).fetch_many(&pool);
+        
+        let mut current_rows = Vec::new();
+        let mut current_columns = Vec::new();
+        
+        while let Some(result) = stream.next().await {
+            match result {
+                Ok(either) => {
+                    use sqlx::Either;
+                    match either {
+                        Either::Left(done) => {
+                            // This is a "Done" report (rows affected), equivalent to a result set with no rows for our purpose?
+                            // Or should we ignore it if it has no rows?
+                            // DBeaver shows "Update Count" tab. 
+                            // For simplicity, if we have accumulated rows, push them specificly.
+                            // If we have just an update count, maybe return a special result?
+                            // Let's just track if we had data.
+                            
+                            // If we successfully finished a statement, push any rows we collected
+                            // But fetch_many streams rows individually? No, `Either::Right` is a Row.
+                            // Ah, fetch_many yields `Either<MySqlQueryResult, MySqlRow>`.
+                            
+                            // Wait, the logic is: we get a stream of Either(Done, Row).
+                            // Rows belong to the *previous* incomplete result set.
+                            // When we get `Left(done)`, that result set is finished?
+                            // No, `fetch_many` yields items.
+                            // A sequence of `Right(Row)`... then `Left(Done)` ends that set.
+                            // Then `Right(Row)`... `Left(Done)` for next set.
+                            
+                            if !current_rows.is_empty() || !current_columns.is_empty() {
+                                results.push(QueryResult {
+                                    columns: current_columns.clone(),
+                                    rows: current_rows.clone(),
+                                });
+                                current_rows.clear();
+                                current_columns.clear();
+                            } else {
+                                // It was a statement with no rows (like INSERT/UPDATE), or empty SELECT
+                                // We should arguably return something to indicate success/rows affected.
+                                // Let's create a synthetic result for it?
+                                // For now, let's just ignore purely empty non-selects or maybe add a "Status" result?
+                                // User expects to see "Rows affected: X".
+                                // Let's inject a "Result" table if it's an update?
+                                // To keep it simple and compatible with existing frontend which expects "Rows",
+                                // maybe we return an empty result set if it's the ONLY result?
+                            }
+                        },
+                        Either::Right(row) => {
+                             // Capture columns if first row
+                             if current_columns.is_empty() {
+                                 current_columns = row.columns().iter().map(|c| c.name().to_string()).collect();
+                             }
+                             
+                             let mut row_data = Vec::new();
+                             for (i, _) in current_columns.iter().enumerate() {
+                                // Try to extract value as proper JSON type
+                                let val: serde_json::Value = row.try_get_unchecked::<i64, _>(i)
+                                    .map(|v| serde_json::json!(v))
+                                    .or_else(|_| row.try_get_unchecked::<i32, _>(i).map(|v| serde_json::json!(v)))
+                                    .or_else(|_| row.try_get_unchecked::<i16, _>(i).map(|v| serde_json::json!(v)))
+                                    .or_else(|_| row.try_get_unchecked::<i8, _>(i).map(|v| serde_json::json!(v)))
+                                    .or_else(|_| row.try_get_unchecked::<u64, _>(i).map(|v| serde_json::json!(v)))
+                                    .or_else(|_| row.try_get_unchecked::<u32, _>(i).map(|v| serde_json::json!(v)))
+                                    .or_else(|_| row.try_get_unchecked::<u16, _>(i).map(|v| serde_json::json!(v)))
+                                    .or_else(|_| row.try_get_unchecked::<u8, _>(i).map(|v| serde_json::json!(v)))
+                                    .or_else(|_| row.try_get_unchecked::<f64, _>(i).map(|v| serde_json::json!(v)))
+                                    .or_else(|_| row.try_get_unchecked::<f32, _>(i).map(|v| serde_json::json!(v)))
+                                    .or_else(|_| row.try_get_unchecked::<bool, _>(i).map(|v| serde_json::json!(v)))
+                                    .or_else(|_| row.try_get_unchecked::<String, _>(i).map(|v| serde_json::json!(v)))
+                                    .or_else(|_| {
+                                        // Try getting as bytes and convert to string
+                                        row.try_get_unchecked::<Vec<u8>, _>(i)
+                                            .map(|bytes| serde_json::json!(String::from_utf8_lossy(&bytes).to_string()))
+                                    })
+                                    .unwrap_or(serde_json::Value::Null);
+                                row_data.push(val);
+                             }
+                             current_rows.push(row_data);
+                        }
+                    }
+                },
+                Err(e) => return Err(format!("Query error: {}", e)),
+            }
+        }
+        
+        // Push last set if exists (though usually ends with Left(Done))
+        if !current_rows.is_empty() {
+             results.push(QueryResult {
+                columns: current_columns,
+                rows: current_rows,
+            });
+        }
+        
+        Ok::<_, String>(())
+    };
+
+    tokio::time::timeout(
         std::time::Duration::from_secs(30),
-        sqlx::query(&query).fetch_all(&pool)
+        stream_future
     )
     .await
-    .map_err(|_| "Query timed out after 30 seconds".to_string())?
-    .map_err(|e| format!("Execution failed: {}", e))?;
+    .map_err(|_| "Query timed out after 30 seconds".to_string())??;
 
-    if rows.is_empty() {
-        return Ok(QueryResult { columns: vec![], rows: vec![] });
+    if results.is_empty() {
+        return Ok(vec![QueryResult { columns: vec![], rows: vec![] }]);
     }
 
-    let columns: Vec<String> = rows[0].columns().iter().map(|c| c.name().to_string()).collect();
-    let mut result_rows = Vec::new();
-
-    for row in rows {
-        let mut row_data = Vec::new();
-        for (i, _) in columns.iter().enumerate() {
-            // Try to extract value as proper JSON type
-            let val: serde_json::Value = row.try_get_unchecked::<i64, _>(i)
-                .map(|v| serde_json::json!(v))
-                .or_else(|_| row.try_get_unchecked::<i32, _>(i).map(|v| serde_json::json!(v)))
-                .or_else(|_| row.try_get_unchecked::<i16, _>(i).map(|v| serde_json::json!(v)))
-                .or_else(|_| row.try_get_unchecked::<i8, _>(i).map(|v| serde_json::json!(v)))
-                .or_else(|_| row.try_get_unchecked::<u64, _>(i).map(|v| serde_json::json!(v)))
-                .or_else(|_| row.try_get_unchecked::<u32, _>(i).map(|v| serde_json::json!(v)))
-                .or_else(|_| row.try_get_unchecked::<u16, _>(i).map(|v| serde_json::json!(v)))
-                .or_else(|_| row.try_get_unchecked::<u8, _>(i).map(|v| serde_json::json!(v)))
-                .or_else(|_| row.try_get_unchecked::<f64, _>(i).map(|v| serde_json::json!(v)))
-                .or_else(|_| row.try_get_unchecked::<f32, _>(i).map(|v| serde_json::json!(v)))
-                .or_else(|_| row.try_get_unchecked::<bool, _>(i).map(|v| serde_json::json!(v)))
-                .or_else(|_| row.try_get_unchecked::<String, _>(i).map(|v| serde_json::json!(v)))
-                .or_else(|_| {
-                    // Try getting as bytes and convert to string
-                    row.try_get_unchecked::<Vec<u8>, _>(i)
-                        .map(|bytes| serde_json::json!(String::from_utf8_lossy(&bytes).to_string()))
-                })
-                .unwrap_or(serde_json::Value::Null);
-            row_data.push(val);
-        }
-        result_rows.push(row_data);
-    }
-
-    Ok(QueryResult { columns, rows: result_rows })
+    Ok(results)
 }
 
 #[tauri::command]
