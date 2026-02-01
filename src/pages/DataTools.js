@@ -234,7 +234,7 @@ export function DataTools() {
         const isOceanic = theme === 'oceanic';
 
         container.innerHTML = `
-            <div class="max-w-5xl mx-auto w-full">
+            <div class="w-full h-full">
                 <!-- Header -->
                 <div class="flex items-center justify-between mb-6">
                     <div class="flex items-center gap-4">
