@@ -20,6 +20,7 @@ export function AuditTrail() {
     let totalEntries = 0;
     let statistics = null;
     let similarGroups = [];
+    let workloadProfiles = [];
     let filters = {
         searchTerm: '',
         status: '',
@@ -47,6 +48,7 @@ export function AuditTrail() {
             filterOptions = auditTrail.getFilterOptions();
             const similaritySource = auditTrail.getEntries({ ...filters, limit: 1000, offset: 0 }).entries;
             similarGroups = buildSimilarityGroups(similaritySource);
+            workloadProfiles = buildWorkloadProfiles(similaritySource);
             isLoading = false;
             render();
         }, 50);
@@ -110,6 +112,69 @@ export function AuditTrail() {
                 databases: Array.from(g.databases),
                 users: Array.from(g.users),
             }));
+    };
+
+    const buildWorkloadProfiles = (entriesToGroup) => {
+        const groups = new Map();
+
+        for (const entry of entriesToGroup) {
+            if (!entry?.query) continue;
+            const signature = normalizeQuery(entry.query);
+            if (!signature || signature.length < 10) continue;
+
+            const table = entry.tables?.[0] || '-';
+            const key = `${entry.queryType}:${table}:${signature}`;
+
+            if (!groups.has(key)) {
+                groups.set(key, {
+                    signature,
+                    queryType: entry.queryType,
+                    table,
+                    count: 0,
+                    errorCount: 0,
+                    totalDuration: 0,
+                    sampleQuery: entry.query,
+                    lastSeen: entry.timestamp,
+                });
+            }
+
+            const group = groups.get(key);
+            group.count += 1;
+            if (entry.status === 'ERROR') group.errorCount += 1;
+            group.totalDuration += entry.duration || 0;
+            if (new Date(entry.timestamp) > new Date(group.lastSeen)) {
+                group.lastSeen = entry.timestamp;
+                group.sampleQuery = entry.query;
+            }
+        }
+
+        const HOT_COUNT = 30;
+        const SLOW_AVG_MS = 1200;
+        const ERROR_RATE = 0.1;
+
+        return Array.from(groups.values())
+            .filter(g => g.count > 1)
+            .map(g => {
+                const avgDuration = g.count > 0 ? Math.round(g.totalDuration / g.count) : 0;
+                const errorRate = g.count > 0 ? g.errorCount / g.count : 0;
+
+                const labels = [];
+                if (g.queryType === 'SELECT') labels.push('read');
+                if (['INSERT', 'UPDATE', 'DELETE'].includes(g.queryType)) labels.push('write');
+                if (g.queryType === 'DDL') labels.push('ddl');
+                if (g.count >= HOT_COUNT) labels.push('hot');
+                if (avgDuration >= SLOW_AVG_MS) labels.push('slow');
+                if (errorRate >= ERROR_RATE) labels.push('error-prone');
+
+                return {
+                    ...g,
+                    avgDuration,
+                    errorRate,
+                    labels,
+                };
+            })
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 8);
     };
 
     const formatDuration = (ms) => {
@@ -511,6 +576,40 @@ export function AuditTrail() {
                             `).join('')}
                         </div>
                     </div>
+
+                    <!-- Workload Profile -->
+                    <div class="p-4 rounded-xl col-span-2 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1]' : 'bg-white/5 border border-white/10')}">
+                        <h3 class="text-sm font-bold ${isLight ? 'text-gray-800' : 'text-white'} mb-4 flex items-center gap-2">
+                            <span class="material-symbols-outlined text-mysql-teal">stacked_line_chart</span>
+                            Workload Profile
+                        </h3>
+                        <div class="space-y-3">
+                            ${workloadProfiles.length === 0 ? `
+                                <div class="text-center py-6 ${isLight ? 'text-gray-400' : 'text-gray-500'}">
+                                    <span class="material-symbols-outlined text-2xl text-green-400 mb-2 block">check_circle</span>
+                                    No workload groups detected yet
+                                </div>
+                            ` : workloadProfiles.map((g, idx) => `
+                                <div class="workload-item p-3 rounded-lg ${isLight ? 'bg-gray-50 border border-gray-100' : 'bg-white/5 border border-white/10'}" data-workload-index="${idx}">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <div class="flex items-center gap-2">
+                                            <span class="px-2 py-0.5 rounded text-[10px] font-bold ${isLight ? 'bg-indigo-100 text-indigo-700' : 'bg-indigo-500/20 text-indigo-400'}">${g.count}x</span>
+                                            <span class="text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-400'}">Avg ${formatDuration(g.avgDuration)}</span>
+                                            <span class="text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-500'}">Err ${(g.errorRate * 100).toFixed(0)}%</span>
+                                            <span class="text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-500'}">${g.table}</span>
+                                        </div>
+                                        <button class="workload-open px-2 py-1 rounded text-[10px] ${isLight ? 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100' : 'bg-white/10 text-gray-300 border border-white/10 hover:bg-white/20'}" data-workload-index="${idx}">Open</button>
+                                    </div>
+                                    <div class="flex flex-wrap gap-1 mb-2">
+                                        ${g.labels.map(label => `
+                                            <span class="px-2 py-0.5 rounded text-[9px] font-bold ${isLight ? 'bg-gray-100 text-gray-700' : 'bg-white/10 text-gray-300'}">${label}</span>
+                                        `).join('')}
+                                    </div>
+                                    <div class="text-xs font-mono ${isLight ? 'text-gray-700' : 'text-gray-300'} truncate">${g.sampleQuery}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
                 </div>
             </div>
         `;
@@ -658,6 +757,18 @@ export function AuditTrail() {
                 e.stopPropagation();
                 const idx = parseInt(btn.dataset.groupIndex, 10);
                 const group = similarGroups[idx];
+                if (group?.sampleQuery) {
+                    localStorage.setItem('tactilesql_open_query', group.sampleQuery);
+                    window.location.hash = '/workbench';
+                }
+            });
+        });
+
+        container.querySelectorAll('.workload-open').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const idx = parseInt(btn.dataset.workloadIndex, 10);
+                const group = workloadProfiles[idx];
                 if (group?.sampleQuery) {
                     localStorage.setItem('tactilesql_open_query', group.sampleQuery);
                     window.location.hash = '/workbench';
