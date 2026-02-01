@@ -18,14 +18,13 @@ export function NavBar() {
             { path: '/monitor', label: 'MONITOR', icon: 'monitor_heart' },
             { path: '/connections', label: 'CONNECTIONS', icon: 'cable' },
             { path: '/access-control', label: 'SECURITY', icon: 'shield' },
-            { path: '/settings', label: 'SETTINGS', icon: 'settings' },
         ];
 
         const renderNavItems = () => {
             return navItems.map(item => {
                 const isActive = currentPath === item.path;
                 return `
-                    <a href="#${item.path}" class="flex items-center gap-2 px-4 py-2 text-[10px] font-bold tracking-widest transition-all rounded-md duration-300
+                    <a href="#${item.path}" class="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold tracking-widest transition-all rounded-md duration-300
                         ${isActive
                         ? 'text-mysql-cyan bg-mysql-teal/10 border border-mysql-teal/30'
                         : isLight
@@ -41,25 +40,33 @@ export function NavBar() {
             }).join('');
         };
 
-        nav.className = `h-12 ${isLight ? 'bg-white border-gray-200' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#0a0c10] border-white/5')} border-b px-6 flex items-center justify-between z-40 transition-all duration-300`;
+        nav.className = `h-10 ${isLight ? 'bg-white border-gray-200' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#0a0c10] border-white/5')} border-b px-4 flex items-center justify-between z-40 relative transition-all duration-300`;
 
         nav.innerHTML = `
-            <div class="flex items-center gap-4">
-                <a href="#/workbench" class="flex items-center gap-3 mr-6">
-                    <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-mysql-teal to-mysql-cyan flex items-center justify-center shadow-lg shadow-mysql-teal/20">
-                        <span class="material-symbols-outlined text-white text-lg">database</span>
+            <div class="flex items-center gap-3">
+                <a href="#/workbench" class="flex items-center gap-2 mr-4">
+                    <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-mysql-teal to-mysql-cyan flex items-center justify-center shadow-lg shadow-mysql-teal/20">
+                        <span class="material-symbols-outlined text-white text-sm">database</span>
                     </div>
                     <div class="text-[10px] font-black tracking-[0.2em] ${isLight ? 'text-gray-800' : (isOceanic ? 'text-ocean-text' : 'text-white/80')} uppercase transition-colors duration-300">TactileSQL</div>
                 </a>
-                <div class="flex items-center gap-1">
-                    ${renderNavItems()}
-                </div>
             </div>
-            <div class="flex items-center gap-4">
-                <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-500/10 border border-green-500/20">
-                    <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                    <span class="text-[10px] font-mono text-green-400">Connected</span>
-                </div>
+
+            <div class="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 flex items-center gap-0.5">
+                ${renderNavItems()}
+            </div>
+
+            <div class="flex items-center gap-3">
+                <a href="#/settings" class="flex items-center justify-center w-8 h-8 rounded-md transition-all duration-300 ${currentPath === '/settings'
+                ? 'text-mysql-cyan bg-mysql-teal/10 border border-mysql-teal/30'
+                : isLight
+                    ? 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
+                    : isOceanic
+                        ? 'text-ocean-text/50 hover:text-ocean-text hover:bg-white/5'
+                        : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+            }" title="Settings">
+                    <span class="material-symbols-outlined text-lg">settings</span>
+                </a>
             </div>
         `;
     };
