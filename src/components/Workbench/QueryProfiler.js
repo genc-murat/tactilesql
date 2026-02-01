@@ -8,7 +8,13 @@ export function QueryProfiler() {
     let isOceanic = theme === 'oceanic';
 
     const container = document.createElement('div');
-    container.className = `query-profiler hidden fixed bottom-4 right-4 w-96 max-h-[400px] overflow-hidden rounded-xl shadow-2xl border z-50 ${isLight ? 'bg-white border-gray-200' : (isOceanic ? 'bg-ocean-panel border-ocean-border' : 'bg-[#1a1d23] border-white/10')}`;
+    // Compact width (w-80), glassmorphism, modern rounded aesthetics
+    container.className = `query-profiler hidden fixed bottom-4 right-4 w-80 max-h-[500px] overflow-hidden rounded-2xl shadow-2xl border z-50 transition-all duration-300 backdrop-blur-xl ${isLight
+            ? 'bg-white/90 border-gray-200'
+            : (isOceanic
+                ? 'bg-ocean-panel/90 border-ocean-border'
+                : 'bg-[#1a1d23]/90 border-white/10')
+        }`;
 
     // State
     let isVisible = false;
@@ -21,7 +27,7 @@ export function QueryProfiler() {
         const k = 1024;
         const sizes = ['B', 'KB', 'MB', 'GB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]; // More compact decimals
     };
 
     const formatNumber = (num) => {
@@ -44,9 +50,9 @@ export function QueryProfiler() {
     const render = () => {
         if (!profileData) {
             container.innerHTML = `
-                <div class="p-4 text-center ${isLight ? 'text-gray-500' : 'text-gray-400'}">
-                    <span class="material-symbols-outlined text-3xl opacity-50">query_stats</span>
-                    <p class="text-sm mt-2">No profile data</p>
+                <div class="h-24 flex flex-col items-center justify-center text-center ${isLight ? 'text-gray-400' : 'text-gray-500'}">
+                    <span class="material-symbols-outlined text-2xl opacity-50 mb-1">query_stats</span>
+                    <span class="text-[10px] font-medium uppercase tracking-wider">Ready</span>
                 </div>
             `;
             return;
@@ -54,7 +60,7 @@ export function QueryProfiler() {
 
         const { duration, rowsReturned, query } = profileData;
 
-        // Calculate metrics from status diff
+        // Calculate metrics
         const rowsExamined = getStatusDiff('Handler_read_rnd_next') + getStatusDiff('Handler_read_next') + getStatusDiff('Handler_read_first') + getStatusDiff('Handler_read_key');
         const bytesReceived = getStatusDiff('Bytes_received');
         const bytesSent = getStatusDiff('Bytes_sent');
@@ -66,7 +72,7 @@ export function QueryProfiler() {
         const selectFullJoin = getStatusDiff('Select_full_join');
         const lockTime = getStatusDiff('Table_locks_waited');
 
-        // Performance score (0-100)
+        // Performance score calculation
         let score = 100;
         if (rowsExamined > rowsReturned * 10) score -= 20;
         if (tmpDiskTables > 0) score -= 15;
@@ -75,98 +81,139 @@ export function QueryProfiler() {
         if (sortMerge > 0) score -= 10;
         score = Math.max(0, score);
 
+        // Styling helpers
         const scoreColor = score >= 80 ? 'text-green-400' : (score >= 50 ? 'text-yellow-400' : 'text-red-400');
-        const scoreLabel = score >= 80 ? 'Excellent' : (score >= 50 ? 'Fair' : 'Needs Optimization');
+        const scoreBg = score >= 80 ? 'bg-green-500/10' : (score >= 50 ? 'bg-yellow-500/10' : 'bg-red-500/10');
+        const scoreBorder = score >= 80 ? 'border-green-500/20' : (score >= 50 ? 'border-yellow-500/20' : 'border-red-500/20');
+
+        const labelColor = isLight ? 'text-gray-500' : 'text-gray-400';
+        const valueColor = isLight ? 'text-gray-800' : 'text-gray-200';
+        const gridBg = isLight ? 'bg-gray-50/80' : 'bg-white/5';
+
+        // Check for issues to auto-expand details
+        const hasIssues = tmpDiskTables > 0 || selectFullJoin > 0 || sortMerge > 0 || selectScan > 0;
 
         container.innerHTML = `
-            <div class="flex items-center justify-between p-3 border-b ${isLight ? 'border-gray-200 bg-gray-50' : (isOceanic ? 'border-ocean-border bg-ocean-bg' : 'border-white/5 bg-[#13161b]')}">
-                <div class="flex items-center gap-2">
-                    <span class="material-symbols-outlined text-mysql-teal">query_stats</span>
-                    <span class="text-[10px] font-black uppercase tracking-wider ${isLight ? 'text-gray-700' : 'text-white'}">Query Profiler</span>
-                </div>
-                <button id="close-profiler" class="p-1 rounded hover:bg-white/10 transition-colors">
-                    <span class="material-symbols-outlined text-sm ${isLight ? 'text-gray-400' : 'text-gray-500'}">close</span>
+            <!-- Compact Header -->
+            <div class="flex items-center justify-between px-3 py-2 border-b ${isLight ? 'border-gray-200/50' : 'border-white/5'}">
+                <span class="text-[10px] font-black uppercase tracking-widest ${isLight ? 'text-gray-400' : 'text-white/40'}">Query Profile</span>
+                <button id="close-profiler" class="p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
+                    <span class="material-symbols-outlined text-[14px] ${isLight ? 'text-gray-400' : 'text-gray-500'}">close</span>
                 </button>
             </div>
             
-            <div class="p-4 overflow-y-auto max-h-[320px] custom-scrollbar">
-                <!-- Performance Score -->
-                <div class="flex items-center justify-between mb-4 p-3 rounded-lg ${isLight ? 'bg-gray-50' : (isOceanic ? 'bg-ocean-bg' : 'bg-white/5')}">
-                    <div class="text-center">
-                        <div class="text-3xl font-black ${scoreColor}">${score}</div>
-                        <div class="text-[9px] uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">${scoreLabel}</div>
+            <div class="p-3 overflow-y-auto max-h-[400px] custom-scrollbar">
+                <!-- Top Section: Score & Time -->
+                <div class="flex items-start gap-3 mb-3">
+                    <!-- Score Circle -->
+                    <div class="w-12 h-12 rounded-full flex items-center justify-center border-2 ${scoreBorder} ${scoreBg} shrink-0">
+                        <span class="text-sm font-black ${scoreColor}">${score}</span>
                     </div>
-                    <div class="flex-1 ml-4">
-                        <div class="text-[10px] ${isLight ? 'text-gray-600' : 'text-gray-300'} truncate" title="${query}">${query?.substring(0, 50)}${query?.length > 50 ? '...' : ''}</div>
-                        <div class="text-[11px] font-bold ${isLight ? 'text-gray-700' : 'text-white'} mt-1">${formatDuration(duration)}</div>
+                    
+                    <!-- Main Stats -->
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-baseline justify-between">
+                            <span class="text-xs font-bold ${valueColor} truncate" title="Duration">Duration</span>
+                            <span class="text-lg font-black bg-clip-text text-transparent bg-gradient-to-r from-mysql-teal to-cyan-400">${formatDuration(duration)}</span>
+                        </div>
+                        <div class="text-[10px] ${labelColor} truncate font-mono mt-0.5" title="${query}">${query || 'Unknown Query'}</div>
                     </div>
                 </div>
 
-                <!-- Key Metrics Grid -->
+                <!-- Primary Metrics Grid (Compact 2x2) -->
                 <div class="grid grid-cols-2 gap-2 mb-3">
-                    <div class="p-2 rounded ${isLight ? 'bg-gray-50' : 'bg-white/5'}">
-                        <div class="text-[9px] uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">Rows Returned</div>
-                        <div class="text-sm font-bold ${isLight ? 'text-gray-700' : 'text-white'}">${formatNumber(rowsReturned)}</div>
+                    <div class="p-2 rounded-lg ${gridBg} border ${isLight ? 'border-transparent' : 'border-white/5'}">
+                        <div class="text-[9px] uppercase tracking-wider ${labelColor} mb-0.5">Rows</div>
+                        <div class="flex items-baseline justify-between">
+                            <span class="text-xs font-bold ${valueColor}">${formatNumber(rowsReturned)}</span>
+                            <span class="text-[9px] opacity-60">sw</span>
+                        </div>
                     </div>
-                    <div class="p-2 rounded ${isLight ? 'bg-gray-50' : 'bg-white/5'}">
-                        <div class="text-[9px] uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">Rows Examined</div>
-                        <div class="text-sm font-bold ${rowsExamined > rowsReturned * 10 ? 'text-yellow-400' : (isLight ? 'text-gray-700' : 'text-white')}">${formatNumber(rowsExamined)}</div>
+                    <div class="p-2 rounded-lg ${gridBg} border ${isLight ? 'border-transparent' : 'border-white/5'}">
+                        <div class="text-[9px] uppercase tracking-wider ${labelColor} mb-0.5">Examined</div>
+                        <div class="flex items-baseline justify-between">
+                            <span class="text-xs font-bold ${rowsExamined > rowsReturned * 10 ? 'text-yellow-500' : valueColor}">${formatNumber(rowsExamined)}</span>
+                            <span class="text-[9px] opacity-60">scan</span>
+                        </div>
                     </div>
-                    <div class="p-2 rounded ${isLight ? 'bg-gray-50' : 'bg-white/5'}">
-                        <div class="text-[9px] uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">Data Sent</div>
-                        <div class="text-sm font-bold ${isLight ? 'text-gray-700' : 'text-white'}">${formatBytes(bytesSent)}</div>
+                    <div class="p-2 rounded-lg ${gridBg} border ${isLight ? 'border-transparent' : 'border-white/5'}">
+                        <div class="text-[9px] uppercase tracking-wider ${labelColor} mb-0.5">Network</div>
+                        <div class="flex items-baseline justify-between">
+                            <span class="text-[10px] font-bold ${valueColor}">${formatBytes(bytesSent)}</span>
+                            <span class="text-[9px] opacity-60">up</span>
+                        </div>
                     </div>
-                    <div class="p-2 rounded ${isLight ? 'bg-gray-50' : 'bg-white/5'}">
-                        <div class="text-[9px] uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">Data Received</div>
-                        <div class="text-sm font-bold ${isLight ? 'text-gray-700' : 'text-white'}">${formatBytes(bytesReceived)}</div>
-                    </div>
-                </div>
-
-                <!-- Detailed Metrics -->
-                <div class="space-y-1 text-[10px]">
-                    <div class="flex items-center justify-between py-1 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
-                        <span class="${isLight ? 'text-gray-500' : 'text-gray-400'}">Temp Tables (Memory)</span>
-                        <span class="font-medium ${isLight ? 'text-gray-700' : 'text-white'}">${tmpTables}</span>
-                    </div>
-                    <div class="flex items-center justify-between py-1 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
-                        <span class="${isLight ? 'text-gray-500' : 'text-gray-400'}">Temp Tables (Disk)</span>
-                        <span class="font-medium ${tmpDiskTables > 0 ? 'text-red-400' : (isLight ? 'text-gray-700' : 'text-white')}">${tmpDiskTables}</span>
-                    </div>
-                    <div class="flex items-center justify-between py-1 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
-                        <span class="${isLight ? 'text-gray-500' : 'text-gray-400'}">Sort Rows</span>
-                        <span class="font-medium ${isLight ? 'text-gray-700' : 'text-white'}">${formatNumber(sortRows)}</span>
-                    </div>
-                    <div class="flex items-center justify-between py-1 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
-                        <span class="${isLight ? 'text-gray-500' : 'text-gray-400'}">Sort Merge Passes</span>
-                        <span class="font-medium ${sortMerge > 0 ? 'text-yellow-400' : (isLight ? 'text-gray-700' : 'text-white')}">${sortMerge}</span>
-                    </div>
-                    <div class="flex items-center justify-between py-1 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
-                        <span class="${isLight ? 'text-gray-500' : 'text-gray-400'}">Full Table Scans</span>
-                        <span class="font-medium ${selectScan > 0 ? 'text-yellow-400' : (isLight ? 'text-gray-700' : 'text-white')}">${selectScan}</span>
-                    </div>
-                    <div class="flex items-center justify-between py-1 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
-                        <span class="${isLight ? 'text-gray-500' : 'text-gray-400'}">Full Join Scans</span>
-                        <span class="font-medium ${selectFullJoin > 0 ? 'text-red-400' : (isLight ? 'text-gray-700' : 'text-white')}">${selectFullJoin}</span>
-                    </div>
-                    <div class="flex items-center justify-between py-1">
-                        <span class="${isLight ? 'text-gray-500' : 'text-gray-400'}">Lock Waits</span>
-                        <span class="font-medium ${lockTime > 0 ? 'text-red-400' : (isLight ? 'text-gray-700' : 'text-white')}">${lockTime}</span>
+                    <div class="p-2 rounded-lg ${gridBg} border ${isLight ? 'border-transparent' : 'border-white/5'}">
+                        <div class="text-[9px] uppercase tracking-wider ${labelColor} mb-0.5">Network</div>
+                        <div class="flex items-baseline justify-between">
+                            <span class="text-[10px] font-bold ${valueColor}">${formatBytes(bytesReceived)}</span>
+                            <span class="text-[9px] opacity-60">down</span>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Warnings -->
-                ${tmpDiskTables > 0 || selectFullJoin > 0 || sortMerge > 0 ? `
-                <div class="mt-3 p-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
-                    <div class="flex items-center gap-1 text-yellow-400 text-[9px] font-bold uppercase mb-1">
-                        <span class="material-symbols-outlined text-xs">warning</span> Performance Tips
+                <!-- Collapsible Details -->
+                <details class="group" ${hasIssues ? 'open' : ''}>
+                    <summary class="flex items-center justify-between cursor-pointer p-1.5 rounded hover:bg-black/5 dark:hover:bg-white/5 transition-colors select-none">
+                        <span class="text-[10px] font-bold uppercase tracking-wider ${labelColor}">Deep Dive Metrics</span>
+                        <span class="material-symbols-outlined text-sm ${labelColor} transform group-open:rotate-180 transition-transform">expand_more</span>
+                    </summary>
+                    
+                    <div class="mt-2 space-y-1 text-[10px] pl-1">
+                        <div class="grid grid-cols-2 gap-x-4 gap-y-1">
+                            <!-- Left Column -->
+                            <div class="flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
+                                <span class="${labelColor}">Tmp Disk</span>
+                                <span class="font-mono ${tmpDiskTables > 0 ? 'text-red-400 font-bold' : valueColor}">${tmpDiskTables}</span>
+                            </div>
+                            <div class="flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
+                                <span class="${labelColor}">Tmp Mem</span>
+                                <span class="font-mono ${valueColor}">${tmpTables}</span>
+                            </div>
+                            
+                            <!-- Right Column -->
+                            <div class="flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
+                                <span class="${labelColor}">Sort Merge</span>
+                                <span class="font-mono ${sortMerge > 0 ? 'text-yellow-400' : valueColor}">${sortMerge}</span>
+                            </div>
+                            <div class="flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
+                                <span class="${labelColor}">Sort Rows</span>
+                                <span class="font-mono ${valueColor}">${formatNumber(sortRows)}</span>
+                            </div>
+
+                             <!-- Full Width Scans -->
+                            <div class="col-span-2 flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
+                                <span class="${labelColor}">Full Join Scans</span>
+                                <span class="font-mono ${selectFullJoin > 0 ? 'text-red-400 font-bold' : valueColor}">${selectFullJoin}</span>
+                            </div>
+                            <div class="col-span-2 flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
+                                <span class="${labelColor}">Full Table Scans</span>
+                                <span class="font-mono ${selectScan > 0 ? 'text-yellow-400' : valueColor}">${selectScan}</span>
+                            </div>
+                             <div class="col-span-2 flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
+                                <span class="${labelColor}">Lock Wait</span>
+                                <span class="font-mono ${lockTime > 0 ? 'text-red-400' : valueColor}">${lockTime}</span>
+                            </div>
+                        </div>
                     </div>
-                    <ul class="text-[10px] ${isLight ? 'text-gray-600' : 'text-gray-300'} space-y-1">
-                        ${tmpDiskTables > 0 ? '<li>• Consider increasing tmp_table_size</li>' : ''}
-                        ${selectFullJoin > 0 ? '<li>• Add indexes to JOIN columns</li>' : ''}
-                        ${sortMerge > 0 ? '<li>• Increase sort_buffer_size</li>' : ''}
-                    </ul>
+                </details>
+
+                <!-- Footer Recommendations (Only if needed) -->
+                 ${score < 100 ? `
+                <div class="mt-3 pt-2 text-[10px] border-t ${isLight ? 'border-gray-100' : 'border-white/5'}">
+                    <div class="flex items-center gap-1.5 ${scoreColor} mb-1">
+                        <span class="material-symbols-outlined text-[12px]">lightbulb</span>
+                        <span class="font-bold uppercase">Optimization Tip</span>
+                    </div>
+                    <div class="${labelColor} leading-tight opacity-90">
+                         ${tmpDiskTables > 0 ? 'Increase tmp_table_size to avoid disk writes.' :
+                    selectFullJoin > 0 ? 'Missing indexes on JOIN columns.' :
+                        selectScan > 0 && rowsExamined > 1000 ? 'Query is scanning too many rows. Add index?' :
+                            sortMerge > 0 ? 'Sort buffer is too small.' : 'Query could be optimized.'}
+                    </div>
                 </div>
                 ` : ''}
+
             </div>
         `;
 
@@ -247,7 +294,13 @@ export function QueryProfiler() {
         theme = e.detail;
         isLight = theme === 'light';
         isOceanic = theme === 'oceanic';
-        container.className = `query-profiler ${isVisible ? '' : 'hidden'} fixed bottom-4 right-4 w-96 max-h-[400px] overflow-hidden rounded-xl shadow-2xl border z-50 ${isLight ? 'bg-white border-gray-200' : (isOceanic ? 'bg-ocean-panel border-ocean-border' : 'bg-[#1a1d23] border-white/10')}`;
+        // Re-apply container classes
+        container.className = `query-profiler ${isVisible ? '' : 'hidden'} fixed bottom-4 right-4 w-80 max-h-[500px] overflow-hidden rounded-xl shadow-2xl border z-50 transition-all duration-300 backdrop-blur-xl ${isLight
+                ? 'bg-white/90 border-gray-200'
+                : (isOceanic
+                    ? 'bg-ocean-panel/90 border-ocean-border'
+                    : 'bg-[#1a1d23]/90 border-white/10')
+            }`;
         render();
     });
 
