@@ -458,14 +458,29 @@ export function ServerMonitor() {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic';
+        const totalSlowQueries = serverStatus?.slow_queries || 0;
 
         if (slowQueries.length === 0) {
             return `
                 <div class="rounded-xl p-12 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))} text-center">
-                    <span class="material-symbols-outlined text-5xl text-green-500 mb-4">check_circle</span>
-                    <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} mb-2">No Slow Queries</h3>
-                    <p class="${isLight ? 'text-gray-500' : 'text-gray-400'}">Slow query log is empty or not enabled.</p>
-                    <p class="text-sm ${isLight ? 'text-gray-400' : 'text-gray-500'} mt-2">Enable slow query logging in MySQL configuration to capture slow queries.</p>
+                    <span class="material-symbols-outlined text-5xl ${totalSlowQueries > 0 ? 'text-yellow-500' : 'text-green-500'} mb-4">${totalSlowQueries > 0 ? 'warning' : 'check_circle'}</span>
+                    <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} mb-2">${totalSlowQueries > 0 ? 'Slow Query Details Not Available' : 'No Slow Queries'}</h3>
+                    ${totalSlowQueries > 0 ? `
+                        <p class="${isLight ? 'text-gray-600' : 'text-gray-300'} mb-4">
+                            Server has recorded <span class="font-bold text-yellow-500">${totalSlowQueries}</span> slow queries since startup,
+                            but detailed logs are not accessible.
+                        </p>
+                        <div class="max-w-md mx-auto text-left ${isLight ? 'bg-yellow-50 border border-yellow-200' : 'bg-yellow-500/10 border border-yellow-500/30'} rounded-lg p-4 mt-4">
+                            <p class="text-sm font-medium ${isLight ? 'text-yellow-800' : 'text-yellow-400'} mb-2">To enable detailed slow query logging:</p>
+                            <pre class="text-xs ${isLight ? 'text-yellow-700 bg-yellow-100' : 'text-yellow-300 bg-black/30'} p-3 rounded font-mono overflow-x-auto">SET GLOBAL slow_query_log = 'ON';
+SET GLOBAL log_output = 'TABLE';
+SET GLOBAL long_query_time = 1;</pre>
+                            <p class="text-xs ${isLight ? 'text-yellow-600' : 'text-yellow-500'} mt-2">Note: Requires SUPER privilege. Add to my.cnf for persistence.</p>
+                        </div>
+                    ` : `
+                        <p class="${isLight ? 'text-gray-500' : 'text-gray-400'}">No slow queries have been recorded.</p>
+                        <p class="text-sm ${isLight ? 'text-gray-400' : 'text-gray-500'} mt-2">Queries taking longer than long_query_time will appear here.</p>
+                    `}
                 </div>
             `;
         }

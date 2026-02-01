@@ -2171,15 +2171,15 @@ pub async fn get_slow_queries(
 ) -> Result<Vec<SlowQueryLog>, String> {
     let pool = get_pool(&state)?;
     
-    // Try to get from mysql.slow_log if available
+    // First try to get from mysql.slow_log table
     let query = format!(
         "SELECT start_time, user_host, query_time, lock_time, rows_sent, rows_examined, sql_text 
          FROM mysql.slow_log ORDER BY start_time DESC LIMIT {}",
         limit
     );
     
-    match sqlx::query(&query).fetch_all(&pool).await {
-        Ok(rows) => {
+    if let Ok(rows) = sqlx::query(&query).fetch_all(&pool).await {
+        if !rows.is_empty() {
             let mut logs: Vec<SlowQueryLog> = Vec::new();
             for row in &rows {
                 logs.push(SlowQueryLog {
@@ -2196,13 +2196,88 @@ pub async fn get_slow_queries(
                         .unwrap_or_default(),
                 });
             }
-            Ok(logs)
-        },
-        Err(_) => {
-            // Slow query log table not enabled or accessible
-            Ok(Vec::new())
+            return Ok(logs);
         }
     }
+    
+    // Fallback: Try performance_schema.events_statements_summary_by_digest for slow queries
+    // Use CAST to ensure numeric types are compatible
+    let perf_query = format!(
+        "SELECT 
+            COALESCE(DIGEST_TEXT, '') as sql_text,
+            COALESCE(SCHEMA_NAME, 'N/A') as user_host,
+            CAST(AVG_TIMER_WAIT / 1000000000000.0 AS DOUBLE) as query_time,
+            CAST(SUM_LOCK_TIME / 1000000000000.0 / COUNT_STAR AS DOUBLE) as lock_time,
+            CAST(SUM_ROWS_SENT / COUNT_STAR AS UNSIGNED) as rows_sent,
+            CAST(SUM_ROWS_EXAMINED / COUNT_STAR AS UNSIGNED) as rows_examined,
+            LAST_SEEN as start_time
+         FROM performance_schema.events_statements_summary_by_digest 
+         WHERE AVG_TIMER_WAIT > 1000000000000
+         ORDER BY AVG_TIMER_WAIT DESC 
+         LIMIT {}",
+        limit
+    );
+    
+    if let Ok(rows) = sqlx::query(&perf_query).fetch_all(&pool).await {
+        if !rows.is_empty() {
+            let mut logs: Vec<SlowQueryLog> = Vec::new();
+            for row in &rows {
+                logs.push(SlowQueryLog {
+                    start_time: row.try_get::<String, _>("start_time")
+                        .or_else(|_| row.try_get::<sqlx::types::chrono::NaiveDateTime, _>("start_time").map(|d| d.to_string()))
+                        .unwrap_or_else(|_| "N/A".to_string()),
+                    user_host: row.try_get("user_host").unwrap_or_else(|_| "N/A".to_string()),
+                    query_time: row.try_get::<f64, _>("query_time").unwrap_or(0.0),
+                    lock_time: row.try_get::<f64, _>("lock_time").unwrap_or(0.0),
+                    rows_sent: row.try_get::<u64, _>("rows_sent").unwrap_or(0),
+                    rows_examined: row.try_get::<u64, _>("rows_examined").unwrap_or(0),
+                    sql_text: row.try_get::<String, _>("sql_text")
+                        .or_else(|_| row.try_get::<Vec<u8>, _>("sql_text").map(|b| String::from_utf8_lossy(&b).to_string()))
+                        .unwrap_or_default(),
+                });
+            }
+            return Ok(logs);
+        }
+    }
+    
+    // Final fallback: Try events_statements_history_long for recent slow queries
+    let history_query = format!(
+        "SELECT 
+            SQL_TEXT as sql_text,
+            CONCAT(COALESCE(CURRENT_SCHEMA, 'N/A'), '@localhost') as user_host,
+            CAST(TIMER_WAIT / 1000000000000.0 AS DOUBLE) as query_time,
+            CAST(LOCK_TIME / 1000000000000.0 AS DOUBLE) as lock_time,
+            ROWS_SENT as rows_sent,
+            ROWS_EXAMINED as rows_examined,
+            EVENT_NAME as start_time
+         FROM performance_schema.events_statements_history_long
+         WHERE TIMER_WAIT > 1000000000000
+           AND SQL_TEXT IS NOT NULL
+         ORDER BY TIMER_WAIT DESC 
+         LIMIT {}",
+        limit
+    );
+    
+    if let Ok(rows) = sqlx::query(&history_query).fetch_all(&pool).await {
+        let mut logs: Vec<SlowQueryLog> = Vec::new();
+        for row in &rows {
+            logs.push(SlowQueryLog {
+                start_time: row.try_get("start_time").unwrap_or_else(|_| "N/A".to_string()),
+                user_host: row.try_get("user_host").unwrap_or_else(|_| "N/A".to_string()),
+                query_time: row.try_get::<f64, _>("query_time").unwrap_or(0.0),
+                lock_time: row.try_get::<f64, _>("lock_time").unwrap_or(0.0),
+                rows_sent: row.try_get("rows_sent").unwrap_or(0),
+                rows_examined: row.try_get("rows_examined").unwrap_or(0),
+                sql_text: row.try_get::<String, _>("sql_text")
+                    .or_else(|_| row.try_get::<Vec<u8>, _>("sql_text").map(|b| String::from_utf8_lossy(&b).to_string()))
+                    .unwrap_or_default(),
+            });
+        }
+        return Ok(logs);
+    }
+    
+    // No slow query data available
+    Ok(Vec::new())
 }
 
 #[derive(Serialize, Debug)]

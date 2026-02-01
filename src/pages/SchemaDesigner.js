@@ -558,7 +558,257 @@ END"></textarea>
         }
     }
 
-    // ... (Keep other render functions as they are, they were updated in previous step) ...
+    // --- Render Functions ---
+
+    function renderColumnsTable() {
+        const tbody = container.querySelector('#table-body');
+        tbody.innerHTML = '';
+
+        if (state.isLoading) { renderLoading(tbody); return; }
+        if (state.error) { renderError(tbody, state.error); return; }
+        if (state.columns.length === 0) { renderEmpty(tbody, 'No columns found.'); return; }
+
+        state.columns.forEach((col, idx) => {
+            const tr = document.createElement('tr');
+            tr.className = `cursor-pointer transition-all border-l-2 ${
+                col.id === state.selectedColumnId 
+                    ? (isDawn ? 'border-[#ea9d34] bg-[#ea9d34]/5' : 'border-mysql-teal bg-mysql-teal/5') 
+                    : 'border-transparent hover:bg-white/[0.02]'
+            }`;
+            tr.onclick = () => { state.selectedColumnId = col.id; updateAll(); };
+            
+            const constraints = [];
+            if (col.primaryKey) constraints.push(`<span class="px-1.5 py-0.5 rounded text-[9px] font-bold ${isDawn ? 'bg-[#ea9d34]/20 text-[#ea9d34]' : 'bg-yellow-500/20 text-yellow-400'}">PK</span>`);
+            if (col.autoIncrement) constraints.push(`<span class="px-1.5 py-0.5 rounded text-[9px] font-bold ${isDawn ? 'bg-[#286983]/20 text-[#286983]' : 'bg-blue-500/20 text-blue-400'}">AI</span>`);
+            if (!col.nullable) constraints.push(`<span class="px-1.5 py-0.5 rounded text-[9px] font-bold ${isDawn ? 'bg-[#d7827e]/20 text-[#d7827e]' : 'bg-red-500/20 text-red-400'}">NN</span>`);
+            if (col.unique) constraints.push(`<span class="px-1.5 py-0.5 rounded text-[9px] font-bold ${isDawn ? 'bg-[#907aa9]/20 text-[#907aa9]' : 'bg-purple-500/20 text-purple-400'}">UQ</span>`);
+
+            tr.innerHTML = `
+                <td class="p-4 text-center ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-600')}">${idx + 1}</td>
+                <td class="p-4 ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} font-medium">${col.name}</td>
+                <td class="p-4 ${isDawn ? 'text-[#56949f]' : 'text-mysql-cyan'}">${col.type}</td>
+                <td class="p-4 ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">${col.length || '-'}</td>
+                <td class="p-4 ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-400')} font-mono text-[10px]">${col.defaultVal || '-'}</td>
+                <td class="p-4"><div class="flex items-center gap-1">${constraints.join('')}</div></td>
+                <td class="p-4">
+                    <button class="btn-delete-col p-1 rounded hover:bg-red-500/20 text-gray-500 hover:text-red-400 transition-all" data-id="${col.id}">
+                        <span class="material-symbols-outlined text-sm">delete</span>
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        // Attach delete handlers
+        tbody.querySelectorAll('.btn-delete-col').forEach(btn => {
+            btn.onclick = async (e) => {
+                e.stopPropagation();
+                const id = parseInt(btn.dataset.id);
+                const confirmed = await Dialog.confirm('Delete this column?', 'Confirm Delete');
+                if (confirmed) {
+                    state.columns = state.columns.filter(c => c.id !== id);
+                    if (state.selectedColumnId === id) state.selectedColumnId = null;
+                    updateAll();
+                }
+            };
+        });
+    }
+
+    function renderIndexesTable() {
+        const tbody = container.querySelector('#table-body');
+        tbody.innerHTML = '';
+
+        if (state.isLoading) { renderLoading(tbody); return; }
+        if (state.error) { renderError(tbody, state.error); return; }
+
+        const grouped = groupByIndexName(state.indexes);
+        const indexList = Object.values(grouped);
+
+        if (indexList.length === 0) { renderEmpty(tbody, 'No indexes found.'); return; }
+
+        indexList.forEach((idx, i) => {
+            const tr = document.createElement('tr');
+            tr.className = `transition-all hover:bg-white/[0.02]`;
+            tr.innerHTML = `
+                <td class="p-4 text-center ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-600')}">${i + 1}</td>
+                <td class="p-4 ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} font-medium">${idx.name}</td>
+                <td class="p-4 ${isDawn ? 'text-[#56949f]' : 'text-mysql-cyan'} font-mono text-[11px]">${idx.columns.join(', ')}</td>
+                <td class="p-4 ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">${idx.type}</td>
+                <td class="p-4">
+                    ${idx.unique 
+                        ? `<span class="px-2 py-0.5 rounded text-[9px] font-bold ${isDawn ? 'bg-[#907aa9]/20 text-[#907aa9]' : 'bg-purple-500/20 text-purple-400'}">UNIQUE</span>` 
+                        : `<span class="text-gray-500">-</span>`}
+                </td>
+                <td class="p-4">
+                    <button class="btn-delete-idx p-1 rounded hover:bg-red-500/20 text-gray-500 hover:text-red-400 transition-all" data-name="${idx.name}">
+                        <span class="material-symbols-outlined text-sm">delete</span>
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        tbody.querySelectorAll('.btn-delete-idx').forEach(btn => {
+            btn.onclick = async (e) => {
+                e.stopPropagation();
+                const name = btn.dataset.name;
+                const confirmed = await Dialog.confirm(`Delete index "${name}"?`, 'Confirm Delete');
+                if (confirmed) {
+                    state.indexes = state.indexes.filter(i => i.name !== name);
+                    updateAll();
+                }
+            };
+        });
+    }
+
+    function renderFKTable() {
+        const tbody = container.querySelector('#table-body');
+        tbody.innerHTML = '';
+
+        if (state.isLoading) { renderLoading(tbody); return; }
+        if (state.error) { renderError(tbody, state.error); return; }
+        if (state.foreignKeys.length === 0) { renderEmpty(tbody, 'No foreign keys found.'); return; }
+
+        state.foreignKeys.forEach((fk, i) => {
+            const tr = document.createElement('tr');
+            tr.className = `transition-all hover:bg-white/[0.02]`;
+            tr.innerHTML = `
+                <td class="p-4 text-center ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-600')}">${i + 1}</td>
+                <td class="p-4 ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} font-medium">${fk.constraint_name}</td>
+                <td class="p-4 ${isDawn ? 'text-[#56949f]' : 'text-mysql-cyan'} font-mono">${fk.column_name}</td>
+                <td class="p-4 ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">${fk.referenced_table}</td>
+                <td class="p-4 ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-400')} font-mono">${fk.referenced_column}</td>
+                <td class="p-4">
+                    <button class="btn-delete-fk p-1 rounded hover:bg-red-500/20 text-gray-500 hover:text-red-400 transition-all" data-name="${fk.constraint_name}">
+                        <span class="material-symbols-outlined text-sm">delete</span>
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        tbody.querySelectorAll('.btn-delete-fk').forEach(btn => {
+            btn.onclick = async (e) => {
+                e.stopPropagation();
+                const name = btn.dataset.name;
+                const confirmed = await Dialog.confirm(`Delete foreign key "${name}"?`, 'Confirm Delete');
+                if (confirmed) {
+                    state.foreignKeys = state.foreignKeys.filter(f => f.constraint_name !== name);
+                    updateAll();
+                }
+            };
+        });
+    }
+
+    function renderConstraintsTable() {
+        const tbody = container.querySelector('#table-body');
+        tbody.innerHTML = '';
+
+        if (state.isLoading) { renderLoading(tbody); return; }
+        if (state.error) { renderError(tbody, state.error); return; }
+        if (state.constraints.length === 0) { renderEmpty(tbody, 'No constraints found.'); return; }
+
+        state.constraints.forEach((c, i) => {
+            const tr = document.createElement('tr');
+            tr.className = `transition-all hover:bg-white/[0.02]`;
+            
+            let typeColor = isDawn ? 'text-[#797593]' : 'text-gray-400';
+            let typeBg = 'bg-gray-500/10';
+            if (c.type === 'PRIMARY KEY') { typeColor = isDawn ? 'text-[#ea9d34]' : 'text-yellow-400'; typeBg = isDawn ? 'bg-[#ea9d34]/10' : 'bg-yellow-500/10'; }
+            if (c.type === 'UNIQUE') { typeColor = isDawn ? 'text-[#907aa9]' : 'text-purple-400'; typeBg = isDawn ? 'bg-[#907aa9]/10' : 'bg-purple-500/10'; }
+            if (c.type === 'FOREIGN KEY') { typeColor = isDawn ? 'text-[#286983]' : 'text-blue-400'; typeBg = isDawn ? 'bg-[#286983]/10' : 'bg-blue-500/10'; }
+            if (c.type === 'CHECK') { typeColor = isDawn ? 'text-[#56949f]' : 'text-teal-400'; typeBg = isDawn ? 'bg-[#56949f]/10' : 'bg-teal-500/10'; }
+
+            tr.innerHTML = `
+                <td class="p-4 text-center ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-600')}">${i + 1}</td>
+                <td class="p-4 ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} font-medium">${c.name}</td>
+                <td class="p-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${typeBg} ${typeColor}">${c.type}</span></td>
+                <td class="p-4 ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-500')} text-xs">${c.details || ''}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function renderTriggersTable() {
+        const tbody = container.querySelector('#table-body');
+        tbody.innerHTML = '';
+
+        if (state.isLoading) { renderLoading(tbody); return; }
+        if (state.error) { renderError(tbody, state.error); return; }
+        if (state.triggers.length === 0) { renderEmpty(tbody, 'No triggers found.'); return; }
+
+        state.triggers.forEach((trig, i) => {
+            const tr = document.createElement('tr');
+            tr.className = `transition-all hover:bg-white/[0.02]`;
+            tr.innerHTML = `
+                <td class="p-4 text-center ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-600')}">${i + 1}</td>
+                <td class="p-4 ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} font-medium">${trig.name}</td>
+                <td class="p-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${isDawn ? 'bg-[#286983]/10 text-[#286983]' : 'bg-blue-500/10 text-blue-400'}">${trig.event}</span></td>
+                <td class="p-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${isDawn ? 'bg-[#56949f]/10 text-[#56949f]' : 'bg-teal-500/10 text-teal-400'}">${trig.timing}</span></td>
+                <td class="p-4">
+                    <button class="btn-delete-trig p-1 rounded hover:bg-red-500/20 text-gray-500 hover:text-red-400 transition-all" data-name="${trig.name}">
+                        <span class="material-symbols-outlined text-sm">delete</span>
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        tbody.querySelectorAll('.btn-delete-trig').forEach(btn => {
+            btn.onclick = async (e) => {
+                e.stopPropagation();
+                const name = btn.dataset.name;
+                const confirmed = await Dialog.confirm(`Delete trigger "${name}"?`, 'Confirm Delete');
+                if (confirmed) {
+                    state.triggers = state.triggers.filter(t => t.name !== name);
+                    updateAll();
+                }
+            };
+        });
+    }
+
+    function renderDDLView() {
+        const tbody = container.querySelector('#table-body');
+        tbody.innerHTML = '';
+
+        if (state.isLoading) { renderLoading(tbody); return; }
+        if (!state.ddl) { renderEmpty(tbody, 'No DDL available.'); return; }
+
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 7;
+        td.className = 'p-0';
+        td.innerHTML = `
+            <div class="p-6">
+                <pre class="p-4 rounded-lg ${isLight ? 'bg-gray-100 text-gray-800' : (isDawn ? 'bg-[#faf4ed] text-[#575279]' : 'bg-[#0d0f13] text-gray-300')} font-mono text-xs overflow-auto max-h-[500px] custom-scrollbar whitespace-pre-wrap">${escapeHtml(state.ddl)}</pre>
+            </div>
+        `;
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+    }
+
+    function renderDiagramView() {
+        const tbody = container.querySelector('#table-body');
+        tbody.innerHTML = '';
+
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 7;
+        td.className = 'p-6';
+        td.innerHTML = `
+            <div class="text-center ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500')}">
+                <span class="material-symbols-outlined text-4xl opacity-50 mb-2">account_tree</span>
+                <p class="text-sm">ER Diagram view coming soon...</p>
+            </div>
+        `;
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
 
     function renderStatsView() {
         const tbody = container.querySelector('#table-body');
