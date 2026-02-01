@@ -58,6 +58,12 @@ const detectSyntaxErrors = (sql) => {
 // SQL Syntax Highlighting
 // Imported from SqlHighlighter.js
 
+// --- State (Module Scoped) ---
+let tabs = [
+    { id: '1', title: 'Query 1', content: '' }
+];
+let activeTabId = '1';
+
 export function QueryEditor() {
     let theme = ThemeManager.getCurrentTheme();
     let isLight = theme === 'light';
@@ -65,11 +71,8 @@ export function QueryEditor() {
     const container = document.createElement('div');
     container.className = `flex flex-col h-full border-b ${isLight ? 'border-gray-200 bg-white' : (isOceanic ? 'border-ocean-border/50 bg-ocean-bg' : 'border-white/5 bg-[#0f1115]')}`;
 
-    // --- State ---
-    let tabs = [
-        { id: '1', title: 'Query 1', content: '' }
-    ];
-    let activeTabId = '1';
+    // Local State
+
     let lastExecutionTime = null;
     const maxVisibleTabs = 5; // Fixed: always show 5 tabs max
 

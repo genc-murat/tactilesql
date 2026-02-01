@@ -3,6 +3,16 @@ import { invoke } from '@tauri-apps/api/core';
 import { ThemeManager } from '../../utils/ThemeManager.js';
 import { Dialog } from '../UI/Dialog.js';
 
+// --- State (Module Scoped) ---
+let isVisible = false;
+let activeTab = 'profile'; // 'profile' | 'monitor' | 'locks'
+let profileData = null;
+let monitorData = [];
+let locksData = [];
+let monitorInterval = null;
+let statusBefore = {};
+let statusAfter = {};
+
 export function QueryProfiler() {
     let theme = ThemeManager.getCurrentTheme();
     let isLight = theme === 'light';
@@ -16,16 +26,6 @@ export function QueryProfiler() {
             ? 'bg-ocean-panel/95 border-ocean-border'
             : 'bg-[#1a1d23]/95 border-white/10')
         }`;
-
-    // State
-    let isVisible = false;
-    let activeTab = 'profile'; // 'profile' | 'monitor' | 'locks'
-    let profileData = null;
-    let monitorData = [];
-    let locksData = [];
-    let monitorInterval = null;
-    let statusBefore = {};
-    let statusAfter = {};
 
     const formatBytes = (bytes) => {
         if (!bytes || bytes === 0) return '0 B';
