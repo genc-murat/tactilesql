@@ -55,7 +55,7 @@ export function DataTools() {
         }
 
         const fileName = `${selectedTable}_${new Date().toISOString().slice(0, 10)}.csv`;
-        const filePath = prompt('Enter file path to save:', `/home/${fileName}`);
+        const filePath = await Dialog.prompt('Enter file path to save:', 'Export CSV', `/home/${fileName}`);
         if (!filePath) return;
 
         isProcessing = true;
@@ -84,7 +84,7 @@ export function DataTools() {
         }
 
         const fileName = `${selectedTable}_${new Date().toISOString().slice(0, 10)}.json`;
-        const filePath = prompt('Enter file path to save:', `/home/${fileName}`);
+        const filePath = await Dialog.prompt('Enter file path to save:', 'Export JSON', `/home/${fileName}`);
         if (!filePath) return;
 
         isProcessing = true;
@@ -112,7 +112,7 @@ export function DataTools() {
         }
 
         const fileName = `${selectedTable}_${new Date().toISOString().slice(0, 10)}.sql`;
-        const filePath = prompt('Enter file path to save:', `/home/${fileName}`);
+        const filePath = await Dialog.prompt('Enter file path to save:', 'Export SQL', `/home/${fileName}`);
         if (!filePath) return;
 
         isProcessing = true;
@@ -140,7 +140,7 @@ export function DataTools() {
             return;
         }
 
-        const filePath = prompt('Enter CSV file path to import:');
+        const filePath = await Dialog.prompt('Enter CSV file path to import:', 'Import CSV');
         if (!filePath) return;
 
         const hasHeaders = await Dialog.confirm('Does the CSV file have headers?', 'CSV Headers');
@@ -180,7 +180,7 @@ export function DataTools() {
         }
 
         const fileName = `${selectedDb}_backup_${new Date().toISOString().slice(0, 10)}.sql`;
-        const filePath = prompt('Enter file path to save backup:', `/home/${fileName}`);
+        const filePath = await Dialog.prompt('Enter file path to save backup:', 'Backup Database', `/home/${fileName}`);
         if (!filePath) return;
 
         const includeData = await Dialog.confirm('Include table data in backup?', 'Backup Options');
@@ -204,7 +204,7 @@ export function DataTools() {
     };
 
     const handleRestore = async () => {
-        const filePath = prompt('Enter SQL file path to restore:');
+        const filePath = await Dialog.prompt('Enter SQL file path to restore:', 'Restore Database');
         if (!filePath) return;
 
         const confirmed = await Dialog.confirm(
