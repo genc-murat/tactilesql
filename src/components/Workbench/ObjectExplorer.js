@@ -21,6 +21,7 @@ export function ObjectExplorer() {
     // --- State ---
     let connections = [];
     let activeConnectionId = null; // ID of the currently active connection
+    let connectionExpanded = true; // Whether active connection tree is expanded
     let databases = []; // Databases for the ACTIVE connection only
     let expandedDbs = new Set();
     let expandedTables = new Set();
@@ -260,7 +261,7 @@ export function ObjectExplorer() {
             <div class="connection-node cursor-move select-none" data-conn-id="${conn.id}" draggable="true">
                 <div class="conn-item flex items-center gap-2 py-1.5 px-2 rounded-md ${bgClass} transition-colors group" data-id="${conn.id}" style="${customStyle}">
                     <span class="drag-handle material-symbols-outlined text-xs ${arrowColor} cursor-grab">drag_indicator</span>
-                    <span class="material-symbols-outlined text-xs transition-transform ${isActive ? 'rotate-90' : ''} ${arrowColor}">arrow_right</span>
+                    <span class="conn-arrow material-symbols-outlined text-xs transition-transform ${isActive && connectionExpanded ? 'rotate-90' : ''} ${arrowColor}">arrow_right</span>
                     
                     <div class="relative">
                         <span class="material-symbols-outlined ${iconColor} text-base">dns</span>
@@ -278,7 +279,7 @@ export function ObjectExplorer() {
                         </button>
                     ` : ''}
                 </div>
-                ${isActive ? renderActiveConnectionData() : ''}
+                ${isActive && connectionExpanded ? renderActiveConnectionData() : ''}
             </div>
         `;
     };
@@ -321,7 +322,13 @@ export function ObjectExplorer() {
                 if (e.target.closest('.conn-connect-btn') || e.target.closest('.drag-handle')) return;
 
                 const id = connItem.dataset.id;
-                if (id !== activeConnectionId) {
+                if (id === activeConnectionId) {
+                    // Toggle fold/unfold for active connection
+                    connectionExpanded = !connectionExpanded;
+                    render();
+                } else {
+                    // Connect to new connection
+                    connectionExpanded = true; // Expand when connecting
                     await switchConnection(id);
                 }
             });
