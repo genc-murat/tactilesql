@@ -34,66 +34,108 @@ fn get_key_entry() -> Result<Entry, String> {
     Entry::new(SERVICE_NAME, USER_NAME).map_err(|e| e.to_string())
 }
 
+fn get_key_file_path(app_handle: &AppHandle) -> PathBuf {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .expect("Failed to get app data directory");
+    
+    if !app_data_dir.exists() {
+        let _ = fs::create_dir_all(&app_data_dir);
+    }
+    
+    app_data_dir.join("encryption.key")
+}
+
 pub fn initialize_key(app_handle: &AppHandle) -> Result<Vec<u8>, String> {
     let entry = get_key_entry()?;
+    let key_file_path = get_key_file_path(app_handle);
     
+    // Helper to save key to both locations
+    let save_key = |key_b64: &str| -> Result<(), String> {
+        // 1. Save to file (Primary fallback)
+        fs::write(&key_file_path, key_b64)
+            .map_err(|e| format!("Failed to save key to file: {}", e))?;
+            
+        // 2. Try to save to keychain (Best effort)
+        if let Err(e) = entry.set_password(key_b64) {
+             println!("Warning: Failed to sync key to keychain: {}", e);
+        }
+        
+        Ok(())
+    };
+
     // 1. Try to load from Keychain
-    match entry.get_password() {
-        Ok(key_base64) => {
-            // Found in keychain, decode and return
-            BASE64.decode(key_base64).map_err(|e| format!("Failed to decode key from keychain: {}", e))
+    let key_from_keychain = entry.get_password().ok();
+    
+    // 2. Try to load from File
+    let key_from_file = if key_file_path.exists() {
+        fs::read_to_string(&key_file_path).ok()
+    } else {
+        None
+    };
+
+    match (key_from_keychain, key_from_file) {
+        (Some(k), _) => {
+            // Found in keychain. Sync to file just in case.
+            if !key_file_path.exists() {
+                 let _ = fs::write(&key_file_path, &k);
+            }
+            BASE64.decode(&k).map_err(|e| format!("Failed to decode key from keychain: {}", e))
         },
-        Err(_) => {
-            // Not found in keychain (or error), check if we need migration
+        (None, Some(k)) => {
+            // Found in file but not keychain. Restore to keychain.
+            println!("Key found in file but not keychain. Restoring to keychain.");
+            let _ = entry.set_password(&k);
+            BASE64.decode(&k).map_err(|e| format!("Failed to decode key from file: {}", e))
+        },
+        (None, None) => {
+            // Not found anywhere.
             let connections_file = get_connections_file_path(app_handle);
             
             if connections_file.exists() {
-                println!("Migrating legacy connections to Keychain-based encryption...");
-                // MIGRATION SCENARIO: Old connections exist but no Keychain entry
-                // 1. Generate NEW key
+                println!("Migrating legacy connections or recovering from lost key...");
+                // MIGRATION / RECOVERY SCENARIO
                 let new_key = generate_new_key();
                 
-                // 2. Read existing file
+                // Read existing file
                 let content = fs::read_to_string(&connections_file)
                     .map_err(|e| format!("Failed to read connections file: {}", e))?;
                 
                 let mut connections: Vec<ConnectionConfig> = serde_json::from_str(&content)
                     .map_err(|e| format!("Failed to parse JSON: {}", e))?;
                 
-                // 3. Re-encrypt passwords
-                // Decrypt with LEGACY_KEY, Encrypt with new_key
+                // Re-encrypt passwords
                 for conn in &mut connections {
                     if let Some(ref encrypted_pwd) = conn.password {
-                        // Decrypt using legacy key logic directly here to avoid confusion
                         match decrypt_password_with_key(encrypted_pwd, LEGACY_KEY) {
                             Ok(plaintext) => {
-                                // Encrypt with NEW key
                                 match encrypt_password_with_key(&plaintext, &new_key) {
                                     Ok(new_encrypted) => conn.password = Some(new_encrypted),
-                                    Err(e) => println!("Failed to re-encrypt password for {}: {}", conn.name.clone().unwrap_or_default(), e),
+                                    Err(e) => println!("Failed to re-encrypt password: {}", e),
                                 }
                             },
-                            Err(e) => println!("Failed to decrypt legacy password for {}: {}", conn.name.clone().unwrap_or_default(), e),
+                            Err(e) => println!("Failed to decrypt legacy password (key lost or already migrated): {}", e),
                         }
                     }
                 }
                 
-                // 4. Save new connections file
+                // Save new connections file
                 let json = serde_json::to_string_pretty(&connections)
                     .map_err(|e| format!("Failed to serialize: {}", e))?;
                 fs::write(connections_file, json)
                     .map_err(|e| format!("Failed to write migrated file: {}", e))?;
                 
-                // 5. Save NEW key to Keychain
+                // Save NEW key to both locations
                 let key_base64 = BASE64.encode(&new_key);
-                entry.set_password(&key_base64).map_err(|e| format!("Failed to save key to keychain: {}", e))?;
+                save_key(&key_base64)?;
                 
                 Ok(new_key)
             } else {
-                // FRESH INSTALL SCENARIO: No file, no keychain
+                // FRESH INSTALL SCENARIO
                 let new_key = generate_new_key();
                 let key_base64 = BASE64.encode(&new_key);
-                entry.set_password(&key_base64).map_err(|e| format!("Failed to save key to keychain: {}", e))?;
+                save_key(&key_base64)?;
                 Ok(new_key)
             }
         }

@@ -197,7 +197,7 @@ pub async fn get_databases(pool: &Pool<Postgres>) -> Result<Vec<String>, String>
 pub async fn get_schemas(pool: &Pool<Postgres>) -> Result<Vec<String>, String> {
     let rows = sqlx::query(
         "SELECT schema_name FROM information_schema.schemata 
-         WHERE schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+         WHERE schema_name NOT IN ('pg_toast')
          ORDER BY schema_name"
     )
         .fetch_all(pool)
