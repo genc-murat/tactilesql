@@ -1,0 +1,571 @@
+import { invoke } from '@tauri-apps/api/core';
+import { QualityAnalyzerApi } from '../../../api/qualityAnalyzer.js';
+import { ThemeManager } from '../../../utils/ThemeManager.js';
+import './QualityDashboard.css';
+
+export function QualityDashboard() {
+    let theme = ThemeManager.getCurrentTheme();
+
+    // Theme helpers
+    const getClasses = (t) => {
+        const isLight = t === 'light';
+        const isDawn = t === 'dawn';
+        const isOceanic = t === 'oceanic' || t === 'ember' || t === 'aurora';
+
+        return {
+            container: `quality-dashboard flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-[#2E3440]' : 'bg-[#0a0c10]'))} transition-colors duration-300`,
+            header: `px-6 py-4 flex flex-col gap-4 border-b ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-[#3B4252] border-ocean-border/50' : 'bg-[#13161b] border-white/10'))}`,
+            content: `flex-1 overflow-y-auto custom-scrollbar p-6 ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-[#2E3440]' : 'bg-[#0a0c10]'))}`,
+            card: `rounded-xl border shadow-sm p-5 ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-sm shadow-[#ea9d34]/5' : (isOceanic ? 'bg-[#3B4252] border-ocean-border/50' : 'bg-[#13161b] border-white/10'))}`,
+            text: {
+                primary: isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white'),
+                secondary: isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400'),
+                label: isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400'),
+                accent: isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal'
+            },
+            input: `w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 transition-all cursor-pointer ${isLight
+                    ? 'bg-white border-gray-300 text-gray-900 focus:border-mysql-teal focus:ring-mysql-teal/20'
+                    : (isDawn
+                        ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] focus:border-[#ea9d34] focus:ring-[#ea9d34]/20'
+                        : 'bg-black/20 border-white/10 text-white focus:border-mysql-teal focus:ring-mysql-teal/20')
+                }`,
+            tabBtn: (active) => `relative px-1 py-3 text-sm font-medium transition-colors ${active
+                    ? (isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal')
+                    : (isLight ? 'text-gray-500 hover:text-gray-700' : (isDawn ? 'text-[#9893a5] hover:text-[#575279]' : 'text-gray-400 hover:text-white'))
+                } ${active ? 'border-b-2' : ''}`,
+            tabBorder: isDawn ? 'border-[#ea9d34]' : 'border-mysql-teal'
+        };
+    };
+
+    let classes = getClasses(theme);
+    const container = document.createElement('div');
+    container.className = classes.container;
+
+    // State
+    let state = {
+        connections: [],
+        selectedConnectionId: null,
+        databases: [],
+        selectedDatabase: null,
+        tables: [],
+        selectedTable: null,
+
+        currentReport: null,
+        trends: [],
+
+        activeTab: 'overview',
+        isLoading: false,
+        error: null,
+        activeDbType: 'mysql'
+    };
+
+    // Initialize
+    const init = async () => {
+        try {
+            state.connections = await invoke('load_connections');
+            // Check local storage for active connection
+            const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || 'null');
+            if (activeConfig && activeConfig.id) {
+                await selectConnection(activeConfig.id);
+            }
+        } catch (err) {
+            console.error('Init failed:', err);
+            state.error = 'Failed to load connections';
+        }
+        render();
+    };
+
+    // Actions
+    const selectConnection = async (connId) => {
+        state.selectedConnectionId = connId;
+        state.selectedDatabase = null;
+        state.selectedTable = null;
+        state.databases = [];
+        state.tables = [];
+        state.currentReport = null;
+        state.trends = [];
+
+        const conn = state.connections.find(c => c.id === connId);
+        if (!conn) return;
+
+        state.activeDbType = conn.dbType || 'mysql';
+
+        try {
+            await invoke('establish_connection', { config: conn });
+            state.databases = await invoke('get_databases');
+
+            if (conn.database && state.databases.includes(conn.database)) {
+                await selectDatabase(conn.database);
+            } else if (conn.schema && state.databases.includes(conn.schema)) {
+                await selectDatabase(conn.schema);
+            } else if (state.databases.length > 0) {
+                if (state.databases.length === 1) await selectDatabase(state.databases[0]);
+            }
+        } catch (err) {
+            console.error('Connection switch failed:', err);
+            state.error = 'Failed to connect: ' + err.toString();
+        }
+        render();
+    };
+
+    const selectDatabase = async (dbName) => {
+        state.selectedDatabase = dbName;
+        state.selectedTable = null;
+        state.tables = [];
+        state.currentReport = null;
+        state.trends = [];
+
+        try {
+            state.tables = await invoke('get_tables', { database: dbName });
+        } catch (err) {
+            console.error('Fetch tables failed:', err);
+            state.error = 'Failed to fetch tables';
+        }
+        render();
+    };
+
+    const selectTable = async (tableName) => {
+        state.selectedTable = tableName;
+        state.currentReport = null;
+        state.activeTab = 'overview';
+        state.trends = [];
+
+        if (tableName) {
+            fetchTrends(tableName);
+        }
+        render();
+    };
+
+    const fetchTrends = async (tableName) => {
+        if (!state.selectedConnectionId) return;
+        try {
+            const reports = await QualityAnalyzerApi.getReports(state.selectedConnectionId);
+            state.trends = reports
+                .filter(r => r.table_name === tableName)
+                .sort((a, b) => new Date(a.analyzed_at) - new Date(b.analyzed_at));
+
+            if (state.trends.length > 0 && !state.currentReport) {
+                state.currentReport = state.trends[state.trends.length - 1];
+            }
+            render();
+        } catch (err) {
+            console.warn("Failed to fetch trends", err);
+        }
+    };
+
+    const runAnalysis = async () => {
+        if (!state.selectedConnectionId || !state.selectedTable || !state.selectedDatabase) return;
+
+        state.isLoading = true;
+        render();
+
+        try {
+            if (state.activeDbType === 'postgresql') {
+                await invoke('execute_query', { query: `SET search_path TO "${state.selectedDatabase}"` });
+            } else {
+                await invoke('execute_query', { query: `USE \`${state.selectedDatabase}\`` });
+            }
+
+            const report = await QualityAnalyzerApi.runAnalysis(state.selectedConnectionId, state.selectedTable);
+            state.currentReport = report;
+            state.activeTab = 'overview';
+
+            await fetchTrends(state.selectedTable);
+
+        } catch (err) {
+            console.error(err);
+            state.error = err.toString();
+        } finally {
+            state.isLoading = false;
+            render();
+        }
+    };
+
+    const switchTab = (tab) => {
+        state.activeTab = tab;
+        render();
+    };
+
+    // Render Logic
+    const render = () => {
+        container.innerHTML = '';
+        container.className = classes.container;
+
+        // Header / Toolbar
+        const header = document.createElement('div');
+        header.className = classes.header;
+
+        const controls = document.createElement('div');
+        controls.className = 'flex items-end gap-3 flex-wrap';
+
+        // Helper to create select group
+        const createSelect = (label, id, options, selected, onChange, disabled = false) => {
+            const div = document.createElement('div');
+            div.className = 'flex flex-col gap-1.5 min-w-[200px] flex-1';
+
+            const labelEl = document.createElement('label');
+            labelEl.className = `text-[10px] font-bold uppercase tracking-wider ${classes.text.label}`;
+            labelEl.textContent = label;
+            div.appendChild(labelEl);
+
+            const select = document.createElement('select');
+            select.id = id;
+            select.className = classes.input;
+            select.disabled = disabled;
+            if (disabled) select.style.opacity = '0.5';
+
+            const defaultOpt = document.createElement('option');
+            defaultOpt.value = "";
+            defaultOpt.textContent = `Select ${label}...`;
+            select.appendChild(defaultOpt);
+
+            options.forEach(opt => {
+                const option = document.createElement('option');
+                option.value = opt.value;
+                option.textContent = opt.label;
+                if (opt.value === selected) option.selected = true;
+                select.appendChild(option);
+            });
+
+            select.onchange = onChange;
+            div.appendChild(select);
+
+            return div;
+        };
+
+        // Connection Select
+        const connOptions = state.connections.map(c => ({ value: c.id, label: c.name }));
+        controls.appendChild(createSelect('Connection', 'conn-select', connOptions, state.selectedConnectionId, (e) => selectConnection(e.target.value)));
+
+        // Database Select
+        const dbOptions = state.databases.map(db => ({ value: db, label: db }));
+        controls.appendChild(createSelect(state.activeDbType === 'postgresql' ? 'Schema' : 'Database', 'db-select', dbOptions, state.selectedDatabase, (e) => selectDatabase(e.target.value), !state.selectedConnectionId));
+
+        // Table Select
+        const tableOptions = state.tables.map(t => ({ value: t, label: t }));
+        controls.appendChild(createSelect('Table', 'table-select', tableOptions, state.selectedTable, (e) => selectTable(e.target.value), !state.selectedDatabase));
+
+        // Run Button
+        const btnContainer = document.createElement('div');
+        btnContainer.className = 'pb-[1px]'; // Align with inputs
+        const runBtn = document.createElement('button');
+        runBtn.id = 'run-btn';
+        runBtn.className = `px-5 py-2.5 rounded-lg text-sm font-bold uppercase tracking-wide transition-all ${(!state.selectedTable || state.isLoading)
+                ? 'opacity-50 cursor-not-allowed bg-gray-300 text-gray-500'
+                : (theme === 'dawn' ? 'bg-[#ea9d34] text-[#fffaf3] hover:bg-[#d7821a] shadow-lg shadow-[#ea9d34]/20' : 'bg-mysql-teal text-white hover:bg-mysql-cyan shadow-lg shadow-mysql-teal/20')
+            }`;
+        runBtn.innerHTML = state.isLoading
+            ? '<span class="material-symbols-outlined text-sm animate-spin align-bottom mr-1">sync</span> Analyzing...'
+            : '<span class="material-symbols-outlined text-sm align-bottom mr-1">play_arrow</span> Run Analysis';
+        runBtn.disabled = !state.selectedTable || state.isLoading;
+        runBtn.onclick = runAnalysis;
+        btnContainer.appendChild(runBtn);
+        controls.appendChild(btnContainer);
+
+        header.appendChild(controls);
+
+        // Tabs
+        if (state.selectedTable) {
+            const tabs = document.createElement('div');
+            tabs.className = `flex gap-6 mt-2 relative ${classes.text.secondary}`;
+
+            const createTab = (id, label) => {
+                const isActive = state.activeTab === id;
+                const btn = document.createElement('button');
+                btn.className = classes.tabBtn(isActive);
+                if (isActive) btn.style.borderColor = theme === 'dawn' ? '#ea9d34' : '#00c8ff';
+                btn.textContent = label;
+                btn.onclick = () => switchTab(id);
+                return btn;
+            };
+
+            tabs.appendChild(createTab('overview', 'Overview'));
+            tabs.appendChild(createTab('trends', `Trends (${state.trends.length})`));
+
+            header.appendChild(tabs);
+        }
+
+        container.appendChild(header);
+
+        // Content Area
+        const contentArea = document.createElement('div');
+        contentArea.className = classes.content;
+        container.appendChild(contentArea);
+
+        if (state.isLoading) {
+            contentArea.innerHTML = `
+                <div class="h-full flex flex-col items-center justify-center gap-3 ${classes.text.secondary}">
+                    <span class="material-symbols-outlined text-4xl animate-spin ${classes.text.accent}">sync</span> 
+                    <p class="animate-pulse">Analyzing data quality...</p>
+                </div>
+            `;
+            return;
+        }
+
+        if (state.error) {
+            contentArea.innerHTML = `
+                <div class="h-full flex flex-col items-center justify-center gap-3 text-red-400">
+                    <span class="material-symbols-outlined text-4xl">error</span> 
+                    <p>${state.error}</p>
+                </div>
+            `;
+            state.error = null;
+            return;
+        }
+
+        if (state.activeTab === 'overview') {
+            if (state.currentReport) {
+                renderOverview(contentArea, state.currentReport);
+            } else {
+                renderEmptyState(contentArea);
+            }
+        } else if (state.activeTab === 'trends') {
+            renderTrends(contentArea);
+        }
+    };
+
+    function renderEmptyState(parent) {
+        parent.innerHTML = `
+            <div class="h-full flex flex-col items-center justify-center gap-4 opacity-50 ${classes.text.secondary}">
+                <span class="material-symbols-outlined text-6xl">fact_check</span>
+                <div class="text-center">
+                    <h3 class="text-lg font-bold ${classes.text.primary}">Ready to Analyze</h3>
+                    <p class="text-sm">Select a table above to run a comprehensive data quality assessment.</p>
+                </div>
+            </div>
+         `;
+    }
+
+    function renderOverview(parent, report) {
+        const scoreColor = getScoreColor(report.overall_score);
+
+        const grid = document.createElement('div');
+        grid.className = 'grid grid-cols-[300px_1fr] gap-6 max-w-7xl mx-auto';
+
+        // Score Card
+        const scoreCard = document.createElement('div');
+        scoreCard.className = `${classes.card} flex flex-col items-center justify-center row-span-2`;
+        scoreCard.innerHTML = `
+            <h3 class="text-sm font-bold uppercase tracking-wider ${classes.text.secondary} mb-6">Overall Quality Score</h3>
+            <div class="w-36 h-36 rounded-full border-8 flex flex-col items-center justify-center mb-6 transition-all" style="border-color: ${scoreColor}20">
+                <span class="text-5xl font-black" style="color: ${scoreColor}">${report.overall_score.toFixed(0)}</span>
+                <span class="text-xs font-bold uppercase ${classes.text.secondary} mt-1">/ 100</span>
+            </div>
+            <div class="w-full flex justify-between pt-4 border-t ${theme === 'light' ? 'border-gray-100' : 'border-white/5'} ${classes.text.secondary} text-xs font-mono">
+                <div class="flex flex-col items-center">
+                    <span class="${classes.text.primary} font-bold text-sm">${report.row_count.toLocaleString()}</span>
+                    <span>ROWS</span>
+                </div>
+                <div class="flex flex-col items-center">
+                    <span class="${report.issues.length > 0 ? 'text-red-400' : 'text-green-400'} font-bold text-sm">${report.issues.length}</span>
+                    <span>ISSUES</span>
+                </div>
+            </div>
+             <div class="text-[10px] ${classes.text.secondary} mt-4 text-center">
+                Analyzed ${new Date(report.analyzed_at).toLocaleString()}
+            </div>
+        `;
+        grid.appendChild(scoreCard);
+
+        // Issues Summary
+        const issuesCard = document.createElement('div');
+        issuesCard.className = `${classes.card} flex flex-col`;
+        issuesCard.innerHTML = `<h3 class="text-sm font-bold uppercase tracking-wider ${classes.text.secondary} mb-4">Top Issues</h3>`;
+
+        if (report.issues.length === 0) {
+            issuesCard.innerHTML += `
+                <div class="flex-1 flex flex-col items-center justify-center gap-2 text-green-500 py-8">
+                    <span class="material-symbols-outlined text-3xl">check_circle</span>
+                    <span class="font-medium">No quality issues found</span>
+                </div>
+            `;
+        } else {
+            const list = document.createElement('div');
+            list.className = 'space-y-3';
+            report.issues.slice(0, 5).forEach(issue => {
+                const item = document.createElement('div');
+                const severityColors = {
+                    critical: 'bg-red-500',
+                    warning: 'bg-amber-500',
+                    info: 'bg-blue-500'
+                };
+                const color = severityColors[issue.severity.toLowerCase()] || 'bg-gray-500';
+
+                item.className = `flex gap-3 pb-3 border-b ${theme === 'light' ? 'border-gray-100' : 'border-white/5'} last:border-0`;
+                item.innerHTML = `
+                    <div class="mt-1.5 w-2 h-2 rounded-full ${color} shrink-0"></div>
+                    <div>
+                        <div class="text-sm font-bold ${classes.text.primary}">${formatIssueType(issue.issue_type)}</div>
+                        <div class="text-xs ${classes.text.secondary} mt-0.5">${issue.description}</div>
+                    </div>
+                `;
+                list.appendChild(item);
+            });
+            issuesCard.appendChild(list);
+        }
+        grid.appendChild(issuesCard);
+
+        // Metrics Table
+        const metricsCard = document.createElement('div');
+        metricsCard.className = `${classes.card} col-span-2 overflow-hidden`;
+        metricsCard.innerHTML = `<h3 class="text-sm font-bold uppercase tracking-wider ${classes.text.secondary} mb-4">Column Metrics</h3>`;
+
+        const tableWrapper = document.createElement('div');
+        tableWrapper.className = 'overflow-x-auto';
+
+        const table = document.createElement('table');
+        table.className = 'w-full text-left border-collapse';
+
+        const thClass = `py-2 text-[10px] font-bold uppercase tracking-wider ${classes.text.secondary} border-b-2 ${theme === 'light' ? 'border-gray-100' : 'border-white/5'}`;
+        const tdClass = `py-3 border-b ${theme === 'light' ? 'border-gray-100' : 'border-white/5'} ${classes.text.primary} text-sm`;
+
+        table.innerHTML = `
+            <thead>
+                <tr>
+                    <th class="${thClass}">Column</th>
+                    <th class="${thClass}">NULLs (%)</th>
+                    <th class="${thClass}">Distinct (%)</th>
+                    <th class="${thClass}">Stats</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${report.column_metrics.map(m => `
+                    <tr>
+                        <td class="${tdClass} font-mono font-bold">${m.column_name}</td>
+                        <td class="${tdClass}">
+                            <div class="flex items-center gap-2">
+                                <div class="w-16 h-1.5 rounded-full ${theme === 'light' ? 'bg-gray-100' : 'bg-white/10'} overflow-hidden">
+                                    <div class="h-full bg-red-400" style="width: ${Math.min(100, m.null_percentage)}%"></div>
+                                </div>
+                                <span class="text-xs tabular-nums">${m.null_percentage.toFixed(1)}%</span>
+                            </div>
+                        </td>
+                        <td class="${tdClass}">
+                            <div class="flex items-center gap-2">
+                                <div class="w-16 h-1.5 rounded-full ${theme === 'light' ? 'bg-gray-100' : 'bg-white/10'} overflow-hidden">
+                                     <div class="h-full bg-blue-400" style="width: ${Math.min(100, m.distinct_percentage)}%"></div>
+                                </div>
+                                <span class="text-xs tabular-nums">${m.distinct_percentage.toFixed(1)}%</span>
+                            </div>
+                        </td>
+                        <td class="${tdClass} text-xs ${classes.text.secondary}">
+                           ${renderStats(m)}
+                        </td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        `;
+        tableWrapper.appendChild(table);
+        metricsCard.appendChild(tableWrapper);
+        grid.appendChild(metricsCard);
+
+        parent.appendChild(grid);
+    }
+
+    function renderTrends(parent) {
+        if (state.trends.length < 2) {
+            parent.innerHTML = `
+                 <div class="h-full flex flex-col items-center justify-center gap-4 opacity-50 ${classes.text.primary}">
+                    <span class="material-symbols-outlined text-5xl">show_chart</span>
+                    <div class="text-center">
+                        <h3 class="font-bold">Not Enough Data</h3>
+                        <p class="text-sm ${classes.text.secondary}">Run more analyses to see trends over time. Need at least 2 data points.</p>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
+        const card = document.createElement('div');
+        card.className = `${classes.card} h-full flex flex-col`;
+
+        card.innerHTML = `
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-sm font-bold uppercase tracking-wider ${classes.text.secondary}">Quality Score Trend</h3>
+            </div>
+            <div class="chart-container flex-1 min-h-[300px] relative">
+                ${renderLineChart(state.trends)}
+            </div>
+        `;
+        parent.appendChild(card);
+    }
+
+    function renderLineChart(data) {
+        const width = 800;
+        const height = 300;
+        const padding = 40;
+
+        const dataPoints = data.map(d => ({
+            date: new Date(d.analyzed_at),
+            score: d.overall_score
+        }));
+
+        const minTime = Math.min(...dataPoints.map(d => d.date));
+        const maxTime = Math.max(...dataPoints.map(d => d.date));
+        const timeRange = maxTime - minTime || 1;
+
+        const xScale = (date) => padding + ((date - minTime) / timeRange) * (width - padding * 2);
+        const yScale = (score) => height - padding - (score / 100) * (height - padding * 2);
+
+        const points = dataPoints.map(d => `${xScale(d.date)},${yScale(d.score)}`).join(' ');
+
+        // Colors base on theme
+        const gridColor = theme === 'light' ? '#e5e7eb' : (theme === 'dawn' ? '#f2e9e1' : '#ffffff20');
+        const textColor = theme === 'light' ? '#9ca3af' : (theme === 'dawn' ? '#9893a5' : '#6b7280');
+        const lineColor = theme === 'dawn' ? '#ea9d34' : '#0ea5e9';
+
+        const yGrid = [0, 25, 50, 75, 100].map(val => `
+            <line x1="${padding}" y1="${yScale(val)}" x2="${width - padding}" y2="${yScale(val)}" stroke="${gridColor}" stroke-dasharray="4" />
+            <text x="${padding - 10}" y="${yScale(val)}" dy="4" text-anchor="end" font-size="10" fill="${textColor}">${val}</text>
+        `).join('');
+
+        const dots = dataPoints.map(d => `
+            <circle cx="${xScale(d.date)}" cy="${yScale(d.score)}" r="5" fill="${getScoreColor(d.score)}" stroke="${theme === 'light' ? '#fff' : '#1f2937'}" stroke-width="2">
+                <title>${d.score.toFixed(1)} on ${d.date.toLocaleString()}</title>
+            </circle>
+        `).join('');
+
+        return `
+            <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="width: 100%; height: 100%;">
+                ${yGrid}
+                <polyline points="${points}" fill="none" stroke="${lineColor}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+                ${dots}
+            </svg>
+        `;
+    }
+
+    function renderStats(metric) {
+        if (metric.min_value !== null) {
+            return `<div class="leading-tight">Min: <span class="font-mono">${metric.min_value}</span><br>Max: <span class="font-mono">${metric.max_value}</span></div>`;
+        }
+        return '<span class="opacity-50">-</span>';
+    }
+
+    function getScoreColor(score) {
+        if (score >= 90) return '#10b981'; // Green
+        if (score >= 70) return '#f59e0b'; // Amber
+        return '#ef4444'; // Red
+    }
+
+    function formatIssueType(type) {
+        if (typeof type === 'string') return type;
+        return type.replace(/([A-Z])/g, ' $1').trim();
+    }
+
+    // Theme listener
+    const onThemeChange = (e) => {
+        theme = e.detail.theme;
+        classes = getClasses(theme);
+        render(); // Re-render with new classes
+    };
+    window.addEventListener('themechange', onThemeChange);
+
+    // Cleanup
+    container.onUnmount = () => {
+        window.removeEventListener('themechange', onThemeChange);
+    };
+
+    init();
+
+    return container;
+}

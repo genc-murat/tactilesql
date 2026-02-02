@@ -15,6 +15,7 @@ export function NavBar() {
 
             { path: '/workbench', label: 'EXPLORER', icon: 'code' },
             { path: '/schema-tracker', label: 'SCHEMA TRACKER', icon: 'history' },
+            { path: '/quality-analyzer', label: 'QUALITY', icon: 'fact_check' },
             { path: '/diff', label: 'SCHEMA DIFF', icon: 'compare_arrows' },
             { path: '/data-tools', label: 'DATA TOOLS', icon: 'swap_horiz' },
             { path: '/audit', label: 'AUDIT', icon: 'history' },

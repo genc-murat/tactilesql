@@ -1,4 +1,5 @@
-use sqlx::{Pool, Sqlite};
+use sqlx::{Pool, Sqlite, Row};
+use crate::quality_analyzer::models::TableQualityReport;
 
 pub struct QualityAnalyzerStore {
     pool: Pool<Sqlite>,
@@ -14,46 +15,16 @@ impl QualityAnalyzerStore {
     async fn init_schema(&self) -> Result<(), String> {
         sqlx::query(
             r#"
-            CREATE TABLE IF NOT EXISTS quality_metrics (
+            CREATE TABLE IF NOT EXISTS quality_reports (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 connection_id TEXT NOT NULL,
                 table_name TEXT NOT NULL,
                 timestamp INTEGER NOT NULL,
-                row_count INTEGER NOT NULL,
-                duplicate_count INTEGER NOT NULL,
-                duplicate_rate REAL NOT NULL,
-                freshness_seconds INTEGER,
-                quality_score REAL NOT NULL
+                overall_score REAL NOT NULL,
+                report_data BLOB NOT NULL
             );
             
-            CREATE TABLE IF NOT EXISTS column_statistics (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                metrics_id INTEGER NOT NULL,
-                column_name TEXT NOT NULL,
-                null_rate REAL NOT NULL,
-                cardinality INTEGER NOT NULL,
-                min_value TEXT,
-                max_value TEXT,
-                mean REAL,
-                median REAL,
-                std_dev REAL,
-                outlier_count INTEGER,
-                FOREIGN KEY (metrics_id) REFERENCES quality_metrics(id)
-            );
-            
-            CREATE TABLE IF NOT EXISTS integrity_violations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                metrics_id INTEGER NOT NULL,
-                foreign_key_name TEXT NOT NULL,
-                parent_table TEXT NOT NULL,
-                child_table TEXT NOT NULL,
-                orphaned_count INTEGER NOT NULL,
-                FOREIGN KEY (metrics_id) REFERENCES quality_metrics(id)
-            );
-            
-            CREATE INDEX IF NOT EXISTS idx_metrics_connection ON quality_metrics(connection_id, table_name, timestamp);
-            CREATE INDEX IF NOT EXISTS idx_column_stats_metrics ON column_statistics(metrics_id);
-            CREATE INDEX IF NOT EXISTS idx_violations_metrics ON integrity_violations(metrics_id);
+            CREATE INDEX IF NOT EXISTS idx_quality_conn_table ON quality_reports(connection_id, table_name);
             "#
         )
         .execute(&self.pool)
@@ -61,5 +32,50 @@ impl QualityAnalyzerStore {
         .map_err(|e| format!("Failed to init quality_analyzer schema: {}", e))?;
 
         Ok(())
+    }
+
+    pub async fn save_report(&self, report: &TableQualityReport) -> Result<i64, String> {
+        let data = serde_json::to_vec(report).map_err(|e| e.to_string())?;
+        
+        let id = sqlx::query(
+            r#"
+            INSERT INTO quality_reports (connection_id, table_name, timestamp, overall_score, report_data)
+            VALUES (?, ?, ?, ?, ?)
+            RETURNING id
+            "#
+        )
+        .bind(&report.connection_id)
+        .bind(&report.table_name)
+        .bind(report.timestamp.timestamp())
+        .bind(report.overall_score)
+        .bind(data)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| format!("Failed to save report: {}", e))?
+        .try_get::<i64, _>("id")
+        .map_err(|e| e.to_string())?;
+
+        Ok(id)
+    }
+    
+    pub async fn get_reports(&self, connection_id: &str) -> Result<Vec<TableQualityReport>, String> {
+        let rows = sqlx::query(
+            "SELECT id, report_data FROM quality_reports WHERE connection_id = ? ORDER BY timestamp DESC LIMIT 50"
+        )
+        .bind(connection_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| format!("Failed to fetch reports: {}", e))?;
+
+        let mut reports = Vec::new();
+        for row in rows {
+            let id: i64 = row.try_get("id").unwrap_or_default();
+            let data: Vec<u8> = row.try_get("report_data").unwrap_or_default();
+            let mut report: TableQualityReport = serde_json::from_slice(&data).map_err(|e| e.to_string())?;
+            report.id = Some(id);
+            reports.push(report);
+        }
+        
+        Ok(reports)
     }
 }

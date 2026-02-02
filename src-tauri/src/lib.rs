@@ -194,7 +194,10 @@ pub fn run() {
             schema_tracker::commands::generate_migration,
             schema_tracker::commands::generate_migration,
             schema_tracker::commands::add_snapshot_tag,
-            schema_tracker::commands::get_schema_snapshots
+            schema_tracker::commands::add_snapshot_tag,
+            schema_tracker::commands::get_schema_snapshots,
+            quality_analyzer::commands::run_quality_analysis,
+            quality_analyzer::commands::get_quality_reports
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
