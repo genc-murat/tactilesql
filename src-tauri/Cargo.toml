@@ -30,6 +30,7 @@ uuid = { version = "1.20.0", features = ["v4", "serde"] }
 aes-gcm = "0.10"
 base64 = "0.22"
 rand = "0.8"
+keyring = "3"
 # SSH Tunnel
 ssh2 = "0.9"
 dirs = "5"

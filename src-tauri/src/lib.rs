@@ -28,6 +28,23 @@ pub fn run() {
                     Err(e) => println!("Error setting min size: {}", e),
                 }
             }
+
+            // Initialize Encryption Key
+            let app_handle = app.handle();
+            let state = app.state::<db::AppState>();
+            match db::initialize_key(app_handle) {
+                Ok(key) => {
+                    let mut guard = futures::executor::block_on(state.encryption_key.lock());
+                    *guard = Some(key);
+                    println!("Encryption key initialized successfully (from Keychain or Migration).");
+                },
+                Err(e) => {
+                    eprintln!("CRITICAL ERROR: Failed to initialize encryption key: {}", e);
+                    // We might want to show a dialog here or panic, but for now log it.
+                    // Without key, load_connections and save_connection will fail.
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

@@ -12,25 +12,116 @@ use aes_gcm::{
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use rand::Rng;
+use keyring::Entry;
+
 
 // Re-export types from db_types
 pub use crate::db_types::*;
 use crate::mysql;
 use crate::postgres;
 
-// Encryption key - In production, this should be derived from user's master password or OS keychain
-const ENCRYPTION_KEY: &[u8; 32] = b"TactileSQL_SecretKey_32bytes!ok!";
+// Encryption constants
+const SERVICE_NAME: &str = "tactilesql";
+const USER_NAME: &str = "encryption_key";
+// LEGACY KEY for migration - DO NOT USE FOR NEW ENCRYPTION
+const LEGACY_KEY: &[u8; 32] = b"TactileSQL_SecretKey_32bytes!ok!";
+
+// =====================================================
+// KEY MANAGEMENT
+// =====================================================
+
+fn get_key_entry() -> Result<Entry, String> {
+    Entry::new(SERVICE_NAME, USER_NAME).map_err(|e| e.to_string())
+}
+
+pub fn initialize_key(app_handle: &AppHandle) -> Result<Vec<u8>, String> {
+    let entry = get_key_entry()?;
+    
+    // 1. Try to load from Keychain
+    match entry.get_password() {
+        Ok(key_base64) => {
+            // Found in keychain, decode and return
+            BASE64.decode(key_base64).map_err(|e| format!("Failed to decode key from keychain: {}", e))
+        },
+        Err(_) => {
+            // Not found in keychain (or error), check if we need migration
+            let connections_file = get_connections_file_path(app_handle);
+            
+            if connections_file.exists() {
+                println!("Migrating legacy connections to Keychain-based encryption...");
+                // MIGRATION SCENARIO: Old connections exist but no Keychain entry
+                // 1. Generate NEW key
+                let new_key = generate_new_key();
+                
+                // 2. Read existing file
+                let content = fs::read_to_string(&connections_file)
+                    .map_err(|e| format!("Failed to read connections file: {}", e))?;
+                
+                let mut connections: Vec<ConnectionConfig> = serde_json::from_str(&content)
+                    .map_err(|e| format!("Failed to parse JSON: {}", e))?;
+                
+                // 3. Re-encrypt passwords
+                // Decrypt with LEGACY_KEY, Encrypt with new_key
+                for conn in &mut connections {
+                    if let Some(ref encrypted_pwd) = conn.password {
+                        // Decrypt using legacy key logic directly here to avoid confusion
+                        match decrypt_password_with_key(encrypted_pwd, LEGACY_KEY) {
+                            Ok(plaintext) => {
+                                // Encrypt with NEW key
+                                match encrypt_password_with_key(&plaintext, &new_key) {
+                                    Ok(new_encrypted) => conn.password = Some(new_encrypted),
+                                    Err(e) => println!("Failed to re-encrypt password for {}: {}", conn.name.clone().unwrap_or_default(), e),
+                                }
+                            },
+                            Err(e) => println!("Failed to decrypt legacy password for {}: {}", conn.name.clone().unwrap_or_default(), e),
+                        }
+                    }
+                }
+                
+                // 4. Save new connections file
+                let json = serde_json::to_string_pretty(&connections)
+                    .map_err(|e| format!("Failed to serialize: {}", e))?;
+                fs::write(connections_file, json)
+                    .map_err(|e| format!("Failed to write migrated file: {}", e))?;
+                
+                // 5. Save NEW key to Keychain
+                let key_base64 = BASE64.encode(&new_key);
+                entry.set_password(&key_base64).map_err(|e| format!("Failed to save key to keychain: {}", e))?;
+                
+                Ok(new_key)
+            } else {
+                // FRESH INSTALL SCENARIO: No file, no keychain
+                let new_key = generate_new_key();
+                let key_base64 = BASE64.encode(&new_key);
+                entry.set_password(&key_base64).map_err(|e| format!("Failed to save key to keychain: {}", e))?;
+                Ok(new_key)
+            }
+        }
+    }
+}
+
+fn generate_new_key() -> Vec<u8> {
+    let mut key = vec![0u8; 32];
+    rand::thread_rng().fill(&mut key[..]);
+    key
+}
 
 // =====================================================
 // PASSWORD ENCRYPTION
 // =====================================================
 
-fn encrypt_password(password: &str) -> Result<String, String> {
+fn encrypt_password(password: &str, app_state: &State<'_, AppState>) -> Result<String, String> {
+    let key_guard = futures::executor::block_on(app_state.encryption_key.lock());
+    let key = key_guard.as_ref().ok_or("Encryption key not initialized")?;
+    encrypt_password_with_key(password, key)
+}
+
+fn encrypt_password_with_key(password: &str, key: &[u8]) -> Result<String, String> {
     if password.is_empty() {
         return Ok(String::new());
     }
     
-    let cipher = Aes256Gcm::new_from_slice(ENCRYPTION_KEY)
+    let cipher = Aes256Gcm::new_from_slice(key)
         .map_err(|e| format!("Failed to create cipher: {}", e))?;
     
     let mut rng = rand::thread_rng();
@@ -46,7 +137,14 @@ fn encrypt_password(password: &str) -> Result<String, String> {
     Ok(BASE64.encode(combined))
 }
 
-fn decrypt_password(encrypted: &str) -> Result<String, String> {
+
+fn decrypt_password(encrypted: &str, app_state: &State<'_, AppState>) -> Result<String, String> {
+    let key_guard = futures::executor::block_on(app_state.encryption_key.lock());
+    let key = key_guard.as_ref().ok_or("Encryption key not initialized")?;
+    decrypt_password_with_key(encrypted, key)
+}
+
+fn decrypt_password_with_key(encrypted: &str, key: &[u8]) -> Result<String, String> {
     if encrypted.is_empty() {
         return Ok(String::new());
     }
@@ -58,7 +156,7 @@ fn decrypt_password(encrypted: &str) -> Result<String, String> {
         return Err("Invalid encrypted data".to_string());
     }
     
-    let cipher = Aes256Gcm::new_from_slice(ENCRYPTION_KEY)
+    let cipher = Aes256Gcm::new_from_slice(key)
         .map_err(|e| format!("Failed to create cipher: {}", e))?;
     
     let nonce = Nonce::from_slice(&combined[..12]);
@@ -70,6 +168,7 @@ fn decrypt_password(encrypted: &str) -> Result<String, String> {
     String::from_utf8(plaintext)
         .map_err(|e| format!("UTF-8 conversion failed: {}", e))
 }
+
 
 // =====================================================
 // CONNECTION FILE STORAGE
@@ -165,13 +264,14 @@ pub async fn get_active_db_type(app_state: State<'_, AppState>) -> Result<Databa
 // =====================================================
 
 #[tauri::command]
-pub fn save_connection(app_handle: AppHandle, mut config: ConnectionConfig) -> Result<(), String> {
+pub fn save_connection(app_handle: AppHandle, app_state: State<'_, AppState>, mut config: ConnectionConfig) -> Result<(), String> {
     let file_path = get_connections_file_path(&app_handle);
     
     // Encrypt password before saving
     if let Some(ref pwd) = config.password {
-        config.password = Some(encrypt_password(pwd)?);
+        config.password = Some(encrypt_password(pwd, &app_state)?);
     }
+
     
     let mut connections: Vec<ConnectionConfig> = if file_path.exists() {
         let content = fs::read_to_string(&file_path)
@@ -196,7 +296,7 @@ pub fn save_connection(app_handle: AppHandle, mut config: ConnectionConfig) -> R
 }
 
 #[tauri::command]
-pub fn load_connections(app_handle: AppHandle) -> Result<Vec<ConnectionConfig>, String> {
+pub fn load_connections(app_handle: AppHandle, app_state: State<'_, AppState>) -> Result<Vec<ConnectionConfig>, String> {
     let file_path = get_connections_file_path(&app_handle);
     
     if !file_path.exists() {
@@ -212,7 +312,9 @@ pub fn load_connections(app_handle: AppHandle) -> Result<Vec<ConnectionConfig>, 
     // Decrypt passwords
     for conn in &mut connections {
         if let Some(ref encrypted_pwd) = conn.password {
-            conn.password = Some(decrypt_password(encrypted_pwd)?);
+            // If decryption fails (e.g. wrong key, logic error), we leave it as is or log error
+            // For now, if it fails, we assume it's possibly empty or bad data, but we propagate error to let user know
+            conn.password = Some(decrypt_password(encrypted_pwd, &app_state)?);
         }
     }
     
