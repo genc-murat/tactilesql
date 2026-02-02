@@ -14,6 +14,7 @@ export function NavBar() {
         const navItems = [
 
             { path: '/workbench', label: 'EXPLORER', icon: 'code' },
+            { path: '/schema-tracker', label: 'SCHEMA TRACKER', icon: 'history' },
             { path: '/diff', label: 'SCHEMA DIFF', icon: 'compare_arrows' },
             { path: '/data-tools', label: 'DATA TOOLS', icon: 'swap_horiz' },
             { path: '/audit', label: 'AUDIT', icon: 'history' },

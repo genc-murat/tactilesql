@@ -1,41 +1,13 @@
-use std::fs;
-use tauri::AppHandle;
-use tauri::Manager;
-use sqlx::{sqlite::SqlitePoolOptions, Pool, Sqlite, Row};
+use sqlx::{Pool, Sqlite, Row};
 
 pub struct AwarenessStore {
     pool: Pool<Sqlite>,
 }
 
 impl AwarenessStore {
-    pub async fn new(app_handle: &AppHandle) -> Result<Self, String> {
-        let app_data_dir = app_handle
-            .path()
-            .app_data_dir()
-            .expect("Failed to get app data directory");
-
-        let awareness_dir = app_data_dir.join("awareness");
-        if !awareness_dir.exists() {
-            fs::create_dir_all(&awareness_dir).map_err(|e| e.to_string())?;
-        }
-
-        let db_path = awareness_dir.join("awareness.db");
-        let db_url = format!("sqlite:{}", db_path.to_string_lossy());
-
-        // Create file if not exists (sqlx requires it for sqlite)
-        if !db_path.exists() {
-            fs::File::create(&db_path).map_err(|e| e.to_string())?;
-        }
-
-        let pool = SqlitePoolOptions::new()
-            .max_connections(5)
-            .connect(&db_url)
-            .await
-            .map_err(|e| format!("Failed to connect to awareness DB: {}", e))?;
-
+    pub async fn new(pool: Pool<Sqlite>) -> Result<Self, String> {
         let store = Self { pool };
         store.init_schema().await?;
-        
         Ok(store)
     }
 

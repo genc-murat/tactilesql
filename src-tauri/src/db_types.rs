@@ -3,7 +3,7 @@
 // =====================================================
 
 use serde::{Deserialize, Serialize};
-use sqlx::{Pool, MySql, Postgres};
+use sqlx::{Pool, MySql, Postgres, Sqlite};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -23,6 +23,10 @@ pub struct AppState {
     pub active_db_type: Arc<Mutex<DatabaseType>>,
     pub encryption_key: Arc<Mutex<Option<Vec<u8>>>>,
     pub awareness_store: Arc<Mutex<Option<crate::awareness::store::AwarenessStore>>>,
+    pub schema_tracker_store: Arc<Mutex<Option<crate::schema_tracker::storage::SchemaTrackerStore>>>,
+    pub quality_analyzer_store: Arc<Mutex<Option<crate::quality_analyzer::storage::QualityAnalyzerStore>>>,
+    pub dependency_engine_store: Arc<Mutex<Option<crate::dependency_engine::storage::DependencyEngineStore>>>,
+    pub local_db_pool: Arc<Mutex<Option<Pool<Sqlite>>>>,
 }
 
 impl Default for AppState {
@@ -33,6 +37,10 @@ impl Default for AppState {
             active_db_type: Arc::new(Mutex::new(DatabaseType::MySQL)),
             encryption_key: Arc::new(Mutex::new(None)),
             awareness_store: Arc::new(Mutex::new(None)),
+            schema_tracker_store: Arc::new(Mutex::new(None)),
+            quality_analyzer_store: Arc::new(Mutex::new(None)),
+            dependency_engine_store: Arc::new(Mutex::new(None)),
+            local_db_pool: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -45,6 +53,10 @@ impl Clone for AppState {
             active_db_type: Arc::clone(&self.active_db_type),
             encryption_key: Arc::clone(&self.encryption_key),
             awareness_store: Arc::clone(&self.awareness_store),
+            schema_tracker_store: Arc::clone(&self.schema_tracker_store),
+            quality_analyzer_store: Arc::clone(&self.quality_analyzer_store),
+            dependency_engine_store: Arc::clone(&self.dependency_engine_store),
+            local_db_pool: Arc::clone(&self.local_db_pool),
         }
     }
 }
@@ -91,7 +103,7 @@ pub struct QueryResult {
 }
 
 // --- Column Schema ---
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case")]
 pub struct ColumnSchema {
     pub name: String,
@@ -104,7 +116,7 @@ pub struct ColumnSchema {
 }
 
 // --- Table Index ---
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TableIndex {
     pub name: String,
     pub column_name: String,
@@ -113,7 +125,7 @@ pub struct TableIndex {
 }
 
 // --- Foreign Key ---
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ForeignKey {
     pub constraint_name: String,
     pub column_name: String,
@@ -122,14 +134,14 @@ pub struct ForeignKey {
 }
 
 // --- Primary Key ---
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PrimaryKey {
     pub column_name: String,
     pub ordinal_position: i32,
 }
 
 // --- Constraint ---
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TableConstraint {
     pub name: String,
     pub constraint_type: String,
@@ -146,7 +158,7 @@ pub struct TableStats {
 }
 
 // --- Trigger Info ---
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TriggerInfo {
     pub name: String,
     pub event: String,
@@ -155,7 +167,7 @@ pub struct TriggerInfo {
 }
 
 // --- Routine Info (Procedures/Functions) ---
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RoutineInfo {
     pub name: String,
     pub definer: String,
@@ -170,7 +182,7 @@ pub struct EventInfo {
 }
 
 // --- View Definition ---
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ViewDefinition {
     pub name: String,
     pub definition: String,

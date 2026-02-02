@@ -27,7 +27,11 @@ mod db_types;
 mod mysql;
 mod postgres;
 mod db;
+mod common;
 pub mod awareness;
+pub mod schema_tracker;
+pub mod quality_analyzer;
+pub mod dependency_engine;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -62,17 +66,59 @@ pub fn run() {
                 }
             }
 
-            // Initialize Awareness Store
+            // Initialize Local Storage & Stores
             let app_handle_clone = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                match crate::awareness::store::AwarenessStore::new(&app_handle_clone).await {
-                    Ok(store) => {
-                         let state = app_handle_clone.state::<db::AppState>();
-                         let mut guard = state.awareness_store.lock().await;
-                         *guard = Some(store);
-                         println!("Awareness Store initialized successfully.");
+                match crate::common::storage::init_local_db(&app_handle_clone).await {
+                    Ok(pool) => {
+                        let state = app_handle_clone.state::<db::AppState>();
+                        {
+                            let mut pool_guard = state.local_db_pool.lock().await;
+                            *pool_guard = Some(pool.clone());
+                        }
+                        println!("Local Storage initialized successfully.");
+
+                        // Awareness Store
+                        match crate::awareness::store::AwarenessStore::new(pool.clone()).await {
+                            Ok(store) => {
+                                 let mut guard = state.awareness_store.lock().await;
+                                 *guard = Some(store);
+                                 println!("Awareness Store initialized.");
+                            },
+                            Err(e) => eprintln!("Failed to init Awareness Store: {}", e),
+                        }
+                        
+                        // Schema Tracker Store
+                        match crate::schema_tracker::storage::SchemaTrackerStore::new(pool.clone()).await {
+                            Ok(store) => {
+                                 let mut guard = state.schema_tracker_store.lock().await;
+                                 *guard = Some(store);
+                                 println!("Schema Tracker Store initialized.");
+                            },
+                            Err(e) => eprintln!("Failed to init Schema Tracker Store: {}", e),
+                        }
+
+                        // Quality Analyzer Store
+                        match crate::quality_analyzer::storage::QualityAnalyzerStore::new(pool.clone()).await {
+                            Ok(store) => {
+                                 let mut guard = state.quality_analyzer_store.lock().await;
+                                 *guard = Some(store);
+                                 println!("Quality Analyzer Store initialized.");
+                            },
+                            Err(e) => eprintln!("Failed to init Quality Analyzer Store: {}", e),
+                        }
+
+                        // Dependency Engine Store
+                        match crate::dependency_engine::storage::DependencyEngineStore::new(pool.clone()).await {
+                            Ok(store) => {
+                                 let mut guard = state.dependency_engine_store.lock().await;
+                                 *guard = Some(store);
+                                 println!("Dependency Engine Store initialized.");
+                            },
+                            Err(e) => eprintln!("Failed to init Dependency Engine Store: {}", e),
+                        }
                     },
-                    Err(e) => eprintln!("Failed to initialize Awareness Store: {}", e),
+                    Err(e) => eprintln!("Failed to initialize Local Storage: {}", e),
                 }
             });
 
@@ -131,7 +177,6 @@ pub fn run() {
             db::get_slow_queries,
             // Query Analysis
             db::analyze_query,
-            db::analyze_query,
             db::get_index_suggestions,
             db::get_execution_plan,
             db::compare_queries,
@@ -141,7 +186,15 @@ pub fn run() {
             db::get_sequences,
             db::get_custom_types,
             db::get_extensions,
-            db::get_tablespaces
+            db::get_tablespaces,
+            // Schema Tracker
+            schema_tracker::commands::capture_schema_snapshot,
+            schema_tracker::commands::compare_schema_snapshots,
+            schema_tracker::commands::detect_breaking_changes,
+            schema_tracker::commands::generate_migration,
+            schema_tracker::commands::generate_migration,
+            schema_tracker::commands::add_snapshot_tag,
+            schema_tracker::commands::get_schema_snapshots
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
