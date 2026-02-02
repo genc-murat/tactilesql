@@ -31,7 +31,11 @@
         "width": 1280,
         "height": 800,
         "decorations": false,
-        "resizable": false
+        "resizable": false,
+        "transparent": false,
+        "backgroundColor": "#0a0c10",
+        "visible": true,
+        "fullscreen": true
       }
     ],
     "security": {
