@@ -167,7 +167,6 @@ export function GraphViewer(graphData, theme, qualityMap) {
                 nodeSep: 60,
                 rankSep: 120
             },
-            wheelSensitivity: 0.2,
             minZoom: 0.1,
             maxZoom: 3
         });
