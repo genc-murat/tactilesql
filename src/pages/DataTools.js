@@ -8,7 +8,7 @@ export function DataTools() {
     const getContainerClass = (t) => {
         const isLight = t === 'light';
         const isDawn = t === 'dawn';
-        const isOceanic = t === 'oceanic';
+        const isOceanic = t === 'oceanic' || t === 'ember' || t === 'aurora';
         return `flex-1 flex flex-col h-full overflow-auto custom-scrollbar ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]'))} p-6 transition-all duration-300`;
     };
     container.className = getContainerClass(theme);
@@ -233,7 +233,7 @@ export function DataTools() {
     const render = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
 
         container.innerHTML = `
             <div class="w-full h-full">
@@ -313,7 +313,7 @@ export function DataTools() {
     const renderTabContent = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
 
         if (activeTab === 'export') {
             return `

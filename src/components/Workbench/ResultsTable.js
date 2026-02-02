@@ -4,6 +4,17 @@ import { Dialog } from '../UI/Dialog.js';
 import { ThemeManager } from '../../utils/ThemeManager.js';
 import { LoadingStates } from '../UI/LoadingStates.js';
 
+// Helper to escape HTML special characters for GTK markup compatibility
+const escapeHtml = (str) => {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+};
+
 // Virtual scrolling threshold - use virtual scroll for datasets larger than this
 const VIRTUAL_SCROLL_THRESHOLD = 500;
 
@@ -11,7 +22,7 @@ export function ResultsTable() {
     let theme = ThemeManager.getCurrentTheme();
     let isLight = theme === 'light';
     let isDawn = theme === 'dawn';
-    let isOceanic = theme === 'oceanic';
+    let isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
     const container = document.createElement('div');
     container.className = "flex flex-col flex-1 min-h-[300px] max-h-full min-w-[600px]";
 
@@ -103,9 +114,9 @@ export function ResultsTable() {
                     <div class="result-tab flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium cursor-pointer transition-all ${tab.id === activeTabId
                 ? (isLight ? 'bg-white border-gray-200 text-gray-700 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#ea9d34] shadow-sm' : (isOceanic ? 'bg-ocean-bg border-ocean-frost/30 text-ocean-text' : 'bg-[#1a1d23] border-mysql-teal/30 text-white')))
                 : (isLight ? 'bg-gray-50 border-transparent text-gray-500 hover:bg-gray-100' : (isDawn ? 'bg-[#fffaf3]/50 border-transparent text-[#797593] hover:bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg/50 border-transparent text-ocean-text/60 hover:bg-ocean-bg' : 'bg-white/5 border-transparent text-gray-400 hover:bg-white/10')))
-            } border group" data-tab-id="${tab.id}" title="${tab.query}">
+            } border group" data-tab-id="${tab.id}" title="${escapeHtml(tab.query)}">
                         ${tab.pinned ? `<span class="material-symbols-outlined text-[10px] ${isDawn ? 'text-[#ea9d34]' : 'text-yellow-500'}">push_pin</span>` : ''}
-                        <span class="truncate max-w-[120px]">${tab.title}</span>
+                        <span class="truncate max-w-[120px]">${escapeHtml(tab.title)}</span>
                         <span class="px-1 py-0.5 rounded text-[8px] ${isLight ? 'bg-gray-100 text-gray-500' : (isDawn ? 'bg-[#f2e9e1] text-[#797593]' : 'bg-white/10 text-gray-400')}">${tab.data.rows?.length || 0}</span>
                         <button class="tab-pin-btn opacity-0 group-hover:opacity-100 transition-opacity ${tab.pinned ? (isDawn ? 'text-[#ea9d34]' : 'text-yellow-500') : (isDawn ? 'text-[#9893a5] hover:text-[#ea9d34]' : 'text-gray-400 hover:text-yellow-500')}" data-tab-id="${tab.id}" title="${tab.pinned ? 'Unpin' : 'Pin'}">
                             <span class="material-symbols-outlined text-[10px]">push_pin</span>
@@ -277,7 +288,7 @@ export function ResultsTable() {
         if (cell === null || cell === undefined) return 'NULL';
         if (typeof cell === 'boolean') return cell ? 'TRUE' : 'FALSE';
         if (typeof cell === 'number') return String(cell);
-        return String(cell);
+        return escapeHtml(String(cell));
     };
 
     const formatCell = (cell) => {

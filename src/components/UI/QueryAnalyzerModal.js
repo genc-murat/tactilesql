@@ -14,7 +14,7 @@ export const QueryAnalyzerModal = {
         const theme = ThemeManager.getCurrentTheme();
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
 
         const explainData = analysisResult.explain_plan || [];
         const suggestions = Array.isArray(analysisResult.suggestions) ? analysisResult.suggestions : [];

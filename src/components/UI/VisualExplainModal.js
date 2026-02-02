@@ -30,7 +30,7 @@ export function showVisualExplainModal(queryResult) {
     const theme = ThemeManager.getCurrentTheme();
     const isLight = theme === 'light';
     const isDawn = theme === 'dawn';
-    const isOceanic = theme === 'oceanic';
+    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
 
     const overlay = document.createElement('div');
     overlay.id = 'visual-explain-modal';

@@ -6,6 +6,10 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
+// Database modules
+mod db_types;
+mod mysql;
+mod postgres;
 mod db;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -27,54 +31,60 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            greet, 
+            greet,
+            // Connection Management
             db::test_connection, 
-            db::get_connections, 
-            db::save_connection,
-            db::save_connections,
-            db::delete_connection,
             db::establish_connection,
+            db::disconnect,
+            db::get_active_db_type,
+            db::save_connection,
+            db::load_connections,
+            db::delete_connection,
+            // Query Execution
             db::execute_query,
+            // Database/Table Operations
             db::get_databases,
+            db::get_schemas,
             db::get_tables,
             db::get_table_schema,
-            db::get_mysql_users,
-            db::get_user_privileges,
+            db::get_table_ddl,
+            // Indexes & Keys
             db::get_table_indexes,
             db::get_table_foreign_keys,
             db::get_table_primary_keys,
             db::get_table_constraints,
             db::get_table_stats,
-            db::get_table_ddl,
+            // Views
             db::get_views,
-            db::get_triggers,
-            db::get_table_triggers,
-            db::get_procedures,
-            db::get_functions,
-            db::get_events,
             db::get_view_definition,
             db::alter_view,
-            // SSH Tunnel
-            db::test_ssh_connection,
-            // Data Import/Export
-            db::export_table_csv,
-            db::export_table_json,
-            db::export_table_sql,
-            db::import_csv,
-            // Backup & Restore
-            db::backup_database,
-            db::restore_database,
-            // Query Optimization
-            db::analyze_query,
-            db::get_index_suggestions,
-            // Real-time Monitoring
+            // Triggers
+            db::get_triggers,
+            db::get_table_triggers,
+            // Procedures & Functions
+            db::get_procedures,
+            db::get_functions,
+            // Events (MySQL)
+            db::get_events,
+            // User Management
+            db::get_users,
+            db::get_user_privileges,
+            // Server Monitoring
             db::get_server_status,
             db::get_process_list,
             db::kill_process,
-            db::get_slow_queries,
             db::get_innodb_status,
             db::get_replication_status,
-            db::get_locks
+            db::get_locks,
+            db::get_slow_queries,
+            // Query Analysis
+            db::analyze_query,
+            db::get_index_suggestions,
+            // PostgreSQL Specific
+            db::get_sequences,
+            db::get_custom_types,
+            db::get_extensions,
+            db::get_tablespaces
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

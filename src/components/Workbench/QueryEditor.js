@@ -108,7 +108,7 @@ export function QueryEditor() {
     let theme = ThemeManager.getCurrentTheme();
     let isLight = theme === 'light';
     let isDawn = theme === 'dawn';
-    let isOceanic = theme === 'oceanic';
+    let isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
     const container = document.createElement('div');
     container.className = `flex flex-col h-full border-b ${isLight ? 'border-gray-200 bg-white' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3]' : (isOceanic ? 'border-ocean-border/50 bg-ocean-bg' : 'border-white/5 bg-[#0f1115]'))}`;
 
@@ -193,6 +193,9 @@ export function QueryEditor() {
         const currentDb = activeConfig.database || '';
         const query = textarea?.value || '';
         const cursorPos = textarea?.selectionStart || 0;
+        
+        // Get database type from activeDbType in localStorage
+        const activeDbType = localStorage.getItem('activeDbType') || 'mysql';
 
         // Fallback to basic autocomplete function
         const getBasicSuggestions = async () => {
@@ -222,6 +225,9 @@ export function QueryEditor() {
             if (cachedDatabases.length === 0) {
                 await loadDatabasesForAutocomplete();
             }
+
+            // Set database type for smart autocomplete
+            smartAutocomplete.setDbType(activeDbType);
 
             // Try smart autocomplete
             await smartAutocomplete.loadDatabases();
@@ -386,6 +392,10 @@ export function QueryEditor() {
         const sortedTabs = getSortedTabs();
         const visibleTabs = sortedTabs.slice(0, maxVisibleTabs);
         const overflowTabs = sortedTabs.slice(maxVisibleTabs);
+        
+        // Check if PostgreSQL (hide database selector for PostgreSQL)
+        const activeDbType = localStorage.getItem('activeDbType') || 'mysql';
+        const isPg = activeDbType === 'postgresql';
 
         container.innerHTML = `
             <div class="border-b ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5'))}">
@@ -429,12 +439,12 @@ export function QueryEditor() {
                     </div>
                 </div>
                 <div class="px-2 py-0.5 flex items-center justify-end gap-2 ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#faf4ed]' : (isOceanic ? 'bg-ocean-bg/50' : 'bg-[#16191e]'))}">
-                    <div class="flex items-center gap-1" title="Select Active Database">
+                    ${!isPg ? `<div class="flex items-center gap-1" title="Select Active Database">
                         <span class="material-symbols-outlined text-gray-600" style="font-size: 14px;">database</span>
                         <select id="db-selector" class="${isLight ? 'bg-gray-100 border-gray-200 text-gray-700' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50 text-ocean-text' : 'bg-[#0f1115] border-white/10 text-gray-300'))} border text-[9px] rounded px-1.5 py-0.5 outline-none focus:border-mysql-teal/50 min-w-[90px] cursor-pointer">
                             <option value="" disabled selected>Loading...</option>
                         </select>
-                    </div>
+                    </div>` : ''}
                     ${estimatedExecutionTime ? `<div class="px-1 py-0.5 text-[8px] ${isLight ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-blue-900/20 text-blue-400 border border-blue-500/30'} rounded font-mono flex items-center gap-0.5">
                         <span class="material-symbols-outlined" style="font-size: 10px;">insights</span>
                         ~${estimatedExecutionTime}ms
@@ -474,9 +484,6 @@ export function QueryEditor() {
                 <div class="flex-1 relative pl-6">
                     <pre id="syntax-highlight" class="absolute inset-0 pl-6 pt-0 font-mono text-[14px] leading-[22px] pointer-events-none overflow-hidden whitespace-pre-wrap break-words" aria-hidden="true"></pre>
                     <textarea id="query-input" class="relative w-full h-full bg-transparent border-none ${isLight ? 'text-transparent' : (isOceanic ? 'text-transparent' : 'text-transparent')} ${isLight ? 'caret-gray-800' : (isOceanic ? 'caret-white' : 'caret-white')} font-mono text-[14px] leading-[22px] focus:ring-0 resize-none outline-none custom-scrollbar p-0 z-10 placeholder:text-gray-600/50" spellcheck="false" placeholder="Enter your SQL query here... (Ctrl+Space for suggestions)">${activeTab ? activeTab.content : ''}</textarea>
-                </div>
-                <div class="absolute bottom-4 right-4 text-[10px] ${(isLight || isDawn) ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-500/50')} font-bold uppercase tracking-widest">
-                    MySQL 8.0 • UTF-8 • <span class="text-mysql-teal/50">Ctrl+Space</span>
                 </div>
             </div>
         `;
@@ -790,7 +797,7 @@ export function QueryEditor() {
         const theme = ThemeManager.getCurrentTheme();
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
 
         const overlay = document.createElement('div');
         overlay.id = 'whatif-optimizer-modal';
@@ -1532,8 +1539,12 @@ export function QueryEditor() {
                     return;
                 }
 
-                // Force TRADITIONAL format (tabular) for visual explain compatibility
-                const explainQuery = `EXPLAIN FORMAT=TRADITIONAL ${queryToRun}`;
+                // Get database type for correct EXPLAIN syntax
+                const activeDbType = localStorage.getItem('activeDbType') || 'mysql';
+                // PostgreSQL: EXPLAIN (FORMAT TEXT), MySQL: EXPLAIN FORMAT=TRADITIONAL
+                const explainQuery = activeDbType === 'postgresql' 
+                    ? `EXPLAIN (FORMAT TEXT) ${queryToRun}`
+                    : `EXPLAIN FORMAT=TRADITIONAL ${queryToRun}`;
                 const originalHTML = explainBtn.innerHTML;
 
                 try {
@@ -1833,7 +1844,7 @@ export function QueryEditor() {
     const onThemeChange = (e) => {
         theme = e.detail.theme;
         isLight = theme === 'light';
-        isOceanic = theme === 'oceanic';
+        isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
         container.className = `flex flex-col h-full border-b ${isLight ? 'border-gray-200 bg-white' : (isOceanic ? 'border-ocean-border/50 bg-ocean-bg' : 'border-white/5 bg-[#0f1115]')}`;
         render();
     };

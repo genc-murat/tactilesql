@@ -226,6 +226,8 @@ export function Settings() {
         if (t === 'light') return 'bg-gray-50';
         if (t === 'dawn') return 'bg-[#faf4ed]';
         if (t === 'oceanic') return 'bg-ocean-bg';
+        if (t === 'ember') return 'bg-[#140c12]';
+        if (t === 'aurora') return 'bg-[#0b1214]';
         return 'bg-base-dark';
     };
     container.className = `h-full overflow-auto ${getBgClass(theme)} transition-colors duration-300`;
@@ -233,7 +235,9 @@ export function Settings() {
     const render = () => {
         const isLight = theme === 'light' || theme === 'dawn';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isEmber = theme === 'ember';
+        const isAurora = theme === 'aurora';
         const currentTheme = ThemeManager.getCurrentTheme();
         const snippetSuggestionsEnabled = SettingsManager.get('autocomplete.snippets', true);
 
@@ -259,13 +263,13 @@ export function Settings() {
 
             <!-- Tab Content -->
             <div id="tab-content">
-                ${activeTab === 'general' ? renderGeneralTab(isLight, isDawn, isOceanic, currentTheme, snippetSuggestionsEnabled) : renderSnippetsTab(isLight, isDawn, isOceanic)}
+                ${activeTab === 'general' ? renderGeneralTab(isLight, isDawn, isOceanic, isEmber, isAurora, currentTheme, snippetSuggestionsEnabled) : renderSnippetsTab(isLight, isDawn, isOceanic)}
             </div>
         </div>
     `;
     };
 
-    function renderGeneralTab(isLight, isDawn, isOceanic, currentTheme, snippetSuggestionsEnabled) {
+    function renderGeneralTab(isLight, isDawn, isOceanic, isEmber, isAurora, currentTheme, snippetSuggestionsEnabled) {
         return `
             <div class="space-y-6">
                 <!-- Appearance Section -->
@@ -304,14 +308,22 @@ export function Settings() {
                                     <span class="material-symbols-outlined text-lg">water</span>
                                     Oceanic
                                 </button>
+                                <button id="theme-ember" class="theme-btn flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${currentTheme === 'ember' ? 'bg-gradient-to-r from-mysql-teal to-mysql-cyan text-white shadow-lg shadow-mysql-teal/30' : (isLight ? 'text-gray-600 hover:text-gray-800' : 'text-gray-400 hover:text-gray-200')}">
+                                    <span class="material-symbols-outlined text-lg">local_fire_department</span>
+                                    Ember
+                                </button>
+                                <button id="theme-aurora" class="theme-btn flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${currentTheme === 'aurora' ? 'bg-gradient-to-r from-mysql-teal to-mysql-cyan text-white shadow-lg shadow-mysql-teal/30' : (isLight ? 'text-gray-600 hover:text-gray-800' : 'text-gray-400 hover:text-gray-200')}">
+                                    <span class="material-symbols-outlined text-lg">flare</span>
+                                    Aurora
+                                </button>
                             </div>
                         </div>
 
                         <!-- Theme Preview -->
                         <div class="mt-4">
                             <h4 class="text-xs font-medium ${isLight ? 'text-gray-600' : 'text-gray-400'} uppercase tracking-wider mb-3">Preview</h4>
-                            <div id="theme-preview" class="rounded-xl p-4 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))}">
-                                ${currentTheme === 'dark' ? getDarkPreview() : (currentTheme === 'light' ? getLightPreview() : (currentTheme === 'dawn' ? getDawnPreview() : getOceanicPreview()))}
+                            <div id="theme-preview" class="rounded-xl p-4 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : (isEmber ? 'bg-[#1d141c] border border-[#2c1c27]' : (isAurora ? 'bg-[#0f1a1d] border border-[#1b2e33]' : 'bg-[#13161b] border border-white/10'))))}">
+                                ${currentTheme === 'dark' ? getDarkPreview() : (currentTheme === 'light' ? getLightPreview() : (currentTheme === 'dawn' ? getDawnPreview() : (currentTheme === 'oceanic' ? getOceanicPreview() : (currentTheme === 'ember' ? getEmberPreview() : getAuroraPreview()))))}
                             </div>
                         </div>
                     </div>
@@ -394,7 +406,7 @@ export function Settings() {
                         </div>
                         <div class="p-4 rounded-lg ${isLight ? 'bg-gray-50' : 'bg-black/20'}">
                             <span class="text-gray-500">Build</span>
-                            <p class="${isLight ? 'text-gray-900' : 'text-white'} font-mono mt-1">2024.01.31</p>
+                            <p class="${isLight ? 'text-gray-900' : 'text-white'} font-mono mt-1">2026.01.31</p>
                         </div>
                     </div>
                 </div>
@@ -573,15 +585,19 @@ export function Settings() {
         const lightBtn = container.querySelector('#theme-light');
         const dawnBtn = container.querySelector('#theme-dawn');
         const oceanicBtn = container.querySelector('#theme-oceanic');
+        const emberBtn = container.querySelector('#theme-ember');
+        const auroraBtn = container.querySelector('#theme-aurora');
         const preview = container.querySelector('#theme-preview');
         const snippetToggle = container.querySelector('#autocomplete-snippets-toggle');
 
         const isLight = theme === 'light' || theme === 'dawn';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isEmber = theme === 'ember';
+        const isAurora = theme === 'aurora';
 
         const getToggleClasses = (isOn) => {
-            const buttonClass = `relative w-12 h-6 rounded-full transition-all ${isOn ? 'bg-gradient-to-r from-mysql-teal to-mysql-cyan' : (isLight ? 'bg-gray-200' : (isOceanic ? 'bg-ocean-border/40' : 'bg-white/10'))}`;
+            const buttonClass = `relative w-12 h-6 rounded-full transition-all ${isOn ? 'bg-gradient-to-r from-mysql-teal to-mysql-cyan' : (isLight ? 'bg-gray-200' : (isOceanic ? 'bg-ocean-border/40' : ((isEmber || isAurora) ? 'bg-[#2c1c27]/70' : 'bg-white/10')))}`;
             const knobClass = `absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow-md transition-transform transform ${isOn ? 'translate-x-6' : 'translate-x-0'}`;
             return { buttonClass, knobClass };
         };
@@ -600,9 +616,9 @@ export function Settings() {
             const getInactiveClass = (t) => (t === 'light' || t === 'dawn') ? 'text-gray-600 hover:text-gray-800' : (t === 'oceanic' ? 'text-ocean-text/60 hover:text-ocean-text' : 'text-gray-400 hover:text-gray-200');
             const inactiveClass = getInactiveClass(newTheme);
 
-            [darkBtn, lightBtn, dawnBtn, oceanicBtn].forEach(btn => btn && (btn.className = `theme-btn flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${inactiveClass}`));
+            [darkBtn, lightBtn, dawnBtn, oceanicBtn, emberBtn, auroraBtn].forEach(btn => btn && (btn.className = `theme-btn flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${inactiveClass}`));
 
-            const activeBtn = newTheme === 'dark' ? darkBtn : (newTheme === 'light' ? lightBtn : (newTheme === 'dawn' ? dawnBtn : oceanicBtn));
+            const activeBtn = newTheme === 'dark' ? darkBtn : (newTheme === 'light' ? lightBtn : (newTheme === 'dawn' ? dawnBtn : (newTheme === 'oceanic' ? oceanicBtn : (newTheme === 'ember' ? emberBtn : auroraBtn))));
             if (activeBtn) {
                 activeBtn.className = `theme-btn flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${activeClass}`;
             }
@@ -610,7 +626,9 @@ export function Settings() {
             if (newTheme === 'dark') preview.innerHTML = getDarkPreview();
             else if (newTheme === 'light') preview.innerHTML = getLightPreview();
             else if (newTheme === 'dawn') preview.innerHTML = getDawnPreview();
-            else preview.innerHTML = getOceanicPreview();
+            else if (newTheme === 'oceanic') preview.innerHTML = getOceanicPreview();
+            else if (newTheme === 'ember') preview.innerHTML = getEmberPreview();
+            else preview.innerHTML = getAuroraPreview();
         };
 
         darkBtn?.addEventListener('click', () => {
@@ -631,6 +649,16 @@ export function Settings() {
         oceanicBtn?.addEventListener('click', () => {
             ThemeManager.setTheme('oceanic');
             updateAllButtons('oceanic');
+        });
+
+        emberBtn?.addEventListener('click', () => {
+            ThemeManager.setTheme('ember');
+            updateAllButtons('ember');
+        });
+
+        auroraBtn?.addEventListener('click', () => {
+            ThemeManager.setTheme('aurora');
+            updateAllButtons('aurora');
         });
 
         if (snippetToggle) {
@@ -743,6 +771,50 @@ function getDawnPreview() {
                     <span class="text-[#286983] font-semibold">FROM</span>
                     <span class="text-[#d7827e]"> users</span>
                     <span class="text-[#575279]">;</span>
+                </code>
+            </div>
+        </div>
+    `;
+}
+
+function getEmberPreview() {
+    return `
+        <div class="bg-[#140c12] p-4 ember">
+            <div class="flex items-center gap-2 mb-3">
+                <div class="w-3 h-3 rounded-full bg-[#f97316]"></div>
+                <div class="w-3 h-3 rounded-full bg-[#fbbf24]"></div>
+                <div class="w-3 h-3 rounded-full bg-[#f472b6]"></div>
+                <span class="ml-2 text-xs text-[#c9b7c1]">Ember Theme Preview</span>
+            </div>
+            <div class="bg-[#1d141c] rounded-lg p-3 border border-[#2c1c27]">
+                <code class="text-sm font-mono">
+                    <span class="syntax-keyword font-semibold">SELECT</span>
+                    <span class="text-[#f6eef2]"> * </span>
+                    <span class="syntax-keyword font-semibold">FROM</span>
+                    <span class="syntax-string"> users</span>
+                    <span class="text-[#f6eef2]">;</span>
+                </code>
+            </div>
+        </div>
+    `;
+}
+
+function getAuroraPreview() {
+    return `
+        <div class="bg-[#0b1214] p-4 aurora">
+            <div class="flex items-center gap-2 mb-3">
+                <div class="w-3 h-3 rounded-full bg-[#22d3ee]"></div>
+                <div class="w-3 h-3 rounded-full bg-[#5eead4]"></div>
+                <div class="w-3 h-3 rounded-full bg-[#34d399]"></div>
+                <span class="ml-2 text-xs text-[#9bbcc3]">Aurora Theme Preview</span>
+            </div>
+            <div class="bg-[#0f1a1d] rounded-lg p-3 border border-[#1b2e33]">
+                <code class="text-sm font-mono">
+                    <span class="syntax-keyword font-semibold">SELECT</span>
+                    <span class="text-[#e6f7f8]"> * </span>
+                    <span class="syntax-keyword font-semibold">FROM</span>
+                    <span class="syntax-string"> users</span>
+                    <span class="text-[#e6f7f8]">;</span>
                 </code>
             </div>
         </div>

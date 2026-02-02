@@ -24,7 +24,7 @@ export class VirtualScroller {
         
         this.theme = ThemeManager.getCurrentTheme();
         this.isLight = this.theme === 'light';
-        this.isOceanic = this.theme === 'oceanic';
+        this.isOceanic = this.theme === 'oceanic' || this.theme === 'ember';
         
         this._scrollHandler = this._handleScroll.bind(this);
         this._resizeHandler = this._handleResize.bind(this);
@@ -155,7 +155,7 @@ export class VirtualScroller {
     _handleThemeChange(e) {
         this.theme = e.detail.theme;
         this.isLight = this.theme === 'light';
-        this.isOceanic = this.theme === 'oceanic';
+        this.isOceanic = this.theme === 'oceanic' || this.theme === 'ember';
         this._render();
     }
 
@@ -257,7 +257,7 @@ export function createVirtualTable(options = {}) {
 
     const theme = ThemeManager.getCurrentTheme();
     let isLight = theme === 'light';
-    let isOceanic = theme === 'oceanic';
+    let isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
     let selectedRows = new Set();
     let scroller = null;
 
@@ -389,7 +389,7 @@ export function createVirtualTable(options = {}) {
     const handleThemeChange = (e) => {
         const newTheme = e.detail.theme;
         isLight = newTheme === 'light';
-        isOceanic = newTheme === 'oceanic';
+        isOceanic = newTheme === 'oceanic' || newTheme === 'ember';
         renderHeader();
         scroller?.refresh();
     };

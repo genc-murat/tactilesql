@@ -7,7 +7,7 @@ export function SchemaDiff() {
     let theme = ThemeManager.getCurrentTheme();
     let isLight = theme === 'light';
     let isDawn = theme === 'dawn';
-    let isOceanic = theme === 'oceanic';
+    let isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
 
     const container = document.createElement('div');
     const updateContainerClass = () => {
@@ -527,7 +527,7 @@ export function SchemaDiff() {
         theme = e.detail.theme;
         isLight = theme === 'light';
         isDawn = theme === 'dawn';
-        isOceanic = theme === 'oceanic';
+        isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
         updateContainerClass();
         render();
     };

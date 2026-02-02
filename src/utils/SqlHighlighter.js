@@ -1,20 +1,14 @@
-// SQL Keywords for autocomplete and highlighting
-export const SQL_KEYWORDS = [
-    'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'NOT', 'IN', 'LIKE', 'BETWEEN',
-    'JOIN', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'FULL JOIN', 'CROSS JOIN',
-    'ON', 'AS', 'ORDER BY', 'GROUP BY', 'HAVING', 'LIMIT', 'OFFSET',
-    'INSERT INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE FROM',
-    'CREATE TABLE', 'ALTER TABLE', 'DROP TABLE', 'TRUNCATE TABLE',
-    'CREATE INDEX', 'DROP INDEX', 'CREATE DATABASE', 'DROP DATABASE',
-    'PRIMARY KEY', 'FOREIGN KEY', 'REFERENCES', 'UNIQUE', 'NOT NULL', 'DEFAULT',
-    'AUTO_INCREMENT', 'CONSTRAINT', 'CHECK', 'INDEX',
-    'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'DISTINCT',
-    'UNION', 'UNION ALL', 'INTERSECT', 'EXCEPT',
-    'CASE', 'WHEN', 'THEN', 'ELSE', 'END',
-    'NULL', 'IS NULL', 'IS NOT NULL', 'ASC', 'DESC',
-    'VARCHAR', 'INT', 'INTEGER', 'BIGINT', 'DECIMAL', 'FLOAT', 'DOUBLE',
-    'TEXT', 'BLOB', 'DATE', 'DATETIME', 'TIMESTAMP', 'BOOLEAN', 'BOOL'
-];
+/**
+ * SQL Highlighter
+ * Syntax highlighting and formatting for SQL code
+ * Supports both MySQL and PostgreSQL
+ */
+
+import { getSqlKeywords, getQuoteChar } from '../database/index.js';
+
+// Re-export SQL_KEYWORDS for backward compatibility
+// This dynamically returns keywords based on active database type
+export const SQL_KEYWORDS = getSqlKeywords();
 
 export const formatSQL = (sql) => {
     if (!sql || !sql.trim()) return '';
@@ -65,6 +59,10 @@ export const formatSQL = (sql) => {
 export const highlightSQL = (code, errors = []) => {
     if (!code) return '';
 
+    // Get current keywords and quote character based on active database
+    const currentKeywords = getSqlKeywords();
+    const quoteChar = getQuoteChar();
+
     // Escape HTML
     let html = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -85,21 +83,39 @@ export const highlightSQL = (code, errors = []) => {
         return addPlaceholder(`<span class="sql-string">${match}</span>`);
     });
 
-    // 3. Extract Backtick Identifiers (replace with placeholder)
-    html = html.replace(/(`[^`]+`)/g, (match) => {
-        return addPlaceholder(`<span class="sql-identifier">${match}</span>`);
-    });
+    // 3. Extract Quoted Identifiers (backticks for MySQL, double quotes for PostgreSQL)
+    if (quoteChar === '`') {
+        // MySQL backtick identifiers
+        html = html.replace(/(`[^`]+`)/g, (match) => {
+            return addPlaceholder(`<span class="sql-identifier">${match}</span>`);
+        });
+    } else {
+        // PostgreSQL double-quote identifiers (already handled in strings, but be explicit)
+        html = html.replace(/("(?:[^"\\]|\\.)*")/g, (match) => {
+            // Only if not already a placeholder
+            if (!match.startsWith('__SQL_PLACEHOLDER_')) {
+                return addPlaceholder(`<span class="sql-identifier">${match}</span>`);
+            }
+            return match;
+        });
+    }
 
     // 4. Highlight Numbers
     html = html.replace(/\b(\d+\.?\d*)\b/g, '<span class="sql-number">$1</span>');
 
-    // 5. Highlight Keywords
-    const keywordPattern = SQL_KEYWORDS
+    // 5. Highlight Keywords (use current database keywords)
+    // Escape special regex characters in keywords
+    const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const keywordPattern = currentKeywords
+        .filter(k => k && k.length > 0)  // Filter out empty keywords
         .sort((a, b) => b.length - a.length)
-        .map(k => k.replace(/\s+/g, '\\s+'))
+        .map(k => escapeRegex(k).replace(/\s+/g, '\\s+'))
         .join('|');
-    const keywordRegex = new RegExp(`\\b(${keywordPattern})\\b`, 'gi');
-    html = html.replace(keywordRegex, '<span class="sql-keyword">$1</span>');
+    
+    if (keywordPattern) {
+        const keywordRegex = new RegExp(`\\b(${keywordPattern})\\b`, 'gi');
+        html = html.replace(keywordRegex, '<span class="sql-keyword">$1</span>');
+    }
 
     // 6. Highlight Functions
     html = html.replace(/\b([a-zA-Z_][a-zA-Z0-9_]*)\s*(?=\()/g, (match, word) => {
@@ -127,3 +143,4 @@ export const highlightSQL = (code, errors = []) => {
 
     return html;
 };
+

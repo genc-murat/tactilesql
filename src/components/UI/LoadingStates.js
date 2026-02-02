@@ -14,7 +14,7 @@ export const LoadingStates = {
         const theme = ThemeManager.getCurrentTheme();
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
 
         const el = document.createElement('div');
         el.className = `animate-pulse ${isLight ? 'bg-gray-200' : (isDawn ? 'bg-[#e4ddd5]' : (isOceanic ? 'bg-ocean-border/30' : 'bg-white/10'))} rounded-${rounded} ${className}`;
@@ -33,7 +33,7 @@ export const LoadingStates = {
         const theme = ThemeManager.getCurrentTheme();
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
 
         const container = document.createElement('div');
         container.className = 'w-full';
@@ -77,7 +77,7 @@ export const LoadingStates = {
         const theme = ThemeManager.getCurrentTheme();
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
 
         const card = document.createElement('div');
         card.className = `p-4 rounded-xl border ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border' : 'bg-[#16191e] border-white/5'))}`;
@@ -132,7 +132,7 @@ export const LoadingStates = {
         const theme = ThemeManager.getCurrentTheme();
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
 
         const container = document.createElement('div');
         container.className = `w-full h-2 rounded-full ${isLight ? 'bg-gray-200' : (isDawn ? 'bg-[#e4ddd5]' : (isOceanic ? 'bg-ocean-border/30' : 'bg-white/10'))} overflow-hidden`;
@@ -154,7 +154,7 @@ export const LoadingStates = {
         const theme = ThemeManager.getCurrentTheme();
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
 
         const overlay = document.createElement('div');
         overlay.className = `absolute inset-0 ${isLight ? 'bg-white/80' : (isDawn ? 'bg-[#faf4ed]/80' : (isOceanic ? 'bg-ocean-bg/80' : 'bg-black/60'))} backdrop-blur-sm flex flex-col items-center justify-center gap-4 z-50`;

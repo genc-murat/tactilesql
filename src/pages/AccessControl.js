@@ -8,7 +8,7 @@ export function AccessControl() {
     const getContainerClass = (t) => {
         const isLight = t === 'light';
         const isDawn = t === 'dawn';
-        const isOceanic = t === 'oceanic';
+        const isOceanic = t === 'oceanic' || t === 'ember' || t === 'aurora';
         return `flex-1 flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]'))} selection:bg-mysql-cyan/30 transition-all duration-300`;
     };
     container.className = getContainerClass(theme);
@@ -25,7 +25,7 @@ export function AccessControl() {
         render();
 
         try {
-            users = await invoke('get_mysql_users');
+            users = await invoke('get_users');
             console.log('Loaded users:', users);
             console.log('User count:', users.length);
             if (users.length > 0) {
@@ -73,7 +73,7 @@ export function AccessControl() {
     function renderUserList() {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
 
         if (isLoading) {
             return `
@@ -123,7 +123,7 @@ export function AccessControl() {
     function renderPrivileges() {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
 
         if (!userPrivileges || !userPrivileges.global) {
             return '<div class="text-gray-500 text-xs text-center py-8">Select a user to view privileges</div>';
@@ -208,7 +208,7 @@ export function AccessControl() {
     const render = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
         container.innerHTML = `
             <div class="flex-1 flex overflow-hidden p-5 gap-5">
                 <!-- User List Sidebar -->

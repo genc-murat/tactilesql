@@ -2,6 +2,17 @@ import { invoke } from '@tauri-apps/api/core';
 import { Dialog } from '../components/UI/Dialog.js';
 import { ThemeManager } from '../utils/ThemeManager.js';
 
+// Helper to escape HTML special characters for GTK markup compatibility
+const escapeHtml = (str) => {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+};
+
 export function ServerMonitor() {
     let theme = ThemeManager.getCurrentTheme();
     const container = document.createElement('div');
@@ -47,6 +58,7 @@ export function ServerMonitor() {
     };
 
     const formatNumber = (num) => {
+        if (num === undefined || num === null) return '0';
         if (num >= 1e9) return (num / 1e9).toFixed(2) + 'B';
         if (num >= 1e6) return (num / 1e6).toFixed(2) + 'M';
         if (num >= 1e3) return (num / 1e3).toFixed(2) + 'K';
@@ -55,14 +67,34 @@ export function ServerMonitor() {
 
     const loadData = async () => {
         try {
-            const [status, processes, innodb, replication, slow, lockData] = await Promise.all([
+            const activeDbType = localStorage.getItem('activeDbType') || 'mysql';
+            const isPostgres = activeDbType === 'postgresql';
+            
+            // Load data - some commands are MySQL specific
+            const [status, processes, replication, lockData] = await Promise.all([
                 invoke('get_server_status'),
                 invoke('get_process_list'),
-                invoke('get_innodb_status'),
                 invoke('get_replication_status'),
-                invoke('get_slow_queries', { limit: 50 }),
                 invoke('get_locks')
             ]);
+
+            // MySQL-specific data
+            let innodb = null;
+            let slow = [];
+            if (!isPostgres) {
+                try {
+                    innodb = await invoke('get_innodb_status');
+                } catch (e) {
+                    console.warn('InnoDB status not available:', e);
+                }
+            }
+            
+            // Slow queries - works for both MySQL and PostgreSQL
+            try {
+                slow = await invoke('get_slow_queries', { limit: 50 });
+            } catch (e) {
+                console.warn('Slow queries not available:', e);
+            }
 
             prevStatus = serverStatus;
             prevTimestamp = Date.now();
@@ -105,7 +137,7 @@ export function ServerMonitor() {
     const render = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
 
         container.innerHTML = `
             <div class="h-full flex flex-col">
@@ -145,12 +177,14 @@ export function ServerMonitor() {
                         <span class="material-symbols-outlined text-base mr-1 align-middle">list</span>
                         Processes
                     </button>
+                    ${(localStorage.getItem('activeDbType') || 'mysql') !== 'postgresql' ? `
                     <button class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'innodb' ? 'bg-mysql-teal text-white shadow-lg' : ((isLight || isDawn) ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white')}" data-tab="innodb">
                         <span class="material-symbols-outlined text-base mr-1 align-middle">storage</span>
                         InnoDB
                     </button>
+                    ` : ''}
                     <button class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'slow' ? 'bg-mysql-teal text-white shadow-lg' : ((isLight || isDawn) ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white')}" data-tab="slow">
-                        <span class="material-symbols-outlined text-base mr-1 align-middle">hourglass_empty</span>
+                        <span class="material-symbols-outlined text-base mr-1 align-middle">hourglass_bottom</span>
                         Slow Queries
                     </button>
                     <button class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'locks' ? 'bg-mysql-teal text-white shadow-lg' : ((isLight || isDawn) ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white')}" data-tab="locks">
@@ -200,7 +234,7 @@ export function ServerMonitor() {
     const renderOverview = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
         const s = serverStatus;
 
         if (!s) return '<p class="text-gray-500">No data available</p>';
@@ -326,7 +360,7 @@ export function ServerMonitor() {
     const renderProcesses = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
 
         return `
             <div class="rounded-xl ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))} overflow-hidden">
@@ -356,15 +390,15 @@ export function ServerMonitor() {
                             ${processList.map(p => `
                                 <tr class="${isLight ? 'hover:bg-gray-50' : (isDawn ? 'hover:bg-[#faf4ed]' : 'hover:bg-white/5')} transition-colors">
                                     <td class="px-4 py-3 ${isLight ? 'text-gray-900' : 'text-white'} font-mono">${p.id}</td>
-                                    <td class="px-4 py-3 ${isLight ? 'text-gray-700' : 'text-gray-300'}">${p.user}</td>
-                                    <td class="px-4 py-3 ${isLight ? 'text-gray-500' : 'text-gray-400'} font-mono text-xs">${p.host}</td>
-                                    <td class="px-4 py-3 ${isLight ? 'text-gray-700' : 'text-gray-300'}">${p.db || '-'}</td>
+                                    <td class="px-4 py-3 ${isLight ? 'text-gray-700' : 'text-gray-300'}">${escapeHtml(p.user)}</td>
+                                    <td class="px-4 py-3 ${isLight ? 'text-gray-500' : 'text-gray-400'} font-mono text-xs">${escapeHtml(p.host)}</td>
+                                    <td class="px-4 py-3 ${isLight ? 'text-gray-700' : 'text-gray-300'}">${escapeHtml(p.db) || '-'}</td>
                                     <td class="px-4 py-3">
-                                        <span class="px-2 py-0.5 rounded text-xs ${p.command === 'Query' ? 'bg-green-500/20 text-green-500' : (p.command === 'Sleep' ? 'bg-gray-500/20 text-gray-400' : 'bg-blue-500/20 text-blue-500')}">${p.command}</span>
+                                        <span class="px-2 py-0.5 rounded text-xs ${p.command === 'Query' ? 'bg-green-500/20 text-green-500' : (p.command === 'Sleep' ? 'bg-gray-500/20 text-gray-400' : 'bg-blue-500/20 text-blue-500')}">${escapeHtml(p.command)}</span>
                                     </td>
                                     <td class="px-4 py-3 ${p.time > 10 ? 'text-red-500' : (isLight ? 'text-gray-700' : 'text-gray-300')}">${p.time}s</td>
-                                    <td class="px-4 py-3 ${isLight ? 'text-gray-500' : 'text-gray-400'} text-xs">${p.state || '-'}</td>
-                                    <td class="px-4 py-3 ${isLight ? 'text-gray-600' : 'text-gray-300'} max-w-[300px] truncate font-mono text-xs" title="${(p.info || '').replace(/"/g, '&quot;')}">${p.info || '-'}</td>
+                                    <td class="px-4 py-3 ${isLight ? 'text-gray-500' : 'text-gray-400'} text-xs">${escapeHtml(p.state) || '-'}</td>
+                                    <td class="px-4 py-3 ${isLight ? 'text-gray-600' : 'text-gray-300'} max-w-[300px] truncate font-mono text-xs" title="${escapeHtml(p.info)}">${escapeHtml(p.info) || '-'}</td>
                                     <td class="px-4 py-3 text-center">
                                         <button class="kill-btn px-2 py-1 rounded text-xs bg-red-500/20 text-red-500 hover:bg-red-500/30 transition-colors" data-id="${p.id}">Kill</button>
                                     </td>
@@ -380,7 +414,7 @@ export function ServerMonitor() {
     const renderInnoDB = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
         const i = innodbStatus;
 
         if (!i) return '<p class="text-gray-500">No InnoDB data available</p>';
@@ -460,7 +494,9 @@ export function ServerMonitor() {
     const renderSlowQueries = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const activeDbType = localStorage.getItem('activeDbType') || 'mysql';
+        const isPostgres = activeDbType === 'postgresql';
         const totalSlowQueries = serverStatus?.slow_queries || 0;
 
         if (slowQueries.length === 0) {
@@ -474,15 +510,26 @@ export function ServerMonitor() {
                             but detailed logs are not accessible.
                         </p>
                         <div class="max-w-md mx-auto text-left ${isLight ? 'bg-yellow-50 border border-yellow-200' : 'bg-yellow-500/10 border border-yellow-500/30'} rounded-lg p-4 mt-4">
-                            <p class="text-sm font-medium ${isLight ? 'text-yellow-800' : 'text-yellow-400'} mb-2">To enable detailed slow query logging:</p>
-                            <pre class="text-xs ${isLight ? 'text-yellow-700 bg-yellow-100' : 'text-yellow-300 bg-black/30'} p-3 rounded font-mono overflow-x-auto">SET GLOBAL slow_query_log = 'ON';
+                            ${isPostgres ? `
+                                <p class="text-sm font-medium ${isLight ? 'text-yellow-800' : 'text-yellow-400'} mb-2">To enable detailed slow query logging:</p>
+                                <pre class="text-xs ${isLight ? 'text-yellow-700 bg-yellow-100' : 'text-yellow-300 bg-black/30'} p-3 rounded font-mono overflow-x-auto">-- Install pg_stat_statements extension
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+
+-- Add to postgresql.conf:
+shared_preload_libraries = 'pg_stat_statements'
+pg_stat_statements.track = all</pre>
+                                <p class="text-xs ${isLight ? 'text-yellow-600' : 'text-yellow-500'} mt-2">Note: Requires superuser. Server restart needed for shared_preload_libraries.</p>
+                            ` : `
+                                <p class="text-sm font-medium ${isLight ? 'text-yellow-800' : 'text-yellow-400'} mb-2">To enable detailed slow query logging:</p>
+                                <pre class="text-xs ${isLight ? 'text-yellow-700 bg-yellow-100' : 'text-yellow-300 bg-black/30'} p-3 rounded font-mono overflow-x-auto">SET GLOBAL slow_query_log = 'ON';
 SET GLOBAL log_output = 'TABLE';
 SET GLOBAL long_query_time = 1;</pre>
-                            <p class="text-xs ${isLight ? 'text-yellow-600' : 'text-yellow-500'} mt-2">Note: Requires SUPER privilege. Add to my.cnf for persistence.</p>
+                                <p class="text-xs ${isLight ? 'text-yellow-600' : 'text-yellow-500'} mt-2">Note: Requires SUPER privilege. Add to my.cnf for persistence.</p>
+                            `}
                         </div>
                     ` : `
                         <p class="${isLight ? 'text-gray-500' : 'text-gray-400'}">No slow queries have been recorded.</p>
-                        <p class="text-sm ${isLight ? 'text-gray-400' : 'text-gray-500'} mt-2">Queries taking longer than long_query_time will appear here.</p>
+                        <p class="text-sm ${isLight ? 'text-gray-400' : 'text-gray-500'} mt-2">${isPostgres ? 'Queries with high execution time will appear here.' : 'Queries taking longer than long_query_time will appear here.'}</p>
                     `}
                 </div>
             `;
@@ -512,12 +559,12 @@ SET GLOBAL long_query_time = 1;</pre>
                         <tbody class="divide-y ${isLight ? 'divide-gray-100' : 'divide-white/5'}">
                             ${slowQueries.map(q => `
                                 <tr class="${isLight ? 'hover:bg-gray-50' : 'hover:bg-white/5'} transition-colors">
-                                    <td class="px-4 py-3 ${isLight ? 'text-gray-700' : 'text-gray-300'} text-xs">${q.start_time}</td>
-                                    <td class="px-4 py-3 ${isLight ? 'text-gray-600' : 'text-gray-400'} text-xs">${q.user_host}</td>
+                                    <td class="px-4 py-3 ${isLight ? 'text-gray-700' : 'text-gray-300'} text-xs">${escapeHtml(q.start_time)}</td>
+                                    <td class="px-4 py-3 ${isLight ? 'text-gray-600' : 'text-gray-400'} text-xs">${escapeHtml(q.user_host)}</td>
                                     <td class="px-4 py-3 text-red-500 font-mono">${q.query_time.toFixed(2)}s</td>
                                     <td class="px-4 py-3 ${isLight ? 'text-gray-600' : 'text-gray-400'} font-mono">${q.lock_time.toFixed(2)}s</td>
                                     <td class="px-4 py-3 ${isLight ? 'text-gray-600' : 'text-gray-400'}">${q.rows_sent}/${q.rows_examined}</td>
-                                    <td class="px-4 py-3 ${isLight ? 'text-gray-700' : 'text-gray-300'} font-mono text-xs max-w-[400px] truncate" title="${q.sql_text.replace(/"/g, '&quot;')}">${q.sql_text}</td>
+                                    <td class="px-4 py-3 ${isLight ? 'text-gray-700' : 'text-gray-300'} font-mono text-xs max-w-[400px] truncate" title="${escapeHtml(q.sql_text)}">${escapeHtml(q.sql_text)}</td>
                                 </tr>
                             `).join('')}
                         </tbody>
@@ -530,14 +577,14 @@ SET GLOBAL long_query_time = 1;</pre>
     const renderLocks = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
 
         if (locks.length === 0) {
             return `
                 <div class="rounded-xl p-12 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))} text-center">
                     <span class="material-symbols-outlined text-5xl text-green-500 mb-4">lock_open</span>
-                    <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} mb-2">No Lock Waits</h3>
-                    <p class="${isLight ? 'text-gray-500' : 'text-gray-400'}">No InnoDB lock waits detected. All transactions are running smoothly.</p>
+                    <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} mb-2">No Active Locks</h3>
+                    <p class="${isLight ? 'text-gray-500' : 'text-gray-400'}">No active locks detected. All transactions are running smoothly.</p>
                 </div>
             `;
         }
@@ -546,43 +593,32 @@ SET GLOBAL long_query_time = 1;</pre>
             <div class="rounded-xl ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))} overflow-hidden">
                 <div class="p-4 border-b ${isLight ? 'border-gray-200' : 'border-white/10'}">
                     <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} flex items-center gap-2">
-                        <span class="material-symbols-outlined text-red-500">lock</span>
-                        InnoDB Lock Waits
-                        <span class="px-2 py-0.5 text-xs rounded-full bg-red-500/20 text-red-500">${locks.length} waiting</span>
+                        <span class="material-symbols-outlined text-amber-500">lock</span>
+                        Active Locks
+                        <span class="px-2 py-0.5 text-xs rounded-full bg-amber-500/20 text-amber-500">${locks.length} locks</span>
                     </h3>
                 </div>
                 <div class="overflow-auto max-h-[500px]">
                     <table class="w-full text-sm">
                         <thead class="sticky top-0 ${isLight ? 'bg-gray-100' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]')}">
                             <tr class="${isLight ? 'text-gray-600' : 'text-gray-400'} text-xs uppercase tracking-wider">
-                                <th class="px-4 py-3 text-left">Bekleyen İşlem ID</th>
-                                <th class="px-4 py-3 text-left">Bekleyen Thread ID</th>
-                                <th class="px-4 py-3 text-left">Bekleme Süresi</th>
-                                <th class="px-4 py-3 text-left">Bekleyen Sorgu</th>
-                                <th class="px-4 py-3 text-left">Engelleyen İşlem ID</th>
-                                <th class="px-4 py-3 text-left">Engelleyen Thread ID</th>
-                                <th class="px-4 py-3 text-left">Engelleyen Sorgu</th>
-                                <th class="px-4 py-3 text-center">İşlem</th>
+                                <th class="px-4 py-3 text-left">Lock ID</th>
+                                <th class="px-4 py-3 text-left">Lock Mode</th>
+                                <th class="px-4 py-3 text-left">Lock Type</th>
+                                <th class="px-4 py-3 text-left">Table</th>
+                                <th class="px-4 py-3 text-left">Lock Data</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y ${isLight ? 'divide-gray-100' : 'divide-white/5'}">
                             ${locks.map(lock => `
                                 <tr class="${isLight ? 'hover:bg-gray-50' : 'hover:bg-white/5'} transition-colors">
-                                    <td class="px-4 py-3 ${isLight ? 'text-gray-900' : 'text-white'} font-mono text-xs">${lock.requesting_trx_id}</td>
-                                    <td class="px-4 py-3 ${isLight ? 'text-gray-700' : 'text-gray-300'} font-mono">${lock.requesting_thread_id}</td>
+                                    <td class="px-4 py-3 ${isLight ? 'text-gray-900' : 'text-white'} font-mono text-xs">${escapeHtml(lock.lock_id || '')}</td>
                                     <td class="px-4 py-3">
-                                        <span class="px-2 py-0.5 rounded text-xs font-mono ${lock.wait_time_seconds > 10 ? 'bg-red-500/20 text-red-500' : (lock.wait_time_seconds > 5 ? 'bg-yellow-500/20 text-yellow-500' : 'bg-blue-500/20 text-blue-500')}">${lock.wait_time_seconds}s</span>
+                                        <span class="px-2 py-0.5 rounded text-xs font-mono ${lock.lock_mode?.includes('X') ? 'bg-red-500/20 text-red-500' : 'bg-blue-500/20 text-blue-500'}">${escapeHtml(lock.lock_mode || '')}</span>
                                     </td>
-                                    <td class="px-4 py-3 ${isLight ? 'text-gray-600' : 'text-gray-300'} max-w-[250px] truncate font-mono text-xs" title="${(lock.requesting_query || '-').replace(/"/g, '&quot;')}">${lock.requesting_query || '-'}</td>
-                                    <td class="px-4 py-3 ${isLight ? 'text-gray-900' : 'text-white'} font-mono text-xs">${lock.blocking_trx_id}</td>
-                                    <td class="px-4 py-3 ${isLight ? 'text-gray-700' : 'text-gray-300'} font-mono font-semibold text-red-500">${lock.blocking_thread_id}</td>
-                                    <td class="px-4 py-3 ${isLight ? 'text-gray-600' : 'text-gray-300'} max-w-[250px] truncate font-mono text-xs" title="${(lock.blocking_query || '-').replace(/"/g, '&quot;')}">${lock.blocking_query || '-'}</td>
-                                    <td class="px-4 py-3 text-center">
-                                        <button class="kill-blocking-btn px-2 py-1 rounded text-xs bg-red-500/20 text-red-500 hover:bg-red-500/30 transition-colors flex items-center gap-1 mx-auto" data-id="${lock.blocking_thread_id}">
-                                            <span class="material-symbols-outlined text-xs">cancel</span>
-                                            Kill
-                                        </button>
-                                    </td>
+                                    <td class="px-4 py-3 ${isLight ? 'text-gray-700' : 'text-gray-300'}">${escapeHtml(lock.lock_type || '')}</td>
+                                    <td class="px-4 py-3 ${isDawn ? 'text-[#56949f]' : 'text-mysql-cyan'} font-mono text-xs">${escapeHtml(lock.lock_table || '') || '-'}</td>
+                                    <td class="px-4 py-3 ${isLight ? 'text-gray-600' : 'text-gray-400'} font-mono text-xs max-w-[200px] truncate" title="${escapeHtml(lock.lock_data || '')}">${escapeHtml(lock.lock_data || '') || '-'}</td>
                                 </tr>
                             `).join('')}
                         </tbody>
@@ -590,8 +626,8 @@ SET GLOBAL long_query_time = 1;</pre>
                 </div>
                 <div class="p-4 border-t ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : 'border-white/10 bg-white/5')}">
                     <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">
-                        <span class="material-symbols-outlined text-xs align-middle ${isDawn ? 'text-[#b4637a]' : 'text-red-500'}">warning</span>
-                        <span class="font-semibold">Uyarı:</span> Engelleyen thread'i kill etmek, o thread'in tüm işlemlerini iptal edecektir. Bu işlem geri alınamaz.
+                        <span class="material-symbols-outlined text-xs align-middle ${isDawn ? 'text-[#907aa9]' : 'text-purple-500'}">info</span>
+                        <span class="font-semibold">Note:</span> X (Exclusive) locks block other transactions. S (Shared) locks allow concurrent reads.
                     </p>
                 </div>
             </div>
@@ -601,7 +637,7 @@ SET GLOBAL long_query_time = 1;</pre>
     const renderReplication = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
         const r = replicationStatus;
 
         if (!r || !r.is_replica) {

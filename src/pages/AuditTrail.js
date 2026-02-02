@@ -3,6 +3,17 @@ import { auditTrail } from '../utils/QueryAuditTrail.js';
 import { Dialog } from '../components/UI/Dialog.js';
 import { highlightSQL } from '../utils/SqlHighlighter.js';
 
+// Helper to escape HTML special characters for GTK markup compatibility
+const escapeHtml = (str) => {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+};
+
 export function AuditTrail() {
     let theme = ThemeManager.getCurrentTheme();
     const container = document.createElement('div');
@@ -10,7 +21,7 @@ export function AuditTrail() {
     const getContainerClass = (t) => {
         const isLight = t === 'light';
         const isDawn = t === 'dawn';
-        const isOceanic = t === 'oceanic';
+        const isOceanic = t === 'oceanic' || t === 'ember' || t === 'aurora';
         return `flex-1 flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]'))} transition-all duration-300`;
     };
     container.className = getContainerClass(theme);
@@ -253,7 +264,7 @@ export function AuditTrail() {
     const render = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
 
         container.innerHTML = `
             <div class="h-full flex flex-col">
@@ -303,50 +314,50 @@ export function AuditTrail() {
     const renderLogTab = (isLight, isDawn, isOceanic) => `
         <div class="flex-1 flex overflow-hidden">
             <!-- Filters Sidebar -->
-            <div class="w-64 border-r ${isLight ? 'border-gray-200 bg-white' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3]' : 'border-white/5 bg-[#0f1115]')} p-4 space-y-4 overflow-y-auto custom-scrollbar">
+            <div class="w-64 border-r ${isLight ? 'border-gray-200 bg-white' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3]' : (isOceanic ? 'border-ocean-border/50 bg-ocean-panel' : 'border-white/5 bg-[#0f1115]'))} p-4 space-y-4 overflow-y-auto custom-scrollbar">
                 <div class="space-y-2">
-                    <label class="text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-gray-500' : 'text-gray-400'}">Search</label>
+                    <label class="text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-400')}">Search</label>
                     <input type="text" id="filter-search" value="${filters.searchTerm}" placeholder="Search queries..." 
-                        class="w-full px-3 py-2 rounded-lg text-sm ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-white/5 border-white/10 text-white')} border outline-none focus:border-mysql-teal transition-colors">
+                        class="w-full px-3 py-2 rounded-lg text-sm ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text placeholder-ocean-text/40' : 'bg-white/5 border-white/10 text-white'))} border outline-none focus:border-mysql-teal transition-colors">
                 </div>
 
                 <div class="space-y-2">
-                    <label class="text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-gray-500' : 'text-gray-400'}">Status</label>
-                    <select id="filter-status" class="w-full px-3 py-2 rounded-lg text-sm ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-white/5 border-white/10 text-white')} border outline-none">
+                    <label class="text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-400')}">Status</label>
+                    <select id="filter-status" class="w-full px-3 py-2 rounded-lg text-sm ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text' : 'bg-white/5 border-white/10 text-white'))} border outline-none">
                         <option value="">All Statuses</option>
                         ${filterOptions.statuses.map(s => `<option value="${s}" ${filters.status === s ? 'selected' : ''}>${s}</option>`).join('')}
                     </select>
                 </div>
 
                 <div class="space-y-2">
-                    <label class="text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-gray-500' : 'text-gray-400'}">Query Type</label>
-                    <select id="filter-type" class="w-full px-3 py-2 rounded-lg text-sm ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-white/5 border-white/10 text-white')} border outline-none">
+                    <label class="text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-400')}">Query Type</label>
+                    <select id="filter-type" class="w-full px-3 py-2 rounded-lg text-sm ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text' : 'bg-white/5 border-white/10 text-white'))} border outline-none">
                         <option value="">All Types</option>
                         ${filterOptions.queryTypes.map(t => `<option value="${t}" ${filters.queryType === t ? 'selected' : ''}>${t}</option>`).join('')}
                     </select>
                 </div>
 
                 <div class="space-y-2">
-                    <label class="text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-gray-500' : 'text-gray-400'}">Database</label>
-                    <select id="filter-db" class="w-full px-3 py-2 rounded-lg text-sm ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-white/5 border-white/10 text-white')} border outline-none">
+                    <label class="text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-400')}">Database</label>
+                    <select id="filter-db" class="w-full px-3 py-2 rounded-lg text-sm ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text' : 'bg-white/5 border-white/10 text-white'))} border outline-none">
                         <option value="">All Databases</option>
                         ${filterOptions.databases.map(d => `<option value="${d}" ${filters.database === d ? 'selected' : ''}>${d}</option>`).join('')}
                     </select>
                 </div>
 
                 <div class="space-y-2">
-                    <label class="text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-gray-500' : 'text-gray-400'}">Date Range</label>
+                    <label class="text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-400')}">Date Range</label>
                     <input type="date" id="filter-start" value="${filters.startDate}" 
-                        class="w-full px-3 py-2 rounded-lg text-sm ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-white/5 border-white/10 text-white')} border outline-none">
+                        class="w-full px-3 py-2 rounded-lg text-sm ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text' : 'bg-white/5 border-white/10 text-white'))} border outline-none">
                     <input type="date" id="filter-end" value="${filters.endDate}" 
-                        class="w-full px-3 py-2 rounded-lg text-sm mt-2 ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-white/5 border-white/10 text-white')} border outline-none">
+                        class="w-full px-3 py-2 rounded-lg text-sm mt-2 ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text' : 'bg-white/5 border-white/10 text-white'))} border outline-none">
                 </div>
 
                 <button id="apply-filters" class="w-full px-4 py-2 rounded-lg text-sm font-bold bg-mysql-teal text-white hover:brightness-110 transition-all">
                     Apply Filters
                 </button>
                 
-                <button id="reset-filters" class="w-full px-4 py-2 rounded-lg text-sm ${isLight ? 'text-gray-600 hover:bg-gray-100' : 'text-gray-400 hover:bg-white/5'} transition-all">
+                <button id="reset-filters" class="w-full px-4 py-2 rounded-lg text-sm ${isLight ? 'text-gray-600 hover:bg-gray-100' : (isOceanic ? 'text-ocean-text/70 hover:bg-ocean-bg' : 'text-gray-400 hover:bg-white/5')} transition-all">
                     Reset Filters
                 </button>
             </div>
@@ -405,8 +416,8 @@ export function AuditTrail() {
                                             <span class="text-xs font-mono ${entry.duration > 1000 ? 'text-yellow-400' : (isLight ? 'text-gray-600' : 'text-gray-400')}">${formatDuration(entry.duration)}</span>
                                         </td>
                                         <td class="px-4 py-3 max-w-md">
-                                            <div class="text-xs font-mono ${isLight ? 'text-gray-700' : 'text-gray-300'} truncate" title="${entry.query.replace(/"/g, '&quot;')}">${entry.query.substring(0, 80)}${entry.query.length > 80 ? '...' : ''}</div>
-                                            ${entry.tables.length > 0 ? `<div class="text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-500'} mt-0.5">Tables: ${entry.tables.join(', ')}</div>` : ''}
+                                            <div class="text-xs font-mono ${isLight ? 'text-gray-700' : 'text-gray-300'} truncate" title="${escapeHtml(entry.query)}">${escapeHtml(entry.query.substring(0, 80))}${entry.query.length > 80 ? '...' : ''}</div>
+                                            ${entry.tables.length > 0 ? `<div class="text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-500'} mt-0.5">Tables: ${entry.tables.map(t => escapeHtml(t)).join(', ')}</div>` : ''}
                                         </td>
                                         <td class="px-4 py-3">
                                             <button class="view-details w-7 h-7 rounded flex items-center justify-center ${isLight ? 'hover:bg-gray-100' : 'hover:bg-white/10'} transition-colors" data-id="${entry.id}">
@@ -420,18 +431,18 @@ export function AuditTrail() {
                     </div>
 
                     <!-- Pagination -->
-                    <div class="flex items-center justify-between px-4 py-3 border-t ${isLight ? 'border-gray-200 bg-white' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3]' : 'border-white/5 bg-[#0f1115]')}">
-                        <div class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">
+                    <div class="flex items-center justify-between px-4 py-3 border-t ${isLight ? 'border-gray-200 bg-white' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3]' : (isOceanic ? 'border-ocean-border/50 bg-ocean-panel' : 'border-white/5 bg-[#0f1115]'))}">
+                        <div class="text-xs ${isLight ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-400')}">
                             Showing ${entries.length} of ${totalEntries.toLocaleString()} entries
                         </div>
                         <div class="flex items-center gap-2">
-                            <button id="prev-page" ${filters.offset === 0 ? 'disabled' : ''} class="px-3 py-1 rounded text-sm ${isLight ? 'bg-gray-100 text-gray-700 disabled:opacity-50' : 'bg-white/10 text-gray-300 disabled:opacity-50'} transition-all">
+                            <button id="prev-page" ${filters.offset === 0 ? 'disabled' : ''} class="px-3 py-1 rounded text-sm ${isLight ? 'bg-gray-100 text-gray-700 disabled:opacity-50' : (isOceanic ? 'bg-ocean-bg text-ocean-text/80 disabled:opacity-50' : 'bg-white/10 text-gray-300 disabled:opacity-50')} transition-all">
                                 Previous
                             </button>
-                            <span class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">
+                            <span class="text-xs ${isLight ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-400')}">
                                 Page ${Math.floor(filters.offset / filters.limit) + 1} of ${Math.ceil(totalEntries / filters.limit) || 1}
                             </span>
-                            <button id="next-page" ${filters.offset + filters.limit >= totalEntries ? 'disabled' : ''} class="px-3 py-1 rounded text-sm ${isLight ? 'bg-gray-100 text-gray-700 disabled:opacity-50' : 'bg-white/10 text-gray-300 disabled:opacity-50'} transition-all">
+                            <button id="next-page" ${filters.offset + filters.limit >= totalEntries ? 'disabled' : ''} class="px-3 py-1 rounded text-sm ${isLight ? 'bg-gray-100 text-gray-700 disabled:opacity-50' : (isOceanic ? 'bg-ocean-bg text-ocean-text/80 disabled:opacity-50' : 'bg-white/10 text-gray-300 disabled:opacity-50')} transition-all">
                                 Next
                             </button>
                         </div>

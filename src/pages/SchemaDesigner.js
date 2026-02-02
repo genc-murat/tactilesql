@@ -2,6 +2,17 @@ import { invoke } from '@tauri-apps/api/core';
 import { Dialog } from '../components/UI/Dialog.js';
 import { ThemeManager } from '../utils/ThemeManager.js';
 
+// Helper to escape HTML special characters for GTK markup compatibility
+const escapeHtml = (str) => {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+};
+
 export function SchemaDesigner() {
     // Parse URL params
     const hash = window.location.hash;
@@ -64,7 +75,7 @@ export function SchemaDesigner() {
     let theme = ThemeManager.getCurrentTheme();
     let isLight = theme === 'light';
     let isDawn = theme === 'dawn';
-    let isOceanic = theme === 'oceanic';
+    let isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
     const container = document.createElement('div');
     const getContainerClass = (t) => {
         const _isLight = t === 'light';
@@ -78,7 +89,7 @@ export function SchemaDesigner() {
     const renderMainTemplate = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
         return `
             <header class="h-14 border-b ${isLight ? 'border-gray-100 bg-white' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'border-white/5 bg-[#121418]'))} px-6 flex items-center justify-between z-20">
                 <div class="flex items-center gap-8">
@@ -495,7 +506,7 @@ END"></textarea>
         `;
             renderColumnsTable();
         } else if (state.activeTab === 'indexes') {
-            statusDisplay.innerText = `${Object.keys(groupByIndexName(state.indexes)).length} INDEXES`;
+            statusDisplay.innerText = `${state.indexes.length} INDEXES`;
             thead.innerHTML = `
         <tr class="${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-500')} uppercase text-[10px] tracking-widest">
                     <th class="p-4 w-12 text-center">#</th>
@@ -621,8 +632,8 @@ END"></textarea>
         if (state.isLoading) { renderLoading(tbody); return; }
         if (state.error) { renderError(tbody, state.error); return; }
 
-        const grouped = groupByIndexName(state.indexes);
-        const indexList = Object.values(grouped);
+        // state.indexes is already in grouped format: { name, type, unique, columns }
+        const indexList = state.indexes;
 
         if (indexList.length === 0) { renderEmpty(tbody, 'No indexes found.'); return; }
 
@@ -631,16 +642,16 @@ END"></textarea>
             tr.className = `transition-all hover:bg-white/[0.02]`;
             tr.innerHTML = `
                 <td class="p-4 text-center ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-600')}">${i + 1}</td>
-                <td class="p-4 ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} font-medium">${idx.name}</td>
-                <td class="p-4 ${isDawn ? 'text-[#56949f]' : 'text-mysql-cyan'} font-mono text-[11px]">${idx.columns.join(', ')}</td>
-                <td class="p-4 ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">${idx.type}</td>
+                <td class="p-4 ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} font-medium">${escapeHtml(idx.name)}</td>
+                <td class="p-4 ${isDawn ? 'text-[#56949f]' : 'text-mysql-cyan'} font-mono text-[11px]">${(idx.columns || []).join(', ')}</td>
+                <td class="p-4 ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">${idx.type || 'INDEX'}</td>
                 <td class="p-4">
                     ${idx.unique 
                         ? `<span class="px-2 py-0.5 rounded text-[9px] font-bold ${isDawn ? 'bg-[#907aa9]/20 text-[#907aa9]' : 'bg-purple-500/20 text-purple-400'}">UNIQUE</span>` 
                         : `<span class="text-gray-500">-</span>`}
                 </td>
                 <td class="p-4">
-                    <button class="btn-delete-idx p-1 rounded hover:bg-red-500/20 text-gray-500 hover:text-red-400 transition-all" data-name="${idx.name}">
+                    <button class="btn-delete-idx p-1 rounded hover:bg-red-500/20 text-gray-500 hover:text-red-400 transition-all" data-name="${escapeHtml(idx.name)}">
                         <span class="material-symbols-outlined text-sm">delete</span>
                     </button>
                 </td>
@@ -820,8 +831,8 @@ END"></textarea>
         // Helper for grid items
         const renderItem = (label, value) => `
         <div class="${isLight ? 'bg-white border-gray-200 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] border' : 'bg-white/5 border-white/5')} border rounded p-4 flex flex-col gap-1">
-                <span class="text-[10px] uppercase font-bold tracking-widest ${isDawn ? 'text-[#797593]' : 'text-gray-500'}">${label}</span>
-                <span class="text-sm font-mono ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} truncate" title="${value}">${value !== null && value !== undefined ? value : '-'}</span>
+                <span class="text-[10px] uppercase font-bold tracking-widest ${isDawn ? 'text-[#797593]' : 'text-gray-500'}">${escapeHtml(label)}</span>
+                <span class="text-sm font-mono ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} truncate" title="${escapeHtml(value)}">${value !== null && value !== undefined ? escapeHtml(String(value)) : '-'}</span>
             </div>
         `;
 
@@ -1506,19 +1517,19 @@ END;\n`;
             });
 
             // Transform indexes from flat rows (one per col) to structured objects
-            // The backend returns: { index_name, column_name, seq_in_index, non_unique, ... }
+            // The backend returns: { name, column_name, non_unique, index_type }
             const indexMap = {};
             indexes.forEach(idx => {
-                if (!indexMap[idx.index_name]) {
-                    indexMap[idx.index_name] = {
-                        name: idx.index_name,
-                        type: idx.non_unique === 0 ? 'UNIQUE' : 'INDEX',
-                        unique: idx.non_unique === 0,
+                if (!indexMap[idx.name]) {
+                    indexMap[idx.name] = {
+                        name: idx.name,
+                        type: idx.non_unique === false ? 'UNIQUE' : (idx.index_type || 'INDEX'),
+                        unique: idx.non_unique === false,
                         columns: []
                     };
-                    if (idx.index_type === 'FULLTEXT') indexMap[idx.index_name].type = 'FULLTEXT';
+                    if (idx.index_type === 'FULLTEXT') indexMap[idx.name].type = 'FULLTEXT';
                 }
-                indexMap[idx.index_name].columns.push(idx.column_name);
+                indexMap[idx.name].columns.push(idx.column_name);
             });
             state.indexes = Object.values(indexMap);
             state.originalIndexes = JSON.parse(JSON.stringify(state.indexes));
@@ -1721,7 +1732,7 @@ END;\n`;
     const onThemeChange = (e) => {
         theme = e.detail.theme;
         isLight = theme === 'light';
-        isOceanic = theme === 'oceanic';
+        isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
         container.className = getContainerClass(theme);
         render();
     };

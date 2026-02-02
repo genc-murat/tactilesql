@@ -7,7 +7,7 @@ export function Sidebar() {
     const render = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
 
         sidebar.className = "w-80 flex flex-col gap-6";
 

@@ -160,7 +160,7 @@ export function SqlWorkbench() {
         const theme = e.detail.theme;
         const isLightNew = theme === 'light';
         const isDawnNew = theme === 'dawn';
-        const isOceanicNew = theme === 'oceanic';
+        const isOceanicNew = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
 
         container.className = `flex-1 flex flex-col h-full overflow-hidden transition-all duration-300 ${isLightNew ? 'bg-gray-50' : (isDawnNew ? 'bg-[#faf4ed]' : (isOceanicNew ? 'bg-ocean-bg' : ''))}`;
 

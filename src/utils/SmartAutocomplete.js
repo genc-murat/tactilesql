@@ -11,7 +11,7 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
-import { SQL_KEYWORDS } from './SqlHighlighter.js';
+import { getSqlKeywords, getSqlFunctions, getDataTypes, getAllSnippets, getQuoteChar, isPostgreSQL } from '../database/index.js';
 import { auditTrail } from './QueryAuditTrail.js';
 import { SettingsManager } from './SettingsManager.js';
 
@@ -280,6 +280,59 @@ const BUILTIN_SNIPPETS = [
     { trigger: 'findcol', name: 'Find column', template: 'SELECT \n    table_schema,\n    table_name,\n    column_name,\n    data_type\nFROM information_schema.columns\nWHERE column_name LIKE \'%${1:search}%\'', description: 'Find column by name' },
     { trigger: 'findtab', name: 'Find table', template: 'SELECT \n    table_schema,\n    table_name,\n    table_type\nFROM information_schema.tables\nWHERE table_name LIKE \'%${1:search}%\'', description: 'Find table by name' },
     { trigger: 'fklist', name: 'List foreign keys', template: 'SELECT \n    constraint_name,\n    table_name,\n    column_name,\n    referenced_table_name,\n    referenced_column_name\nFROM information_schema.key_column_usage\nWHERE table_schema = \'${1:database}\'\n    AND referenced_table_name IS NOT NULL', description: 'List all foreign keys' },
+    
+    // ==================== PostgreSQL Specific ====================
+    { trigger: 'pgct', name: 'PG CREATE TABLE', template: 'CREATE TABLE ${1:table_name} (\n    id SERIAL PRIMARY KEY,\n    ${2:column1} VARCHAR(255) NOT NULL,\n    ${3:column2} INTEGER DEFAULT 0,\n    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n)', description: 'PostgreSQL create table' },
+    { trigger: 'pgserial', name: 'PG SERIAL column', template: '${1:column_name} SERIAL PRIMARY KEY', description: 'PostgreSQL auto-increment' },
+    { trigger: 'pgbigserial', name: 'PG BIGSERIAL', template: '${1:column_name} BIGSERIAL PRIMARY KEY', description: 'PostgreSQL big auto-increment' },
+    { trigger: 'pguuid', name: 'PG UUID column', template: '${1:column_name} UUID DEFAULT gen_random_uuid()', description: 'PostgreSQL UUID column' },
+    { trigger: 'pgjson', name: 'PG JSONB column', template: '${1:column_name} JSONB DEFAULT \'{}\'::jsonb', description: 'PostgreSQL JSONB column' },
+    { trigger: 'pgarr', name: 'PG ARRAY column', template: '${1:column_name} ${2:TEXT}[] DEFAULT \'{}\'', description: 'PostgreSQL array column' },
+    { trigger: 'pginsret', name: 'PG INSERT RETURNING', template: 'INSERT INTO ${1:table} (${2:columns})\nVALUES (${3:values})\nRETURNING *', description: 'PostgreSQL insert with returning' },
+    { trigger: 'pgupdret', name: 'PG UPDATE RETURNING', template: 'UPDATE ${1:table}\nSET ${2:column} = ${3:value}\nWHERE ${4:condition}\nRETURNING *', description: 'PostgreSQL update with returning' },
+    { trigger: 'pgdelret', name: 'PG DELETE RETURNING', template: 'DELETE FROM ${1:table}\nWHERE ${2:condition}\nRETURNING *', description: 'PostgreSQL delete with returning' },
+    { trigger: 'pgupsert', name: 'PG UPSERT', template: 'INSERT INTO ${1:table} (${2:id}, ${3:column})\nVALUES (${4:value1}, ${5:value2})\nON CONFLICT (${2:id}) DO UPDATE\nSET ${3:column} = EXCLUDED.${3:column}', description: 'PostgreSQL insert on conflict update' },
+    { trigger: 'pgilike', name: 'PG ILIKE', template: 'SELECT *\nFROM ${1:table}\nWHERE ${2:column} ILIKE \'%${3:search}%\'', description: 'PostgreSQL case-insensitive search' },
+    { trigger: 'pgjsonb', name: 'PG JSONB query', template: 'SELECT *\nFROM ${1:table}\nWHERE ${2:json_col} @> \'{"${3:key}": "${4:value}"}\'::jsonb', description: 'PostgreSQL JSONB contains' },
+    { trigger: 'pgjsonbext', name: 'PG JSONB extract', template: 'SELECT ${1:json_col}->\'${2:key}\' as ${3:alias}\nFROM ${4:table}', description: 'PostgreSQL JSONB extract' },
+    { trigger: 'pgjsonbtxt', name: 'PG JSONB text', template: 'SELECT ${1:json_col}->>\'${2:key}\' as ${3:alias}\nFROM ${4:table}', description: 'PostgreSQL JSONB as text' },
+    { trigger: 'pgarrany', name: 'PG ARRAY ANY', template: 'SELECT *\nFROM ${1:table}\nWHERE ${2:value} = ANY(${3:array_col})', description: 'PostgreSQL array contains' },
+    { trigger: 'pgarrall', name: 'PG ARRAY ALL', template: 'SELECT *\nFROM ${1:table}\nWHERE ${2:value} = ALL(${3:array_col})', description: 'PostgreSQL array all match' },
+    { trigger: 'pglat', name: 'PG LATERAL', template: 'SELECT *\nFROM ${1:table} t,\nLATERAL (\n    SELECT *\n    FROM ${2:related_table} r\n    WHERE r.${3:fk} = t.${4:id}\n    LIMIT ${5:1}\n) sub', description: 'PostgreSQL LATERAL join' },
+    { trigger: 'pgfetch', name: 'PG FETCH', template: 'SELECT *\nFROM ${1:table}\nORDER BY ${2:column}\nFETCH FIRST ${3:10} ROWS ONLY', description: 'PostgreSQL fetch first' },
+    { trigger: 'pgoffset', name: 'PG OFFSET FETCH', template: 'SELECT *\nFROM ${1:table}\nORDER BY ${2:column}\nOFFSET ${3:0} ROWS\nFETCH NEXT ${4:10} ROWS ONLY', description: 'PostgreSQL offset fetch pagination' },
+    { trigger: 'pgseq', name: 'PG CREATE SEQUENCE', template: 'CREATE SEQUENCE ${1:seq_name}\n    START WITH ${2:1}\n    INCREMENT BY ${3:1}\n    NO MINVALUE\n    NO MAXVALUE\n    CACHE 1', description: 'PostgreSQL create sequence' },
+    { trigger: 'pgnextval', name: 'PG NEXTVAL', template: 'SELECT nextval(\'${1:sequence_name}\')', description: 'PostgreSQL next sequence value' },
+    { trigger: 'pgschema', name: 'PG CREATE SCHEMA', template: 'CREATE SCHEMA IF NOT EXISTS ${1:schema_name}', description: 'PostgreSQL create schema' },
+    { trigger: 'pgext', name: 'PG CREATE EXTENSION', template: 'CREATE EXTENSION IF NOT EXISTS ${1:extension_name}', description: 'PostgreSQL create extension' },
+    { trigger: 'pgenum', name: 'PG CREATE ENUM', template: 'CREATE TYPE ${1:type_name} AS ENUM (\'${2:value1}\', \'${3:value2}\', \'${4:value3}\')', description: 'PostgreSQL create enum type' },
+    { trigger: 'pgfunc', name: 'PG CREATE FUNCTION', template: 'CREATE OR REPLACE FUNCTION ${1:func_name}(${2:param1} ${3:INTEGER})\nRETURNS ${4:INTEGER}\nLANGUAGE plpgsql\nAS $$\nBEGIN\n    ${5:-- function body}\n    RETURN ${6:result};\nEND;\n$$', description: 'PostgreSQL create function' },
+    { trigger: 'pgproc', name: 'PG CREATE PROCEDURE', template: 'CREATE OR REPLACE PROCEDURE ${1:proc_name}(${2:param1} ${3:INTEGER})\nLANGUAGE plpgsql\nAS $$\nBEGIN\n    ${4:-- procedure body}\nEND;\n$$', description: 'PostgreSQL create procedure' },
+    { trigger: 'pgtrig', name: 'PG CREATE TRIGGER', template: 'CREATE TRIGGER ${1:trigger_name}\n    ${2:BEFORE} ${3:INSERT} ON ${4:table}\n    FOR EACH ROW\n    EXECUTE FUNCTION ${5:trigger_function}()', description: 'PostgreSQL create trigger' },
+    { trigger: 'pgview', name: 'PG CREATE VIEW', template: 'CREATE OR REPLACE VIEW ${1:view_name} AS\nSELECT ${2:columns}\nFROM ${3:table}\nWHERE ${4:condition}', description: 'PostgreSQL create view' },
+    { trigger: 'pgmview', name: 'PG MATERIALIZED VIEW', template: 'CREATE MATERIALIZED VIEW ${1:mview_name} AS\nSELECT ${2:columns}\nFROM ${3:table}\nWHERE ${4:condition}\nWITH DATA', description: 'PostgreSQL materialized view' },
+    { trigger: 'pgrefresh', name: 'PG REFRESH MVIEW', template: 'REFRESH MATERIALIZED VIEW ${1:CONCURRENTLY} ${2:mview_name}', description: 'PostgreSQL refresh materialized view' },
+    { trigger: 'pgvacuum', name: 'PG VACUUM', template: 'VACUUM ${1:ANALYZE} ${2:table_name}', description: 'PostgreSQL vacuum' },
+    { trigger: 'pganalyze', name: 'PG ANALYZE', template: 'ANALYZE ${1:table_name}', description: 'PostgreSQL analyze table' },
+    { trigger: 'pgreindex', name: 'PG REINDEX', template: 'REINDEX ${1:TABLE} ${2:table_name}', description: 'PostgreSQL reindex' },
+    { trigger: 'pgexplain', name: 'PG EXPLAIN ANALYZE', template: 'EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)\n${1:SELECT * FROM table}', description: 'PostgreSQL explain analyze' },
+    { trigger: 'pglisten', name: 'PG LISTEN', template: 'LISTEN ${1:channel_name}', description: 'PostgreSQL listen to channel' },
+    { trigger: 'pgnotify', name: 'PG NOTIFY', template: 'NOTIFY ${1:channel_name}, \'${2:payload}\'', description: 'PostgreSQL notify channel' },
+    { trigger: 'pgcopy', name: 'PG COPY TO', template: 'COPY ${1:table} TO \'${2:/path/to/file.csv}\' WITH (FORMAT CSV, HEADER)', description: 'PostgreSQL copy to file' },
+    { trigger: 'pgcopyfrom', name: 'PG COPY FROM', template: 'COPY ${1:table} FROM \'${2:/path/to/file.csv}\' WITH (FORMAT CSV, HEADER)', description: 'PostgreSQL copy from file' },
+    { trigger: 'pgcidx', name: 'PG CREATE INDEX CONC', template: 'CREATE INDEX CONCURRENTLY ${1:idx_name} ON ${2:table} (${3:column})', description: 'PostgreSQL concurrent index creation' },
+    { trigger: 'pgdidx', name: 'PG DROP INDEX CONC', template: 'DROP INDEX CONCURRENTLY IF EXISTS ${1:idx_name}', description: 'PostgreSQL concurrent index drop' },
+    { trigger: 'pgconn', name: 'PG Connection info', template: 'SELECT current_database(), current_user, inet_server_addr(), inet_server_port()', description: 'PostgreSQL connection info' },
+    { trigger: 'pgsize', name: 'PG Table size', template: 'SELECT\n    pg_size_pretty(pg_total_relation_size(\'${1:table}\')) as total_size,\n    pg_size_pretty(pg_table_size(\'${1:table}\')) as table_size,\n    pg_size_pretty(pg_indexes_size(\'${1:table}\')) as index_size', description: 'PostgreSQL table size' },
+    { trigger: 'pgdbsize', name: 'PG Database size', template: 'SELECT pg_size_pretty(pg_database_size(current_database())) as db_size', description: 'PostgreSQL database size' },
+    { trigger: 'pgtables', name: 'PG List tables', template: 'SELECT table_name\nFROM information_schema.tables\nWHERE table_schema = \'${1:public}\'\n  AND table_type = \'BASE TABLE\'\nORDER BY table_name', description: 'PostgreSQL list tables' },
+    { trigger: 'pgcols', name: 'PG List columns', template: 'SELECT column_name, data_type, is_nullable, column_default\nFROM information_schema.columns\nWHERE table_name = \'${1:table}\'\nORDER BY ordinal_position', description: 'PostgreSQL list columns' },
+    { trigger: 'pgfks', name: 'PG List foreign keys', template: 'SELECT\n    tc.constraint_name,\n    kcu.column_name,\n    ccu.table_name AS foreign_table,\n    ccu.column_name AS foreign_column\nFROM information_schema.table_constraints tc\nJOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name\nJOIN information_schema.constraint_column_usage ccu ON ccu.constraint_name = tc.constraint_name\nWHERE tc.table_name = \'${1:table}\'\n  AND tc.constraint_type = \'FOREIGN KEY\'', description: 'PostgreSQL list foreign keys' },
+    { trigger: 'pgidxs', name: 'PG List indexes', template: 'SELECT indexname, indexdef\nFROM pg_indexes\nWHERE tablename = \'${1:table}\'', description: 'PostgreSQL list indexes' },
+    { trigger: 'pglock', name: 'PG Show locks', template: 'SELECT pid, relation::regclass, mode, granted\nFROM pg_locks\nWHERE relation IS NOT NULL', description: 'PostgreSQL show locks' },
+    { trigger: 'pgact', name: 'PG Active queries', template: 'SELECT pid, usename, state, query, query_start\nFROM pg_stat_activity\nWHERE state != \'idle\'\nORDER BY query_start', description: 'PostgreSQL active queries' },
+    { trigger: 'pgkill', name: 'PG Terminate', template: 'SELECT pg_terminate_backend(${1:pid})', description: 'PostgreSQL terminate connection' },
+    { trigger: 'pgcancel', name: 'PG Cancel query', template: 'SELECT pg_cancel_backend(${1:pid})', description: 'PostgreSQL cancel query' },
 ];
 
 // MySQL Functions by category
@@ -294,6 +347,22 @@ const MYSQL_FUNCTIONS = {
     conversion: ['CAST', 'CONVERT', 'BINARY'],
     encryption: ['MD5', 'SHA1', 'SHA2', 'AES_ENCRYPT', 'AES_DECRYPT', 'UUID', 'UUID_SHORT'],
     info: ['DATABASE', 'USER', 'CURRENT_USER', 'VERSION', 'CONNECTION_ID', 'LAST_INSERT_ID', 'ROW_COUNT', 'FOUND_ROWS'],
+};
+
+// PostgreSQL Functions by category
+const POSTGRESQL_FUNCTIONS = {
+    string: ['CONCAT', 'CONCAT_WS', 'SUBSTRING', 'SUBSTR', 'LEFT', 'RIGHT', 'LENGTH', 'CHAR_LENGTH', 'UPPER', 'LOWER', 'TRIM', 'LTRIM', 'RTRIM', 'REPLACE', 'REVERSE', 'REPEAT', 'LPAD', 'RPAD', 'POSITION', 'STRPOS', 'SPLIT_PART', 'INITCAP', 'OVERLAY', 'TRANSLATE', 'REGEXP_REPLACE', 'REGEXP_MATCH', 'REGEXP_MATCHES', 'REGEXP_SPLIT_TO_TABLE', 'REGEXP_SPLIT_TO_ARRAY', 'STRING_AGG', 'STRING_TO_ARRAY', 'ARRAY_TO_STRING', 'FORMAT'],
+    numeric: ['ABS', 'CEIL', 'CEILING', 'FLOOR', 'ROUND', 'TRUNC', 'MOD', 'POW', 'POWER', 'SQRT', 'EXP', 'LOG', 'LN', 'PI', 'RANDOM', 'SIGN', 'GREATEST', 'LEAST', 'DIV', 'SCALE', 'WIDTH_BUCKET'],
+    date: ['NOW', 'CURRENT_DATE', 'CURRENT_TIME', 'CURRENT_TIMESTAMP', 'LOCALTIME', 'LOCALTIMESTAMP', 'EXTRACT', 'DATE_PART', 'DATE_TRUNC', 'AGE', 'MAKE_DATE', 'MAKE_TIME', 'MAKE_TIMESTAMP', 'MAKE_INTERVAL', 'TO_TIMESTAMP', 'TO_DATE', 'TO_CHAR', 'CLOCK_TIMESTAMP', 'STATEMENT_TIMESTAMP', 'TRANSACTION_TIMESTAMP', 'TIMEOFDAY', 'ISFINITE'],
+    aggregate: ['COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'STRING_AGG', 'ARRAY_AGG', 'BOOL_AND', 'BOOL_OR', 'BIT_AND', 'BIT_OR', 'JSON_AGG', 'JSONB_AGG', 'JSON_OBJECT_AGG', 'JSONB_OBJECT_AGG', 'XMLAGG', 'PERCENTILE_CONT', 'PERCENTILE_DISC', 'MODE', 'CORR', 'COVAR_POP', 'COVAR_SAMP', 'REGR_AVGX', 'REGR_AVGY', 'REGR_COUNT', 'REGR_INTERCEPT', 'REGR_R2', 'REGR_SLOPE', 'REGR_SXX', 'REGR_SXY', 'REGR_SYY', 'STDDEV', 'STDDEV_POP', 'STDDEV_SAMP', 'VARIANCE', 'VAR_POP', 'VAR_SAMP'],
+    window: ['ROW_NUMBER', 'RANK', 'DENSE_RANK', 'NTILE', 'LEAD', 'LAG', 'FIRST_VALUE', 'LAST_VALUE', 'NTH_VALUE', 'PERCENT_RANK', 'CUME_DIST'],
+    json: ['JSON_EXTRACT_PATH', 'JSON_EXTRACT_PATH_TEXT', 'JSONB_EXTRACT_PATH', 'JSONB_EXTRACT_PATH_TEXT', 'JSON_BUILD_ARRAY', 'JSON_BUILD_OBJECT', 'JSONB_BUILD_ARRAY', 'JSONB_BUILD_OBJECT', 'JSON_OBJECT', 'JSONB_OBJECT', 'JSON_ARRAY_ELEMENTS', 'JSONB_ARRAY_ELEMENTS', 'JSON_ARRAY_ELEMENTS_TEXT', 'JSONB_ARRAY_ELEMENTS_TEXT', 'JSON_EACH', 'JSONB_EACH', 'JSON_EACH_TEXT', 'JSONB_EACH_TEXT', 'JSON_KEYS', 'JSONB_KEYS', 'JSON_POPULATE_RECORD', 'JSONB_POPULATE_RECORD', 'JSON_POPULATE_RECORDSET', 'JSONB_POPULATE_RECORDSET', 'JSON_TO_RECORD', 'JSONB_TO_RECORD', 'JSON_TO_RECORDSET', 'JSONB_TO_RECORDSET', 'JSON_TYPEOF', 'JSONB_TYPEOF', 'JSON_STRIP_NULLS', 'JSONB_STRIP_NULLS', 'JSONB_SET', 'JSONB_INSERT', 'JSONB_PRETTY'],
+    array: ['ARRAY_APPEND', 'ARRAY_CAT', 'ARRAY_DIMS', 'ARRAY_FILL', 'ARRAY_LENGTH', 'ARRAY_LOWER', 'ARRAY_NDIMS', 'ARRAY_POSITION', 'ARRAY_POSITIONS', 'ARRAY_PREPEND', 'ARRAY_REMOVE', 'ARRAY_REPLACE', 'ARRAY_TO_STRING', 'ARRAY_UPPER', 'CARDINALITY', 'STRING_TO_ARRAY', 'UNNEST'],
+    control: ['NULLIF', 'COALESCE', 'CASE', 'GREATEST', 'LEAST'],
+    conversion: ['CAST', 'TO_CHAR', 'TO_DATE', 'TO_NUMBER', 'TO_TIMESTAMP'],
+    encryption: ['MD5', 'ENCODE', 'DECODE', 'GEN_RANDOM_UUID', 'GEN_RANDOM_BYTES', 'DIGEST', 'HMAC', 'CRYPT', 'GEN_SALT'],
+    info: ['CURRENT_DATABASE', 'CURRENT_SCHEMA', 'CURRENT_SCHEMAS', 'CURRENT_USER', 'SESSION_USER', 'USER', 'VERSION', 'PG_BACKEND_PID', 'PG_BLOCKING_PIDS', 'PG_CONF_LOAD_TIME', 'PG_POSTMASTER_START_TIME', 'INET_CLIENT_ADDR', 'INET_CLIENT_PORT', 'INET_SERVER_ADDR', 'INET_SERVER_PORT'],
+    system: ['PG_TABLE_SIZE', 'PG_INDEXES_SIZE', 'PG_TOTAL_RELATION_SIZE', 'PG_DATABASE_SIZE', 'PG_SIZE_PRETTY', 'PG_RELATION_FILEPATH', 'PG_TABLESPACE_LOCATION', 'PG_COLUMN_SIZE', 'OBJ_DESCRIPTION', 'COL_DESCRIPTION', 'SHOBJ_DESCRIPTION'],
 };
 
 // Data type to operators mapping
@@ -390,6 +459,9 @@ export class SmartAutocomplete {
     #cursorPos = 0;
     #currentDb = '';
     #parsedQuery = null;
+    
+    // Database type (mysql or postgres)
+    #dbType = 'mysql';
 
     constructor() {
         if (SmartAutocomplete.#instance) {
@@ -406,6 +478,30 @@ export class SmartAutocomplete {
             SmartAutocomplete.#instance = new SmartAutocomplete();
         }
         return SmartAutocomplete.#instance;
+    }
+
+    /**
+     * Set the database type (mysql or postgres)
+     * @deprecated Use localStorage 'activeDbType' instead
+     */
+    setDbType(dbType) {
+        this.#dbType = dbType === 'postgres' || dbType === 'postgresql' ? 'postgres' : 'mysql';
+    }
+
+    /**
+     * Get database type
+     */
+    getDbType() {
+        // Prefer database adapter which reads from localStorage
+        return isPostgreSQL() ? 'postgres' : 'mysql';
+    }
+
+    /**
+     * Get functions based on current database type
+     */
+    #getCurrentFunctions() {
+        // Use database adapter functions, but also include local categorized functions
+        return isPostgreSQL() ? POSTGRESQL_FUNCTIONS : MYSQL_FUNCTIONS;
     }
 
     // ==================== PUBLIC API ====================
@@ -770,7 +866,7 @@ export class SmartAutocomplete {
     #isKeyword(word) {
         if (!word) return false;
         const upper = word.toUpperCase();
-        return SQL_KEYWORDS.includes(upper) ||
+        return getSqlKeywords().includes(upper) ||
             ['WHERE', 'AND', 'OR', 'ON', 'SET', 'VALUES', 'LEFT', 'RIGHT', 'INNER', 'OUTER', 'CROSS', 'NATURAL', 'ORDER', 'GROUP', 'HAVING', 'LIMIT', 'OFFSET', 'AS'].includes(upper);
     }
 
@@ -1036,7 +1132,8 @@ export class SmartAutocomplete {
         suggestions.push(...await this.#getColumnSuggestions(word));
 
         // Add aggregate functions
-        for (const func of MYSQL_FUNCTIONS.aggregate) {
+        const currentFuncs = this.#getCurrentFunctions();
+        for (const func of currentFuncs.aggregate) {
             if (func.toLowerCase().startsWith(wordLower)) {
                 suggestions.push({
                     type: 'function',
@@ -1050,7 +1147,7 @@ export class SmartAutocomplete {
         }
 
         // Add window functions
-        for (const func of MYSQL_FUNCTIONS.window) {
+        for (const func of currentFuncs.window) {
             if (func.toLowerCase().startsWith(wordLower)) {
                 suggestions.push({
                     type: 'function',
@@ -1300,7 +1397,9 @@ export class SmartAutocomplete {
     #getSnippetSuggestions(word) {
         const suggestions = [];
         const wordLower = word.toLowerCase();
-        const allSnippets = [...BUILTIN_SNIPPETS, ...this.#userSnippets];
+        // Get snippets from database adapter + user snippets
+        const dbSnippets = getAllSnippets();
+        const allSnippets = [...BUILTIN_SNIPPETS, ...dbSnippets, ...this.#userSnippets];
 
         for (const snippet of allSnippets) {
             if (snippet.trigger.toLowerCase().startsWith(wordLower) ||
@@ -1325,7 +1424,7 @@ export class SmartAutocomplete {
     #getKeywordSuggestions(word, keywords = null) {
         const suggestions = [];
         const wordLower = word.toLowerCase();
-        const keywordList = keywords || SQL_KEYWORDS;
+        const keywordList = keywords || getSqlKeywords();
 
         for (const kw of keywordList) {
             if (kw.toLowerCase().startsWith(wordLower)) {
@@ -1345,8 +1444,9 @@ export class SmartAutocomplete {
     #getFunctionSuggestions(word) {
         const suggestions = [];
         const wordLower = word.toLowerCase();
+        const currentFuncs = this.#getCurrentFunctions();
 
-        for (const [category, funcs] of Object.entries(MYSQL_FUNCTIONS)) {
+        for (const [category, funcs] of Object.entries(currentFuncs)) {
             for (const func of funcs) {
                 if (func.toLowerCase().startsWith(wordLower)) {
                     suggestions.push({
@@ -1528,7 +1628,7 @@ export class SmartAutocomplete {
     }
 
     #getFallbackSuggestions() {
-        return SQL_KEYWORDS.slice(0, 15).map(kw => ({
+        return getSqlKeywords().slice(0, 15).map(kw => ({
             type: 'keyword',
             value: kw,
             display: kw,

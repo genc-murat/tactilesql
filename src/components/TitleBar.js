@@ -5,7 +5,7 @@ export function TitleBar() {
     let theme = ThemeManager.getCurrentTheme();
     let isLight = theme === 'light';
     let isDawn = theme === 'dawn';
-    let isOceanic = theme === 'oceanic';
+    let isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
 
     const container = document.createElement('div');
     container.className = `h-8 ${isLight ? 'bg-gray-100 border-gray-200' : (isDawn ? 'bg-[#f2e9e1] border-[#eaddd0]' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50' : 'bg-[#0a0c10] border-white/5'))} flex items-center relative select-none z-[100] border-b w-full shrink-0 transition-all duration-300`;
@@ -43,7 +43,7 @@ export function TitleBar() {
         theme = e.detail.theme;
         isLight = theme === 'light';
         isDawn = theme === 'dawn';
-        isOceanic = theme === 'oceanic';
+        isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
         container.className = `h-8 ${isLight ? 'bg-gray-100 border-gray-200' : (isDawn ? 'bg-[#f2e9e1] border-[#eaddd0]' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50' : 'bg-[#0a0c10] border-white/5'))} flex items-center relative select-none z-[100] border-b w-full shrink-0 transition-all duration-300`;
         titleSpan.className = `text-[10px] font-bold tracking-widest ${(isLight || isDawn) ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-500')} uppercase transition-colors duration-300`;
     };

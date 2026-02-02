@@ -8,7 +8,7 @@ export function Footer() {
     const update = async () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
         const config = JSON.parse(localStorage.getItem('activeConnection') || 'null');
 
         if (!config) {
@@ -98,7 +98,7 @@ export function Footer() {
     const renderFooterStyle = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
         footer.className = `h-8 ${isLight ? 'bg-gray-100 border-gray-200' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-panel border-ocean-border text-ocean-text/80' : 'bg-[#16191e] border-white/5'))} border-t px-4 flex items-center justify-between text-[10px] font-mono ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text' : 'text-gray-500'))} select-none z-50 relative shrink-0 transition-all`;
         update();
     };

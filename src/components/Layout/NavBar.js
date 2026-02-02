@@ -7,7 +7,7 @@ export function NavBar() {
     const render = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
         // Get current path from hash
         const currentPath = window.location.hash.split('?')[0].slice(1) || '/';
 

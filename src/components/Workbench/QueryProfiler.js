@@ -3,6 +3,17 @@ import { invoke } from '@tauri-apps/api/core';
 import { ThemeManager } from '../../utils/ThemeManager.js';
 import { Dialog } from '../UI/Dialog.js';
 
+// Helper to escape HTML special characters for GTK markup compatibility
+const escapeHtml = (str) => {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+};
+
 // --- State (Module Scoped) ---
 let isVisible = false;
 let activeTab = 'profile'; // 'profile' | 'monitor' | 'locks'
@@ -17,7 +28,7 @@ export function QueryProfiler() {
     let theme = ThemeManager.getCurrentTheme();
     let isLight = theme === 'light';
     let isDawn = theme === 'dawn';
-    let isOceanic = theme === 'oceanic';
+    let isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
 
     const container = document.createElement('div');
     // Compact width (w-96 to w-[500px] for locks view), glassmorphism
@@ -259,7 +270,7 @@ export function QueryProfiler() {
                         <span class="text-xs font-bold ${valueColor} truncate" title="Duration">Duration</span>
                         <span class="text-lg font-black bg-clip-text text-transparent bg-gradient-to-r from-mysql-teal to-cyan-400">${formatDuration(duration)}</span>
                     </div>
-                    <div class="text-[10px] ${labelColor} truncate font-mono mt-0.5" title="${query}">${query || 'Unknown Query'}</div>
+                    <div class="text-[10px] ${labelColor} truncate font-mono mt-0.5" title="${escapeHtml(query)}">${escapeHtml(query) || 'Unknown Query'}</div>
                 </div>
             </div>
 
@@ -374,14 +385,14 @@ export function QueryProfiler() {
                 <div class="flex items-center gap-2 p-2 rounded border-b ${borderColor} ${rowClass} ${hoverBg} group relative">
                     <div class="flex-1 min-w-0">
                         <div class="flex items-center justify-between mb-0.5">
-                            <span class="text-[10px] font-bold ${valueColor} truncate mr-2" title="${p.info || p.command}">${p.id} • ${p.user}</span>
+                            <span class="text-[10px] font-bold ${valueColor} truncate mr-2" title="${escapeHtml(p.info || p.command)}">${p.id} • ${escapeHtml(p.user)}</span>
                             <span class="text-[9px] font-mono ${p.time > 5 ? 'text-yellow-500' : 'text-green-500'}">${p.time}s</span>
                         </div>
                         <div class="flex items-center justify-between text-[9px] ${labelColor}">
-                            <span class="truncate block max-w-[150px]" title="${p.state}">${p.state || p.command}</span>
-                            <span class="truncate block max-w-[80px] opacity-70">${p.db || '-'}</span>
+                            <span class="truncate block max-w-[150px]" title="${escapeHtml(p.state)}">${escapeHtml(p.state) || escapeHtml(p.command)}</span>
+                            <span class="truncate block max-w-[80px] opacity-70">${escapeHtml(p.db) || '-'}</span>
                         </div>
-                        ${p.info ? `<div class="text-[8px] font-mono opacity-50 truncate mt-0.5 w-full">${p.info}</div>` : ''}
+                        ${p.info ? `<div class="text-[8px] font-mono opacity-50 truncate mt-0.5 w-full">${escapeHtml(p.info)}</div>` : ''}
                     </div>
                     <button class="kill-btn opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-500 hover:text-white text-red-400 transition-all absolute right-2 top-1/2 -translate-y-1/2" data-id="${p.id}" title="Kill Process">
                         <span class="material-symbols-outlined text-[16px]">cancel</span>
@@ -604,7 +615,7 @@ export function QueryProfiler() {
         theme = e.detail.theme;
         isLight = theme === 'light';
         isDawn = theme === 'dawn';
-        isOceanic = theme === 'oceanic';
+        isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
         // Re-apply container classes
         container.className = `query-profiler ${isVisible ? '' : 'hidden'} fixed bottom-4 right-4 w-[500px] max-h-[600px] overflow-hidden rounded-2xl shadow-2xl border z-50 transition-all duration-300 backdrop-blur-xl ${isLight
             ? 'bg-white/95 border-gray-200'

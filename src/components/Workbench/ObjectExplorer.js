@@ -2,18 +2,30 @@ import { invoke } from '@tauri-apps/api/core';
 import { showViewSourceModal } from '../UI/ViewSourceModal.js';
 import { Dialog } from '../UI/Dialog.js';
 import { ThemeManager } from '../../utils/ThemeManager.js';
+import { getQuoteChar, isPostgreSQL, DatabaseType } from '../../database/index.js';
+
+// Helper to escape HTML special characters for GTK markup compatibility
+const escapeHtml = (str) => {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+};
 
 export function ObjectExplorer() {
     let theme = ThemeManager.getCurrentTheme();
     let isLight = theme === 'light';
     let isDawn = theme === 'dawn';
-    let isOceanic = theme === 'oceanic';
+    let isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
 
     const explorer = document.createElement('div');
     const getExplorerClass = (t) => {
         const isL = t === 'light';
         const isD = t === 'dawn';
-        const isO = t === 'oceanic';
+        const isO = t === 'oceanic' || t === 'ember' || t === 'aurora';
         return `h-full border-r ${isL ? 'bg-white border-gray-200' : (isD ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isO ? 'bg-ocean-panel border-ocean-border' : 'bg-[#0f1115] border-white/5'))} flex flex-col p-3 gap-4 overflow-hidden`;
     };
     explorer.className = getExplorerClass(theme);
@@ -21,6 +33,7 @@ export function ObjectExplorer() {
     // --- State ---
     let connections = [];
     let activeConnectionId = null; // ID of the currently active connection
+    let activeDbType = 'mysql'; // 'mysql' or 'postgresql'
     let connectionExpanded = true; // Whether active connection tree is expanded
     let databases = []; // Databases for the ACTIVE connection only
     let expandedDbs = new Set();
@@ -34,7 +47,17 @@ export function ObjectExplorer() {
     let draggedConnId = null;
     let draggedNode = null;
 
-    const systemDatabases = ['mysql', 'information_schema', 'performance_schema', 'sys'];
+    // System databases/schemas per DB type
+    const mysqlSystemDbs = ['mysql', 'information_schema', 'performance_schema', 'sys'];
+    const pgSystemSchemas = ['pg_catalog', 'information_schema', 'pg_toast'];
+    
+    // Get system databases/schemas based on active DB type
+    // For PostgreSQL, we list schemas (so use system schemas)
+    // For MySQL, we list databases (so use system databases)
+    const getSystemDatabases = () => isPostgreSQL() ? pgSystemSchemas : mysqlSystemDbs;
+    
+    // Get quote character based on active DB type (use database adapter)
+    const getQuote = () => getQuoteChar();
 
     // --- Helper to render table details ---
     const renderTableDetails = (db, table) => {
@@ -192,11 +215,12 @@ export function ObjectExplorer() {
 
     // --- Render all databases for active connection ---
     const renderActiveConnectionData = () => {
-        const userDbs = databases.filter(db => !systemDatabases.includes(db.toLowerCase()));
-        const systemDbs = databases.filter(db => systemDatabases.includes(db.toLowerCase()));
+        const sysDbs = getSystemDatabases();
+        const userDbs = databases.filter(db => !sysDbs.includes(db.toLowerCase()));
+        const systemDbs = databases.filter(db => sysDbs.includes(db.toLowerCase()));
 
         if (databases.length === 0) {
-            return `<div class="pl-6 py-1 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-600')} italic text-[10px]">No databases found</div>`;
+            return `<div class="pl-6 py-1 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-600')} italic text-[10px]">No ${isPostgreSQL() ? 'schemas' : 'databases'} found</div>`;
         }
 
         const borderClass = isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5');
@@ -204,6 +228,11 @@ export function ObjectExplorer() {
         const countText = isLight ? 'text-gray-300' : (isDawn ? 'text-[#ea9d34]' : 'text-gray-700');
         const iconColor = isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal';
         const sysIconColor = isDawn ? 'text-[#f6c177]' : 'text-amber-500';
+        
+        // Labels based on database type
+        const userLabel = isPostgreSQL() ? 'User Schemas' : 'User Databases';
+        const systemLabel = isPostgreSQL() ? 'System Schemas' : 'System Databases';
+        const schemaIcon = isPostgreSQL() ? 'schema' : 'database';
 
         return `
             <div class="pl-3 border-l ${borderClass} ml-3 space-y-1 mt-1">
@@ -211,8 +240,8 @@ export function ObjectExplorer() {
                     <div class="mb-2">
                          <div class="px-2 py-1 text-[9px] font-bold tracking-[0.2em] ${headerText} flex items-center gap-2 cursor-pointer ${isDawn ? 'hover:text-[#575279]' : 'hover:text-mysql-teal'} transition-colors" id="user-dbs-toggle">
                             <span class="material-symbols-outlined text-[10px] transition-transform ${userDbsExpanded ? 'rotate-90' : ''}">arrow_right</span>
-                            <span class="material-symbols-outlined text-[12px] ${iconColor}">database</span>
-                            User Databases
+                            <span class="material-symbols-outlined text-[12px] ${iconColor}">${schemaIcon}</span>
+                            ${userLabel}
                             <span class="${countText}"> (${userDbs.length})</span>
                         </div>
                         ${userDbsExpanded ? `<div class="space-y-0.5 pl-1">${userDbs.map(db => renderDatabase(db)).join('')}</div>` : ''}
@@ -223,7 +252,7 @@ export function ObjectExplorer() {
                         <div class="px-2 py-1 text-[9px] font-bold tracking-[0.2em] ${headerText} flex items-center gap-2 cursor-pointer ${isDawn ? 'hover:text-[#575279]' : 'hover:text-amber-500'} transition-colors" id="system-dbs-toggle">
                              <span class="material-symbols-outlined text-[10px] transition-transform ${systemDbsExpanded ? 'rotate-90' : ''}">arrow_right</span>
                              <span class="material-symbols-outlined text-[12px] ${sysIconColor}">settings</span>
-                             System Databases
+                             ${systemLabel}
                              <span class="${countText}"> (${systemDbs.length})</span>
                         </div>
                         ${systemDbsExpanded ? `<div class="space-y-0.5 opacity-70 pl-1">${systemDbs.map(db => renderDatabase(db)).join('')}</div>` : ''}
@@ -269,8 +298,14 @@ export function ObjectExplorer() {
                     </div>
 
                     <div class="flex-1 min-w-0">
-                        <div class="text-[11px] font-bold ${nameColor} truncate">${conn.name || 'Unnamed Connection'}</div>
-                        <div class="text-[9px] ${subText} truncate">${conn.username}@${conn.host}</div>
+                        <div class="flex items-center gap-1.5">
+                            <span class="text-[11px] font-bold ${nameColor} truncate">${escapeHtml(conn.name) || 'Unnamed Connection'}</span>
+                            ${conn.db_type === 'postgresql' 
+                                ? `<span class="px-1 py-0.5 text-[8px] font-bold rounded ${isLight ? 'bg-blue-100 text-blue-600' : (isDawn ? 'bg-[#3e8fb0]/20 text-[#3e8fb0]' : 'bg-blue-500/20 text-blue-400')}">PG</span>`
+                                : `<span class="px-1 py-0.5 text-[8px] font-bold rounded ${isLight ? 'bg-orange-100 text-orange-600' : (isDawn ? 'bg-[#ea9d34]/20 text-[#ea9d34]' : 'bg-orange-500/20 text-orange-400')}">MY</span>`
+                            }
+                        </div>
+                        <div class="text-[9px] ${subText} truncate">${escapeHtml(conn.username)}@${escapeHtml(conn.host)}</div>
                     </div>
 
                     ${!isActive ? `
@@ -510,7 +545,8 @@ export function ObjectExplorer() {
 
             // Drag and drop
             item.addEventListener('dragstart', (e) => {
-                const tableName = `\`${item.dataset.db}\`.\`${item.dataset.table}\``;
+                const q = getQuote();
+                const tableName = `${q}${item.dataset.db}${q}.${q}${item.dataset.table}${q}`;
                 e.dataTransfer.setData('text/plain', tableName);
                 e.dataTransfer.effectAllowed = 'copy';
                 item.style.opacity = '0.5';
@@ -570,7 +606,9 @@ export function ObjectExplorer() {
 
             // Persist as active
             localStorage.setItem('activeConnection', JSON.stringify(connConfig));
+            localStorage.setItem('activeDbType', connConfig.dbType || 'mysql');
             activeConnectionId = id;
+            activeDbType = connConfig.dbType || 'mysql';
 
             // Reset state for new connection
             databases = [];
@@ -706,8 +744,9 @@ export function ObjectExplorer() {
         };
         menu.querySelector('#ctx-select-view').onclick = () => {
             // Dispatch event to query editor
+            const q = getQuote();
             window.dispatchEvent(new CustomEvent('tactilesql:run-query', {
-                detail: { query: `SELECT * FROM \`${dbName}\`.\`${viewName}\` LIMIT 1000;` }
+                detail: { query: `SELECT * FROM ${q}${dbName}${q}.${q}${viewName}${q} LIMIT 1000;` }
             }));
             menu.remove();
         };
@@ -737,6 +776,8 @@ export function ObjectExplorer() {
         const dividerColor = isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5');
         const headerText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500');
         const hoverClass = isLight ? 'hover:bg-gray-50 text-gray-700' : (isDawn ? 'hover:bg-[#faf4ed] text-[#575279]' : 'hover:bg-white/5 text-gray-300 hover:text-white');
+        
+        const isPg = activeDbType === 'postgresql';
 
         menu.innerHTML = `
             <div class="px-3 py-1.5 text-[10px] font-mono ${headerText} ${dividerColor} border-b tracking-widest mb-1">
@@ -762,25 +803,36 @@ export function ObjectExplorer() {
         menu.querySelector('#ctx-db-open-script').onclick = async () => {
             menu.remove();
             try {
-                // Switch to the selected database
                 const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
                 if (!activeConfig.username) {
                     Dialog.alert("Session lost. Please reconnect.", "Session Error");
                     return;
                 }
                 
-                activeConfig.database = dbName;
-                await invoke('establish_connection', {
-                    config: { ...activeConfig, id: activeConfig.id || null, name: activeConfig.name || null }
-                });
-                localStorage.setItem('activeConnection', JSON.stringify(activeConfig));
+                if (isPg) {
+                    // For PostgreSQL, set search_path to the schema (don't reconnect)
+                    try {
+                        await invoke('execute_query', { query: `SET search_path TO "${dbName}"` });
+                    } catch (e) {
+                        console.warn('Could not set search_path:', e);
+                    }
+                    activeConfig.activeSchema = dbName;
+                    localStorage.setItem('activeConnection', JSON.stringify(activeConfig));
+                } else {
+                    // For MySQL, switch to the selected database
+                    activeConfig.database = dbName;
+                    await invoke('establish_connection', {
+                        config: { ...activeConfig, id: activeConfig.id || null, name: activeConfig.name || null }
+                    });
+                    localStorage.setItem('activeConnection', JSON.stringify(activeConfig));
+                }
                 
-                // Dispatch event to notify QueryEditor to update its database selector and create new tab
+                // Dispatch event to notify QueryEditor to create new tab
                 window.dispatchEvent(new CustomEvent('tactilesql:open-sql-script', { 
-                    detail: { database: dbName } 
+                    detail: { database: dbName, isSchema: isPg } 
                 }));
             } catch (error) {
-                Dialog.alert(`Failed to switch database: ${String(error).replace(/\n/g, '<br>')}`, "Database Switch Error");
+                Dialog.alert(`Failed to open SQL script: ${String(error).replace(/\n/g, '<br>')}`, 'Error');
             }
         };
 
@@ -809,42 +861,72 @@ export function ObjectExplorer() {
 
     const showDatabaseProperties = async (dbName) => {
         try {
-            const results = await invoke('execute_query', {
-                query: `
-                    SELECT 
-                        DEFAULT_CHARACTER_SET_NAME, 
-                        DEFAULT_COLLATION_NAME 
-                    FROM information_schema.SCHEMATA 
-                    WHERE SCHEMA_NAME = '${dbName}'
-                `
-            });
+            // Use component's activeDbType state for reliable detection
+            const isPg = activeDbType === 'postgresql';
+            
+            if (isPg) {
+                // PostgreSQL: dbName is a schema name
+                const tableCountResult = await invoke('execute_query', {
+                    query: `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '${dbName}'`
+                });
+                
+                const sizeResult = await invoke('execute_query', {
+                    query: `
+                        SELECT pg_size_pretty(SUM(pg_total_relation_size(quote_ident(schemaname) || '.' || quote_ident(tablename))))
+                        FROM pg_tables
+                        WHERE schemaname = '${dbName}'
+                    `
+                });
+                
+                const ownerResult = await invoke('execute_query', {
+                    query: `SELECT schema_owner FROM information_schema.schemata WHERE schema_name = '${dbName}'`
+                });
+                
+                const tableCount = tableCountResult.rows?.[0]?.[0] || '0';
+                const size = sizeResult.rows?.[0]?.[0] || 'Unknown';
+                const owner = ownerResult.rows?.[0]?.[0] || 'Unknown';
+                
+                const message = `Schema: ${dbName}\nOwner: ${owner}\nTables: ${tableCount}\nSize: ${size}`;
+                Dialog.alert(message, 'Schema Properties');
+            } else {
+                // MySQL: dbName is a database name
+                const results = await invoke('execute_query', {
+                    query: `
+                        SELECT 
+                            DEFAULT_CHARACTER_SET_NAME, 
+                            DEFAULT_COLLATION_NAME 
+                        FROM information_schema.SCHEMATA 
+                        WHERE SCHEMA_NAME = '${dbName}'
+                    `
+                });
 
-            // Get table count
-            const tableCountResult = await invoke('execute_query', {
-                query: `SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = '${dbName}'`
-            });
+                // Get table count
+                const tableCountResult = await invoke('execute_query', {
+                    query: `SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = '${dbName}'`
+                });
 
-            // Get approx size
-            const sizeResult = await invoke('execute_query', {
-                query: `
-                    SELECT 
-                        ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) 
-                    FROM information_schema.tables 
-                    WHERE table_schema = '${dbName}' 
-                    GROUP BY table_schema;
-                `
-            });
+                // Get approx size
+                const sizeResult = await invoke('execute_query', {
+                    query: `
+                        SELECT 
+                            ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) 
+                        FROM information_schema.tables 
+                        WHERE table_schema = '${dbName}' 
+                        GROUP BY table_schema;
+                    `
+                });
 
-            const charset = results.rows?.[0]?.[0] || 'Unknown';
-            const collation = results.rows?.[0]?.[1] || 'Unknown';
-            const tableCount = tableCountResult.rows?.[0]?.[0] || '0';
-            const sizeMB = sizeResult.rows?.[0]?.[0] || '0';
+                const charset = results.rows?.[0]?.[0] || 'Unknown';
+                const collation = results.rows?.[0]?.[1] || 'Unknown';
+                const tableCount = tableCountResult.rows?.[0]?.[0] || '0';
+                const sizeMB = sizeResult.rows?.[0]?.[0] || '0';
 
-            const message = `Name: ${dbName}\nCharset: ${charset}\nCollation: ${collation}\nTables: ${tableCount}\nSize: ${sizeMB} MB`;
-            Dialog.alert(message, 'Database Properties');
-
+                const message = `Name: ${dbName}\nCharset: ${charset}\nCollation: ${collation}\nTables: ${tableCount}\nSize: ${sizeMB} MB`;
+                Dialog.alert(message, 'Database Properties');
+            }
         } catch (error) {
-            Dialog.alert(`Failed to fetch database properties: ${String(error).replace(/\n/g, '<br>')}`, 'Properties Error');
+            const isPg = activeDbType === 'postgresql';
+            Dialog.alert(`Failed to fetch ${isPg ? 'schema' : 'database'} properties: ${String(error).replace(/\n/g, '<br>')}`, 'Properties Error');
         }
     };
 
@@ -936,13 +1018,11 @@ export function ObjectExplorer() {
                 try {
                     let sql = '';
                     if (type === 'ddl') {
-                        const res = await invoke('execute_query', { query: `SHOW CREATE TABLE \`${dbName}\`.\`${tableName}\`` });
-                        if (res.rows && res.rows[0]) {
-                            // SHOW CREATE TABLE returns [Table, Create Table]
-                            sql = res.rows[0][1];
-                        }
+                        // Use get_table_ddl command which handles both MySQL and PostgreSQL
+                        sql = await invoke('get_table_ddl', { database: dbName, table: tableName });
                     } else if (type === 'select') {
-                        sql = `SELECT * FROM \`${dbName}\`.\`${tableName}\`\nlimit 100;`;
+                        const q = getQuote();
+                        sql = `SELECT * FROM ${q}${dbName}${q}.${q}${tableName}${q}\nLIMIT 100;`;
                     } else if (['insert', 'update', 'merge', 'delete'].includes(type)) {
                         // For Delete we don't strictly need columns but it helps to see PKs if possible, 
                         // but for simplicity we'll just do DELETE FROM ... WHERE ... 
@@ -1008,7 +1088,8 @@ export function ObjectExplorer() {
         };
         menu.querySelector('#ctx-select').onclick = async () => {
             menu.remove();
-            const query = `SELECT * FROM \`${dbName}\`.\`${tableName}\` LIMIT 200`;
+            const q = getQuote();
+            const query = `SELECT * FROM ${q}${dbName}${q}.${q}${tableName}${q} LIMIT 200`;
 
             // Update query editor content
             window.dispatchEvent(new CustomEvent('tactilesql:set-query', { detail: { query } }));
@@ -1046,13 +1127,17 @@ export function ObjectExplorer() {
     // --- Data Loading ---
     const loadConnections = async () => {
         try {
-            connections = await invoke('get_connections');
+            connections = await invoke('load_connections');
             // Try to resolve active connection ID
             const stored = JSON.parse(localStorage.getItem('activeConnection') || 'null');
             if (stored && stored.id) {
                 activeConnectionId = stored.id;
+                activeDbType = stored.dbType || 'mysql';
+                localStorage.setItem('activeDbType', activeDbType);
             } else {
                 activeConnectionId = null;
+                activeDbType = 'mysql';
+                localStorage.setItem('activeDbType', 'mysql');
             }
             render();
             // If we have an active connection, load its dbs (lazy-load objects on expand)
@@ -1119,7 +1204,7 @@ export function ObjectExplorer() {
         theme = e.detail.theme;
         isLight = theme === 'light';
         isDawn = theme === 'dawn';
-        isOceanic = theme === 'oceanic';
+        isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
         explorer.className = getExplorerClass(theme);
         render();
     };

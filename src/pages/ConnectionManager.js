@@ -2,15 +2,26 @@ import { invoke } from '@tauri-apps/api/core';
 import { Dialog } from '../components/UI/Dialog.js';
 import { ThemeManager } from '../utils/ThemeManager.js';
 
+// Helper to escape HTML special characters for GTK markup compatibility
+const escapeHtml = (str) => {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+};
+
 export function ConnectionManager() {
     let theme = ThemeManager.getCurrentTheme();
     const isLightInitial = theme === 'light';
-    const isOceanicInitial = theme === 'oceanic';
+    const isOceanicInitial = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
     const container = document.createElement('div');
     const getContainerClass = (t) => {
         const isLight = t === 'light';
         const isDawn = t === 'dawn';
-        const isOceanic = t === 'oceanic';
+        const isOceanic = t === 'oceanic' || t === 'ember' || t === 'aurora';
         return `flex-1 flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]'))} selection:bg-mysql-cyan/30 transition-all duration-300`;
     };
     container.className = getContainerClass(theme);
@@ -18,11 +29,15 @@ export function ConnectionManager() {
     const DEFAULT_CONFIG = {
         id: null,
         name: '',
+        dbType: 'mysql', // 'mysql' | 'postgresql'
         host: 'localhost',
         port: 3306,
         username: 'root',
         password: '',
         database: '',
+        // PostgreSQL specific
+        sslMode: 'prefer',
+        schema: 'public',
         // SSH Tunnel settings
         useSSHTunnel: false,
         sshHost: '',
@@ -31,6 +46,12 @@ export function ConnectionManager() {
         sshPassword: '',
         sshKeyPath: '',
         color: '#00c8ff' // Default MySQL Teal
+    };
+
+    // Database type defaults
+    const DB_DEFAULTS = {
+        mysql: { port: 3306, username: 'root', color: '#00c8ff' },
+        postgresql: { port: 5432, username: 'postgres', color: '#336791' }
     };
 
     let config = { ...DEFAULT_CONFIG };
@@ -67,8 +88,103 @@ export function ConnectionManager() {
     const renderGridView = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
         const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+
+        // Group connections by database type
+        const mysqlConnections = connections.filter(c => c.dbType !== 'postgresql');
+        const postgresConnections = connections.filter(c => c.dbType === 'postgresql');
+
+        // Helper function to render a single connection card
+        const renderConnectionCard = (conn) => {
+            const isActive = activeConfig && String(activeConfig.id) === String(conn.id);
+            const lastConnected = conn.last_connected ? new Date(conn.last_connected) : null;
+            const timeAgo = lastConnected ? formatTimeAgo(lastConnected) : 'Never';
+            const isPostgresConn = conn.dbType === 'postgresql';
+            const connColor = conn.color || (isPostgresConn ? '#336791' : '#00c8ff');
+
+            return `
+                <div class="group relative p-4 rounded-xl border ${isActive ? 'border-green-500/50 bg-green-500/5' : (isLight ? 'border-gray-200 bg-white hover:border-mysql-teal/30' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3] hover:border-[#ea9d34]/30' : (isOceanic ? 'border-ocean-border/50 bg-[#3B4252] hover:border-mysql-teal/30' : 'border-white/10 bg-[#13161b] hover:border-mysql-teal/30')))} transition-all duration-200 hover:shadow-lg cursor-pointer flex flex-col">
+                    
+                    ${isActive ? `
+                        <div class="absolute top-2 right-2 z-10">
+                            <div class="flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-500/20 border border-green-500/30">
+                                <div class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
+                                <span class="text-[8px] font-semibold text-green-400 uppercase tracking-wider">Active</span>
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    <div class="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 ${isActive ? 'top-9' : ''}">
+                        <button data-id="${conn.id}" class="edit-btn p-1 rounded ${isLight ? 'bg-gray-100 hover:bg-gray-200' : 'bg-white/5 hover:bg-white/10'} ${isLight ? 'text-gray-600' : 'text-gray-400'} hover:text-mysql-teal transition-all" title="Edit">
+                            <span class="material-symbols-outlined text-xs">edit</span>
+                        </button>
+                        <button data-id="${conn.id}" class="delete-btn p-1 rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all" title="Delete">
+                            <span class="material-symbols-outlined text-xs">delete</span>
+                        </button>
+                    </div>
+
+                    <div class="flex-1 flex flex-col mt-2">
+                        <div class="flex items-start gap-3 mb-3">
+                            <div class="w-10 h-10 rounded-lg border flex items-center justify-center shrink-0" style="background-color: ${isActive ? 'rgb(34 197 94 / 0.1)' : connColor + '15'}; border-color: ${isActive ? 'rgb(34 197 94 / 0.3)' : connColor + '50'}">
+                                ${isPostgresConn ? `
+                                    <svg class="w-5 h-5" viewBox="0 0 128 128"><path d="M93.809 92.112c.785-6.533.55-7.492 5.416-6.433l1.235.108c3.742.17 8.637-.602 11.513-1.938 6.191-2.873 9.861-7.668 3.758-6.409-13.924 2.873-14.881-1.842-14.881-1.842 14.703-21.815 20.849-49.508 15.545-56.287-14.47-18.489-39.517-9.746-39.936-9.52l-.134.025c-2.751-.571-5.83-.912-9.289-.968-6.301-.104-11.082 1.652-14.535 4.406 0 0-44.156-18.187-42.101 22.917 1.025 8.873 12.952 67.199 27.86 49.596 5.449-6.433 10.707-11.869 10.707-11.869 2.611 1.735 5.736 2.632 9.033 2.313l.255-.022c-.079.774-.129 1.534-.137 2.294-4.061 4.539-2.869 5.334-10.996 7.006-8.226 1.693-3.395 4.708-.24 5.499 3.822.959 12.66 2.318 18.632-6.072l-.227.884c1.438 1.151 2.14 7.466 1.932 13.196-.209 5.73-.361 9.668.214 12.739.574 3.073 1.44 10.296 7.58 8.171 5.137-1.778 8.934-6.371 9.362-14.036.303-5.437.89-4.623 1.297-9.472l.695-1.679c.803-6.622.175-8.747 4.685-7.755l1.107.199c3.348.309 7.73-.342 10.314-1.533 5.554-2.562 8.825-6.846 3.367-5.723z" fill="${isActive ? '#22c55e' : connColor}"/></svg>
+                                ` : `
+                                    <span class="material-symbols-outlined text-lg" style="color: ${isActive ? '#22c55e' : connColor}">database</span>
+                                `}
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <h3 class="text-sm font-semibold ${isLight ? 'text-gray-800' : 'text-white'} mb-1 truncate" title="${escapeHtml(conn.name)}">${escapeHtml(conn.name)}</h3>
+                                <div class="flex items-center gap-1 text-[10px] font-mono ${isLight ? 'text-gray-500' : 'text-gray-400'}">
+                                    <span class="truncate">${escapeHtml(conn.username)}@${escapeHtml(conn.host)}</span>
+                                    <span class="shrink-0">:${conn.port}</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="flex flex-col gap-1.5 mb-3 text-[10px]">
+                            ${conn.database ? `
+                                <div class="flex items-center gap-1 ${isLight ? 'text-gray-600' : 'text-gray-400'}">
+                                    <span class="material-symbols-outlined text-xs">folder</span>
+                                    <span class="truncate">${conn.database}</span>
+                                </div>
+                            ` : ''}
+                            <div class="flex items-center gap-1 ${isLight ? 'text-gray-500' : 'text-gray-500'}">
+                                <span class="material-symbols-outlined text-xs">schedule</span>
+                                <span>${timeAgo}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button data-id="${conn.id}" class="connect-btn w-full py-2 rounded-lg ${isActive ? 'bg-green-500 hover:bg-green-600 text-white' : (isLight ? 'bg-mysql-teal hover:bg-mysql-teal/90 text-white' : 'bg-mysql-teal/90 hover:bg-mysql-teal text-white')} font-medium text-xs transition-all flex items-center justify-center gap-1.5">
+                        <span class="material-symbols-outlined text-sm">bolt</span>
+                        <span>${isActive ? 'Open' : 'Connect'}</span>
+                    </button>
+                </div>
+            `;
+        };
+
+        // Helper function to render a database type section
+        const renderDbSection = (title, icon, color, conns, dbType) => {
+            if (conns.length === 0) return '';
+            
+            return `
+                <div class="mb-6">
+                    <div class="flex items-center gap-2 mb-3">
+                        ${dbType === 'postgresql' ? `
+                            <svg class="w-5 h-5" viewBox="0 0 128 128"><path d="M93.809 92.112c.785-6.533.55-7.492 5.416-6.433l1.235.108c3.742.17 8.637-.602 11.513-1.938 6.191-2.873 9.861-7.668 3.758-6.409-13.924 2.873-14.881-1.842-14.881-1.842 14.703-21.815 20.849-49.508 15.545-56.287-14.47-18.489-39.517-9.746-39.936-9.52l-.134.025c-2.751-.571-5.83-.912-9.289-.968-6.301-.104-11.082 1.652-14.535 4.406 0 0-44.156-18.187-42.101 22.917 1.025 8.873 12.952 67.199 27.86 49.596 5.449-6.433 10.707-11.869 10.707-11.869 2.611 1.735 5.736 2.632 9.033 2.313l.255-.022c-.079.774-.129 1.534-.137 2.294-4.061 4.539-2.869 5.334-10.996 7.006-8.226 1.693-3.395 4.708-.24 5.499 3.822.959 12.66 2.318 18.632-6.072l-.227.884c1.438 1.151 2.14 7.466 1.932 13.196-.209 5.73-.361 9.668.214 12.739.574 3.073 1.44 10.296 7.58 8.171 5.137-1.778 8.934-6.371 9.362-14.036.303-5.437.89-4.623 1.297-9.472l.695-1.679c.803-6.622.175-8.747 4.685-7.755l1.107.199c3.348.309 7.73-.342 10.314-1.533 5.554-2.562 8.825-6.846 3.367-5.723z" fill="${color}"/></svg>
+                        ` : `
+                            <span class="material-symbols-outlined text-lg" style="color: ${color}">${icon}</span>
+                        `}
+                        <h2 class="text-sm font-semibold ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">${title}</h2>
+                        <span class="text-xs ${isLight ? 'text-gray-400' : 'text-gray-500'}">(${conns.length})</span>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+                        ${conns.map(conn => renderConnectionCard(conn)).join('')}
+                    </div>
+                </div>
+            `;
+        };
 
         container.innerHTML = `
             <div class="w-full h-full flex flex-col px-6 py-4">
@@ -83,70 +199,12 @@ export function ConnectionManager() {
                     </button>
                 </header>
 
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 overflow-y-auto custom-scrollbar pb-4">
-                    ${connections.map(conn => {
-            const isActive = activeConfig && String(activeConfig.id) === String(conn.id);
-            const lastConnected = conn.last_connected ? new Date(conn.last_connected) : null;
-            const timeAgo = lastConnected ? formatTimeAgo(lastConnected) : 'Never';
-
-            return `
-                        <div class="group relative p-4 rounded-xl border ${isActive ? 'border-green-500/50 bg-green-500/5' : (isLight ? 'border-gray-200 bg-white hover:border-mysql-teal/30' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3] hover:border-[#ea9d34]/30' : (isOceanic ? 'border-ocean-border/50 bg-[#3B4252] hover:border-mysql-teal/30' : 'border-white/10 bg-[#13161b] hover:border-mysql-teal/30')))} transition-all duration-200 hover:shadow-lg cursor-pointer flex flex-col">
-                            
-                            ${isActive ? `
-                                <div class="absolute top-2 right-2 z-10">
-                                    <div class="flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-500/20 border border-green-500/30">
-                                        <div class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
-                                        <span class="text-[8px] font-semibold text-green-400 uppercase tracking-wider">Active</span>
-                                    </div>
-                                </div>
-                            ` : ''}
-
-                            <div class="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 ${isActive ? 'top-9' : ''}">
-                                <button data-id="${conn.id}" class="edit-btn p-1 rounded ${isLight ? 'bg-gray-100 hover:bg-gray-200' : 'bg-white/5 hover:bg-white/10'} ${isLight ? 'text-gray-600' : 'text-gray-400'} hover:text-mysql-teal transition-all" title="Edit">
-                                    <span class="material-symbols-outlined text-xs">edit</span>
-                                </button>
-                                <button data-id="${conn.id}" class="delete-btn p-1 rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all" title="Delete">
-                                    <span class="material-symbols-outlined text-xs">delete</span>
-                                </button>
-                            </div>
-
-                            <div class="flex-1 flex flex-col">
-                                <div class="flex items-start gap-3 mb-3">
-                                    <div class="w-10 h-10 rounded-lg ${isActive ? 'bg-green-500/10 border-green-500/30' : (isLight ? 'bg-mysql-teal/10 border-mysql-teal/30' : 'bg-mysql-teal/20 border-mysql-teal/30')} border flex items-center justify-center shrink-0">
-                                        <span class="material-symbols-outlined ${isActive ? 'text-green-500' : 'text-mysql-teal'} text-lg">database</span>
-                                    </div>
-                                    <div class="flex-1 min-w-0">
-                                        <h3 class="text-sm font-semibold ${isLight ? 'text-gray-800' : 'text-white'} mb-1 truncate" title="${conn.name}">${conn.name}</h3>
-                                        <div class="flex items-center gap-1 text-[10px] font-mono ${isLight ? 'text-gray-500' : 'text-gray-400'}">
-                                            <span class="truncate">${conn.username}@${conn.host}</span>
-                                            <span class="shrink-0">:${conn.port}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <div class="flex flex-col gap-1.5 mb-3 text-[10px]">
-                                    ${conn.database ? `
-                                        <div class="flex items-center gap-1 ${isLight ? 'text-gray-600' : 'text-gray-400'}">
-                                            <span class="material-symbols-outlined text-xs">folder</span>
-                                            <span class="truncate">${conn.database}</span>
-                                        </div>
-                                    ` : ''}
-                                    <div class="flex items-center gap-1 ${isLight ? 'text-gray-500' : 'text-gray-500'}">
-                                        <span class="material-symbols-outlined text-xs">schedule</span>
-                                        <span>${timeAgo}</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <button data-id="${conn.id}" class="connect-btn w-full py-2 rounded-lg ${isActive ? 'bg-green-500 hover:bg-green-600 text-white' : (isLight ? 'bg-mysql-teal hover:bg-mysql-teal/90 text-white' : 'bg-mysql-teal/90 hover:bg-mysql-teal text-white')} font-medium text-xs transition-all flex items-center justify-center gap-1.5">
-                                <span class="material-symbols-outlined text-sm">bolt</span>
-                                <span>${isActive ? 'Open' : 'Connect'}</span>
-                            </button>
-                        </div>
-                    `}).join('')}
+                <div class="flex-1 overflow-y-auto custom-scrollbar pb-4">
+                    ${renderDbSection('MySQL', 'database', '#00c8ff', mysqlConnections, 'mysql')}
+                    ${renderDbSection('PostgreSQL', 'database', '#336791', postgresConnections, 'postgresql')}
                     
                     ${connections.length === 0 ? `
-                        <div class="col-span-full py-16 text-center flex flex-col items-center justify-center border ${isLight ? 'border-gray-200 bg-gray-50' : 'border-white/10 bg-white/5'} rounded-xl">
+                        <div class="py-16 text-center flex flex-col items-center justify-center border ${isLight ? 'border-gray-200 bg-gray-50' : 'border-white/10 bg-white/5'} rounded-xl">
                              <div class="mb-4 w-16 h-16 rounded-full ${isLight ? 'bg-mysql-teal/10' : 'bg-mysql-teal/20'} flex items-center justify-center">
                                 <span class="material-symbols-outlined text-3xl text-mysql-teal">dns</span>
                              </div>
@@ -208,7 +266,8 @@ export function ConnectionManager() {
     const renderEditView = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isPostgres = config.dbType === 'postgresql';
         container.innerHTML = `
              <div class="w-full h-full flex flex-col px-4 py-2 overflow-y-auto custom-scrollbar">
                 <div class="max-w-2xl mx-auto w-full">
@@ -220,19 +279,34 @@ export function ConnectionManager() {
                 <div class="rounded-xl p-4 ${isLight ? 'bg-white border border-gray-200' : (isOceanic ? 'bg-[#3B4252] border border-ocean-border/50' : 'bg-[#13161b] border border-white/10')} shadow-lg">
                     
                     <h2 class="text-sm font-semibold ${isLight ? 'text-gray-900' : 'text-white'} mb-3 flex items-center gap-2">
-                        <span class="material-symbols-outlined text-mysql-teal text-base">settings_input_component</span>
+                        <span class="material-symbols-outlined ${isPostgres ? 'text-[#336791]' : 'text-mysql-teal'} text-base">settings_input_component</span>
                         ${config.id ? 'Edit Connection' : 'New Connection'}
                     </h2>
                     
                     <div class="space-y-2.5 relative z-10">
+                        <!-- Database Type Selector -->
+                        <div class="space-y-1">
+                            <label class="text-[9px] font-black text-gray-500 uppercase tracking-wider">Database Type</label>
+                            <div class="flex gap-2">
+                                <button type="button" data-db-type="mysql" class="db-type-btn flex-1 py-2 px-3 rounded-lg border ${config.dbType === 'mysql' ? (isLight ? 'border-mysql-teal bg-mysql-teal/10' : 'border-mysql-teal bg-mysql-teal/20') : (isLight ? 'border-gray-200 bg-gray-50' : 'border-white/10 bg-white/5')} transition-all flex items-center justify-center gap-2">
+                                    <svg class="w-5 h-5" viewBox="0 0 128 128"><path fill="#00618A" d="M116.948 97.807c-6.863-.187-12.104.452-16.585 2.341-1.273.537-3.305.552-3.513 2.147.7.733.807 1.83 1.365 2.731 1.07 1.73 2.876 4.052 4.488 5.268 1.762 1.33 3.577 2.751 5.465 3.902 3.358 2.047 7.107 3.217 10.34 5.268 1.906 1.21 3.799 2.733 5.658 4.097.92.675 1.537 1.724 2.732 2.147v-.194c-.628-.79-.79-1.878-1.366-2.733l-2.537-2.537c-2.48-3.292-5.629-6.184-8.976-8.585-2.669-1.916-8.642-4.504-9.755-7.609l-.195-.195c1.892-.214 4.107-.898 5.854-1.367 2.934-.786 5.556-.583 8.585-1.365l4.097-1.171v-.78c-1.531-1.571-2.623-3.651-4.292-5.073-4.37-3.72-9.138-7.437-14.048-10.537-2.724-1.718-6.089-2.835-8.976-4.292-.971-.491-2.677-.746-3.318-1.562-1.517-1.932-2.342-4.382-3.511-6.633-2.449-4.717-4.854-9.868-7.024-14.831-1.48-3.384-2.447-6.72-4.293-9.756-8.86-14.567-18.396-23.358-33.169-32-3.144-1.838-6.929-2.563-10.929-3.513-2.145-.129-4.292-.26-6.438-.391-1.311-.546-2.673-2.149-3.902-2.927C17.811 4.565 5.257-2.16 1.633 6.682c-2.289 5.581 3.421 11.025 5.462 13.854 1.434 1.982 3.269 4.207 4.293 6.438.674 1.467.79 2.938 1.367 4.489 1.417 3.822 2.652 7.98 4.487 11.511.927 1.788 1.949 3.67 3.122 5.268.718.981 1.951 1.413 2.145 2.927-1.204 1.686-1.273 4.304-1.95 6.44-3.05 9.615-1.899 21.567 2.537 28.683 1.36 2.186 4.567 6.871 8.975 5.073 3.856-1.57 2.995-6.438 4.098-10.732.249-.973.096-1.689.585-2.341v.195l3.513 7.024c2.6 4.187 7.212 8.562 11.122 11.514 2.027 1.531 3.623 4.177 6.244 5.073v-.196h-.195c-.508-.791-1.303-1.119-1.951-1.755-1.527-1.497-3.225-3.358-4.487-5.073-3.556-4.827-6.698-10.11-9.561-15.609-1.368-2.627-2.557-5.523-3.709-8.196-.444-1.03-.438-2.589-1.364-3.122-1.263 1.958-3.122 3.542-4.098 5.854-1.561 3.696-1.762 8.204-2.341 12.878-.342.122-.19.038-.391.194-2.718-.655-3.672-3.452-4.683-5.853-2.554-6.07-3.029-15.842-.781-22.829.582-1.809 3.21-7.501 2.146-9.172-.508-1.666-2.184-2.63-3.121-3.903-1.161-1.574-2.319-3.646-3.124-5.464-2.09-4.731-3.066-10.044-5.267-14.828-1.053-2.287-2.832-4.602-4.293-6.634-1.617-2.253-3.429-3.912-4.683-6.635-.446-.968-1.051-2.518-.391-3.513.21-.671.508-.952 1.171-1.17 1.132-.873 4.284.29 5.462.779 3.129 1.3 5.741 2.538 8.392 4.294 1.271.844 2.559 2.475 4.097 2.927h1.756c2.747.631 5.824.195 8.391.975 4.536 1.378 8.601 3.523 12.292 5.854 11.246 7.102 20.442 17.21 26.732 29.269 1.012 1.942 1.45 3.794 2.341 5.854 1.798 4.153 4.063 8.426 5.852 12.488 1.786 4.052 3.526 8.141 6.05 11.513 1.327 1.772 6.451 2.723 8.781 3.708 1.632.689 4.307 1.409 5.854 2.34 2.953 1.782 5.815 3.903 8.586 5.855 1.383.975 5.64 3.116 5.852 4.879zM29.729 23.466c-1.431-.027-2.443.156-3.513.389v.195h.195c.683 1.402 1.888 2.306 2.731 3.513.65 1.367 1.301 2.732 1.952 4.097l.194-.193c1.209-.853 1.762-2.214 1.755-4.294-.484-.509-.555-1.147-.975-1.755-.556-.811-1.635-1.272-2.339-1.952z"/></svg>
+                                    <span class="text-xs font-medium ${config.dbType === 'mysql' ? 'text-mysql-teal' : (isLight ? 'text-gray-600' : 'text-gray-400')}">MySQL</span>
+                                </button>
+                                <button type="button" data-db-type="postgresql" class="db-type-btn flex-1 py-2 px-3 rounded-lg border ${config.dbType === 'postgresql' ? (isLight ? 'border-[#336791] bg-[#336791]/10' : 'border-[#336791] bg-[#336791]/20') : (isLight ? 'border-gray-200 bg-gray-50' : 'border-white/10 bg-white/5')} transition-all flex items-center justify-center gap-2">
+                                    <svg class="w-5 h-5" viewBox="0 0 128 128"><path d="M93.809 92.112c.785-6.533.55-7.492 5.416-6.433l1.235.108c3.742.17 8.637-.602 11.513-1.938 6.191-2.873 9.861-7.668 3.758-6.409-13.924 2.873-14.881-1.842-14.881-1.842 14.703-21.815 20.849-49.508 15.545-56.287-14.47-18.489-39.517-9.746-39.936-9.52l-.134.025c-2.751-.571-5.83-.912-9.289-.968-6.301-.104-11.082 1.652-14.535 4.406 0 0-44.156-18.187-42.101 22.917 1.025 8.873 12.952 67.199 27.86 49.596 5.449-6.433 10.707-11.869 10.707-11.869 2.611 1.735 5.736 2.632 9.033 2.313l.255-.022c-.079.774-.129 1.534-.137 2.294-4.061 4.539-2.869 5.334-10.996 7.006-8.226 1.693-3.395 4.708-.24 5.499 3.822.959 12.66 2.318 18.632-6.072l-.227.884c1.438 1.151 2.14 7.466 1.932 13.196-.209 5.73-.361 9.668.214 12.739.574 3.073 1.44 10.296 7.58 8.171 5.137-1.778 8.934-6.371 9.362-14.036.303-5.437.89-4.623 1.297-9.472l.695-1.679c.803-6.622.175-8.747 4.685-7.755l1.107.199c3.348.309 7.73-.342 10.314-1.533 5.554-2.562 8.825-6.846 3.367-5.723z" fill="#336791"/><path d="M66.509 129.502c-.163 8.702-3.96 14.122-9.362 14.036-5.137-1.778-8.034-5.922-7.58-8.171-.574-3.073-.361-9.668-.214-12.739.209-5.73.361-9.668-.214-12.739-.574-3.073-1.44-10.296-7.58-8.171-5.137 1.778-8.034 5.922-7.58 8.171-1.438 1.151-2.14 7.466-1.932 13.196.209 5.73.361 9.668-.214 12.739-.574 3.073-1.44 10.296-7.58 8.171-5.137-1.778-8.034-5.922-7.58-8.171.574-3.073.423-7.009.214-12.739-.209-5.73-.494-12.045 1.932-13.196l-.227.884c-5.972 8.391-14.81 7.031-18.632 6.072-3.155-.791-7.986-3.806.24-5.499 8.127-1.672 6.935-2.467 10.996-7.006.008-.761.058-1.52.137-2.294l-.255.022c-3.297.319-6.422-.579-9.033-2.313 0 0-5.258 5.436-10.707 11.869-14.908 17.602-26.835-40.724-27.86-49.596C-2.156-18.187 42.1 0 42.1 0c3.453-2.754 8.234-4.51 14.535-4.406 3.459.057 6.538.398 9.289.968l.134-.025c.419-.226 25.466-8.969 39.936 9.52 5.304 6.779-.842 34.472-15.545 56.287 0 0 .957 4.715 14.881 1.842 6.103-1.259 2.433 3.536-3.758 6.409-2.876 1.336-7.771 2.108-11.513 1.938l-1.235-.108c-4.866-1.059-4.631-.1-5.416 6.433l-.695 1.679c-.407 4.849-.994 4.035-1.297 9.472z" fill="#fff"/></svg>
+                                    <span class="text-xs font-medium ${config.dbType === 'postgresql' ? 'text-[#336791]' : (isLight ? 'text-gray-600' : 'text-gray-400')}">PostgreSQL</span>
+                                </button>
+                            </div>
+                        </div>
+
                         <div class="grid grid-cols-4 gap-3">
                             <div class="col-span-2 space-y-1">
                                 <label class="text-[9px] font-black text-gray-500 uppercase tracking-wider">Connection Name</label>
-                                <input name="name" class="tactile-input w-full text-xs py-1.5" placeholder="e.g. Production MySQL" type="text" value="${config.name || ''}" required />
+                                <input name="name" class="tactile-input w-full text-xs py-1.5" placeholder="e.g. Production ${isPostgres ? 'PostgreSQL' : 'MySQL'}" type="text" value="${config.name || ''}" required />
                             </div>
                             <div class="col-span-2 space-y-1">
                                 <label class="text-[9px] font-black text-gray-500 uppercase tracking-wider">Default Database <span class="text-gray-400 font-normal">(opt)</span></label>
-                                <input name="database" class="tactile-input w-full text-xs py-1.5" placeholder="my_database" type="text" value="${config.database}" />
+                                <input name="database" class="tactile-input w-full text-xs py-1.5" placeholder="${isPostgres ? 'postgres' : 'my_database'}" type="text" value="${config.database}" />
                             </div>
                         </div>
 
@@ -240,8 +314,8 @@ export function ConnectionManager() {
                             <div class="col-span-3 space-y-1">
                                 <label class="text-[9px] font-black text-gray-500 uppercase tracking-wider">Connection Theme Color</label>
                                 <div class="flex items-center gap-3">
-                                    <input name="color" type="color" class="w-10 h-8 rounded cursor-pointer bg-transparent border-none p-0" value="${config.color || '#00c8ff'}" />
-                                    <input name="color-text" class="tactile-input flex-1 text-xs py-1.5 font-mono" type="text" value="${config.color || '#00c8ff'}" readonly />
+                                    <input name="color" type="color" class="w-10 h-8 rounded cursor-pointer bg-transparent border-none p-0" value="${config.color || (isPostgres ? '#336791' : '#00c8ff')}" />
+                                    <input name="color-text" class="tactile-input flex-1 text-xs py-1.5 font-mono" type="text" value="${config.color || (isPostgres ? '#336791' : '#00c8ff')}" readonly />
                                 </div>
                             </div>
                         </div>
@@ -253,11 +327,11 @@ export function ConnectionManager() {
                             </div>
                             <div class="space-y-1">
                                 <label class="text-[9px] font-black text-gray-500 uppercase tracking-wider">Port</label>
-                                <input name="port" class="tactile-input w-full text-xs py-1.5" placeholder="3306" type="number" value="${config.port}" required />
+                                <input name="port" class="tactile-input w-full text-xs py-1.5" placeholder="${isPostgres ? '5432' : '3306'}" type="number" value="${config.port}" required />
                             </div>
                             <div class="space-y-1">
                                 <label class="text-[9px] font-black text-gray-500 uppercase tracking-wider">Username</label>
-                                <input name="username" class="tactile-input w-full text-xs py-1.5" placeholder="root" type="text" value="${config.username}" required />
+                                <input name="username" class="tactile-input w-full text-xs py-1.5" placeholder="${isPostgres ? 'postgres' : 'root'}" type="text" value="${config.username}" required />
                             </div>
                         </div>
 
@@ -265,9 +339,27 @@ export function ConnectionManager() {
                             <label class="text-[9px] font-black text-gray-500 uppercase tracking-wider">Password</label>
                             <div class="relative">
                                 <input name="password" id="password-input" class="tactile-input w-full text-xs py-1.5 pr-10" placeholder="••••••••" type="password" value="${config.password}" />
-                                <button type="button" id="toggle-password" class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-mysql-teal transition-colors" title="Show/Hide">
+                                <button type="button" id="toggle-password" class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:${isPostgres ? 'text-[#336791]' : 'text-mysql-teal'} transition-colors" title="Show/Hide">
                                     <span class="material-symbols-outlined text-sm">visibility</span>
                                 </button>
+                            </div>
+                        </div>
+
+                        <!-- PostgreSQL Options -->
+                        <div id="postgres-options" class="${isPostgres ? '' : 'hidden'} pt-2.5 border-t ${isLight ? 'border-gray-100' : 'border-white/10'}">
+                            <div class="grid grid-cols-2 gap-3">
+                                <div class="space-y-1">
+                                    <label class="text-[9px] font-black text-gray-500 uppercase tracking-wider">SSL Mode</label>
+                                    <select name="sslMode" class="tactile-input w-full text-xs py-1.5">
+                                        <option value="disable" ${config.sslMode === 'disable' ? 'selected' : ''}>Disable</option>
+                                        <option value="prefer" ${config.sslMode === 'prefer' || !config.sslMode ? 'selected' : ''}>Prefer</option>
+                                        <option value="require" ${config.sslMode === 'require' ? 'selected' : ''}>Require</option>
+                                    </select>
+                                </div>
+                                <div class="space-y-1">
+                                    <label class="text-[9px] font-black text-gray-500 uppercase tracking-wider">Default Schema</label>
+                                    <input name="schema" class="tactile-input w-full text-xs py-1.5" placeholder="public" type="text" value="${config.schema || 'public'}" />
+                                </div>
                             </div>
                         </div>
 
@@ -331,7 +423,7 @@ export function ConnectionManager() {
         `;
 
         // Bind Edit Events
-        container.querySelectorAll('input').forEach(input => {
+        container.querySelectorAll('input, select').forEach(input => {
             input.addEventListener('input', (e) => {
                 const { name, value, type, checked } = e.target;
                 if (type === 'checkbox') {
@@ -340,7 +432,16 @@ export function ConnectionManager() {
                     config[name] = value;
                     const textInput = container.querySelector('input[name="color-text"]');
                     if (textInput) textInput.value = value;
+                } else if (name === 'port') {
+                    config[name] = parseInt(value) || 0;
                 } else {
+                    config[name] = value;
+                }
+            });
+            // Handle select change
+            input.addEventListener('change', (e) => {
+                const { name, value } = e.target;
+                if (e.target.tagName === 'SELECT') {
                     config[name] = value;
                 }
             });
@@ -349,6 +450,21 @@ export function ConnectionManager() {
                 if (e.key === 'Enter') {
                     e.preventDefault();
                     handleConnect();
+                }
+            });
+        });
+
+        // Database Type Selector
+        container.querySelectorAll('.db-type-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const newType = btn.dataset.dbType;
+                if (config.dbType !== newType) {
+                    const defaults = DB_DEFAULTS[newType];
+                    config.dbType = newType;
+                    config.port = defaults.port;
+                    config.username = defaults.username;
+                    config.color = defaults.color;
+                    render(); // Re-render to update UI
                 }
             });
         });
@@ -427,7 +543,7 @@ export function ConnectionManager() {
 
     const loadConnections = async () => {
         try {
-            connections = await invoke('get_connections');
+            connections = await invoke('load_connections');
             if (viewMode === 'grid') renderGridView();
         } catch (error) {
             console.error('Failed', error);

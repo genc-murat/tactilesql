@@ -1,0 +1,1252 @@
+// =====================================================
+// POSTGRESQL SPECIFIC DATABASE OPERATIONS
+// =====================================================
+
+use sqlx::{Pool, Postgres, Row, Column};
+use sqlx::postgres::PgConnectOptions;
+use sqlx::ConnectOptions;
+use crate::db_types::*;
+use futures::StreamExt;
+
+// --- Connection ---
+
+pub async fn test_connection(config: &ConnectionConfig) -> Result<String, String> {
+    let mut options = PgConnectOptions::new()
+        .host(&config.host)
+        .port(config.port)
+        .username(&config.username);
+
+    if let Some(pwd) = &config.password {
+        options = options.password(pwd);
+    }
+    
+    if let Some(db) = &config.database {
+        if !db.is_empty() {
+            options = options.database(db);
+        }
+    }
+    
+    if let Some(ssl) = &config.ssl_mode {
+        options = match ssl.as_str() {
+            "disable" => options.ssl_mode(sqlx::postgres::PgSslMode::Disable),
+            "prefer" => options.ssl_mode(sqlx::postgres::PgSslMode::Prefer),
+            "require" => options.ssl_mode(sqlx::postgres::PgSslMode::Require),
+            _ => options
+        };
+    }
+
+    options = options.log_statements(log::LevelFilter::Debug).to_owned();
+
+    let mut conn = options.connect().await
+        .map_err(|e| {
+            let err_msg = e.to_string();
+            if err_msg.contains("connection refused") {
+                return format!("Connection Refused\\n\\nCheck if PostgreSQL is running on {}:{}", config.host, config.port);
+            }
+            format!("Connection failed: {}", e)
+        })?;
+
+    let _ = sqlx::query("SELECT 1")
+        .fetch_one(&mut conn)
+        .await
+        .map_err(|e| format!("Query failed: {}", e))?;
+
+    Ok("PostgreSQL connection successful! Handshake verified.".to_string())
+}
+
+pub async fn create_pool(config: &ConnectionConfig) -> Result<Pool<Postgres>, String> {
+    let mut options = PgConnectOptions::new()
+        .host(&config.host)
+        .port(config.port)
+        .username(&config.username);
+
+    if let Some(pwd) = &config.password {
+        options = options.password(pwd);
+    }
+    
+    if let Some(db) = &config.database {
+        if !db.is_empty() {
+            options = options.database(db);
+        }
+    }
+    
+    if let Some(ssl) = &config.ssl_mode {
+        options = match ssl.as_str() {
+            "disable" => options.ssl_mode(sqlx::postgres::PgSslMode::Disable),
+            "prefer" => options.ssl_mode(sqlx::postgres::PgSslMode::Prefer),
+            "require" => options.ssl_mode(sqlx::postgres::PgSslMode::Require),
+            _ => options
+        };
+    }
+    
+    sqlx::postgres::PgPoolOptions::new()
+        .max_connections(10)
+        .min_connections(2)
+        .acquire_timeout(std::time::Duration::from_secs(10))
+        .idle_timeout(std::time::Duration::from_secs(300))
+        .max_lifetime(std::time::Duration::from_secs(1800))
+        .connect_with(options).await
+        .map_err(|e| {
+            let err_msg = e.to_string();
+            if err_msg.contains("connection refused") {
+                return format!("Connection Refused\\n\\nCheck if PostgreSQL is running on {}:{}", config.host, config.port);
+            }
+            if err_msg.contains("timed out") {
+                return format!("Connection Timed Out\\n\\nThe server at {}:{} did not respond within 10 seconds.", config.host, config.port);
+            }
+            format!("Failed to create pool: {}", e)
+        })
+}
+
+// --- Query Execution ---
+
+pub async fn execute_query(pool: &Pool<Postgres>, query: String) -> Result<Vec<QueryResult>, String> {
+    let mut results = Vec::new();
+    
+    let stream_future = async {
+        let mut stream = sqlx::raw_sql(&query).fetch_many(pool);
+        
+        let mut current_rows = Vec::new();
+        let mut current_columns = Vec::new();
+        
+        while let Some(result) = stream.next().await {
+            match result {
+                Ok(either) => {
+                    use sqlx::Either;
+                    match either {
+                        Either::Left(_done) => {
+                            if !current_rows.is_empty() || !current_columns.is_empty() {
+                                results.push(QueryResult {
+                                    columns: current_columns.clone(),
+                                    rows: current_rows.clone(),
+                                });
+                                current_rows.clear();
+                                current_columns.clear();
+                            }
+                        },
+                        Either::Right(row) => {
+                            if current_columns.is_empty() {
+                                current_columns = row.columns().iter().map(|c| c.name().to_string()).collect();
+                            }
+                             
+                            let mut row_data = Vec::new();
+                            for (i, _) in current_columns.iter().enumerate() {
+                                let val: serde_json::Value = row.try_get_unchecked::<i64, _>(i)
+                                    .map(|v| serde_json::json!(v))
+                                    .or_else(|_| row.try_get_unchecked::<i32, _>(i).map(|v| serde_json::json!(v)))
+                                    .or_else(|_| row.try_get_unchecked::<i16, _>(i).map(|v| serde_json::json!(v)))
+                                    .or_else(|_| row.try_get_unchecked::<f64, _>(i).map(|v| serde_json::json!(v)))
+                                    .or_else(|_| row.try_get_unchecked::<f32, _>(i).map(|v| serde_json::json!(v)))
+                                    .or_else(|_| row.try_get_unchecked::<bool, _>(i).map(|v| serde_json::json!(v)))
+                                    .or_else(|_| row.try_get_unchecked::<String, _>(i).map(|v| serde_json::json!(v)))
+                                    .or_else(|_| {
+                                        row.try_get_unchecked::<Vec<u8>, _>(i)
+                                            .map(|bytes| serde_json::json!(String::from_utf8_lossy(&bytes).to_string()))
+                                    })
+                                    .unwrap_or(serde_json::Value::Null);
+                                row_data.push(val);
+                            }
+                            current_rows.push(row_data);
+                        }
+                    }
+                },
+                Err(e) => return Err(format!("Query error: {}", e)),
+            }
+        }
+        
+        if !current_rows.is_empty() {
+            results.push(QueryResult {
+                columns: current_columns,
+                rows: current_rows,
+            });
+        }
+        
+        Ok::<_, String>(())
+    };
+
+    tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        stream_future
+    )
+    .await
+    .map_err(|_| "Query timed out after 30 seconds".to_string())??;
+
+    if results.is_empty() {
+        return Ok(vec![QueryResult { columns: vec![], rows: vec![] }]);
+    }
+
+    Ok(results)
+}
+
+// --- Database/Table Operations ---
+
+#[allow(dead_code)]
+pub async fn get_databases(pool: &Pool<Postgres>) -> Result<Vec<String>, String> {
+    let rows = sqlx::query("SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname")
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch databases: {}", e))?;
+
+    let databases: Vec<String> = rows.iter()
+        .map(|row| row.try_get::<String, _>("datname").unwrap_or_default())
+        .collect();
+
+    Ok(databases)
+}
+
+pub async fn get_schemas(pool: &Pool<Postgres>) -> Result<Vec<String>, String> {
+    let rows = sqlx::query(
+        "SELECT schema_name FROM information_schema.schemata 
+         WHERE schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+         ORDER BY schema_name"
+    )
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch schemas: {}", e))?;
+
+    let schemas: Vec<String> = rows.iter()
+        .map(|row| row.try_get::<String, _>("schema_name").unwrap_or_default())
+        .collect();
+
+    Ok(schemas)
+}
+
+pub async fn get_tables(pool: &Pool<Postgres>, schema: &str) -> Result<Vec<String>, String> {
+    let query = format!(
+        "SELECT tablename FROM pg_tables WHERE schemaname = '{}' ORDER BY tablename", 
+        schema
+    );
+    
+    let rows = sqlx::query(&query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch tables: {}", e))?;
+
+    let tables: Vec<String> = rows.iter()
+        .map(|row| row.try_get::<String, _>("tablename").unwrap_or_default())
+        .collect();
+
+    Ok(tables)
+}
+
+pub async fn get_table_schema(pool: &Pool<Postgres>, schema: &str, table: &str) -> Result<Vec<ColumnSchema>, String> {
+    let query = format!(r#"
+        SELECT 
+            c.column_name,
+            c.data_type,
+            c.udt_name,
+            c.character_maximum_length,
+            c.numeric_precision,
+            c.numeric_scale,
+            c.is_nullable,
+            c.column_default,
+            CASE WHEN pk.column_name IS NOT NULL THEN 'PRI' ELSE '' END as column_key
+        FROM information_schema.columns c
+        LEFT JOIN (
+            SELECT kcu.column_name
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu 
+                ON tc.constraint_name = kcu.constraint_name
+            WHERE tc.table_schema = '{}'
+                AND tc.table_name = '{}'
+                AND tc.constraint_type = 'PRIMARY KEY'
+        ) pk ON c.column_name = pk.column_name
+        WHERE c.table_schema = '{}'
+            AND c.table_name = '{}'
+        ORDER BY c.ordinal_position
+    "#, schema, table, schema, table);
+
+    let rows = sqlx::query(&query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch table schema: {}", e))?;
+
+    let mut columns = Vec::new();
+    for row in rows {
+        let name: String = row.try_get("column_name").unwrap_or_default();
+        let data_type: String = row.try_get("data_type").unwrap_or_default();
+        let udt_name: String = row.try_get("udt_name").unwrap_or_default();
+        let max_length: Option<i32> = row.try_get("character_maximum_length").ok();
+        let is_nullable_str: String = row.try_get("is_nullable").unwrap_or_default();
+        let is_nullable = is_nullable_str == "YES";
+        let column_key: String = row.try_get("column_key").unwrap_or_default();
+        let column_default: Option<String> = row.try_get("column_default").ok();
+        
+        let column_type = if let Some(len) = max_length {
+            format!("{}({})", udt_name, len)
+        } else {
+            udt_name.clone()
+        };
+        
+        let extra = if let Some(ref def) = column_default {
+            if def.contains("nextval") {
+                "auto_increment".to_string()
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        };
+
+        columns.push(ColumnSchema {
+            name,
+            data_type,
+            column_type,
+            is_nullable,
+            column_key,
+            column_default,
+            extra,
+        });
+    }
+
+    Ok(columns)
+}
+
+// --- Table DDL ---
+
+pub async fn get_table_ddl(pool: &Pool<Postgres>, schema: &str, table: &str) -> Result<String, String> {
+    let query = format!(r#"
+        WITH columns AS (
+            SELECT 
+                column_name,
+                data_type,
+                character_maximum_length,
+                numeric_precision,
+                numeric_scale,
+                is_nullable,
+                column_default
+            FROM information_schema.columns
+            WHERE table_schema = '{}' AND table_name = '{}'
+            ORDER BY ordinal_position
+        )
+        SELECT string_agg(
+            column_name || ' ' || 
+            CASE 
+                WHEN character_maximum_length IS NOT NULL 
+                THEN data_type || '(' || character_maximum_length || ')'
+                ELSE data_type 
+            END ||
+            CASE WHEN is_nullable = 'NO' THEN ' NOT NULL' ELSE '' END ||
+            CASE WHEN column_default IS NOT NULL THEN ' DEFAULT ' || column_default ELSE '' END,
+            E',\n    '
+        ) as columns_def
+        FROM columns
+    "#, schema, table);
+
+    let row = sqlx::query(&query)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch DDL: {}", e))?;
+
+    let columns_def: String = row.try_get("columns_def").unwrap_or_default();
+    
+    let pk_query = format!(r#"
+        SELECT kcu.column_name
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu 
+            ON tc.constraint_name = kcu.constraint_name
+        WHERE tc.table_schema = '{}' 
+            AND tc.table_name = '{}' 
+            AND tc.constraint_type = 'PRIMARY KEY'
+        ORDER BY kcu.ordinal_position
+    "#, schema, table);
+    
+    let pk_rows = sqlx::query(&pk_query)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+    
+    let pk_columns: Vec<String> = pk_rows.iter()
+        .map(|r| r.try_get::<String, _>("column_name").unwrap_or_default())
+        .collect();
+    
+    let pk_constraint = if !pk_columns.is_empty() {
+        format!(",\n    PRIMARY KEY ({})", pk_columns.join(", "))
+    } else {
+        String::new()
+    };
+
+    let ddl = format!(
+        "CREATE TABLE {}.{} (\n    {}{}\n);",
+        schema, table, columns_def, pk_constraint
+    );
+
+    Ok(ddl)
+}
+
+// --- Indexes ---
+
+pub async fn get_table_indexes(pool: &Pool<Postgres>, schema: &str, table: &str) -> Result<Vec<TableIndex>, String> {
+    let query = format!(r#"
+        SELECT 
+            i.relname as index_name,
+            a.attname as column_name,
+            NOT ix.indisunique as non_unique,
+            am.amname as index_type
+        FROM pg_class t
+        JOIN pg_index ix ON t.oid = ix.indrelid
+        JOIN pg_class i ON i.oid = ix.indexrelid
+        JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey)
+        JOIN pg_am am ON i.relam = am.oid
+        JOIN pg_namespace n ON t.relnamespace = n.oid
+        WHERE n.nspname = '{}' AND t.relname = '{}'
+        ORDER BY i.relname, a.attnum
+    "#, schema, table);
+
+    let rows = sqlx::query(&query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch indexes: {}", e))?;
+
+    let mut indexes = Vec::new();
+    for row in rows {
+        indexes.push(TableIndex {
+            name: row.try_get("index_name").unwrap_or_default(),
+            column_name: row.try_get("column_name").unwrap_or_default(),
+            non_unique: row.try_get::<bool, _>("non_unique").unwrap_or(true),
+            index_type: row.try_get("index_type").unwrap_or_default(),
+        });
+    }
+
+    Ok(indexes)
+}
+
+// --- Foreign Keys ---
+
+pub async fn get_table_foreign_keys(pool: &Pool<Postgres>, schema: &str, table: &str) -> Result<Vec<ForeignKey>, String> {
+    let query = format!(r#"
+        SELECT 
+            tc.constraint_name,
+            kcu.column_name,
+            ccu.table_name AS referenced_table,
+            ccu.column_name AS referenced_column
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu
+            ON tc.constraint_name = kcu.constraint_name
+            AND tc.table_schema = kcu.table_schema
+        JOIN information_schema.constraint_column_usage ccu
+            ON ccu.constraint_name = tc.constraint_name
+            AND ccu.table_schema = tc.table_schema
+        WHERE tc.constraint_type = 'FOREIGN KEY'
+            AND tc.table_schema = '{}'
+            AND tc.table_name = '{}'
+    "#, schema, table);
+
+    let rows = sqlx::query(&query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch foreign keys: {}", e))?;
+
+    let mut fks = Vec::new();
+    for row in rows {
+        fks.push(ForeignKey {
+            constraint_name: row.try_get("constraint_name").unwrap_or_default(),
+            column_name: row.try_get("column_name").unwrap_or_default(),
+            referenced_table: row.try_get("referenced_table").unwrap_or_default(),
+            referenced_column: row.try_get("referenced_column").unwrap_or_default(),
+        });
+    }
+
+    Ok(fks)
+}
+
+// --- Primary Keys ---
+
+pub async fn get_table_primary_keys(pool: &Pool<Postgres>, schema: &str, table: &str) -> Result<Vec<PrimaryKey>, String> {
+    let query = format!(r#"
+        SELECT kcu.column_name, kcu.ordinal_position::integer
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu
+            ON tc.constraint_name = kcu.constraint_name
+            AND tc.table_schema = kcu.table_schema
+        WHERE tc.constraint_type = 'PRIMARY KEY'
+            AND tc.table_schema = '{}'
+            AND tc.table_name = '{}'
+        ORDER BY kcu.ordinal_position
+    "#, schema, table);
+
+    let rows = sqlx::query(&query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch primary keys: {}", e))?;
+
+    let mut pks = Vec::new();
+    for row in rows {
+        pks.push(PrimaryKey {
+            column_name: row.try_get("column_name").unwrap_or_default(),
+            ordinal_position: row.try_get::<i32, _>("ordinal_position").unwrap_or(0),
+        });
+    }
+
+    Ok(pks)
+}
+
+// --- Constraints ---
+
+pub async fn get_table_constraints(pool: &Pool<Postgres>, schema: &str, table: &str) -> Result<Vec<TableConstraint>, String> {
+    let query = format!(r#"
+        SELECT 
+            tc.constraint_name,
+            tc.constraint_type,
+            kcu.column_name
+        FROM information_schema.table_constraints tc
+        LEFT JOIN information_schema.key_column_usage kcu
+            ON tc.constraint_name = kcu.constraint_name
+            AND tc.table_schema = kcu.table_schema
+        WHERE tc.table_schema = '{}'
+            AND tc.table_name = '{}'
+    "#, schema, table);
+
+    let rows = sqlx::query(&query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch constraints: {}", e))?;
+
+    let mut constraints = Vec::new();
+    for row in rows {
+        constraints.push(TableConstraint {
+            name: row.try_get("constraint_name").unwrap_or_default(),
+            constraint_type: row.try_get("constraint_type").unwrap_or_default(),
+            column_name: row.try_get("column_name").unwrap_or_default(),
+        });
+    }
+
+    Ok(constraints)
+}
+
+// --- Table Stats ---
+
+pub async fn get_table_stats(pool: &Pool<Postgres>, schema: &str, table: &str) -> Result<TableStats, String> {
+    let query = format!(r#"
+        SELECT 
+            COALESCE(c.reltuples::bigint, 0) as row_count,
+            COALESCE(pg_relation_size(c.oid), 0) as data_size,
+            COALESCE(pg_indexes_size(c.oid), 0) as index_size
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = '{}' AND c.relname = '{}'
+    "#, schema, table);
+
+    let row = sqlx::query(&query)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch table stats: {}", e))?;
+
+    Ok(TableStats {
+        row_count: row.try_get::<i64, _>("row_count").unwrap_or(0),
+        data_size: row.try_get::<i64, _>("data_size").unwrap_or(0),
+        index_size: row.try_get::<i64, _>("index_size").unwrap_or(0),
+        auto_increment: None,
+    })
+}
+
+// --- Views ---
+
+pub async fn get_views(pool: &Pool<Postgres>, schema: &str) -> Result<Vec<String>, String> {
+    let query = format!(
+        "SELECT viewname FROM pg_views WHERE schemaname = '{}' ORDER BY viewname",
+        schema
+    );
+    
+    let rows = sqlx::query(&query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch views: {}", e))?;
+
+    let views: Vec<String> = rows.iter()
+        .map(|row| row.try_get::<String, _>("viewname").unwrap_or_default())
+        .collect();
+
+    Ok(views)
+}
+
+pub async fn get_view_definition(pool: &Pool<Postgres>, schema: &str, view: &str) -> Result<ViewDefinition, String> {
+    let query = format!(
+        "SELECT definition FROM pg_views WHERE schemaname = '{}' AND viewname = '{}'",
+        schema, view
+    );
+    
+    let row = sqlx::query(&query)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch view definition: {}", e))?;
+
+    let definition: String = row.try_get("definition").unwrap_or_default();
+    let full_definition = format!("CREATE OR REPLACE VIEW {}.{} AS\n{}", schema, view, definition);
+
+    Ok(ViewDefinition {
+        name: view.to_string(),
+        definition: full_definition,
+    })
+}
+
+pub async fn alter_view(pool: &Pool<Postgres>, definition: &str) -> Result<String, String> {
+    sqlx::query(definition)
+        .execute(pool)
+        .await
+        .map_err(|e| format!("Failed to alter view: {}", e))?;
+
+    Ok("View updated successfully".to_string())
+}
+
+// --- Triggers ---
+
+pub async fn get_triggers(pool: &Pool<Postgres>, schema: &str) -> Result<Vec<TriggerInfo>, String> {
+    let query = format!(r#"
+        SELECT 
+            t.tgname as trigger_name,
+            CASE t.tgtype & 2 WHEN 2 THEN 'BEFORE' ELSE 'AFTER' END as timing,
+            CASE 
+                WHEN t.tgtype & 4 = 4 THEN 'INSERT'
+                WHEN t.tgtype & 8 = 8 THEN 'DELETE'
+                WHEN t.tgtype & 16 = 16 THEN 'UPDATE'
+                ELSE 'UNKNOWN'
+            END as event,
+            c.relname as table_name
+        FROM pg_trigger t
+        JOIN pg_class c ON t.tgrelid = c.oid
+        JOIN pg_namespace n ON c.relnamespace = n.oid
+        WHERE n.nspname = '{}'
+            AND NOT t.tgisinternal
+    "#, schema);
+
+    let rows = sqlx::query(&query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch triggers: {}", e))?;
+
+    let mut triggers = Vec::new();
+    for row in rows {
+        triggers.push(TriggerInfo {
+            name: row.try_get("trigger_name").unwrap_or_default(),
+            event: row.try_get("event").unwrap_or_default(),
+            timing: row.try_get("timing").unwrap_or_default(),
+            table_name: row.try_get("table_name").unwrap_or_default(),
+        });
+    }
+
+    Ok(triggers)
+}
+
+pub async fn get_table_triggers(pool: &Pool<Postgres>, schema: &str, table: &str) -> Result<Vec<TriggerInfo>, String> {
+    let query = format!(r#"
+        SELECT 
+            t.tgname as trigger_name,
+            CASE t.tgtype & 2 WHEN 2 THEN 'BEFORE' ELSE 'AFTER' END as timing,
+            CASE 
+                WHEN t.tgtype & 4 = 4 THEN 'INSERT'
+                WHEN t.tgtype & 8 = 8 THEN 'DELETE'
+                WHEN t.tgtype & 16 = 16 THEN 'UPDATE'
+                ELSE 'UNKNOWN'
+            END as event,
+            c.relname as table_name
+        FROM pg_trigger t
+        JOIN pg_class c ON t.tgrelid = c.oid
+        JOIN pg_namespace n ON c.relnamespace = n.oid
+        WHERE n.nspname = '{}' 
+            AND c.relname = '{}'
+            AND NOT t.tgisinternal
+    "#, schema, table);
+
+    let rows = sqlx::query(&query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch table triggers: {}", e))?;
+
+    let mut triggers = Vec::new();
+    for row in rows {
+        triggers.push(TriggerInfo {
+            name: row.try_get("trigger_name").unwrap_or_default(),
+            event: row.try_get("event").unwrap_or_default(),
+            timing: row.try_get("timing").unwrap_or_default(),
+            table_name: row.try_get("table_name").unwrap_or_default(),
+        });
+    }
+
+    Ok(triggers)
+}
+
+// --- Procedures & Functions ---
+
+pub async fn get_procedures(pool: &Pool<Postgres>, schema: &str) -> Result<Vec<RoutineInfo>, String> {
+    let query = format!(r#"
+        SELECT 
+            p.proname as name,
+            r.rolname as definer
+        FROM pg_proc p
+        JOIN pg_namespace n ON p.pronamespace = n.oid
+        JOIN pg_roles r ON p.proowner = r.oid
+        WHERE n.nspname = '{}'
+            AND p.prokind = 'p'
+        ORDER BY p.proname
+    "#, schema);
+
+    let rows = sqlx::query(&query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch procedures: {}", e))?;
+
+    let mut procedures = Vec::new();
+    for row in rows {
+        procedures.push(RoutineInfo {
+            name: row.try_get("name").unwrap_or_default(),
+            definer: row.try_get("definer").unwrap_or_default(),
+        });
+    }
+
+    Ok(procedures)
+}
+
+pub async fn get_functions(pool: &Pool<Postgres>, schema: &str) -> Result<Vec<RoutineInfo>, String> {
+    let query = format!(r#"
+        SELECT 
+            p.proname as name,
+            r.rolname as definer
+        FROM pg_proc p
+        JOIN pg_namespace n ON p.pronamespace = n.oid
+        JOIN pg_roles r ON p.proowner = r.oid
+        WHERE n.nspname = '{}'
+            AND p.prokind = 'f'
+        ORDER BY p.proname
+    "#, schema);
+
+    let rows = sqlx::query(&query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch functions: {}", e))?;
+
+    let mut functions = Vec::new();
+    for row in rows {
+        functions.push(RoutineInfo {
+            name: row.try_get("name").unwrap_or_default(),
+            definer: row.try_get("definer").unwrap_or_default(),
+        });
+    }
+
+    Ok(functions)
+}
+
+// --- Sequences (PostgreSQL specific) ---
+
+pub async fn get_sequences(pool: &Pool<Postgres>, schema: &str) -> Result<Vec<String>, String> {
+    let query = format!(
+        "SELECT sequencename FROM pg_sequences WHERE schemaname = '{}' ORDER BY sequencename",
+        schema
+    );
+    
+    let rows = sqlx::query(&query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch sequences: {}", e))?;
+
+    let sequences: Vec<String> = rows.iter()
+        .map(|row| row.try_get::<String, _>("sequencename").unwrap_or_default())
+        .collect();
+
+    Ok(sequences)
+}
+
+// --- Types (PostgreSQL specific) ---
+
+pub async fn get_custom_types(pool: &Pool<Postgres>, schema: &str) -> Result<Vec<String>, String> {
+    let query = format!(r#"
+        SELECT t.typname
+        FROM pg_type t
+        JOIN pg_namespace n ON t.typnamespace = n.oid
+        WHERE n.nspname = '{}'
+            AND t.typtype IN ('e', 'c')
+        ORDER BY t.typname
+    "#, schema);
+
+    let rows = sqlx::query(&query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch custom types: {}", e))?;
+
+    let types: Vec<String> = rows.iter()
+        .map(|row| row.try_get::<String, _>("typname").unwrap_or_default())
+        .collect();
+
+    Ok(types)
+}
+
+// --- Server Monitoring ---
+
+pub async fn get_server_status(pool: &Pool<Postgres>) -> Result<ServerStatus, String> {
+    let uptime_query = "SELECT EXTRACT(EPOCH FROM (now() - pg_postmaster_start_time()))::bigint as uptime";
+    let uptime_row = sqlx::query(uptime_query)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch uptime: {}", e))?;
+    
+    let uptime: i64 = uptime_row.try_get("uptime").unwrap_or(0);
+
+    let conn_query = "SELECT count(*) as cnt FROM pg_stat_activity";
+    let conn_row = sqlx::query(conn_query)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch connections: {}", e))?;
+    
+    let connections: i64 = conn_row.try_get("cnt").unwrap_or(0);
+
+    let active_query = "SELECT count(*) as cnt FROM pg_stat_activity WHERE state = 'active'";
+    let active_row = sqlx::query(active_query)
+        .fetch_one(pool)
+        .await;
+    
+    let active: i64 = match active_row {
+        Ok(row) => row.try_get("cnt").unwrap_or(0),
+        Err(_) => 0,
+    };
+
+    Ok(ServerStatus {
+        uptime,
+        threads_connected: connections,
+        threads_running: active,
+        questions: 0,
+        slow_queries: 0,
+        connections,
+        bytes_received: 0,
+        bytes_sent: 0,
+    })
+}
+
+pub async fn get_process_list(pool: &Pool<Postgres>) -> Result<Vec<ProcessInfo>, String> {
+    let query = r#"
+        SELECT 
+            pid,
+            usename as user,
+            client_addr::text as host,
+            datname as db,
+            state as command,
+            EXTRACT(EPOCH FROM (now() - query_start))::bigint as time,
+            wait_event as state,
+            query as info
+        FROM pg_stat_activity
+        WHERE pid != pg_backend_pid()
+        ORDER BY query_start
+    "#;
+
+    let rows = sqlx::query(query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch process list: {}", e))?;
+
+    let mut processes = Vec::new();
+    for row in rows {
+        processes.push(ProcessInfo {
+            id: row.try_get::<i32, _>("pid").unwrap_or(0) as i64,
+            user: row.try_get("user").unwrap_or_default(),
+            host: row.try_get("host").unwrap_or_default(),
+            db: row.try_get("db").ok(),
+            command: row.try_get("command").unwrap_or_default(),
+            time: row.try_get::<i64, _>("time").unwrap_or(0),
+            state: row.try_get("state").ok(),
+            info: row.try_get("info").ok(),
+        });
+    }
+
+    Ok(processes)
+}
+
+pub async fn kill_process(pool: &Pool<Postgres>, process_id: i64) -> Result<String, String> {
+    let query = format!("SELECT pg_terminate_backend({})", process_id);
+    sqlx::query(&query)
+        .execute(pool)
+        .await
+        .map_err(|e| format!("Failed to kill process: {}", e))?;
+
+    Ok(format!("Process {} terminated successfully", process_id))
+}
+
+pub async fn get_locks(pool: &Pool<Postgres>) -> Result<Vec<LockInfo>, String> {
+    let query = r#"
+        SELECT 
+            l.locktype || ':' || l.pid::text as lock_id,
+            l.mode as lock_mode,
+            l.locktype as lock_type,
+            COALESCE(c.relname, '') as lock_table,
+            l.granted::text as lock_data
+        FROM pg_locks l
+        LEFT JOIN pg_class c ON l.relation = c.oid
+        LIMIT 100
+    "#;
+
+    let rows = sqlx::query(query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch locks: {}", e))?;
+
+    let mut locks = Vec::new();
+    for row in rows {
+        locks.push(LockInfo {
+            lock_id: row.try_get("lock_id").unwrap_or_default(),
+            lock_mode: row.try_get("lock_mode").unwrap_or_default(),
+            lock_type: row.try_get("lock_type").unwrap_or_default(),
+            lock_table: row.try_get("lock_table").unwrap_or_default(),
+            lock_data: row.try_get("lock_data").ok(),
+        });
+    }
+
+    Ok(locks)
+}
+
+// --- Replication ---
+
+pub async fn get_replication_status(pool: &Pool<Postgres>) -> Result<serde_json::Value, String> {
+    let query = r#"
+        SELECT 
+            client_addr::text,
+            state,
+            sent_lsn::text,
+            write_lsn::text,
+            flush_lsn::text,
+            replay_lsn::text
+        FROM pg_stat_replication
+    "#;
+
+    let rows = sqlx::query(query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch replication status: {}", e))?;
+
+    if rows.is_empty() {
+        return Ok(serde_json::json!({"status": "No active replication"}));
+    }
+
+    let mut replicas = Vec::new();
+    for row in rows {
+        replicas.push(serde_json::json!({
+            "client_addr": row.try_get::<String, _>("client_addr").unwrap_or_default(),
+            "state": row.try_get::<String, _>("state").unwrap_or_default(),
+            "sent_lsn": row.try_get::<String, _>("sent_lsn").unwrap_or_default(),
+            "write_lsn": row.try_get::<String, _>("write_lsn").unwrap_or_default(),
+        }));
+    }
+
+    Ok(serde_json::json!({"replicas": replicas}))
+}
+
+// --- Query Analysis ---
+
+pub async fn analyze_query(pool: &Pool<Postgres>, query: &str) -> Result<QueryAnalysis, String> {
+    let explain_query = format!("EXPLAIN (FORMAT JSON, ANALYZE false) {}", query);
+    
+    let row = sqlx::query(&explain_query)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| format!("Failed to analyze query: {}", e))?;
+
+    let explain_json: String = row.try_get(0).unwrap_or_default();
+    let explain_result: Vec<serde_json::Value> = serde_json::from_str(&explain_json)
+        .unwrap_or_else(|_| vec![serde_json::json!({})]);
+
+    let mut suggestions = Vec::new();
+    let mut warnings = Vec::new();
+
+    if let Some(plan) = explain_result.get(0).and_then(|r| r.get("Plan")) {
+        if let Some(node_type) = plan.get("Node Type").and_then(|n| n.as_str()) {
+            if node_type == "Seq Scan" {
+                warnings.push("Sequential scan detected".to_string());
+                suggestions.push("Consider adding an index for better performance".to_string());
+            }
+        }
+        
+        if let Some(cost) = plan.get("Total Cost").and_then(|c| c.as_f64()) {
+            if cost > 1000.0 {
+                warnings.push(format!("High query cost: {}", cost));
+                suggestions.push("Consider optimizing the query or adding indexes".to_string());
+            }
+        }
+    }
+
+    Ok(QueryAnalysis {
+        explain_result,
+        warnings,
+        suggestions,
+    })
+}
+
+pub async fn get_index_suggestions(pool: &Pool<Postgres>, schema: &str, table: &str) -> Result<Vec<IndexSuggestion>, String> {
+    let query = format!(r#"
+        SELECT 
+            s.relname as table_name,
+            s.indexrelname as index_name,
+            s.idx_scan,
+            s.idx_tup_read
+        FROM pg_stat_user_indexes s
+        JOIN pg_class c ON s.relid = c.oid
+        JOIN pg_namespace n ON c.relnamespace = n.oid
+        WHERE n.nspname = '{}' AND c.relname = '{}'
+    "#, schema, table);
+
+    let rows = sqlx::query(&query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to analyze indexes: {}", e))?;
+
+    let mut suggestions = Vec::new();
+    for row in rows {
+        let idx_scan: i64 = row.try_get::<i64, _>("idx_scan").unwrap_or(0);
+        let index_name: String = row.try_get("index_name").unwrap_or_default();
+        
+        if idx_scan == 0 {
+            suggestions.push(IndexSuggestion {
+                table_name: table.to_string(),
+                column_name: index_name.clone(),
+                suggestion: "Consider removing unused index".to_string(),
+                reason: format!("Index '{}' has never been used (0 scans)", index_name),
+            });
+        }
+    }
+
+    Ok(suggestions)
+}
+
+// --- Extensions (PostgreSQL specific) ---
+
+pub async fn get_extensions(pool: &Pool<Postgres>) -> Result<Vec<String>, String> {
+    let rows = sqlx::query("SELECT extname FROM pg_extension ORDER BY extname")
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch extensions: {}", e))?;
+
+    let extensions: Vec<String> = rows.iter()
+        .map(|row| row.try_get::<String, _>("extname").unwrap_or_default())
+        .collect();
+
+    Ok(extensions)
+}
+
+// --- Tablespaces (PostgreSQL specific) ---
+
+pub async fn get_tablespaces(pool: &Pool<Postgres>) -> Result<Vec<String>, String> {
+    let rows = sqlx::query("SELECT spcname FROM pg_tablespace ORDER BY spcname")
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch tablespaces: {}", e))?;
+
+    let tablespaces: Vec<String> = rows.iter()
+        .map(|row| row.try_get::<String, _>("spcname").unwrap_or_default())
+        .collect();
+
+    Ok(tablespaces)
+}
+
+// --- User Management (PostgreSQL) ---
+
+use crate::db_types::{MySqlUser, UserPrivileges, UserPrivilege};
+
+pub async fn get_users(pool: &Pool<Postgres>) -> Result<Vec<MySqlUser>, String> {
+    // PostgreSQL uses roles instead of users
+    // rolcanlogin = true means it's a login role (user)
+    let query = r#"
+        SELECT 
+            rolname as user,
+            CASE WHEN rolcanlogin THEN 'Y' ELSE 'N' END as can_login,
+            CASE WHEN NOT rolcanlogin THEN true ELSE false END as account_locked,
+            CASE WHEN rolvaliduntil IS NOT NULL AND rolvaliduntil < NOW() THEN true ELSE false END as password_expired
+        FROM pg_roles
+        WHERE rolname NOT LIKE 'pg_%'
+        ORDER BY rolname
+    "#;
+
+    let rows = sqlx::query(query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch users: {}", e))?;
+
+    let mut users = Vec::new();
+    for row in rows {
+        let user: String = row.try_get("user").unwrap_or_default();
+        let account_locked: bool = row.try_get("account_locked").unwrap_or(false);
+        let password_expired: bool = row.try_get("password_expired").unwrap_or(false);
+        
+        users.push(MySqlUser {
+            user,
+            host: "localhost".to_string(), // PostgreSQL doesn't have host concept like MySQL
+            account_locked,
+            password_expired,
+        });
+    }
+
+    Ok(users)
+}
+
+pub async fn get_user_privileges(pool: &Pool<Postgres>, user: &str, _host: &str) -> Result<UserPrivileges, String> {
+    // Get role attributes
+    let attr_query = format!(r#"
+        SELECT 
+            rolsuper, rolcreaterole, rolcreatedb, rolcanlogin,
+            rolreplication, rolbypassrls
+        FROM pg_roles
+        WHERE rolname = '{}'
+    "#, user);
+    
+    let attr_row = sqlx::query(&attr_query)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch role attributes: {}", e))?;
+
+    let mut global_privs = Vec::new();
+    
+    // Define PostgreSQL privileges
+    let privilege_checks = vec![
+        ("SUPERUSER", "rolsuper"),
+        ("CREATEROLE", "rolcreaterole"),
+        ("CREATEDB", "rolcreatedb"),
+        ("LOGIN", "rolcanlogin"),
+        ("REPLICATION", "rolreplication"),
+        ("BYPASSRLS", "rolbypassrls"),
+    ];
+
+    if let Some(row) = attr_row {
+        for (priv_name, col_name) in &privilege_checks {
+            let granted: bool = row.try_get(*col_name).unwrap_or(false);
+            global_privs.push(UserPrivilege {
+                privilege: priv_name.to_string(),
+                granted,
+            });
+        }
+    }
+
+    // Get database-level privileges
+    let db_query = format!(r#"
+        SELECT datname
+        FROM pg_database d
+        JOIN pg_roles r ON d.datdba = r.oid
+        WHERE r.rolname = '{}'
+        AND datistemplate = false
+    "#, user);
+    
+    let db_rows = sqlx::query(&db_query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch database privileges: {}", e))?;
+
+    let databases: Vec<String> = db_rows.iter()
+        .map(|row| row.try_get::<String, _>("datname").unwrap_or_default())
+        .collect();
+
+    // Also check for CONNECT privilege on databases
+    let connect_query = format!(r#"
+        SELECT d.datname
+        FROM pg_database d
+        WHERE has_database_privilege('{}', d.datname, 'CONNECT')
+        AND datistemplate = false
+        AND datname NOT IN (SELECT datname FROM pg_database d2 JOIN pg_roles r ON d2.datdba = r.oid WHERE r.rolname = '{}')
+    "#, user, user);
+    
+    let connect_rows = sqlx::query(&connect_query)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+
+    let mut all_databases = databases;
+    for row in connect_rows {
+        let db: String = row.try_get("datname").unwrap_or_default();
+        if !all_databases.contains(&db) {
+            all_databases.push(db);
+        }
+    }
+
+    Ok(UserPrivileges {
+        global: global_privs,
+        databases: all_databases,
+    })
+}
+
+// --- Slow Queries (PostgreSQL) ---
+
+use crate::db_types::SlowQuery;
+
+pub async fn get_slow_queries(pool: &Pool<Postgres>, limit: i32) -> Result<Vec<SlowQuery>, String> {
+    // PostgreSQL uses pg_stat_statements extension for slow query tracking
+    // First, check if pg_stat_statements is available
+    let check_ext = sqlx::query("SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements'")
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| format!("Failed to check extension: {}", e))?;
+
+    if check_ext.is_some() {
+        // pg_stat_statements is available
+        let query = format!(r#"
+            SELECT 
+                TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS') as start_time,
+                COALESCE(usename, 'N/A') as user_host,
+                TO_CHAR(mean_exec_time / 1000, 'FM999990.000000') as query_time,
+                '0.000000' as lock_time,
+                rows as rows_sent,
+                rows as rows_examined,
+                query as sql_text
+            FROM pg_stat_statements s
+            LEFT JOIN pg_user u ON s.userid = u.usesysid
+            WHERE mean_exec_time > 1000
+            ORDER BY mean_exec_time DESC
+            LIMIT {}
+        "#, limit);
+
+        let rows = sqlx::query(&query)
+            .fetch_all(pool)
+            .await;
+
+        match rows {
+            Ok(rows) => {
+                let mut queries = Vec::new();
+                for row in rows {
+                    queries.push(SlowQuery {
+                        start_time: row.try_get("start_time").unwrap_or_default(),
+                        user_host: row.try_get("user_host").unwrap_or_default(),
+                        query_time: row.try_get("query_time").unwrap_or_default(),
+                        lock_time: row.try_get("lock_time").unwrap_or_default(),
+                        rows_sent: row.try_get("rows_sent").unwrap_or(0),
+                        rows_examined: row.try_get("rows_examined").unwrap_or(0),
+                        sql_text: row.try_get("sql_text").unwrap_or_default(),
+                    });
+                }
+                return Ok(queries);
+            },
+            Err(e) => {
+                // pg_stat_statements might need different permissions
+                return Err(format!("Failed to query pg_stat_statements: {}. Make sure you have proper permissions.", e));
+            }
+        }
+    }
+
+    // Fallback: Get currently running slow queries from pg_stat_activity
+    let fallback_query = format!(r#"
+        SELECT 
+            TO_CHAR(query_start, 'YYYY-MM-DD HH24:MI:SS') as start_time,
+            COALESCE(usename, 'N/A') || '@' || COALESCE(client_addr::text, 'local') as user_host,
+            TO_CHAR(EXTRACT(EPOCH FROM (NOW() - query_start)), 'FM999990.000000') as query_time,
+            '0.000000' as lock_time,
+            0::bigint as rows_sent,
+            0::bigint as rows_examined,
+            COALESCE(query, '') as sql_text
+        FROM pg_stat_activity
+        WHERE state = 'active'
+            AND query NOT LIKE '%pg_stat_activity%'
+            AND query_start < NOW() - INTERVAL '1 second'
+        ORDER BY query_start ASC
+        LIMIT {}
+    "#, limit);
+
+    let rows = sqlx::query(&fallback_query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch slow queries: {}", e))?;
+
+    let mut queries = Vec::new();
+    for row in rows {
+        queries.push(SlowQuery {
+            start_time: row.try_get("start_time").unwrap_or_default(),
+            user_host: row.try_get("user_host").unwrap_or_default(),
+            query_time: row.try_get("query_time").unwrap_or_default(),
+            lock_time: row.try_get("lock_time").unwrap_or_default(),
+            rows_sent: row.try_get("rows_sent").unwrap_or(0),
+            rows_examined: row.try_get("rows_examined").unwrap_or(0),
+            sql_text: row.try_get("sql_text").unwrap_or_default(),
+        });
+    }
+    Ok(queries)
+}

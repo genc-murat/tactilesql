@@ -7,7 +7,7 @@ export function SnippetLibrary() {
     const getAsideClass = (t) => {
         const isLight = t === 'light';
         const isDawn = t === 'dawn';
-        const isOceanic = t === 'oceanic';
+        const isOceanic = t === 'oceanic' || t === 'ember' || t === 'aurora';
         return `h-full border-l ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border' : 'bg-[#0f1115] border-white/5'))} flex flex-col p-4 gap-4 overflow-hidden transition-all duration-300`;
     };
     aside.className = getAsideClass(theme);
@@ -128,7 +128,7 @@ export function SnippetLibrary() {
     const render = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
         const filteredSnippets = getFilteredSnippets();
 
         aside.innerHTML = `

@@ -7,7 +7,7 @@ export class Dialog {
         const theme = ThemeManager.getCurrentTheme();
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
 
         const overlay = document.createElement('div');
         overlay.id = 'tactile-dialog-overlay';
@@ -46,7 +46,7 @@ export class Dialog {
         const theme = ThemeManager.getCurrentTheme();
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
 
         // Update main container theme
         this.dialog.className = `${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#16191e] border border-white/10'))} rounded-2xl w-[400px] shadow-2xl scale-95 transition-transform duration-200 overflow-hidden relative`;
@@ -189,7 +189,7 @@ export class Dialog {
             const theme = ThemeManager.getCurrentTheme();
             const isLight = theme === 'light';
             const isDawn = theme === 'dawn';
-            const isOceanic = theme === 'oceanic';
+            const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
 
             this.title.textContent = title;
             this.message.textContent = message;

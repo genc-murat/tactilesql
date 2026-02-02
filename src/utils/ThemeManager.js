@@ -7,7 +7,9 @@ export const ThemeManager = {
         DARK: 'dark',
         LIGHT: 'light',
         DAWN: 'dawn',
-        OCEANIC: 'oceanic'
+        OCEANIC: 'oceanic',
+        EMBER: 'ember',
+        AURORA: 'aurora'
     },
 
     /**
@@ -38,6 +40,8 @@ export const ThemeManager = {
         if (root.classList.contains(this.THEMES.LIGHT)) return this.THEMES.LIGHT;
         if (root.classList.contains(this.THEMES.DAWN)) return this.THEMES.DAWN;
         if (root.classList.contains(this.THEMES.OCEANIC)) return this.THEMES.OCEANIC;
+        if (root.classList.contains(this.THEMES.EMBER)) return this.THEMES.EMBER;
+        if (root.classList.contains(this.THEMES.AURORA)) return this.THEMES.AURORA;
         return this.THEMES.DARK;
     },
 
@@ -69,6 +73,8 @@ export const ThemeManager = {
         if (current === this.THEMES.DARK) newTheme = this.THEMES.LIGHT;
         else if (current === this.THEMES.LIGHT) newTheme = this.THEMES.DAWN;
         else if (current === this.THEMES.DAWN) newTheme = this.THEMES.OCEANIC;
+        else if (current === this.THEMES.OCEANIC) newTheme = this.THEMES.EMBER;
+        else if (current === this.THEMES.EMBER) newTheme = this.THEMES.AURORA;
         else newTheme = this.THEMES.DARK;
 
         this.applyTheme(newTheme);
