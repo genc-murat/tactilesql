@@ -2,6 +2,15 @@ import { ThemeManager } from '../utils/ThemeManager.js';
 import { SettingsManager } from '../utils/SettingsManager.js';
 
 // Snippet categories and descriptions
+
+const THIRD_PARTY_SOFTWARE = [
+    { name: 'Tauri', license: 'Apache-2.0 / MIT', url: 'https://tauri.app' },
+    { name: 'Vite', license: 'MIT', url: 'https://vitejs.dev' },
+    { name: 'Tailwind CSS', license: 'MIT', url: 'https://tailwindcss.com' },
+    { name: 'PostCSS', license: 'MIT', url: 'https://postcss.org' },
+    { name: 'Autoprefixer', license: 'MIT', url: 'https://github.com/postcss/autoprefixer' },
+];
+
 export function Settings() {
     let theme = ThemeManager.getCurrentTheme();
     const container = document.createElement('div');
@@ -161,7 +170,7 @@ export function Settings() {
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-2 gap-4 text-sm">
+                    <div class="grid grid-cols-2 gap-4 text-sm mb-6">
                         <div class="p-4 rounded-lg ${isLight ? 'bg-gray-50' : 'bg-black/20'}">
                             <span class="text-gray-500">Version</span>
                             <p class="${isLight ? 'text-gray-900' : 'text-white'} font-mono mt-1">1.0.0</p>
@@ -169,6 +178,21 @@ export function Settings() {
                         <div class="p-4 rounded-lg ${isLight ? 'bg-gray-50' : 'bg-black/20'}">
                             <span class="text-gray-500">Build</span>
                             <p class="${isLight ? 'text-gray-900' : 'text-white'} font-mono mt-1">2026.01.31</p>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'} mb-3">Third-Party Notices</h3>
+                        <div class="text-xs space-y-2">
+                             <p class="text-gray-500">This software uses the following open source packages:</p>
+                             <div class="grid grid-cols-1 gap-2">
+                                ${THIRD_PARTY_SOFTWARE.map(lib => `
+                                    <div class="flex items-center justify-between p-2 rounded ${isLight ? 'bg-gray-50' : 'bg-black/20'}">
+                                        <a href="${lib.url}" target="_blank" class="font-medium ${isLight ? 'text-gray-700 hover:text-mysql-teal' : 'text-gray-300 hover:text-mysql-teal'} transition-colors">${lib.name}</a>
+                                        <span class="text-gray-500 font-mono">${lib.license}</span>
+                                    </div>
+                                `).join('')}
+                             </div>
                         </div>
                     </div>
                 </div>
