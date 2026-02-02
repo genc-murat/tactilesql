@@ -11,10 +11,6 @@ export const DependencyEngineApi = {
     },
 
     async calculateDependencies(connectionId) {
-        // If we implement a separate calculation command vs just get
-        // For now get_dependency_graph does the build on demand in my backend implementation?
-        // Wait, my backend implementation of `get_dependency_graph` calls `build_dependency_graph`.
-        // So getting it calculates it.
         return this.getGraph(connectionId);
     },
 
