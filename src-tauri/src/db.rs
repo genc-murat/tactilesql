@@ -1481,6 +1481,29 @@ pub async fn get_anomaly_history(
 }
 
 #[tauri::command]
+pub async fn get_anomaly_cause(
+    app_state: State<'_, AppState>,
+    query_hash: String,
+    detected_at: String,
+) -> Result<Option<crate::awareness::anomaly::AnomalyCause>, String> {
+    let ts = match chrono::DateTime::parse_from_rfc3339(&detected_at) {
+        Ok(dt) => dt.with_timezone(&chrono::Utc),
+        Err(_) => {
+            let naive = chrono::NaiveDateTime::parse_from_str(&detected_at, "%Y-%m-%d %H:%M:%S%.f")
+                .map_err(|e| format!("Invalid detected_at timestamp: {}", e))?;
+            chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(naive, chrono::Utc)
+        }
+    };
+
+    let guard = app_state.awareness_store.lock().await;
+    if let Some(store) = guard.as_ref() {
+        store.get_anomaly_cause(&query_hash, ts).await
+    } else {
+        Err("Awareness store not initialized".to_string())
+    }
+}
+
+#[tauri::command]
 pub async fn get_query_history(
     app_state: State<'_, AppState>,
     limit: i64

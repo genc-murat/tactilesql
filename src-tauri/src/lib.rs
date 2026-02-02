@@ -188,6 +188,7 @@ pub fn run() {
             db::get_execution_plan,
             db::compare_queries,
             db::get_anomaly_history,
+            db::get_anomaly_cause,
             db::get_query_history,
             // PostgreSQL Specific
             db::get_sequences,

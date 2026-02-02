@@ -21,6 +21,33 @@ export function AnomalyDashboard() {
 
     let anomalies = [];
     let selectedAnomaly = null;
+    const anomalyCauses = new Map();
+    const causeLoading = new Set();
+
+    const buildCauseKey = (anomaly) => `${anomaly.query_hash}|${anomaly.detected_at}`;
+
+    const fetchCause = async (anomaly) => {
+        if (!anomaly) return;
+        const key = buildCauseKey(anomaly);
+        if (anomalyCauses.has(key) || causeLoading.has(key)) return;
+        causeLoading.add(key);
+        renderBody();
+        try {
+            const cause = await invoke('get_anomaly_cause', {
+                queryHash: anomaly.query_hash,
+                detectedAt: anomaly.detected_at
+            });
+            anomalyCauses.set(key, cause || null);
+        } catch (e) {
+            console.error('Failed to fetch anomaly cause:', e);
+            anomalyCauses.set(key, null);
+        } finally {
+            causeLoading.delete(key);
+            if (selectedAnomaly && buildCauseKey(selectedAnomaly) === key) {
+                renderBody();
+            }
+        }
+    };
 
     const fetchAnomalies = async () => {
         try {
@@ -94,6 +121,41 @@ export function AnomalyDashboard() {
             </div>
         `).join('');
 
+        let causeSectionHtml = '';
+        if (selectedAnomaly) {
+            const key = buildCauseKey(selectedAnomaly);
+            const hasCause = anomalyCauses.has(key);
+            const cause = hasCause ? anomalyCauses.get(key) : null;
+            const isLoading = causeLoading.has(key);
+
+            if (isLoading && !hasCause) {
+                causeSectionHtml = `
+                    <p class="text-sm opacity-90 leading-relaxed">
+                        Analyzing execution plan... Cause not available yet.
+                    </p>
+                `;
+            } else if (cause) {
+                const probability = typeof cause.probability === 'number'
+                    ? ` (${Math.round(cause.probability * 100)}% confidence)`
+                    : '';
+                causeSectionHtml = `
+                    <p class="text-sm opacity-90 leading-relaxed">
+                        The system detected a potential cause for this regression:
+                        <br>
+                        <strong>${cause.cause_type}${probability}</strong>
+                        <br>
+                        ${cause.description}
+                    </p>
+                `;
+            } else {
+                causeSectionHtml = `
+                    <p class="text-sm opacity-70 leading-relaxed">
+                        No root cause information is available for this anomaly yet.
+                    </p>
+                `;
+            }
+        }
+
         const detailsHtml = selectedAnomaly ? `
             <div class="p-6 overflow-y-auto h-full">
                 <h3 class="text-xl font-bold mb-4 flex items-center gap-2">
@@ -121,14 +183,7 @@ export function AnomalyDashboard() {
                         <span class="material-symbols-outlined text-lg">lightbulb</span>
                         Root Cause Analysis
                     </h4>
-                    <p class="text-sm opacity-90 leading-relaxed">
-                        The system detected a potential cause for this regression:
-                        <br>
-                        <strong>Missing Index (High Probability)</strong>
-                        <br>
-                        Execution plan indicates a full table scan. Consider adding an index on the filtered columns.
-                    </p>
-                    <!-- TODO: Fetch actual cause from DB if available. currently hardcoded for demo based on previous step impl -->
+                    ${causeSectionHtml}
                 </div>
 
                 <div>
@@ -161,6 +216,7 @@ export function AnomalyDashboard() {
                 const hash = item.dataset.hash;
                 const ts = item.dataset.ts;
                 selectedAnomaly = anomalies.find(a => a.query_hash === hash && a.detected_at === ts);
+                fetchCause(selectedAnomaly);
                 renderBody(); // Re-render to show details
             });
         });

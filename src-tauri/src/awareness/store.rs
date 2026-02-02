@@ -232,6 +232,46 @@ impl AwarenessStore {
         Ok(())
     }
 
+    pub async fn get_anomaly_cause(
+        &self,
+        query_hash: &str,
+        timestamp: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Option<crate::awareness::anomaly::AnomalyCause>, String> {
+        let row = sqlx::query(
+            r#"
+            SELECT cause
+            FROM anomaly_log
+            WHERE query_hash = ? AND detected_at = ?
+            LIMIT 1
+            "#
+        )
+        .bind(query_hash)
+        .bind(timestamp)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| format!("Failed to fetch anomaly cause: {}", e))?;
+
+        if let Some(row) = row {
+            let cause_json: Option<String> = row.try_get("cause").ok();
+            if let Some(cause_json) = cause_json {
+                if cause_json.trim().is_empty() {
+                    return Ok(None);
+                }
+                match serde_json::from_str::<crate::awareness::anomaly::AnomalyCause>(&cause_json) {
+                    Ok(cause) => Ok(Some(cause)),
+                    Err(e) => {
+                        log::warn!("Invalid anomaly cause JSON, ignoring: {}", e);
+                        Ok(None)
+                    }
+                }
+            } else {
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
     async fn update_baseline_profile(
         &self,
         execution: &crate::awareness::profiler::QueryExecution,
