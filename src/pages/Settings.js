@@ -410,6 +410,43 @@ export function Settings() {
                         </div>
                     </div>
                 </div>
+
+                <!-- Developer Section -->
+                <div class="tactile-card ${isLight ? (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : 'bg-white border-gray-200') + ' shadow-sm' : ''} rounded-xl p-6">
+                    <div class="flex items-center gap-3 mb-6">
+                        <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-rose-500 to-rose-600 flex items-center justify-center">
+                            <span class="material-symbols-outlined text-white">terminal</span>
+                        </div>
+                        <div>
+                            <h2 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'}">Developer</h2>
+                            <p class="text-sm text-gray-500">Developer tools and debugging</p>
+                        </div>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                            <div>
+                                <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Developer Tools</h3>
+                                <p class="text-xs text-gray-500 mt-1">Open browser DevTools for debugging</p>
+                            </div>
+                            <button id="open-devtools-btn" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-rose-500 to-rose-600 text-white text-sm font-medium hover:from-rose-600 hover:to-rose-700 transition-all shadow-lg shadow-rose-500/20">
+                                <span class="material-symbols-outlined text-lg">bug_report</span>
+                                Open DevTools
+                            </button>
+                        </div>
+
+                        <div class="flex items-center justify-between py-4">
+                            <div>
+                                <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Reload Application</h3>
+                                <p class="text-xs text-gray-500 mt-1">Force reload the application window</p>
+                            </div>
+                            <button id="reload-app-btn" class="flex items-center gap-2 px-4 py-2 rounded-lg ${isLight ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-white/10 text-gray-300 hover:bg-white/20'} text-sm font-medium transition-all">
+                                <span class="material-symbols-outlined text-lg">refresh</span>
+                                Reload
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
         `;
     }
@@ -669,6 +706,22 @@ export function Settings() {
                 applyToggleState(next);
             });
         }
+
+        // Developer Tools button
+        const devToolsBtn = container.querySelector('#open-devtools-btn');
+        devToolsBtn?.addEventListener('click', async () => {
+            try {
+                await window.__TAURI__.core.invoke('open_devtools');
+            } catch (err) {
+                console.error('Failed to open DevTools:', err);
+            }
+        });
+
+        // Reload button
+        const reloadBtn = container.querySelector('#reload-app-btn');
+        reloadBtn?.addEventListener('click', () => {
+            window.location.reload();
+        });
     };
 
     const onThemeChange = (e) => {

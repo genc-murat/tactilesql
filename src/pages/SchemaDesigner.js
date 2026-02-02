@@ -1,17 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import { Dialog } from '../components/UI/Dialog.js';
 import { ThemeManager } from '../utils/ThemeManager.js';
-
-// Helper to escape HTML special characters for GTK markup compatibility
-const escapeHtml = (str) => {
-    if (!str) return '';
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-};
+import { escapeHtml } from '../utils/helpers.js';
+import { toastSuccess, toastError } from '../utils/Toast.js';
 
 export function SchemaDesigner() {
     // Parse URL params
@@ -814,11 +805,6 @@ END"></textarea>
         `;
         tr.appendChild(td);
         tbody.appendChild(tr);
-    }
-
-    function escapeHtml(str) {
-        if (!str) return '';
-        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
     function renderStatsView() {

@@ -131,20 +131,20 @@ function handleKeydown(e) {
         return;
     }
 
+    // ALWAYS prevent default for registered shortcuts to avoid browser conflicts
+    // This prevents issues like Ctrl+S triggering browser save, Ctrl+N opening new window, etc.
+    e.preventDefault();
+    e.stopPropagation();
+
     const handler = handlers[shortcut.action];
 
     if (handler) {
-        e.preventDefault();
-        e.stopPropagation();
         handler(e);
     } else if (shortcut.action === 'showHelp') {
-        e.preventDefault();
         showShortcutsHelp();
     } else if (shortcut.action === 'closeModal') {
-        e.preventDefault();
         closeActiveModal();
     } else if (shortcut.action === 'toggleProfiler') {
-        e.preventDefault();
         window.dispatchEvent(new CustomEvent('tactilesql:toggle-profiler'));
     }
 }

@@ -3,17 +3,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { Dialog } from '../UI/Dialog.js';
 import { ThemeManager } from '../../utils/ThemeManager.js';
 import { LoadingStates } from '../UI/LoadingStates.js';
-
-// Helper to escape HTML special characters for GTK markup compatibility
-const escapeHtml = (str) => {
-    if (!str) return '';
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-};
+import { escapeHtml } from '../../utils/helpers.js';
+import { toastSuccess, toastError } from '../../utils/Toast.js';
 
 // Virtual scrolling threshold - use virtual scroll for datasets larger than this
 const VIRTUAL_SCROLL_THRESHOLD = 500;

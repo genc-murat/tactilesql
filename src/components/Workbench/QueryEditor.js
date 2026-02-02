@@ -7,6 +7,8 @@ import { registerHandler, unregisterHandler } from '../../utils/KeyboardShortcut
 import { highlightSQL, formatSQL, SQL_KEYWORDS } from '../../utils/SqlHighlighter.js';
 import { auditTrail } from '../../utils/QueryAuditTrail.js';
 import { smartAutocomplete } from '../../utils/SmartAutocomplete.js';
+import { toastSuccess, toastError, toastWarning } from '../../utils/Toast.js';
+import { debounce, DatabaseCache, CacheTypes } from '../../utils/helpers.js';
 
 // SQL Keywords for autocomplete
 // Imported from SqlHighlighter.js
@@ -121,9 +123,8 @@ export function QueryEditor() {
     let suggestions = [];
     let selectedIndex = 0;
     let autocompleteVisible = false;
-    let cachedDatabases = [];
-    let cachedTables = {};
-    let cachedColumns = {};
+    // Using centralized DatabaseCache instead of local variables
+    // cachedDatabases, cachedTables, cachedColumns are now managed by DatabaseCache
     let currentGhostText = ''; // State for ghost text prediction
 
     // --- Autocomplete Logic ---
@@ -152,38 +153,68 @@ export function QueryEditor() {
     };
 
     const loadDatabasesForAutocomplete = async () => {
-        try {
-            cachedDatabases = await invoke('get_databases');
-        } catch (e) {
-            // Silently fail if no connection - user might not be connected yet
-            cachedDatabases = [];
-        }
+        return await DatabaseCache.getOrFetch(
+            CacheTypes.DATABASES,
+            '_default',
+            async () => {
+                try {
+                    return await invoke('get_databases');
+                } catch (e) {
+                    // Silently fail if no connection
+                    return [];
+                }
+            }
+        );
     };
 
     const loadTablesForAutocomplete = async (database) => {
-        if (cachedTables[database]) return cachedTables[database];
-        try {
-            const tables = await invoke('get_tables', { database });
-            cachedTables[database] = tables;
-            return tables;
-        } catch (e) {
-            console.error('Failed to load tables for autocomplete', e);
-            return [];
-        }
+        if (!database) return [];
+        return await DatabaseCache.getOrFetch(
+            CacheTypes.TABLES,
+            database,
+            async () => {
+                try {
+                    return await invoke('get_tables', { database });
+                } catch (e) {
+                    console.error('Failed to load tables for autocomplete', e);
+                    return [];
+                }
+            }
+        );
     };
 
     const loadColumnsForAutocomplete = async (database, table) => {
+        if (!database || !table) return [];
         const key = `${database}.${table}`;
-        if (cachedColumns[key]) return cachedColumns[key];
-        try {
-            const columns = await invoke('get_table_schema', { database, table });
-            cachedColumns[key] = columns.map(c => c.name);
-            return cachedColumns[key];
-        } catch (e) {
-            console.error('Failed to load columns for autocomplete', e);
-            return [];
+        return await DatabaseCache.getOrFetch(
+            CacheTypes.COLUMNS,
+            key,
+            async () => {
+                try {
+                    const columns = await invoke('get_table_schema', { database, table });
+                    return columns.map(c => c.name);
+                } catch (e) {
+                    console.error('Failed to load columns for autocomplete', e);
+                    return [];
+                }
+            }
+        );
+    };
+
+    // Manual cache refresh function (can be triggered by UI)
+    const refreshSchemaCache = async (database = null) => {
+        if (database) {
+            DatabaseCache.invalidateByDatabase(database);
+            toastSuccess(`Schema cache refreshed for ${database}`);
+        } else {
+            DatabaseCache.invalidateAll();
+            toastSuccess('All schema caches refreshed');
         }
     };
+
+    // Expose cache refresh globally for other components
+    window.tactilesql = window.tactilesql || {};
+    window.tactilesql.refreshSchemaCache = refreshSchemaCache;
 
     const getSuggestions = async (word, textarea) => {
         if (!word || word.length < 1) return [];
@@ -196,6 +227,11 @@ export function QueryEditor() {
         
         // Get database type from activeDbType in localStorage
         const activeDbType = localStorage.getItem('activeDbType') || 'mysql';
+        
+        // Set connection ID for cache tracking
+        if (activeConfig.id) {
+            DatabaseCache.setConnectionId(activeConfig.id);
+        }
 
         // Fallback to basic autocomplete function
         const getBasicSuggestions = async () => {
@@ -207,13 +243,15 @@ export function QueryEditor() {
             const keywordMatches = SQL_KEYWORDS.filter(k => k.startsWith(upper)).slice(0, 10);
             results.push(...keywordMatches.map(k => ({ type: 'keyword', value: k, icon: 'code', color: 'text-purple-400' })));
 
-            // Database names
+            // Database names from cache
+            const cachedDatabases = DatabaseCache.get(CacheTypes.DATABASES, '_default') || [];
             const dbMatches = cachedDatabases.filter(db => db.toLowerCase().startsWith(lower));
             results.push(...dbMatches.map(db => ({ type: 'database', value: db, icon: 'database', color: 'text-mysql-teal' })));
 
-            // Table names from current database
-            if (currentDb && cachedTables[currentDb]) {
-                const tableMatches = cachedTables[currentDb].filter(t => t.toLowerCase().startsWith(lower));
+            // Table names from current database (from cache)
+            const cachedTables = currentDb ? DatabaseCache.get(CacheTypes.TABLES, currentDb) : null;
+            if (cachedTables) {
+                const tableMatches = cachedTables.filter(t => t.toLowerCase().startsWith(lower));
                 results.push(...tableMatches.map(t => ({ type: 'table', value: t, icon: 'table_rows', color: 'text-cyan-400' })));
             }
 
@@ -221,9 +259,10 @@ export function QueryEditor() {
         };
 
         try {
-            // Initialize caches if needed
-            if (cachedDatabases.length === 0) {
-                await loadDatabasesForAutocomplete();
+            // Initialize caches if needed (using getOrFetch handles caching automatically)
+            await loadDatabasesForAutocomplete();
+            if (currentDb) {
+                await loadTablesForAutocomplete(currentDb);
             }
 
             // Set database type for smart autocomplete

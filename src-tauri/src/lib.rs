@@ -1,9 +1,25 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 use tauri::Manager;
+use tauri::WebviewWindow;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
+}
+
+#[tauri::command]
+fn open_devtools(webview: WebviewWindow) {
+    webview.open_devtools();
+}
+
+#[tauri::command]
+fn close_devtools(webview: WebviewWindow) {
+    webview.close_devtools();
+}
+
+#[tauri::command]
+fn is_devtools_open(webview: WebviewWindow) -> bool {
+    webview.is_devtools_open()
 }
 
 // Database modules
@@ -49,6 +65,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             greet,
+            // DevTools
+            open_devtools,
+            close_devtools,
+            is_devtools_open,
             // Connection Management
             db::test_connection, 
             db::establish_connection,

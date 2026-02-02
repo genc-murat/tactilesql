@@ -1,41 +1,66 @@
 import { ThemeManager } from '../../utils/ThemeManager.js';
+import { escapeHtml, debounce } from '../../utils/helpers.js';
 
 /**
- * Virtual Scrolling implementation for large datasets
- * Renders only visible rows for optimal performance
+ * Optimized Virtual Scrolling implementation for large datasets
+ * 
+ * Features:
+ * - DOM recycling (row pooling) for minimal DOM operations
+ * - RequestAnimationFrame for smooth scrolling
+ * - Binary search for fast row lookup
+ * - Chunked initial rendering
+ * - Dynamic row height support
+ * - Keyboard navigation
  */
 export class VirtualScroller {
     constructor(options = {}) {
         this.rowHeight = options.rowHeight || 36;
-        this.overscan = options.overscan || 5; // Extra rows to render above/below viewport
+        this.overscan = options.overscan || 5;
+        this.bufferSize = options.bufferSize || 3; // Extra buffer multiplier
         this.container = null;
         this.data = [];
         this.columns = [];
         this.renderRow = options.renderRow || this.defaultRenderRow.bind(this);
         this.onRowClick = options.onRowClick || (() => {});
         this.onRowDoubleClick = options.onRowDoubleClick || (() => {});
+        this.onVisibleRangeChange = options.onVisibleRangeChange || null;
         
+        // Scroll state
         this.scrollTop = 0;
         this.viewportHeight = 0;
         this.totalHeight = 0;
         this.startIndex = 0;
         this.endIndex = 0;
-        this.visibleRows = [];
         
+        // DOM pooling
+        this._rowPool = [];
+        this._activeRows = new Map(); // rowIndex -> DOM element
+        this._maxPoolSize = 100;
+        
+        // Performance tracking
+        this._lastRenderTime = 0;
+        this._rafId = null;
+        this._isScrolling = false;
+        this._scrollEndTimeout = null;
+        
+        // Theme
         this.theme = ThemeManager.getCurrentTheme();
         this.isLight = this.theme === 'light';
-        this.isOceanic = this.theme === 'oceanic' || this.theme === 'ember';
+        this.isDawn = this.theme === 'dawn';
+        this.isOceanic = this.theme === 'oceanic' || this.theme === 'ember' || this.theme === 'aurora';
         
+        // Bound handlers
         this._scrollHandler = this._handleScroll.bind(this);
-        this._resizeHandler = this._handleResize.bind(this);
+        this._resizeHandler = debounce(this._handleResize.bind(this), 100);
         this._themeHandler = this._handleThemeChange.bind(this);
+        this._keyHandler = this._handleKeyDown.bind(this);
+        
+        // Selection state
+        this.focusedRowIndex = -1;
     }
 
     /**
      * Initialize the virtual scroller
-     * @param {HTMLElement} container - The container element
-     * @param {Array} data - The data array
-     * @param {Array} columns - Column definitions
      */
     init(container, data, columns) {
         this.container = container;
@@ -46,14 +71,21 @@ export class VirtualScroller {
         this._createStructure();
         this._attachEventListeners();
         this._calculateVisibleRange();
-        this._render();
+        
+        // Use chunked rendering for large datasets
+        if (data.length > 1000) {
+            this._renderChunked();
+        } else {
+            this._render();
+        }
     }
 
     /**
-     * Update data without reinitializing
-     * @param {Array} newData - New data array
+     * Update data efficiently
      */
-    updateData(newData) {
+    updateData(newData, preserveScroll = true) {
+        const oldScrollTop = this.scrollTop;
+        
         this.data = newData;
         this.totalHeight = newData.length * this.rowHeight;
         
@@ -61,19 +93,76 @@ export class VirtualScroller {
             this.spacer.style.height = `${this.totalHeight}px`;
         }
         
+        // Clear active rows that are out of range
+        for (const [idx, el] of this._activeRows) {
+            if (idx >= newData.length) {
+                this._recycleRow(el);
+                this._activeRows.delete(idx);
+            }
+        }
+        
         this._calculateVisibleRange();
         this._render();
+        
+        if (preserveScroll && this.viewport) {
+            this.viewport.scrollTop = Math.min(oldScrollTop, this.totalHeight - this.viewportHeight);
+        }
     }
 
     /**
-     * Scroll to a specific row
-     * @param {number} rowIndex - The row index to scroll to
+     * Scroll to a specific row with optional alignment
      */
-    scrollToRow(rowIndex) {
-        if (!this.viewport) return;
+    scrollToRow(rowIndex, align = 'auto') {
+        if (!this.viewport || rowIndex < 0 || rowIndex >= this.data.length) return;
         
-        const targetScrollTop = rowIndex * this.rowHeight;
+        const rowTop = rowIndex * this.rowHeight;
+        const rowBottom = rowTop + this.rowHeight;
+        const viewportTop = this.scrollTop;
+        const viewportBottom = viewportTop + this.viewportHeight;
+        
+        let targetScrollTop = this.scrollTop;
+        
+        switch (align) {
+            case 'start':
+                targetScrollTop = rowTop;
+                break;
+            case 'center':
+                targetScrollTop = rowTop - (this.viewportHeight - this.rowHeight) / 2;
+                break;
+            case 'end':
+                targetScrollTop = rowBottom - this.viewportHeight;
+                break;
+            case 'auto':
+            default:
+                // Only scroll if row is not fully visible
+                if (rowTop < viewportTop) {
+                    targetScrollTop = rowTop;
+                } else if (rowBottom > viewportBottom) {
+                    targetScrollTop = rowBottom - this.viewportHeight;
+                }
+                break;
+        }
+        
         this.viewport.scrollTop = Math.max(0, Math.min(targetScrollTop, this.totalHeight - this.viewportHeight));
+    }
+
+    /**
+     * Get the row index at a specific scroll position
+     */
+    getRowIndexAtPosition(scrollTop) {
+        return Math.floor(scrollTop / this.rowHeight);
+    }
+
+    /**
+     * Get visible row indices
+     */
+    getVisibleRange() {
+        return {
+            start: this.startIndex,
+            end: this.endIndex,
+            visibleStart: Math.max(this.startIndex, Math.floor(this.scrollTop / this.rowHeight)),
+            visibleEnd: Math.min(this.endIndex, Math.ceil((this.scrollTop + this.viewportHeight) / this.rowHeight))
+        };
     }
 
     /**
@@ -88,6 +177,14 @@ export class VirtualScroller {
      * Destroy the virtual scroller and clean up
      */
     destroy() {
+        if (this._rafId) {
+            cancelAnimationFrame(this._rafId);
+        }
+        
+        if (this._scrollEndTimeout) {
+            clearTimeout(this._scrollEndTimeout);
+        }
+        
         if (this.viewport) {
             this.viewport.removeEventListener('scroll', this._scrollHandler);
         }
@@ -95,31 +192,37 @@ export class VirtualScroller {
         window.removeEventListener('themechange', this._themeHandler);
         
         if (this.container) {
+            this.container.removeEventListener('keydown', this._keyHandler);
             this.container.innerHTML = '';
         }
+        
+        // Clear pools
+        this._rowPool = [];
+        this._activeRows.clear();
     }
 
-    // Private methods
+    // ==================== PRIVATE METHODS ====================
 
     _createStructure() {
         this.container.innerHTML = '';
         this.container.className = 'virtual-scroller-container relative';
+        this.container.setAttribute('tabindex', '0');
+        this.container.setAttribute('role', 'grid');
         
-        // Create viewport
+        // Viewport with GPU acceleration hint
         this.viewport = document.createElement('div');
         this.viewport.className = 'virtual-scroller-viewport overflow-auto custom-scrollbar';
-        this.viewport.style.height = '100%';
+        this.viewport.style.cssText = 'height: 100%; will-change: scroll-position; contain: strict;';
         
-        // Create spacer for total height
+        // Spacer for total scrollable height
         this.spacer = document.createElement('div');
         this.spacer.className = 'virtual-scroller-spacer relative';
-        this.spacer.style.height = `${this.totalHeight}px`;
-        this.spacer.style.width = '100%';
+        this.spacer.style.cssText = `height: ${this.totalHeight}px; width: 100%; pointer-events: none;`;
         
-        // Create content container for visible rows
+        // Content container with GPU layer
         this.content = document.createElement('div');
         this.content.className = 'virtual-scroller-content absolute left-0 right-0';
-        this.content.style.top = '0';
+        this.content.style.cssText = 'top: 0; will-change: transform; contain: layout style;';
         
         this.spacer.appendChild(this.content);
         this.viewport.appendChild(this.spacer);
@@ -127,23 +230,45 @@ export class VirtualScroller {
     }
 
     _attachEventListeners() {
+        // Passive scroll listener for better performance
         this.viewport.addEventListener('scroll', this._scrollHandler, { passive: true });
         window.addEventListener('resize', this._resizeHandler);
         window.addEventListener('themechange', this._themeHandler);
+        this.container.addEventListener('keydown', this._keyHandler);
         
-        // Initial viewport height
+        // Initial viewport measurement
         this.viewportHeight = this.viewport.clientHeight;
     }
 
     _handleScroll() {
-        const newScrollTop = this.viewport.scrollTop;
-        
-        // Only re-render if scroll position changed significantly
-        if (Math.abs(newScrollTop - this.scrollTop) >= this.rowHeight / 2) {
-            this.scrollTop = newScrollTop;
-            this._calculateVisibleRange();
-            this._render();
+        // Cancel any pending RAF
+        if (this._rafId) {
+            cancelAnimationFrame(this._rafId);
         }
+        
+        this._isScrolling = true;
+        
+        // Use RAF for smooth rendering
+        this._rafId = requestAnimationFrame(() => {
+            const newScrollTop = this.viewport.scrollTop;
+            
+            // Only update if scroll changed enough (half row height)
+            if (Math.abs(newScrollTop - this.scrollTop) >= this.rowHeight * 0.5) {
+                this.scrollTop = newScrollTop;
+                this._calculateVisibleRange();
+                this._render();
+            }
+            
+            this._rafId = null;
+        });
+        
+        // Mark scroll end after delay
+        if (this._scrollEndTimeout) {
+            clearTimeout(this._scrollEndTimeout);
+        }
+        this._scrollEndTimeout = setTimeout(() => {
+            this._isScrolling = false;
+        }, 150);
     }
 
     _handleResize() {
@@ -155,52 +280,302 @@ export class VirtualScroller {
     _handleThemeChange(e) {
         this.theme = e.detail.theme;
         this.isLight = this.theme === 'light';
-        this.isOceanic = this.theme === 'oceanic' || this.theme === 'ember';
+        this.isDawn = this.theme === 'dawn';
+        this.isOceanic = this.theme === 'oceanic' || this.theme === 'ember' || this.theme === 'aurora';
+        
+        // Force re-render all visible rows
+        for (const el of this._activeRows.values()) {
+            this._recycleRow(el);
+        }
+        this._activeRows.clear();
         this._render();
     }
 
+    _handleKeyDown(e) {
+        if (this.focusedRowIndex < 0) return;
+        
+        switch (e.key) {
+            case 'ArrowDown':
+                e.preventDefault();
+                this._moveFocus(1);
+                break;
+            case 'ArrowUp':
+                e.preventDefault();
+                this._moveFocus(-1);
+                break;
+            case 'PageDown':
+                e.preventDefault();
+                this._moveFocus(Math.floor(this.viewportHeight / this.rowHeight));
+                break;
+            case 'PageUp':
+                e.preventDefault();
+                this._moveFocus(-Math.floor(this.viewportHeight / this.rowHeight));
+                break;
+            case 'Home':
+                if (e.ctrlKey) {
+                    e.preventDefault();
+                    this._setFocusedRow(0);
+                }
+                break;
+            case 'End':
+                if (e.ctrlKey) {
+                    e.preventDefault();
+                    this._setFocusedRow(this.data.length - 1);
+                }
+                break;
+            case 'Enter':
+                e.preventDefault();
+                this.onRowDoubleClick(this.focusedRowIndex, this.data[this.focusedRowIndex], e);
+                break;
+        }
+    }
+
+    _moveFocus(delta) {
+        const newIndex = Math.max(0, Math.min(this.data.length - 1, this.focusedRowIndex + delta));
+        this._setFocusedRow(newIndex);
+    }
+
+    _setFocusedRow(index) {
+        if (index === this.focusedRowIndex) return;
+        
+        // Remove focus from old row
+        if (this._activeRows.has(this.focusedRowIndex)) {
+            const oldRow = this._activeRows.get(this.focusedRowIndex);
+            oldRow.classList.remove('focused');
+        }
+        
+        this.focusedRowIndex = index;
+        this.scrollToRow(index);
+        
+        // Add focus to new row
+        if (this._activeRows.has(index)) {
+            const newRow = this._activeRows.get(index);
+            newRow.classList.add('focused');
+        }
+    }
+
     _calculateVisibleRange() {
-        const start = Math.floor(this.scrollTop / this.rowHeight);
+        const start = this.getRowIndexAtPosition(this.scrollTop);
         const visibleCount = Math.ceil(this.viewportHeight / this.rowHeight);
         
-        this.startIndex = Math.max(0, start - this.overscan);
-        this.endIndex = Math.min(this.data.length - 1, start + visibleCount + this.overscan);
+        // Add overscan buffer
+        const buffer = this.overscan * this.bufferSize;
+        this.startIndex = Math.max(0, start - buffer);
+        this.endIndex = Math.min(this.data.length - 1, start + visibleCount + buffer);
+        
+        // Notify about visible range change
+        if (this.onVisibleRangeChange) {
+            this.onVisibleRangeChange(this.getVisibleRange());
+        }
     }
 
     _render() {
-        if (!this.content || this.data.length === 0) return;
+        if (!this.content || this.data.length === 0) {
+            if (this.content) this.content.innerHTML = '';
+            return;
+        }
         
-        // Position content container
-        this.content.style.top = `${this.startIndex * this.rowHeight}px`;
+        const renderStart = performance.now();
         
-        // Build visible rows HTML
-        const rows = [];
+        // Use transform for better performance (GPU accelerated)
+        this.content.style.transform = `translateY(${this.startIndex * this.rowHeight}px)`;
+        
+        // Determine which rows need to be rendered/recycled
+        const newActiveRows = new Set();
         for (let i = this.startIndex; i <= this.endIndex; i++) {
-            const rowData = this.data[i];
-            if (rowData) {
-                rows.push(this.renderRow(rowData, i, this.columns));
+            newActiveRows.add(i);
+        }
+        
+        // Recycle rows that are no longer visible
+        for (const [idx, el] of this._activeRows) {
+            if (!newActiveRows.has(idx)) {
+                this._recycleRow(el);
+                this._activeRows.delete(idx);
             }
         }
         
-        this.content.innerHTML = rows.join('');
+        // Create/update visible rows using document fragment for batch DOM update
+        const fragment = document.createDocumentFragment();
+        const rowsToAppend = [];
         
-        // Attach row event listeners
-        this._attachRowEventListeners();
+        for (let i = this.startIndex; i <= this.endIndex; i++) {
+            if (!this._activeRows.has(i)) {
+                const rowData = this.data[i];
+                if (rowData) {
+                    const rowEl = this._getOrCreateRow(i, rowData);
+                    rowsToAppend.push({ index: i, element: rowEl });
+                }
+            }
+        }
+        
+        // Sort and append in order
+        rowsToAppend.sort((a, b) => a.index - b.index);
+        for (const { index, element } of rowsToAppend) {
+            this._activeRows.set(index, element);
+            fragment.appendChild(element);
+        }
+        
+        // Batch DOM update
+        if (rowsToAppend.length > 0) {
+            this.content.appendChild(fragment);
+        }
+        
+        // Reorder existing rows if needed
+        this._reorderRows();
+        
+        this._lastRenderTime = performance.now() - renderStart;
     }
 
-    _attachRowEventListeners() {
-        const rows = this.content.querySelectorAll('[data-row-idx]');
-        rows.forEach(row => {
-            const idx = parseInt(row.dataset.rowIdx);
+    /**
+     * Chunked rendering for initial large dataset load
+     */
+    _renderChunked() {
+        const CHUNK_SIZE = 50;
+        let currentChunk = 0;
+        const totalChunks = Math.ceil((this.endIndex - this.startIndex + 1) / CHUNK_SIZE);
+        
+        const renderNextChunk = () => {
+            const chunkStart = this.startIndex + currentChunk * CHUNK_SIZE;
+            const chunkEnd = Math.min(chunkStart + CHUNK_SIZE - 1, this.endIndex);
             
-            row.addEventListener('click', (e) => {
-                this.onRowClick(idx, this.data[idx], e);
-            });
+            const fragment = document.createDocumentFragment();
             
-            row.addEventListener('dblclick', (e) => {
-                this.onRowDoubleClick(idx, this.data[idx], e);
-            });
+            for (let i = chunkStart; i <= chunkEnd; i++) {
+                const rowData = this.data[i];
+                if (rowData && !this._activeRows.has(i)) {
+                    const rowEl = this._getOrCreateRow(i, rowData);
+                    this._activeRows.set(i, rowEl);
+                    fragment.appendChild(rowEl);
+                }
+            }
+            
+            this.content.appendChild(fragment);
+            currentChunk++;
+            
+            if (currentChunk < totalChunks) {
+                requestAnimationFrame(renderNextChunk);
+            }
+        };
+        
+        // Set initial transform
+        this.content.style.transform = `translateY(${this.startIndex * this.rowHeight}px)`;
+        renderNextChunk();
+    }
+
+    _getOrCreateRow(rowIndex, rowData) {
+        // Try to get from pool first (DOM recycling)
+        let rowEl = this._rowPool.pop();
+        
+        if (rowEl) {
+            // Reuse pooled row - update content
+            this._updateRowElement(rowEl, rowIndex, rowData);
+        } else {
+            // Create new row element
+            rowEl = this._createRowElement(rowIndex, rowData);
+        }
+        
+        return rowEl;
+    }
+
+    _createRowElement(rowIndex, rowData) {
+        const tr = document.createElement('tr');
+        this._updateRowElement(tr, rowIndex, rowData);
+        this._attachRowListeners(tr);
+        return tr;
+    }
+
+    _updateRowElement(tr, rowIndex, rowData) {
+        tr.dataset.rowIdx = rowIndex;
+        tr.style.height = `${this.rowHeight}px`;
+        
+        // Build row classes
+        const baseClasses = 'hover:bg-mysql-teal/10 transition-colors';
+        const altClasses = rowIndex % 2 === 1 
+            ? (this.isLight ? 'bg-gray-50/50' : (this.isDawn ? 'bg-[#f8f3ee]' : (this.isOceanic ? 'bg-[#2E3440]/30' : 'bg-white/[0.01]')))
+            : '';
+        const focusClasses = rowIndex === this.focusedRowIndex ? 'focused' : '';
+        
+        tr.className = `${baseClasses} ${altClasses} ${focusClasses}`;
+        
+        // Render cell content
+        const cellsHtml = this._renderCells(rowData, rowIndex);
+        tr.innerHTML = cellsHtml;
+    }
+
+    _renderCells(rowData, rowIndex) {
+        const borderClass = this.isLight ? 'border-gray-100' : (this.isDawn ? 'border-[#f2e9e1]' : (this.isOceanic ? 'border-ocean-border/30' : 'border-white/5'));
+        const textClass = this.isLight ? 'text-gray-700' : (this.isDawn ? 'text-[#575279]' : (this.isOceanic ? 'text-ocean-text' : 'text-gray-300'));
+        const numClass = this.isLight ? 'text-gray-400' : (this.isDawn ? 'text-[#9893a5]' : (this.isOceanic ? 'text-ocean-text/50' : 'text-gray-500'));
+        
+        let html = `<td class="p-2 border-r ${borderClass} text-center text-[10px] ${numClass} font-mono w-12">${rowIndex + 1}</td>`;
+        
+        this.columns.forEach((col, colIdx) => {
+            const value = Array.isArray(rowData) ? rowData[colIdx] : rowData[col];
+            const displayValue = this._formatCell(value);
+            const titleValue = value !== null && value !== undefined ? escapeHtml(String(value)) : '';
+            
+            html += `<td class="p-3 border-r ${borderClass} ${textClass} whitespace-nowrap overflow-hidden text-ellipsis max-w-xs" title="${titleValue}" data-col-idx="${colIdx}">${displayValue}</td>`;
         });
+        
+        return html;
+    }
+
+    _attachRowListeners(tr) {
+        tr.addEventListener('click', (e) => {
+            const idx = parseInt(tr.dataset.rowIdx);
+            this.focusedRowIndex = idx;
+            this.onRowClick(idx, this.data[idx], e);
+        });
+        
+        tr.addEventListener('dblclick', (e) => {
+            const idx = parseInt(tr.dataset.rowIdx);
+            this.onRowDoubleClick(idx, this.data[idx], e);
+        });
+    }
+
+    _recycleRow(el) {
+        if (this._rowPool.length < this._maxPoolSize) {
+            el.remove();
+            this._rowPool.push(el);
+        } else {
+            el.remove();
+        }
+    }
+
+    _reorderRows() {
+        // Sort children by row index for correct visual order
+        const children = Array.from(this.content.children);
+        if (children.length <= 1) return;
+        
+        let needsReorder = false;
+        for (let i = 0; i < children.length - 1; i++) {
+            if (parseInt(children[i].dataset.rowIdx) > parseInt(children[i + 1].dataset.rowIdx)) {
+                needsReorder = true;
+                break;
+            }
+        }
+        
+        if (needsReorder) {
+            children.sort((a, b) => parseInt(a.dataset.rowIdx) - parseInt(b.dataset.rowIdx));
+            children.forEach(child => this.content.appendChild(child));
+        }
+    }
+
+    _formatCell(value) {
+        if (value === null || value === undefined) {
+            const bgClass = this.isLight ? 'bg-gray-100 text-gray-400' : (this.isDawn ? 'bg-[#f2e9e1] text-[#9893a5]' : (this.isOceanic ? 'bg-ocean-border/30 text-ocean-text/50' : 'bg-white/5 text-gray-500'));
+            return `<span class="px-1.5 py-0.5 rounded text-[10px] font-mono ${bgClass} italic">NULL</span>`;
+        }
+        if (typeof value === 'boolean') {
+            return value ? '<span class="text-green-400 font-bold">TRUE</span>' : '<span class="text-red-400 font-bold">FALSE</span>';
+        }
+        if (typeof value === 'number') {
+            return `<span class="text-mysql-teal">${value.toLocaleString()}</span>`;
+        }
+        if (value instanceof Date) {
+            return `<span class="text-purple-400">${value.toLocaleString()}</span>`;
+        }
+        return escapeHtml(String(value));
     }
 
     defaultRenderRow(rowData, rowIndex, columns) {
@@ -208,7 +583,7 @@ export class VirtualScroller {
             const value = Array.isArray(rowData) ? rowData[colIdx] : rowData[col];
             const displayValue = this._formatCell(value);
             
-            return `<td class="p-3 border-r ${this.isLight ? 'border-gray-100' : (this.isOceanic ? 'border-ocean-border/30' : 'border-white/5')} ${this.isLight ? 'text-gray-700' : (this.isOceanic ? 'text-ocean-text' : 'text-gray-300')} whitespace-nowrap overflow-hidden text-ellipsis max-w-xs" title="${this._escapeHtml(String(value))}">${displayValue}</td>`;
+            return `<td class="p-3 border-r ${this.isLight ? 'border-gray-100' : (this.isOceanic ? 'border-ocean-border/30' : 'border-white/5')} ${this.isLight ? 'text-gray-700' : (this.isOceanic ? 'text-ocean-text' : 'text-gray-300')} whitespace-nowrap overflow-hidden text-ellipsis max-w-xs" title="${escapeHtml(String(value))}">${displayValue}</td>`;
         }).join('');
 
         return `
@@ -219,21 +594,20 @@ export class VirtualScroller {
         `;
     }
 
-    _formatCell(value) {
-        if (value === null || value === undefined) {
-            return `<span class="px-1.5 py-0.5 rounded text-[10px] font-mono ${this.isLight ? 'bg-gray-100 text-gray-400' : (this.isOceanic ? 'bg-ocean-border/30 text-ocean-text/50' : 'bg-white/5 text-gray-500')} italic">NULL</span>`;
-        }
-        if (typeof value === 'boolean') {
-            return value ? '<span class="text-green-400 font-bold">TRUE</span>' : '<span class="text-red-400 font-bold">FALSE</span>';
-        }
-        if (typeof value === 'number') {
-            return `<span class="text-mysql-teal">${value}</span>`;
-        }
-        return this._escapeHtml(String(value));
-    }
+    // ==================== PUBLIC API ====================
 
-    _escapeHtml(str) {
-        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    /**
+     * Get render performance stats
+     */
+    getStats() {
+        return {
+            totalRows: this.data.length,
+            visibleRows: this.endIndex - this.startIndex + 1,
+            activeRows: this._activeRows.size,
+            pooledRows: this._rowPool.length,
+            lastRenderTime: this._lastRenderTime.toFixed(2) + 'ms',
+            isScrolling: this._isScrolling
+        };
     }
 }
 

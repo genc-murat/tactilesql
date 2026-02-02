@@ -267,9 +267,16 @@ pub async fn get_active_db_type(app_state: State<'_, AppState>) -> Result<Databa
 pub fn save_connection(app_handle: AppHandle, app_state: State<'_, AppState>, mut config: ConnectionConfig) -> Result<(), String> {
     let file_path = get_connections_file_path(&app_handle);
     
+    // Generate ID if not provided
+    if config.id.is_none() {
+        config.id = Some(uuid::Uuid::new_v4().to_string());
+    }
+    
     // Encrypt password before saving
     if let Some(ref pwd) = config.password {
-        config.password = Some(encrypt_password(pwd, &app_state)?);
+        if !pwd.is_empty() {
+            config.password = Some(encrypt_password(pwd, &app_state)?);
+        }
     }
 
     
@@ -281,9 +288,10 @@ pub fn save_connection(app_handle: AppHandle, app_state: State<'_, AppState>, mu
         Vec::new()
     };
     
-    // Remove existing connection with same name, then add new one
+    // Remove existing connection with same ID or name, then add new one
+    let config_id = config.id.clone();
     let config_name = config.name.clone();
-    connections.retain(|c| c.name != config_name);
+    connections.retain(|c| c.id != config_id && c.name != config_name);
     connections.push(config);
     
     let json = serde_json::to_string_pretty(&connections)
@@ -309,12 +317,21 @@ pub fn load_connections(app_handle: AppHandle, app_state: State<'_, AppState>) -
     let mut connections: Vec<ConnectionConfig> = serde_json::from_str(&content)
         .map_err(|e| format!("Failed to parse JSON: {}", e))?;
     
-    // Decrypt passwords
+    // Decrypt passwords - gracefully handle decryption failures
     for conn in &mut connections {
         if let Some(ref encrypted_pwd) = conn.password {
-            // If decryption fails (e.g. wrong key, logic error), we leave it as is or log error
-            // For now, if it fails, we assume it's possibly empty or bad data, but we propagate error to let user know
-            conn.password = Some(decrypt_password(encrypted_pwd, &app_state)?);
+            if !encrypted_pwd.is_empty() {
+                match decrypt_password(encrypted_pwd, &app_state) {
+                    Ok(decrypted) => conn.password = Some(decrypted),
+                    Err(e) => {
+                        // Log the error but don't fail - set password to empty
+                        // User will need to re-enter password for this connection
+                        println!("Warning: Failed to decrypt password for connection '{}': {}. Password reset required.", 
+                            conn.name.clone().unwrap_or_default(), e);
+                        conn.password = Some(String::new());
+                    }
+                }
+            }
         }
     }
     
@@ -322,7 +339,7 @@ pub fn load_connections(app_handle: AppHandle, app_state: State<'_, AppState>) -
 }
 
 #[tauri::command]
-pub fn delete_connection(app_handle: AppHandle, name: String) -> Result<(), String> {
+pub fn delete_connection(app_handle: AppHandle, id: String) -> Result<(), String> {
     let file_path = get_connections_file_path(&app_handle);
     
     if !file_path.exists() {
@@ -335,7 +352,7 @@ pub fn delete_connection(app_handle: AppHandle, name: String) -> Result<(), Stri
     let mut connections: Vec<ConnectionConfig> = serde_json::from_str(&content)
         .unwrap_or_default();
     
-    connections.retain(|c| c.name != Some(name.clone()));
+    connections.retain(|c| c.id != Some(id.clone()));
     
     let json = serde_json::to_string_pretty(&connections)
         .map_err(|e| format!("Failed to serialize: {}", e))?;

@@ -1,5 +1,6 @@
 import { Dialog } from '../UI/Dialog.js';
 import { ThemeManager } from '../../utils/ThemeManager.js';
+import { escapeHtml } from '../../utils/helpers.js';
 
 export function SnippetLibrary() {
     let theme = ThemeManager.getCurrentTheme();
@@ -213,10 +214,6 @@ export function SnippetLibrary() {
             'custom': 'bg-gray-500/10 text-gray-400'
         };
         return colors[category] || colors.custom;
-    };
-
-    const escapeHtml = (str) => {
-        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     };
 
     const attachEvents = () => {

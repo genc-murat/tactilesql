@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { Dialog } from '../components/UI/Dialog.js';
 import { ThemeManager } from '../utils/ThemeManager.js';
+import { LoadingManager } from '../components/UI/LoadingStates.js';
 
 export function AccessControl() {
     let theme = ThemeManager.getCurrentTheme();
@@ -19,25 +20,27 @@ export function AccessControl() {
     let userPrivileges = null;
     let isLoading = true;
 
-    // Load users
+    // Load users with LoadingManager
     async function loadUsers() {
         isLoading = true;
         render();
 
-        try {
-            users = await invoke('get_users');
-            console.log('Loaded users:', users);
-            console.log('User count:', users.length);
-            if (users.length > 0) {
-                console.log('Selecting first user:', users[0]);
-                await selectUser(users[0]);
-            } else {
-                console.warn('No users returned from backend');
+        await LoadingManager.wrap('access-control-users', container, async () => {
+            try {
+                users = await invoke('get_users');
+                console.log('Loaded users:', users);
+                console.log('User count:', users.length);
+                if (users.length > 0) {
+                    console.log('Selecting first user:', users[0]);
+                    await selectUser(users[0]);
+                } else {
+                    console.warn('No users returned from backend');
+                }
+            } catch (error) {
+                console.error('Failed to load users:', error);
+                Dialog.alert(`Failed to load users: ${String(error).replace(/\n/g, '<br>')}`, 'Load Users Error');
             }
-        } catch (error) {
-            console.error('Failed to load users:', error);
-            Dialog.alert(`Failed to load users: ${String(error).replace(/\n/g, '<br>')}`, 'Load Users Error');
-        }
+        }, { message: 'Loading users...', type: 'overlay', minDuration: 200 });
 
         isLoading = false;
         render();

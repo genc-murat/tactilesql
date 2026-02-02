@@ -1,17 +1,9 @@
 import { invoke } from '@tauri-apps/api/core';
 import { Dialog } from '../components/UI/Dialog.js';
 import { ThemeManager } from '../utils/ThemeManager.js';
-
-// Helper to escape HTML special characters for GTK markup compatibility
-const escapeHtml = (str) => {
-    if (!str) return '';
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-};
+import { escapeHtml, formatTimeAgo } from '../utils/helpers.js';
+import { toastSuccess, toastError, toastWarning } from '../utils/Toast.js';
+import { LoadingManager } from '../components/UI/LoadingStates.js';
 
 export function ConnectionManager() {
     let theme = ThemeManager.getCurrentTheme();
@@ -57,22 +49,6 @@ export function ConnectionManager() {
     let config = { ...DEFAULT_CONFIG };
     let connections = [];
     let viewMode = 'grid'; // 'grid' | 'edit'
-
-    // --- HELPERS ---
-
-    const formatTimeAgo = (date) => {
-        const seconds = Math.floor((new Date() - date) / 1000);
-        if (seconds < 60) return 'Just now';
-        const minutes = Math.floor(seconds / 60);
-        if (minutes < 60) return `${minutes}m ago`;
-        const hours = Math.floor(minutes / 60);
-        if (hours < 24) return `${hours}h ago`;
-        const days = Math.floor(hours / 24);
-        if (days < 7) return `${days}d ago`;
-        const weeks = Math.floor(days / 7);
-        if (weeks < 4) return `${weeks}w ago`;
-        return date.toLocaleDateString();
-    };
 
     // --- RENDERERS ---
 

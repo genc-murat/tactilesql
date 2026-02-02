@@ -3,17 +3,8 @@ import { showViewSourceModal } from '../UI/ViewSourceModal.js';
 import { Dialog } from '../UI/Dialog.js';
 import { ThemeManager } from '../../utils/ThemeManager.js';
 import { getQuoteChar, isPostgreSQL, DatabaseType } from '../../database/index.js';
-
-// Helper to escape HTML special characters for GTK markup compatibility
-const escapeHtml = (str) => {
-    if (!str) return '';
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-};
+import { escapeHtml, DatabaseCache, CacheTypes } from '../../utils/helpers.js';
+import { toastSuccess, toastError } from '../../utils/Toast.js';
 
 export function ObjectExplorer() {
     let theme = ThemeManager.getCurrentTheme();
@@ -568,7 +559,10 @@ export function ObjectExplorer() {
         const refreshBtn = explorer.querySelector('#refresh-btn');
         if (refreshBtn) {
             refreshBtn.addEventListener('click', () => {
+                // Invalidate all caches on global refresh
+                DatabaseCache.invalidateAll();
                 loadConnections();
+                toastSuccess('All caches refreshed');
             });
         }
 
@@ -679,7 +673,10 @@ export function ObjectExplorer() {
         const btnRefresh = menu.querySelector('#ctx-conn-refresh');
         if (btnRefresh) {
             btnRefresh.onclick = () => {
+                // Invalidate all caches when refreshing connection
+                DatabaseCache.invalidateAll();
                 loadDatabases();
+                toastSuccess('Schema cache refreshed');
                 menu.remove();
             };
         }
@@ -843,7 +840,11 @@ export function ObjectExplorer() {
 
         menu.querySelector('#ctx-db-refresh').onclick = async () => {
             delete dbObjects[dbName];
+            // Invalidate centralized cache for this database
+            DatabaseCache.invalidateByDatabase(dbName);
+            window.dispatchEvent(new CustomEvent('schema:changed', { detail: { database: dbName } }));
             if (expandedDbs.has(dbName)) await loadDatabaseObjects(dbName);
+            toastSuccess(`Cache refreshed for ${dbName}`);
             menu.remove();
         };
 

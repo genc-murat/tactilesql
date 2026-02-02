@@ -2,7 +2,167 @@ import { ThemeManager } from '../../utils/ThemeManager.js';
 
 /**
  * Loading States Component - Provides skeleton loaders and progress indicators
+ * Now with global loading manager for consistent async operation handling
  */
+
+// Track active loading states globally
+const activeLoadingStates = new Map();
+
+/**
+ * Global Loading Manager - Wrap async operations with consistent loading states
+ */
+export const LoadingManager = {
+    /**
+     * Wrap an async operation with loading indicator
+     * @param {string} key - Unique identifier for this loading state
+     * @param {HTMLElement} container - Container to show loading in (optional)
+     * @param {Function} asyncFn - Async function to execute
+     * @param {Object} options - Options for loading display
+     * @returns {Promise<any>} Result of the async function
+     */
+    async wrap(key, container, asyncFn, options = {}) {
+        const {
+            message = 'Loading...',
+            type = 'overlay', // 'overlay' | 'inline' | 'spinner' | 'skeleton'
+            minDuration = 0, // Minimum display time to prevent flashing
+            onStart = null,
+            onEnd = null,
+        } = options;
+
+        const startTime = Date.now();
+        let loadingElement = null;
+
+        try {
+            // Mark as loading
+            activeLoadingStates.set(key, true);
+            
+            // Create loading indicator
+            if (container) {
+                container.style.position = 'relative';
+                
+                switch (type) {
+                    case 'overlay':
+                        loadingElement = LoadingStates.overlay(message);
+                        break;
+                    case 'inline':
+                        loadingElement = LoadingStates.inlineText(message);
+                        break;
+                    case 'spinner':
+                        loadingElement = document.createElement('div');
+                        loadingElement.className = 'absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-sm z-50';
+                        loadingElement.appendChild(LoadingStates.spinner('lg'));
+                        break;
+                    case 'skeleton':
+                        loadingElement = LoadingStates.tableSkeleton();
+                        break;
+                    default:
+                        loadingElement = LoadingStates.overlay(message);
+                }
+                
+                loadingElement.dataset.loadingKey = key;
+                container.appendChild(loadingElement);
+            }
+            
+            // Dispatch loading start event
+            window.dispatchEvent(new CustomEvent('loading:start', { detail: { key, message } }));
+            onStart?.();
+
+            // Execute async function
+            const result = await asyncFn();
+
+            // Ensure minimum duration
+            const elapsed = Date.now() - startTime;
+            if (minDuration > 0 && elapsed < minDuration) {
+                await new Promise(resolve => setTimeout(resolve, minDuration - elapsed));
+            }
+
+            return result;
+        } finally {
+            // Remove loading state
+            activeLoadingStates.delete(key);
+            
+            // Remove loading indicator
+            if (loadingElement && loadingElement.parentNode) {
+                loadingElement.remove();
+            }
+            
+            // Dispatch loading end event
+            window.dispatchEvent(new CustomEvent('loading:end', { detail: { key } }));
+            onEnd?.();
+        }
+    },
+
+    /**
+     * Check if a specific operation is loading
+     * @param {string} key - Loading state key
+     * @returns {boolean}
+     */
+    isLoading(key) {
+        return activeLoadingStates.has(key);
+    },
+
+    /**
+     * Check if any operation is loading
+     * @returns {boolean}
+     */
+    isAnyLoading() {
+        return activeLoadingStates.size > 0;
+    },
+
+    /**
+     * Get all active loading keys
+     * @returns {string[]}
+     */
+    getActiveKeys() {
+        return Array.from(activeLoadingStates.keys());
+    },
+
+    /**
+     * Show a global loading indicator (for app-wide operations)
+     * @param {string} message - Loading message
+     * @returns {Function} Dismiss function
+     */
+    showGlobal(message = 'Loading...') {
+        const overlay = document.createElement('div');
+        overlay.id = 'global-loading-overlay';
+        overlay.className = 'fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999]';
+        overlay.innerHTML = `
+            <div class="bg-[#16191e] border border-white/10 rounded-xl p-6 flex flex-col items-center gap-4 shadow-2xl">
+                <div class="relative">
+                    <div class="w-12 h-12 rounded-full border-4 border-white/10 border-t-mysql-teal animate-spin"></div>
+                </div>
+                <span class="text-sm text-gray-300">${message}</span>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        return () => overlay.remove();
+    },
+
+    /**
+     * Show button loading state
+     * @param {HTMLButtonElement} button - Button element
+     * @param {boolean} loading - Loading state
+     * @param {string} loadingText - Text to show while loading
+     */
+    setButtonLoading(button, loading, loadingText = 'Loading...') {
+        if (!button) return;
+        
+        if (loading) {
+            button.dataset.originalText = button.innerHTML;
+            button.disabled = true;
+            button.innerHTML = `
+                <span class="inline-flex items-center gap-2">
+                    <span class="material-symbols-outlined text-sm animate-spin">progress_activity</span>
+                    ${loadingText}
+                </span>
+            `;
+        } else {
+            button.disabled = false;
+            button.innerHTML = button.dataset.originalText || button.innerHTML;
+        }
+    }
+};
 
 export const LoadingStates = {
     /**

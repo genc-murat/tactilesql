@@ -3,18 +3,14 @@ import { getCurrentWindow, LogicalPosition, LogicalSize } from '@tauri-apps/api/
 import { Router } from './router.js';
 import { TitleBar } from './components/TitleBar.js';
 import { NavBar } from './components/Layout/NavBar.js';
-
-import { SqlWorkbench } from './pages/SqlWorkbench.js';
-import { SchemaDesigner } from './pages/SchemaDesigner.js';
-import { SchemaDiff } from './pages/SchemaDiff.js';
-import { ConnectionManager } from './pages/ConnectionManager.js';
-import { AccessControl } from './pages/AccessControl.js';
-import { Settings } from './pages/Settings.js';
-import { DataTools } from './pages/DataTools.js';
-import { ServerMonitor } from './pages/ServerMonitor.js';
-import { AuditTrail } from './pages/AuditTrail.js';
 import { ThemeManager } from './utils/ThemeManager.js';
 import { initKeyboardShortcuts, registerHandler, showShortcutsHelp } from './utils/KeyboardShortcuts.js';
+
+// Lazy load page components for better initial load time
+const lazyLoad = (importFn, exportName) => async () => {
+    const module = await importFn();
+    return module[exportName]();
+};
 
 // Add window resize handles with custom resizing logic
 function addResizeHandles() {
@@ -133,17 +129,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     root.appendChild(mainContent);
 
     const routes = {
-        '/': { component: SqlWorkbench },
-        '/workbench': { component: SqlWorkbench },
-
-        '/schema': { component: SchemaDesigner },
-        '/diff': { component: SchemaDiff },
-        '/connections': { component: ConnectionManager },
-        '/access-control': { component: AccessControl },
-        '/settings': { component: Settings },
-        '/data-tools': { component: DataTools },
-        '/monitor': { component: ServerMonitor },
-        '/audit': { component: AuditTrail },
+        '/': { component: lazyLoad(() => import('./pages/SqlWorkbench.js'), 'SqlWorkbench') },
+        '/workbench': { component: lazyLoad(() => import('./pages/SqlWorkbench.js'), 'SqlWorkbench') },
+        '/schema': { component: lazyLoad(() => import('./pages/SchemaDesigner.js'), 'SchemaDesigner') },
+        '/diff': { component: lazyLoad(() => import('./pages/SchemaDiff.js'), 'SchemaDiff') },
+        '/connections': { component: lazyLoad(() => import('./pages/ConnectionManager.js'), 'ConnectionManager') },
+        '/access-control': { component: lazyLoad(() => import('./pages/AccessControl.js'), 'AccessControl') },
+        '/settings': { component: lazyLoad(() => import('./pages/Settings.js'), 'Settings') },
+        '/data-tools': { component: lazyLoad(() => import('./pages/DataTools.js'), 'DataTools') },
+        '/monitor': { component: lazyLoad(() => import('./pages/ServerMonitor.js'), 'ServerMonitor') },
+        '/audit': { component: lazyLoad(() => import('./pages/AuditTrail.js'), 'AuditTrail') },
     };
 
     const router = new Router(routes, mainContent);

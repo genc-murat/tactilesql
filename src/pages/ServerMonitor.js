@@ -1,17 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import { Dialog } from '../components/UI/Dialog.js';
 import { ThemeManager } from '../utils/ThemeManager.js';
-
-// Helper to escape HTML special characters for GTK markup compatibility
-const escapeHtml = (str) => {
-    if (!str) return '';
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-};
+import { escapeHtml, formatBytes, formatNumber } from '../utils/helpers.js';
+import { LoadingManager } from '../components/UI/LoadingStates.js';
 
 export function ServerMonitor() {
     let theme = ThemeManager.getCurrentTheme();
@@ -40,14 +31,6 @@ export function ServerMonitor() {
     let prevStatus = null;
     let prevTimestamp = null;
 
-    const formatBytes = (bytes) => {
-        if (bytes === 0) return '0 B';
-        const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    };
-
     const formatUptime = (seconds) => {
         const days = Math.floor(seconds / 86400);
         const hours = Math.floor((seconds % 86400) / 3600);
@@ -57,61 +40,55 @@ export function ServerMonitor() {
         return `${mins}m`;
     };
 
-    const formatNumber = (num) => {
-        if (num === undefined || num === null) return '0';
-        if (num >= 1e9) return (num / 1e9).toFixed(2) + 'B';
-        if (num >= 1e6) return (num / 1e6).toFixed(2) + 'M';
-        if (num >= 1e3) return (num / 1e3).toFixed(2) + 'K';
-        return num.toString();
-    };
-
     const loadData = async () => {
-        try {
-            const activeDbType = localStorage.getItem('activeDbType') || 'mysql';
-            const isPostgres = activeDbType === 'postgresql';
-            
-            // Load data - some commands are MySQL specific
-            const [status, processes, replication, lockData] = await Promise.all([
-                invoke('get_server_status'),
-                invoke('get_process_list'),
-                invoke('get_replication_status'),
-                invoke('get_locks')
-            ]);
-
-            // MySQL-specific data
-            let innodb = null;
-            let slow = [];
-            if (!isPostgres) {
-                try {
-                    innodb = await invoke('get_innodb_status');
-                } catch (e) {
-                    console.warn('InnoDB status not available:', e);
-                }
-            }
-            
-            // Slow queries - works for both MySQL and PostgreSQL
+        await LoadingManager.wrap('server-monitor', null, async () => {
             try {
-                slow = await invoke('get_slow_queries', { limit: 50 });
-            } catch (e) {
-                console.warn('Slow queries not available:', e);
+                const activeDbType = localStorage.getItem('activeDbType') || 'mysql';
+                const isPostgres = activeDbType === 'postgresql';
+                
+                // Load data - some commands are MySQL specific
+                const [status, processes, replication, lockData] = await Promise.all([
+                    invoke('get_server_status'),
+                    invoke('get_process_list'),
+                    invoke('get_replication_status'),
+                    invoke('get_locks')
+                ]);
+
+                // MySQL-specific data
+                let innodb = null;
+                let slow = [];
+                if (!isPostgres) {
+                    try {
+                        innodb = await invoke('get_innodb_status');
+                    } catch (e) {
+                        console.warn('InnoDB status not available:', e);
+                    }
+                }
+                
+                // Slow queries - works for both MySQL and PostgreSQL
+                try {
+                    slow = await invoke('get_slow_queries', { limit: 50 });
+                } catch (e) {
+                    console.warn('Slow queries not available:', e);
+                }
+
+                prevStatus = serverStatus;
+                prevTimestamp = Date.now();
+
+                serverStatus = status;
+                processList = processes;
+                innodbStatus = innodb;
+                replicationStatus = replication;
+                slowQueries = slow;
+                locks = lockData;
+                isLoading = false;
+                render();
+            } catch (error) {
+                console.error('Failed to load monitoring data:', error);
+                isLoading = false;
+                render();
             }
-
-            prevStatus = serverStatus;
-            prevTimestamp = Date.now();
-
-            serverStatus = status;
-            processList = processes;
-            innodbStatus = innodb;
-            replicationStatus = replication;
-            slowQueries = slow;
-            locks = lockData;
-            isLoading = false;
-            render();
-        } catch (error) {
-            console.error('Failed to load monitoring data:', error);
-            isLoading = false;
-            render();
-        }
+        });
     };
 
     const killProcess = async (id) => {
