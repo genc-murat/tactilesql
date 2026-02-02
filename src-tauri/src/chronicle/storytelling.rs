@@ -85,11 +85,7 @@ pub fn generate_story(
                 changes_desc.push(format!("{} {} rows", direction, change.abs()));
                 detailed_changes.push(format!("Rows: {:+} ({})", change, direction));
                 
-                // Spike Detection (if we had old count)
-                // For now, let's assume if it's > 50% change and > 100 rows, it's a "Regression/Spike"
-                // We'd need to calculate the percentage.
-                // Since we don't have the full TableDefinition here, let's just use the absolute for now
-                // or improve the logic if we find a way to pass the old count more easily.
+                // Spike Detection (absolute threshold heuristic)
                 if change < -1000 {
                      detailed_changes.push("⚠️ SIGNIFICANT DATA LOSS DETECTED".to_string());
                 }

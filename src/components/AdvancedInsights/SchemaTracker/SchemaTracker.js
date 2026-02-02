@@ -114,7 +114,7 @@ export function SchemaTracker() {
                 currentBreakingChanges = await SchemaTrackerApi.detectBreakingChanges(currentDiff);
 
                 // Generate migration script
-                const dbType = activeConnection.dbType || 'mysql'; // pass actual type
+                const dbType = activeConnection?.dbType || 'mysql';
                 currentMigration = await SchemaTrackerApi.generateMigration(currentDiff, dbType);
 
                 // Generate Story (non-blocking if possible, but for simplicity await)
