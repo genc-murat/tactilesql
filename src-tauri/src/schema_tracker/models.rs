@@ -22,6 +22,7 @@ pub struct TableDefinition {
     pub foreign_keys: Vec<ForeignKey>,
     pub primary_keys: Vec<PrimaryKey>,
     pub constraints: Vec<TableConstraint>,
+    pub row_count: Option<u64>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -39,7 +40,7 @@ pub struct TableDiff {
     pub modified_columns: Vec<ColumnDiff>,
     pub new_indexes: Vec<TableIndex>,
     pub dropped_indexes: Vec<TableIndex>,
-    // TODO: FK/PK diffs
+    pub row_count_change: Option<i64>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

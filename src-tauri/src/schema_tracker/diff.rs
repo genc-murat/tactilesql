@@ -38,6 +38,11 @@ pub fn compare_schemas(old: &SchemaSnapshot, new: &SchemaSnapshot) -> SchemaDiff
 }
 
 fn compare_tables(old: &TableDefinition, new: &TableDefinition) -> Option<TableDiff> {
+    let row_count_change = match (old.row_count, new.row_count) {
+        (Some(old_count), Some(new_count)) => Some(new_count as i64 - old_count as i64),
+        _ => None,
+    };
+
     let mut table_diff = TableDiff {
         table_name: old.name.clone(),
         new_columns: vec![],
@@ -45,6 +50,7 @@ fn compare_tables(old: &TableDefinition, new: &TableDefinition) -> Option<TableD
         modified_columns: vec![],
         new_indexes: vec![],
         dropped_indexes: vec![],
+        row_count_change,
     };
 
     let old_cols: HashMap<String, &ColumnSchema> = old.columns.iter().map(|c| (c.name.clone(), c)).collect();
@@ -97,7 +103,8 @@ fn compare_tables(old: &TableDefinition, new: &TableDefinition) -> Option<TableD
         && table_diff.dropped_columns.is_empty() 
         && table_diff.modified_columns.is_empty() 
         && table_diff.new_indexes.is_empty()
-        && table_diff.dropped_indexes.is_empty() {
+        && table_diff.dropped_indexes.is_empty()
+        && (table_diff.row_count_change.is_none() || table_diff.row_count_change == Some(0)) {
         return None;
     }
 

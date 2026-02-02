@@ -100,3 +100,46 @@ pub async fn get_schema_snapshots(
         Err("Schema Tracker Store not initialized".to_string())
     }
 }
+
+#[command]
+pub async fn generate_story_command(
+    app_state: State<'_, AppState>,
+    snapshot1: SchemaSnapshot,
+    snapshot2: SchemaSnapshot
+) -> Result<crate::chronicle::storytelling::Story, String> {
+    // 1. Calculate Diff
+    let diff = crate::schema_tracker::diff::compare_schemas(&snapshot1, &snapshot2);
+    
+    // 2. Timestamps (already DateTime<Utc>)
+    let t1 = snapshot1.timestamp;
+    let t2 = snapshot2.timestamp;
+        
+    // Ensure chronological order
+    let (start, end) = if t1 < t2 { (t1, t2) } else { (t2, t1) };
+
+    // 3. Fetch Awareness Data
+    let queries = {
+        let guard = app_state.awareness_store.lock().await;
+        if let Some(store) = guard.as_ref() {
+            Some(store.get_query_history_range(Some(start), Some(end), 1000).await?)
+        } else {
+            None
+        }
+    };
+
+    let anomalies = {
+        let guard = app_state.awareness_store.lock().await;
+        if let Some(store) = guard.as_ref() {
+            Some(store.get_anomalies_range(Some(start), Some(end), 100).await?)
+        } else {
+            None
+        }
+    };
+
+    // 4. Generate Story
+    Ok(crate::chronicle::storytelling::generate_story(
+        &diff, 
+        queries.as_deref(), 
+        anomalies.as_deref()
+    ))
+}

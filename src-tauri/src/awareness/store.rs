@@ -286,34 +286,40 @@ impl AwarenessStore {
     }
 
     pub async fn get_anomalies(&self, limit: i64) -> Result<Vec<crate::awareness::anomaly::Anomaly>, String> {
-        // We need to reconstruct Anomaly struct from database columns
-        // Note: anomaly_log table has slightly different structure than Anomaly struct
-        // Anomaly struct: query_hash, detected_at, severity, duration_ms, baseline_duration_ms, deviation_pct
-        // anomaly_log table: id, query_hash, detected_at, severity, cause, description, deviation_details, status
+        self.get_anomalies_range(None, None, limit).await
+    }
+
+    pub async fn get_anomalies_range(
+        &self, 
+        start: Option<chrono::DateTime<chrono::Utc>>, 
+        end: Option<chrono::DateTime<chrono::Utc>>, 
+        limit: i64
+    ) -> Result<Vec<crate::awareness::anomaly::Anomaly>, String> {
+        let mut query = "SELECT al.query_hash, al.detected_at, al.severity, al.deviation_details, bp.query_pattern FROM anomaly_log al LEFT JOIN baseline_profiles bp ON al.query_hash = bp.query_hash".to_string();
+        let mut conditions = Vec::new();
+        if start.is_some() { conditions.push("al.detected_at >= ?"); }
+        if end.is_some() { conditions.push("al.detected_at <= ?"); }
         
-        let rows = sqlx::query(
-            r#"
-            SELECT 
-                al.query_hash, al.detected_at, al.severity, al.deviation_details,
-                bp.query_pattern
-            FROM anomaly_log al
-            LEFT JOIN baseline_profiles bp ON al.query_hash = bp.query_hash
-            ORDER BY al.detected_at DESC
-            LIMIT ?
-            "#
-        )
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| format!("Failed to fetch anomalies: {}", e))?;
+        if !conditions.is_empty() {
+            query.push_str(" WHERE ");
+            query.push_str(&conditions.join(" AND "));
+        }
+        query.push_str(" ORDER BY al.detected_at DESC LIMIT ?");
+
+        let mut sql = sqlx::query(&query);
+        if let Some(s) = start { sql = sql.bind(s); }
+        if let Some(e) = end { sql = sql.bind(e); }
+        sql = sql.bind(limit);
+
+        let rows = sql.fetch_all(&self.pool)
+            .await
+            .map_err(|e| format!("Failed to fetch anomalies range: {}", e))?;
 
         let mut anomalies = Vec::new();
         for row in rows {
             let details_str: String = row.try_get("deviation_details").unwrap_or_default();
             let details: serde_json::Value = serde_json::from_str(&details_str).unwrap_or(serde_json::json!({
-                "duration": 0.0,
-                "baseline": 0.0,
-                "deviation_pct": 0.0
+                "duration": 0.0, "baseline": 0.0, "deviation_pct": 0.0
             }));
 
             let severity_int: i32 = row.try_get("severity").unwrap_or(1);
@@ -333,24 +339,38 @@ impl AwarenessStore {
                 deviation_pct: details["deviation_pct"].as_f64().unwrap_or(0.0),
             });
         }
-        
         Ok(anomalies)
     }
 
     pub async fn get_query_history(&self, limit: i64) -> Result<Vec<crate::awareness::profiler::QueryExecution>, String> {
-        let rows = sqlx::query(
-            r#"
-            SELECT 
-                query_hash, exact_query, duration_ms, timestamp, rows_affected
-            FROM execution_history
-            ORDER BY timestamp DESC
-            LIMIT ?
-            "#,
-        )
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| format!("Failed to fetch history: {}", e))?;
+        self.get_query_history_range(None, None, limit).await
+    }
+
+    pub async fn get_query_history_range(
+        &self, 
+        start: Option<chrono::DateTime<chrono::Utc>>, 
+        end: Option<chrono::DateTime<chrono::Utc>>, 
+        limit: i64
+    ) -> Result<Vec<crate::awareness::profiler::QueryExecution>, String> {
+        let mut query = "SELECT query_hash, exact_query, duration_ms, timestamp, rows_affected FROM execution_history".to_string();
+        let mut conditions = Vec::new();
+        if start.is_some() { conditions.push("timestamp >= ?"); }
+        if end.is_some() { conditions.push("timestamp <= ?"); }
+        
+        if !conditions.is_empty() {
+            query.push_str(" WHERE ");
+            query.push_str(&conditions.join(" AND "));
+        }
+        query.push_str(" ORDER BY timestamp DESC LIMIT ?");
+
+        let mut sql = sqlx::query(&query);
+        if let Some(s) = start { sql = sql.bind(s); }
+        if let Some(e) = end { sql = sql.bind(e); }
+        sql = sql.bind(limit);
+
+        let rows = sql.fetch_all(&self.pool)
+            .await
+            .map_err(|e| format!("Failed to fetch history range: {}", e))?;
 
         let mut executions = Vec::new();
         for row in rows {
@@ -364,7 +384,6 @@ impl AwarenessStore {
                 }
             });
         }
-
         Ok(executions)
     }
 }

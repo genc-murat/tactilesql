@@ -13,7 +13,7 @@ pub async fn capture_snapshot_mysql(
     
     // 1. Fetch all TABLES
     let tables_query = format!(
-        "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = '{}' AND TABLE_TYPE = 'BASE TABLE'",
+        "SELECT TABLE_NAME, TABLE_ROWS FROM information_schema.TABLES WHERE TABLE_SCHEMA = '{}' AND TABLE_TYPE = 'BASE TABLE'",
         database
     );
     let table_rows = sqlx::query(&tables_query)
@@ -21,8 +21,15 @@ pub async fn capture_snapshot_mysql(
         .await
         .map_err(|e| format!("Failed to fetch tables: {}", e))?;
     
+    // Store row counts in a map
+    let mut table_stats: HashMap<String, Option<u64>> = HashMap::new();
     let table_names: Vec<String> = table_rows.iter()
-        .map(|r| r.try_get("TABLE_NAME").unwrap_or_default())
+        .map(|r| {
+            let name: String = r.try_get("TABLE_NAME").unwrap_or_default();
+            let rows: Option<i64> = r.try_get("TABLE_ROWS").ok();
+            table_stats.insert(name.clone(), rows.map(|r| r as u64));
+            name
+        })
         .collect();
 
     // 2. Fetch all COLUMNS
@@ -118,6 +125,7 @@ pub async fn capture_snapshot_mysql(
             foreign_keys: vec![], // TODO: Implement bulk FK fetch
             primary_keys: vec![], // TODO: Implement bulk PK fetch
             constraints: vec![],  // TODO: Implement bulk constraints fetch
+            row_count: table_stats.get(t_name).cloned().flatten(),
         }
     }).collect();
     
@@ -146,18 +154,32 @@ pub async fn capture_snapshot_postgres(
     connection_id: &str
 ) -> Result<SchemaSnapshot, String> {
     
-    // 1. Fetch all TABLES
-    let tables_query = format!(
-        "SELECT tablename FROM pg_tables WHERE schemaname = '{}' ORDER BY tablename",
-        schema
-    );
+    // 1. Fetch all TABLES with row counts
+    let tables_query = format!(r#"
+        SELECT 
+            t.tablename, 
+            c.reltuples::bigint as estimated_rows
+        FROM pg_tables t
+        JOIN pg_class c ON c.relname = t.tablename
+        JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = t.schemaname
+        WHERE t.schemaname = '{}' 
+        ORDER BY t.tablename
+    "#, schema);
+
     let table_rows = sqlx::query(&tables_query)
         .fetch_all(pool)
         .await
         .map_err(|e| format!("Failed to fetch tables: {}", e))?;
     
+    // Store row counts
+    let mut table_stats: HashMap<String, Option<u64>> = HashMap::new();
     let table_names: Vec<String> = table_rows.iter()
-        .map(|r| r.try_get("tablename").unwrap_or_default())
+        .map(|r| {
+            let name: String = r.try_get("tablename").unwrap_or_default();
+            let rows: Option<i64> = r.try_get("estimated_rows").ok();
+            table_stats.insert(name.clone(), rows.map(|r| if r < 0 { 0 } else { r as u64 }));
+            name
+        })
         .collect();
 
     // 2. Fetch all COLUMNS
@@ -295,6 +317,7 @@ pub async fn capture_snapshot_postgres(
             foreign_keys: vec![], // TODO
             primary_keys: vec![], // TODO: technically captured in columns now, but struct field is separate
             constraints: vec![],
+            row_count: table_stats.get(t_name).cloned().flatten(),
         }
     }).collect();
     

@@ -57,5 +57,15 @@ export const SchemaTrackerApi = {
      */
     async getSnapshots(connectionId) {
         return await invoke('get_schema_snapshots', { connectionId });
+    },
+
+    /**
+     * Generates a story from a schema diff.
+     * @param {SchemaSnapshot} snapshot1
+     * @param {SchemaSnapshot} snapshot2
+     * @returns {Promise<Story>}
+     */
+    async generateStory(snapshot1, snapshot2) {
+        return await invoke('generate_story_command', { snapshot1, snapshot2 });
     }
 };

@@ -1,5 +1,6 @@
 import { SchemaTimeline } from './SchemaTimeline.js';
 import { SchemaDiffViewer } from './SchemaDiff.js';
+import { StoryPanel } from './StoryPanel.js';
 import { SchemaTrackerApi } from '../../../api/schemaTracker.js';
 import { ThemeManager } from '../../../utils/ThemeManager.js';
 import { Dialog } from '../../UI/Dialog.js'; // Assuming basic dialog exists
@@ -46,6 +47,9 @@ export function SchemaTracker() {
     let currentDiff = null;
     let currentMigration = null;
     let currentBreakingChanges = null;
+    let currentStory = null;
+    let isStoryLoading = false;
+    let activeTab = 'diff'; // 'diff' | 'story'
     let activeConnection = null;
     let qualityScores = {}; // Map snapshotId -> average score
 
@@ -113,9 +117,22 @@ export function SchemaTracker() {
                 const dbType = activeConnection.dbType || 'mysql'; // pass actual type
                 currentMigration = await SchemaTrackerApi.generateMigration(currentDiff, dbType);
 
+                // Generate Story (non-blocking if possible, but for simplicity await)
+                isStoryLoading = true;
+                render(); // Show loading state
+                try {
+                    currentStory = await SchemaTrackerApi.generateStory(prevSnap, snap);
+                } catch (err) {
+                    console.error("Story generation failed", err);
+                    currentStory = null;
+                }
+                isStoryLoading = false;
+
             } catch (e) {
                 console.error("Comparison failed", e);
                 currentDiff = null;
+                currentStory = null;
+                isStoryLoading = false;
             }
         } else {
             // First snapshot, no diff (or diff against empty?)
@@ -145,13 +162,53 @@ export function SchemaTracker() {
         });
         content.appendChild(timeline);
 
-        // 2. Diff Viewer
-        const diffViewer = SchemaDiffViewer({
-            diff: currentDiff,
-            migrationScript: currentMigration,
-            breakingChanges: currentBreakingChanges
-        });
-        content.appendChild(diffViewer);
+        // 2. Main Content (with Tabs)
+        const mainPanel = document.createElement('div');
+        mainPanel.className = 'flex-1 flex flex-col min-w-0';
+
+        // Tab Bar
+        if (currentDiff) {
+            const tabs = document.createElement('div');
+            tabs.className = `flex items-center px-4 border-b ${isLight ? 'border-gray-200 bg-gray-50' : 'border-white/5 bg-[#0f1115]'}`;
+            tabs.innerHTML = `
+                <button data-tab="diff" class="px-4 py-3 text-xs font-bold border-b-2 transition-colors ${activeTab === 'diff' ? 'border-blue-500 text-blue-500' : 'border-transparent opacity-60 hover:opacity-100'}">
+                    CHANGES & MIGRATION
+                </button>
+                <button data-tab="story" class="flex items-center gap-2 px-4 py-3 text-xs font-bold border-b-2 transition-colors ${activeTab === 'story' ? 'border-purple-500 text-purple-500' : 'border-transparent opacity-60 hover:opacity-100'}">
+                    <span class="material-symbols-outlined text-[14px]">auto_stories</span>
+                    CHRONICLE STORY
+                </button>
+            `;
+            tabs.querySelectorAll('button').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    activeTab = btn.dataset.tab;
+                    render();
+                });
+            });
+            mainPanel.appendChild(tabs);
+        }
+
+        // View Content
+        const viewContainer = document.createElement('div');
+        viewContainer.className = 'flex-1 overflow-hidden relative';
+
+        if (activeTab === 'story') {
+            const storyPanel = StoryPanel({
+                story: currentStory,
+                isLoading: isStoryLoading
+            });
+            viewContainer.appendChild(storyPanel);
+        } else {
+            const diffViewer = SchemaDiffViewer({
+                diff: currentDiff,
+                migrationScript: currentMigration,
+                breakingChanges: currentBreakingChanges
+            });
+            viewContainer.appendChild(diffViewer);
+        }
+
+        mainPanel.appendChild(viewContainer);
+        content.appendChild(mainPanel);
 
         // Update connection status
         const statusEl = header.querySelector('#connection-status');

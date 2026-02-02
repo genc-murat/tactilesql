@@ -30,6 +30,7 @@ mod db;
 mod common;
 pub mod awareness;
 pub mod schema_tracker;
+pub mod chronicle;
 pub mod quality_analyzer;
 pub mod dependency_engine;
 pub mod integration;
@@ -198,10 +199,9 @@ pub fn run() {
             schema_tracker::commands::compare_schema_snapshots,
             schema_tracker::commands::detect_breaking_changes,
             schema_tracker::commands::generate_migration,
-            schema_tracker::commands::generate_migration,
-            schema_tracker::commands::add_snapshot_tag,
             schema_tracker::commands::add_snapshot_tag,
             schema_tracker::commands::get_schema_snapshots,
+            schema_tracker::commands::generate_story_command,
             quality_analyzer::commands::run_quality_analysis,
             quality_analyzer::commands::get_quality_reports,
             // Dependency Engine
