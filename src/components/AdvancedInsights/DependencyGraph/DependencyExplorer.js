@@ -69,10 +69,15 @@ export function DependencyExplorer() {
     };
 
     const selectConnection = async (connId, tableName = null, database = null) => {
+        const isNewConnection = state.selectedConnectionId !== connId;
         state.selectedConnectionId = connId;
         state.focusedTable = tableName;
         state.graphData = null;
         state.error = null;
+
+        if (isNewConnection) {
+            state.availableDatabases = [];
+        }
 
         const conn = state.connections.find(c => c.id === connId);
         if (!conn) { render(); return; }
