@@ -127,8 +127,14 @@ function handleKeydown(e) {
         'find', 'findReplace', 'findNext', 'findPrev', 'saveSnippet'];
 
     // Check if we should handle this shortcut
-    if (isEditing && !globalShortcuts.includes(shortcut.action) && !editorShortcuts.includes(shortcut.action)) {
-        return;
+    if (isEditing) {
+        // If editing, only allow editor-specific shortcuts or non-blocking global ones.
+        // Crticially, skip 'closeModal' (Escape) to let native inputs handle it (e.g., datepickers).
+        if (shortcut.action === 'closeModal') return;
+
+        if (!globalShortcuts.includes(shortcut.action) && !editorShortcuts.includes(shortcut.action)) {
+            return;
+        }
     }
 
     // ALWAYS prevent default for registered shortcuts to avoid browser conflicts

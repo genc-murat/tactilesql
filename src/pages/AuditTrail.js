@@ -17,7 +17,7 @@ const escapeHtml = (str) => {
 export function AuditTrail() {
     let theme = ThemeManager.getCurrentTheme();
     const container = document.createElement('div');
-    
+
     const getContainerClass = (t) => {
         const isLight = t === 'light';
         const isDawn = t === 'dawn';
@@ -50,7 +50,7 @@ export function AuditTrail() {
     const loadData = () => {
         isLoading = true;
         render();
-        
+
         setTimeout(() => {
             const result = auditTrail.getEntries(filters);
             entries = result.entries;
@@ -224,7 +224,7 @@ export function AuditTrail() {
     const handleExport = async (format) => {
         try {
             let content, filename, mimeType;
-            
+
             if (format === 'csv') {
                 content = auditTrail.exportToCSV(filters);
                 filename = `audit_trail_${new Date().toISOString().slice(0, 10)}.csv`;
@@ -740,6 +740,26 @@ export function AuditTrail() {
             filters.endDate = container.querySelector('#filter-end')?.value || '';
             filters.offset = 0;
             loadData();
+        });
+
+        // Date input change listeners for immediate update
+        const startDateInput = container.querySelector('#filter-start');
+        const endDateInput = container.querySelector('#filter-end');
+
+        [startDateInput, endDateInput].forEach(input => {
+            if (!input) return;
+
+            // Update filter value immediately on change
+            input.addEventListener('change', (e) => {
+                const key = e.target.id === 'filter-start' ? 'startDate' : 'endDate';
+                filters[key] = e.target.value;
+                // Force blur to close native datepicker popup on selection
+                e.target.blur();
+            });
+
+            // Prevent event bubbling that might interfere with global handlers
+            input.addEventListener('mousedown', (e) => e.stopPropagation());
+            input.addEventListener('click', (e) => e.stopPropagation());
         });
 
         container.querySelector('#reset-filters')?.addEventListener('click', () => {
