@@ -1015,9 +1015,7 @@ END"></textarea>
         </div>
     `;
 
-        // Attach logic similar to previous implementation...
-        // For brevity, skipping repeated event attachment boilerplate logic as it is identical.
-        // Re-implementing simplified manual attachment:
+        // Simplified manual attachment:
         const attachListener = (id, prop, isCheckbox = false, isInverse = false) => {
             const el = sidebar.querySelector(`#${id}`);
             if (!el) return;
