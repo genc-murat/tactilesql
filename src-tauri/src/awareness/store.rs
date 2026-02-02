@@ -75,6 +75,35 @@ impl AwarenessStore {
         .await
         .map_err(|e| e.to_string())?;
 
+        // Awareness Config Table
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS awareness_config (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at DATETIME NOT NULL
+            );
+            "#
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        let default_config = serde_json::to_string(&crate::awareness::anomaly::AnomalyConfig::default())
+            .map_err(|e| e.to_string())?;
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO awareness_config (key, value, updated_at)
+            VALUES (?, ?, ?)
+            "#
+        )
+        .bind("anomaly_config")
+        .bind(default_config)
+        .bind(chrono::Utc::now())
+        .execute(&self.pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
         Ok(())
     }
 
@@ -111,7 +140,7 @@ impl AwarenessStore {
         // 4. Detect Anomaly (using the PRE-UPDATE baseline)
         let mut detected_anomaly = None;
         if let Some(ref baseline) = current_baseline {
-            let config = crate::awareness::anomaly::AnomalyConfig::default(); // TODO: Load from stored config
+            let config = self.get_anomaly_config().await?;
             if let Some(anomaly) = crate::awareness::anomaly::AnomalyDetector::detect(execution, baseline, &config) {
                  if let Err(e) = self.log_anomaly(&anomaly).await {
                      log::error!("Failed to log anomaly: {}", e);
@@ -122,6 +151,33 @@ impl AwarenessStore {
         }
 
         Ok(detected_anomaly)
+    }
+
+    async fn get_anomaly_config(&self) -> Result<crate::awareness::anomaly::AnomalyConfig, String> {
+        let row = sqlx::query(
+            r#"
+            SELECT value
+            FROM awareness_config
+            WHERE key = ?
+            "#
+        )
+        .bind("anomaly_config")
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| format!("Failed to fetch anomaly config: {}", e))?;
+
+        if let Some(row) = row {
+            let value: String = row.try_get("value").unwrap_or_default();
+            match serde_json::from_str::<crate::awareness::anomaly::AnomalyConfig>(&value) {
+                Ok(config) => Ok(config),
+                Err(e) => {
+                    log::warn!("Invalid anomaly config JSON, using default: {}", e);
+                    Ok(crate::awareness::anomaly::AnomalyConfig::default())
+                }
+            }
+        } else {
+            Ok(crate::awareness::anomaly::AnomalyConfig::default())
+        }
     }
 
     pub async fn log_anomaly(&self, anomaly: &crate::awareness::anomaly::Anomaly) -> Result<(), String> {
