@@ -32,6 +32,25 @@ impl QualityAnalyzerStore {
         .await
         .map_err(|e| format!("Failed to init quality_analyzer schema: {}", e))?;
 
+        // Migration: Add schema_snapshot_id if it doesn't exist
+        // (SQLite CREATE TABLE IF NOT EXISTS doesn't add missing columns to existing tables)
+        let columns = sqlx::query("PRAGMA table_info(quality_reports)")
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let has_column = columns.iter().any(|row| {
+            let name: String = row.try_get("name").unwrap_or_default();
+            name == "schema_snapshot_id"
+        });
+
+        if !has_column {
+            sqlx::query("ALTER TABLE quality_reports ADD COLUMN schema_snapshot_id INTEGER")
+                .execute(&self.pool)
+                .await
+                .map_err(|e| format!("Failed to migrate quality_reports table: {}", e))?;
+        }
+
         Ok(())
     }
 
