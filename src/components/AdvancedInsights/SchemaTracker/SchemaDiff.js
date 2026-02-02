@@ -2,7 +2,7 @@ import { ThemeManager } from '../../../utils/ThemeManager.js';
 import { highlightSQL } from '../../../utils/SqlHighlighter.js';
 import { invoke } from '@tauri-apps/api/core';
 
-export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGenerateMigration }) {
+export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGenerateMigration, connectionId }) {
     const isLight = ThemeManager.getCurrentTheme() === 'light';
     const container = document.createElement('div');
     container.className = `flex-1 h-full flex flex-col overflow-hidden`;
@@ -186,9 +186,9 @@ export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGen
         loadingImpact = true;
         renderHeader();
 
-        // We need connection ID. It's not passed here directly but we can get from local storage or parent should pass it.
-        // For now, let's grab from localStorage as fallback
-        const activeConn = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+        const activeConn = connectionId
+            ? { id: connectionId }
+            : JSON.parse(localStorage.getItem('activeConnection') || '{}');
 
         if (activeConn.id) {
             invoke('check_impact', { connectionId: activeConn.id, diff })
@@ -202,6 +202,9 @@ export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGen
                     loadingImpact = false;
                     renderHeader();
                 });
+        } else {
+            loadingImpact = false;
+            renderHeader();
         }
     }
 
@@ -238,4 +241,3 @@ export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGen
 
     return container;
 }
-

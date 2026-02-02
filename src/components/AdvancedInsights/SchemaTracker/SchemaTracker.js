@@ -202,7 +202,8 @@ export function SchemaTracker() {
             const diffViewer = SchemaDiffViewer({
                 diff: currentDiff,
                 migrationScript: currentMigration,
-                breakingChanges: currentBreakingChanges
+                breakingChanges: currentBreakingChanges,
+                connectionId: activeConnection?.id
             });
             viewContainer.appendChild(diffViewer);
         }
