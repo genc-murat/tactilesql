@@ -206,6 +206,7 @@ pub async fn get_schemas(pool: &Pool<Postgres>) -> Result<Vec<String>, String> {
 
     let schemas: Vec<String> = rows.iter()
         .map(|row| row.try_get::<String, _>("schema_name").unwrap_or_default())
+        .filter(|s| !["information_schema", "pg_catalog", "pg_toast", "pg_temp_1", "pg_toast_temp_1"].contains(&s.as_str()))
         .collect();
 
     Ok(schemas)

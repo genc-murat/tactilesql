@@ -181,6 +181,7 @@ pub async fn get_databases(pool: &Pool<MySql>) -> Result<Vec<String>, String> {
                     String::from_utf8_lossy(&bytes).to_string()
                 })
         })
+        .filter(|db| !["information_schema", "mysql", "performance_schema", "sys"].contains(&db.as_str()))
         .collect();
 
     Ok(databases)

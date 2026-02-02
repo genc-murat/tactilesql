@@ -70,6 +70,17 @@ export function GraphViewer(graphData, theme, qualityMap) {
         });
     }
 
+    // Add local loading indicator for layouting
+    const loadingOverlay = document.createElement('div');
+    loadingOverlay.className = 'absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/5 backdrop-blur-[2px] rounded-xl transition-all duration-300 pointer-events-none';
+    loadingOverlay.innerHTML = `
+        <div class="flex flex-col items-center gap-2">
+            <span class="material-symbols-outlined text-2xl animate-spin ${colors.text.includes('white') ? 'text-white/50' : 'text-gray-400'}">sync</span>
+            <span class="text-[10px] font-bold uppercase tracking-widest opacity-40 ${colors.text.includes('white') ? 'text-white' : 'text-gray-900'}">Layouting Network</span>
+        </div>
+    `;
+    container.appendChild(loadingOverlay);
+
     let cy = null;
 
     // Initialize Cytoscape
@@ -161,15 +172,28 @@ export function GraphViewer(graphData, theme, qualityMap) {
                     }
                 }
             ],
-            layout: {
-                name: 'dagre',
-                rankDir: 'LR',
-                nodeSep: 60,
-                rankSep: 120
-            },
+            // Start without layout to show something immediately
+            layout: { name: 'null' },
             minZoom: 0.1,
             maxZoom: 3
         });
+
+        // Run Dagre layout asynchronously with a small delay to allow UI to breathe
+        setTimeout(() => {
+            const layout = cy.layout({
+                name: 'dagre',
+                rankDir: 'LR',
+                nodeSep: 60,
+                rankSep: 120,
+                animate: elements.length < 100, // Only animate small graphs
+                animationDuration: 500,
+                stop: () => {
+                    loadingOverlay.style.opacity = '0';
+                    setTimeout(() => loadingOverlay.remove(), 300);
+                }
+            });
+            layout.run();
+        }, 50);
 
         // Cycle detection display
         if (graphData.cycles && graphData.cycles.length > 0) {

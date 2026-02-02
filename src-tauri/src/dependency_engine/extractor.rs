@@ -44,6 +44,7 @@ pub async fn build_dependency_graph_mysql(
     println!("DEBUG: [MySQL Extractor] Processing {} tables", tables_rows.len());
 
     for r in tables_rows {
+        tokio::task::yield_now().await;
         let schema = get_mysql_string(&r, 0);
         let name = get_mysql_string(&r, 1);
         graph.add_node(Some(schema), name, NodeType::Table);
@@ -63,6 +64,7 @@ pub async fn build_dependency_graph_mysql(
 
     println!("DEBUG: [MySQL Extractor] Extracting dependencies from {} views", views_rows.len());
     for r in views_rows {
+        tokio::task::yield_now().await;
         let schema = get_mysql_string(&r, 0);
         let name = get_mysql_string(&r, 1);
         let def = get_mysql_string(&r, 2);
@@ -107,6 +109,7 @@ pub async fn build_dependency_graph_mysql(
 
     println!("DEBUG: [MySQL Extractor] Found {} foreign keys", fks_rows.len());
     for r in fks_rows {
+        tokio::task::yield_now().await;
         let schema = get_mysql_string(&r, 0);
         let table = get_mysql_string(&r, 1);
         let f_schema = get_mysql_string(&r, 2);
@@ -150,6 +153,7 @@ pub async fn build_dependency_graph_postgres(
         .collect();
 
     for (schema, name) in tables {
+        tokio::task::yield_now().await;
         graph.add_node(Some(schema), name, NodeType::Table);
     }
 
@@ -168,6 +172,7 @@ pub async fn build_dependency_graph_postgres(
         .collect();
 
     for (schema, name, def) in views {
+        tokio::task::yield_now().await;
         let view_id = graph.add_node(Some(schema.clone()), name.clone(), NodeType::View);
         let deps = extract_dependencies(&def, DbDialect::PostgreSQL);
         for (dep_table, edge_type) in deps.dependencies {
@@ -203,6 +208,7 @@ pub async fn build_dependency_graph_postgres(
         .collect();
             
     for (schema, table, f_schema, f_table) in fks {
+        tokio::task::yield_now().await;
         let source_id = format!("{}.{}", schema, table);
         let target_id = format!("{}.{}", f_schema, f_table);
         graph.add_edge(&source_id, &target_id, EdgeType::ForeignKey);
