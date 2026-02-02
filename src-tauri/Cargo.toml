@@ -44,3 +44,7 @@ similar = "2.7.0"
 regex = "1"
 sha2 = "0.10.9"
 
+# Dependency Engine
+sqlparser = "0.48"
+petgraph = { version = "0.6", features = ["serde-1"] }
+

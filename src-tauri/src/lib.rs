@@ -197,7 +197,9 @@ pub fn run() {
             schema_tracker::commands::add_snapshot_tag,
             schema_tracker::commands::get_schema_snapshots,
             quality_analyzer::commands::run_quality_analysis,
-            quality_analyzer::commands::get_quality_reports
+            quality_analyzer::commands::get_quality_reports,
+            // Dependency Engine
+            dependency_engine::commands::get_dependency_graph
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,0 +1,19 @@
+/* DependencyGraph.css */
+
+.dependency-explorer {
+    /* Custom styles if needed beyond Tailwind */
+    position: relative;
+}
+
+/* Ensure Cytoscape container takes full size */
+.graph-viewer-container {
+    background-image: radial-gradient(var(--dot-color, rgba(0, 0, 0, 0.05)) 1px, transparent 1px);
+    background-size: 20px 20px;
+}
+
+:host-context(.dark) .graph-viewer-container {
+    --dot-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Fix for Material Symbols if not loading in SVG/Canvas (Cytoscape renders on canvas usually) */
+/* We are not rendering icons inside canvas nodes yet, just shapes. */
