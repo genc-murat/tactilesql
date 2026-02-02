@@ -53,11 +53,17 @@ export const formatSQL = (sql) => {
 /**
  * Highlights SQL code by wrapping tokens in span tags with classes
  * @param {string} code - The SQL code to highlight
- * @param {Array} errors - Optional array of error objects {line, severity}
+ * @param {Array|Object} options - Optional array of errors or options object {errors, theme}
  * @returns {string} HTML string with syntax highlighting
  */
-export const highlightSQL = (code, errors = []) => {
+export const highlightSQL = (code, options = []) => {
     if (!code) return '';
+
+    // Handle legacy signature (code, errors) and new signature (code, theme)
+    let errors = Array.isArray(options) ? options : [];
+    let theme = typeof options === 'string' ? options : (options.theme || 'dark');
+
+    if (options.errors) errors = options.errors;
 
     // Get current keywords and quote character based on active database
     const currentKeywords = getSqlKeywords();
@@ -111,7 +117,7 @@ export const highlightSQL = (code, errors = []) => {
         .sort((a, b) => b.length - a.length)
         .map(k => escapeRegex(k).replace(/\s+/g, '\\s+'))
         .join('|');
-    
+
     if (keywordPattern) {
         const keywordRegex = new RegExp(`\\b(${keywordPattern})\\b`, 'gi');
         html = html.replace(keywordRegex, '<span class="sql-keyword">$1</span>');

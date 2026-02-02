@@ -11,11 +11,22 @@ export function AnomalyDashboard() {
     container.className = `anomaly-dashboard hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-8`;
 
     const modal = document.createElement('div');
-    modal.className = `w-full max-w-5xl h-[80vh] flex flex-col rounded-xl shadow-2xl overflow-hidden transition-colors duration-300 ${isLight
-        ? 'bg-white text-gray-800'
-        : (isDawn
-            ? 'bg-[#faf4ed] text-[#575279]'
-            : 'bg-[#1e1e2e] text-gray-200 border border-white/10')}`;
+    const getModalClass = (t) => {
+        const isL = t === 'light';
+        const isD = t === 'dawn';
+        const isO = t === 'oceanic';
+        const isE = t === 'ember';
+        const isA = t === 'aurora';
+        return `w-full max-w-5xl h-[80vh] flex flex-col rounded-xl shadow-2xl overflow-hidden transition-colors duration-300 ${isL
+            ? 'bg-white text-gray-800'
+            : (isD
+                ? 'bg-[#faf4ed] text-[#575279]'
+                : (isO ? 'bg-[#3B4252] text-white border border-[#4C566A]'
+                    : (isE ? 'bg-[#1d141c] text-white border border-[#2c1c27]'
+                        : (isA ? 'bg-[#0f1a1d] text-white border border-[#1b2e33]'
+                            : 'bg-[#1e1e2e] text-gray-200 border border-white/10'))))}`;
+    };
+    modal.className = getModalClass(theme);
 
     container.appendChild(modal);
 
@@ -60,8 +71,9 @@ export function AnomalyDashboard() {
     };
 
     const renderHeader = () => {
+        const headerBorder = isLight ? 'border-gray-200' : (theme === 'dawn' ? 'border-[#f2e9e1]' : (theme === 'oceanic' ? 'border-[#4C566A]' : (theme === 'ember' ? 'border-[#2c1c27]' : (theme === 'aurora' ? 'border-[#1b2e33]' : 'border-white/10'))));
         return `
-            <div class="flex items-center justify-between px-6 py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/10'}">
+            <div class="flex items-center justify-between px-6 py-4 border-b ${headerBorder}">
                 <div class="flex items-center gap-3">
                     <span class="material-symbols-outlined text-xl opacity-70 text-red-500">warning</span>
                     <h2 class="text-lg font-bold">Anomaly Dashboard</h2>
@@ -103,9 +115,9 @@ export function AnomalyDashboard() {
     };
 
     const renderBody = () => {
-        const listBorder = isLight ? 'border-gray-200' : 'border-white/10';
+        const listBorder = isLight ? 'border-gray-200' : (theme === 'dawn' ? 'border-[#f2e9e1]' : (theme === 'oceanic' ? 'border-[#4C566A]' : (theme === 'ember' ? 'border-[#2c1c27]' : (theme === 'aurora' ? 'border-[#1b2e33]' : 'border-white/10'))));
         const itemHover = isLight ? 'hover:bg-gray-50' : 'hover:bg-white/5';
-        const selectedBg = isLight ? 'bg-blue-50' : 'bg-white/10'; // Highlight selection
+        const selectedBg = isLight ? 'bg-blue-50' : (theme === 'dawn' ? 'bg-[#ea9d34]/10' : 'bg-white/10'); // Highlight selection
 
         const listHtml = anomalies.map(a => `
             <div class="anomaly-item p-3 border-b ${listBorder} cursor-pointer transition-colors ${selectedAnomaly === a ? selectedBg : ''} ${itemHover}" data-hash="${a.query_hash}" data-ts="${a.detected_at}">
@@ -164,21 +176,21 @@ export function AnomalyDashboard() {
                 </h3>
 
                 <div class="grid grid-cols-3 gap-4 mb-6">
-                    <div class="p-4 rounded bg-white/5 border border-white/10 text-center">
+                    <div class="p-4 rounded ${isLight ? 'bg-gray-50 border-gray-200' : (theme === 'dawn' ? 'bg-[#faf4ed] border-[#f2e9e1]' : 'bg-white/5 border-white/10')} border text-center">
                         <div class="text-xs uppercase tracking-wider opacity-60 mb-1">Duration</div>
                         <div class="text-2xl font-mono font-bold text-red-400">${selectedAnomaly.duration_ms.toFixed(2)}ms</div>
                     </div>
-                    <div class="p-4 rounded bg-white/5 border border-white/10 text-center">
+                    <div class="p-4 rounded ${isLight ? 'bg-gray-50 border-gray-200' : (theme === 'dawn' ? 'bg-[#faf4ed] border-[#f2e9e1]' : 'bg-white/5 border-white/10')} border text-center">
                         <div class="text-xs uppercase tracking-wider opacity-60 mb-1">Baseline</div>
                         <div class="text-2xl font-mono font-bold text-green-400">${selectedAnomaly.baseline_duration_ms.toFixed(2)}ms</div>
                     </div>
-                    <div class="p-4 rounded bg-white/5 border border-white/10 text-center">
+                    <div class="p-4 rounded ${isLight ? 'bg-gray-50 border-gray-200' : (theme === 'dawn' ? 'bg-[#faf4ed] border-[#f2e9e1]' : 'bg-white/5 border-white/10')} border text-center">
                         <div class="text-xs uppercase tracking-wider opacity-60 mb-1">Deviation</div>
                         <div class="text-2xl font-mono font-bold text-red-500">+${selectedAnomaly.deviation_pct.toFixed(2)}%</div>
                     </div>
                 </div>
 
-                <div class="mb-6 p-4 rounded bg-yellow-500/10 border border-yellow-500/20">
+                <div class="mb-6 p-4 rounded ${isLight ? 'bg-amber-50 border-amber-200' : (theme === 'dawn' ? 'bg-[#fffdf5] border-[#ea9d34]/30' : 'bg-yellow-500/10 border-yellow-500/20')} border">
                     <h4 class="text-sm font-bold uppercase text-yellow-500 mb-2 flex items-center gap-2">
                         <span class="material-symbols-outlined text-lg">lightbulb</span>
                         Root Cause Analysis
@@ -188,7 +200,7 @@ export function AnomalyDashboard() {
 
                 <div>
                     <h4 class="text-sm font-bold uppercase opacity-70 mb-2">Query</h4>
-                    <div class="p-3 bg-black/20 rounded font-mono text-xs break-all select-all whitespace-pre-wrap">
+                    <div class="p-3 ${isLight ? 'bg-gray-100' : 'bg-black/20'} rounded font-mono text-xs break-all select-all whitespace-pre-wrap">
                         ${selectedAnomaly.query || selectedAnomaly.query_hash}
                     </div>
                     <div class="mt-2 text-[10px] opacity-40 font-mono">Hash: ${selectedAnomaly.query_hash}</div>
@@ -201,8 +213,9 @@ export function AnomalyDashboard() {
             </div>
         `;
 
+        const listColBg = isLight ? 'bg-gray-50' : (theme === 'dawn' ? 'bg-[#faf4ed]' : (theme === 'oceanic' ? 'bg-[#2E3440]' : (theme === 'ember' ? 'bg-[#140c12]' : (theme === 'aurora' ? 'bg-[#0b1214]' : 'bg-black/20'))));
         modal.querySelector('#dashboard-body').innerHTML = `
-            <div class="w-1/3 border-r ${listBorder} overflow-y-auto bg-black/5 dark:bg-black/20">
+            <div class="w-1/3 border-r ${listBorder} overflow-y-auto ${listColBg}">
                 ${listHtml.length > 0 ? listHtml : '<div class="p-4 text-center opacity-50 text-sm">No anomalies detected.</div>'}
             </div>
             <div class="flex-1 overflow-hidden bg-white/0">
@@ -254,11 +267,7 @@ export function AnomalyDashboard() {
         theme = e.detail.theme;
         isLight = theme === 'light';
         isDawn = theme === 'dawn';
-        modal.className = `w-full max-w-5xl h-[80vh] flex flex-col rounded-xl shadow-2xl overflow-hidden transition-colors duration-300 ${isLight
-            ? 'bg-white text-gray-800'
-            : (isDawn
-                ? 'bg-[#faf4ed] text-[#575279]'
-                : 'bg-[#1e1e2e] text-gray-200 border border-white/10')}`;
+        modal.className = getModalClass(theme);
         render();
     });
 

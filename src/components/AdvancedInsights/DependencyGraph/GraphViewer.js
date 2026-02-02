@@ -10,10 +10,14 @@ export function GraphViewer(graphData, theme, qualityMap) {
     // Determine colors based on theme
     const isLight = theme === 'light';
     const isDawn = theme === 'dawn';
+    const isOceanic = theme === 'oceanic';
+    const isEmber = theme === 'ember';
+    const isAurora = theme === 'aurora';
+
     const colors = {
-        nodeBg: isLight ? '#fff' : (isDawn ? '#fffaf3' : '#1f2937'),
-        nodeBorder: isLight ? '#9ca3af' : (isDawn ? '#d7821a' : '#4b5563'),
-        edge: isLight ? '#cbd5e1' : (isDawn ? '#f2e9e1' : '#374151'),
+        nodeBg: isLight ? '#fff' : (isDawn ? '#fffaf3' : (isOceanic ? '#2E3440' : (isEmber ? '#140c12' : (isAurora ? '#0b1214' : '#1f2937')))),
+        nodeBorder: isLight ? '#9ca3af' : (isDawn ? '#d7821a' : (isOceanic ? '#4C566A' : (isEmber ? '#2c1c27' : (isAurora ? '#1b2e33' : '#4b5563')))),
+        edge: isLight ? '#cbd5e1' : (isDawn ? '#f2e9e1' : (isOceanic ? '#4C566A' : (isEmber ? '#2c1c27' : (isAurora ? '#1b2e33' : '#374151')))),
         text: isLight ? '#1f2937' : (isDawn ? '#575279' : '#f3f4f6'),
         highlight: isDawn ? '#ea9d34' : '#0ea5e9',
         selection: isDawn ? '#d7821a' : '#3b82f6',
