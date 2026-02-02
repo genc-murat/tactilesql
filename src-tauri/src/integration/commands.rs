@@ -79,12 +79,12 @@ pub async fn check_impact(
         DatabaseType::MySQL => {
             let pool_guard = app_state.mysql_pool.lock().await;
             let pool = pool_guard.as_ref().ok_or("No active MySQL connection")?;
-            build_dependency_graph_mysql(pool, &connection_id).await?
+            build_dependency_graph_mysql(pool, &connection_id, None).await?
         },
         DatabaseType::PostgreSQL => {
             let pool_guard = app_state.postgres_pool.lock().await;
             let pool = pool_guard.as_ref().ok_or("No active PostgreSQL connection")?;
-            build_dependency_graph_postgres(pool, &connection_id).await?
+            build_dependency_graph_postgres(pool, &connection_id, None).await?
         }
     };
     

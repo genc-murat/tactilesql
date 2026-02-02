@@ -41,12 +41,12 @@ export function ObjectExplorer() {
     // System databases/schemas per DB type
     const mysqlSystemDbs = ['mysql', 'information_schema', 'performance_schema', 'sys'];
     const pgSystemSchemas = ['pg_catalog', 'information_schema', 'pg_toast'];
-    
+
     // Get system databases/schemas based on active DB type
     // For PostgreSQL, we list schemas (so use system schemas)
     // For MySQL, we list databases (so use system databases)
     const getSystemDatabases = () => isPostgreSQL() ? pgSystemSchemas : mysqlSystemDbs;
-    
+
     // Get quote character based on active DB type (use database adapter)
     const getQuote = () => getQuoteChar();
 
@@ -219,7 +219,7 @@ export function ObjectExplorer() {
         const countText = isLight ? 'text-gray-300' : (isDawn ? 'text-[#ea9d34]' : 'text-gray-700');
         const iconColor = isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal';
         const sysIconColor = isDawn ? 'text-[#f6c177]' : 'text-amber-500';
-        
+
         // Labels based on database type
         const userLabel = isPostgreSQL() ? 'User Schemas' : 'User Databases';
         const systemLabel = isPostgreSQL() ? 'System Schemas' : 'System Databases';
@@ -291,10 +291,10 @@ export function ObjectExplorer() {
                     <div class="flex-1 min-w-0">
                         <div class="flex items-center gap-1.5">
                             <span class="text-[11px] font-bold ${nameColor} truncate">${escapeHtml(conn.name) || 'Unnamed Connection'}</span>
-                            ${conn.db_type === 'postgresql' 
-                                ? `<span class="px-1 py-0.5 text-[8px] font-bold rounded ${isLight ? 'bg-blue-100 text-blue-600' : (isDawn ? 'bg-[#3e8fb0]/20 text-[#3e8fb0]' : 'bg-blue-500/20 text-blue-400')}">PG</span>`
-                                : `<span class="px-1 py-0.5 text-[8px] font-bold rounded ${isLight ? 'bg-orange-100 text-orange-600' : (isDawn ? 'bg-[#ea9d34]/20 text-[#ea9d34]' : 'bg-orange-500/20 text-orange-400')}">MY</span>`
-                            }
+                            ${conn.db_type === 'postgresql'
+                ? `<span class="px-1 py-0.5 text-[8px] font-bold rounded ${isLight ? 'bg-blue-100 text-blue-600' : (isDawn ? 'bg-[#3e8fb0]/20 text-[#3e8fb0]' : 'bg-blue-500/20 text-blue-400')}">PG</span>`
+                : `<span class="px-1 py-0.5 text-[8px] font-bold rounded ${isLight ? 'bg-orange-100 text-orange-600' : (isDawn ? 'bg-[#ea9d34]/20 text-[#ea9d34]' : 'bg-orange-500/20 text-orange-400')}">MY</span>`
+            }
                         </div>
                         <div class="text-[9px] ${subText} truncate">${escapeHtml(conn.username)}@${escapeHtml(conn.host)}</div>
                     </div>
@@ -773,7 +773,7 @@ export function ObjectExplorer() {
         const dividerColor = isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5');
         const headerText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500');
         const hoverClass = isLight ? 'hover:bg-gray-50 text-gray-700' : (isDawn ? 'hover:bg-[#faf4ed] text-[#575279]' : 'hover:bg-white/5 text-gray-300 hover:text-white');
-        
+
         const isPg = activeDbType === 'postgresql';
 
         menu.innerHTML = `
@@ -805,7 +805,7 @@ export function ObjectExplorer() {
                     Dialog.alert("Session lost. Please reconnect.", "Session Error");
                     return;
                 }
-                
+
                 if (isPg) {
                     // For PostgreSQL, set search_path to the schema (don't reconnect)
                     try {
@@ -823,10 +823,10 @@ export function ObjectExplorer() {
                     });
                     localStorage.setItem('activeConnection', JSON.stringify(activeConfig));
                 }
-                
+
                 // Dispatch event to notify QueryEditor to create new tab
-                window.dispatchEvent(new CustomEvent('tactilesql:open-sql-script', { 
-                    detail: { database: dbName, isSchema: isPg } 
+                window.dispatchEvent(new CustomEvent('tactilesql:open-sql-script', {
+                    detail: { database: dbName, isSchema: isPg }
                 }));
             } catch (error) {
                 Dialog.alert(`Failed to open SQL script: ${String(error).replace(/\n/g, '<br>')}`, 'Error');
@@ -864,13 +864,13 @@ export function ObjectExplorer() {
         try {
             // Use component's activeDbType state for reliable detection
             const isPg = activeDbType === 'postgresql';
-            
+
             if (isPg) {
                 // PostgreSQL: dbName is a schema name
                 const tableCountResult = await invoke('execute_query', {
                     query: `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '${dbName}'`
                 });
-                
+
                 const sizeResult = await invoke('execute_query', {
                     query: `
                         SELECT pg_size_pretty(SUM(pg_total_relation_size(quote_ident(schemaname) || '.' || quote_ident(tablename))))
@@ -878,15 +878,15 @@ export function ObjectExplorer() {
                         WHERE schemaname = '${dbName}'
                     `
                 });
-                
+
                 const ownerResult = await invoke('execute_query', {
                     query: `SELECT schema_owner FROM information_schema.schemata WHERE schema_name = '${dbName}'`
                 });
-                
+
                 const tableCount = tableCountResult.rows?.[0]?.[0] || '0';
                 const size = sizeResult.rows?.[0]?.[0] || 'Unknown';
                 const owner = ownerResult.rows?.[0]?.[0] || 'Unknown';
-                
+
                 const message = `Schema: ${dbName}\nOwner: ${owner}\nTables: ${tableCount}\nSize: ${size}`;
                 Dialog.alert(message, 'Schema Properties');
             } else {
@@ -996,6 +996,9 @@ export function ObjectExplorer() {
              <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-refresh">
                 <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#56949f]' : 'text-green-400'}">sync</span> Refresh
             </button>
+            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-dependencies">
+                <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#eb6f92]' : 'text-rose-400'}">account_tree</span> Dependency Graph
+            </button>
             <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-copy">
                 <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#9893a5]' : 'text-gray-500'}">content_copy</span> Copy Name
             </button>
@@ -1103,6 +1106,11 @@ export function ObjectExplorer() {
             } catch (error) {
                 Dialog.alert(`Query failed: ${String(error).replace(/\n/g, '<br>')}`, 'Query Error');
             }
+        };
+        menu.querySelector('#ctx-dependencies').onclick = () => {
+            menu.remove();
+            const conn = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+            window.location.hash = `#/dependencies?conn=${conn.id}&table=${encodeURIComponent(tableName)}`;
         };
         menu.querySelector('#ctx-copy').onclick = () => {
             navigator.clipboard.writeText(tableName);

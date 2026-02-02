@@ -4,7 +4,8 @@ use super::parser::{extract_dependencies, DbDialect};
 
 pub async fn build_dependency_graph_mysql(
     pool: &Pool<MySql>,
-    _connection_id: &str
+    _connection_id: &str,
+    table_name: Option<String>,
 ) -> Result<DependencyGraph, String> {
     let mut graph = DependencyGraph::new();
     
@@ -56,18 +57,24 @@ pub async fn build_dependency_graph_mysql(
         .map(|r| (r.get("TABLE_SCHEMA"), r.get("TABLE_NAME"), r.get("REFERENCED_TABLE_SCHEMA"), r.get("REFERENCED_TABLE_NAME")))
         .collect();
 
-     for (schema, table, f_schema, f_table) in fks {
-         let source_id = format!("{}.{}", schema, table);
-         let target_id = format!("{}.{}", f_schema, f_table);
-         graph.add_edge(&source_id, &target_id, EdgeType::ForeignKey);
-     }
+    for (schema, table, f_schema, f_table) in fks {
+        let source_id = format!("{}.{}", schema, table);
+        let target_id = format!("{}.{}", f_schema, f_table);
+        graph.add_edge(&source_id, &target_id, EdgeType::ForeignKey);
+    }
+
+    // 4. Filtering if requested
+    if let Some(target) = table_name {
+        graph.filter_neighborhood(&target);
+    }
 
     Ok(graph)
 }
 
 pub async fn build_dependency_graph_postgres(
     pool: &Pool<Postgres>,
-    _connection_id: &str
+    _connection_id: &str,
+    table_name: Option<String>,
 ) -> Result<DependencyGraph, String> {
     let mut graph = DependencyGraph::new();
 
@@ -122,11 +129,16 @@ pub async fn build_dependency_graph_postgres(
         .map(|r| (r.get(0), r.get(1), r.get(2), r.get(3)))
         .collect();
             
-     for (schema, table, f_schema, f_table) in fks {
-         let source_id = format!("{}.{}", schema, table);
-         let target_id = format!("{}.{}", f_schema, f_table);
-         graph.add_edge(&source_id, &target_id, EdgeType::ForeignKey);
-     }
+    for (schema, table, f_schema, f_table) in fks {
+        let source_id = format!("{}.{}", schema, table);
+        let target_id = format!("{}.{}", f_schema, f_table);
+        graph.add_edge(&source_id, &target_id, EdgeType::ForeignKey);
+    }
+
+    // 4. Filtering if requested
+    if let Some(target) = table_name {
+        graph.filter_neighborhood(&target);
+    }
 
     Ok(graph)
 }

@@ -39,6 +39,7 @@ export function DependencyExplorer() {
     let state = {
         connections: [],
         selectedConnectionId: null,
+        focusedTable: null,
         graphData: null,
         qualityMap: {}, // table.name -> score
         isLoading: false,
@@ -48,10 +49,15 @@ export function DependencyExplorer() {
     const init = async () => {
         try {
             state.connections = await invoke('load_connections');
-            // Check local storage
+
+            // Get table from URL if present
+            const params = new URLSearchParams(window.location.hash.split('?')[1] || "");
+            state.focusedTable = params.get('table');
+
+            // Check local storage 
             const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || 'null');
             if (activeConfig && activeConfig.id) {
-                await selectConnection(activeConfig.id);
+                await selectConnection(activeConfig.id, state.focusedTable);
             }
         } catch (err) {
             console.error('Init failed:', err);
@@ -60,8 +66,9 @@ export function DependencyExplorer() {
         render();
     };
 
-    const selectConnection = async (connId) => {
+    const selectConnection = async (connId, tableName = null) => {
         state.selectedConnectionId = connId;
+        state.focusedTable = tableName;
         state.graphData = null;
         state.error = null;
 
@@ -76,7 +83,7 @@ export function DependencyExplorer() {
             await invoke('establish_connection', { config: conn });
 
             // Fetch graph
-            state.graphData = await DependencyEngineApi.getGraph(connId);
+            state.graphData = await DependencyEngineApi.getGraph(connId, state.focusedTable);
 
             // Fetch Quality Scores (Best Effort)
             try {
@@ -150,8 +157,29 @@ export function DependencyExplorer() {
             }`;
         refreshBtn.innerHTML = '<span class="material-symbols-outlined text-lg">sync</span>';
         refreshBtn.disabled = !state.selectedConnectionId || state.isLoading;
-        refreshBtn.onclick = () => selectConnection(state.selectedConnectionId);
+        refreshBtn.onclick = () => selectConnection(state.selectedConnectionId, state.focusedTable);
         controls.appendChild(refreshBtn);
+
+        // Focus indicator & Clear button
+        if (state.focusedTable) {
+            const focusDiv = document.createElement('div');
+            focusDiv.className = `flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm animate-in slide-in-from-left duration-300 ${isLight ? 'bg-rose-50 border-rose-100 text-rose-600' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'}`;
+            focusDiv.innerHTML = `
+                <span class="material-symbols-outlined text-sm">filter_alt</span>
+                <span class="font-bold">Focus: ${state.focusedTable}</span>
+                <button id="clear-focus" class="ml-1 hover:opacity-70 transition-opacity flex items-center">
+                    <span class="material-symbols-outlined text-base">close</span>
+                </button>
+            `;
+            const clearBtn = focusDiv.querySelector('#clear-focus');
+            clearBtn.onclick = () => {
+                // Clear URL param without reload
+                const newUrl = window.location.hash.split('?')[0];
+                window.history.replaceState(null, '', newUrl);
+                selectConnection(state.selectedConnectionId, null);
+            };
+            controls.appendChild(focusDiv);
+        }
 
         header.appendChild(controls);
         container.appendChild(header);

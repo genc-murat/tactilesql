@@ -7,6 +7,7 @@ use crate::dependency_engine::graph::DependencyGraphData;
 pub async fn get_dependency_graph(
     app_state: State<'_, AppState>,
     connection_id: String,
+    table_name: Option<String>,
 ) -> Result<DependencyGraphData, String> {
     
     let db_type = {
@@ -18,12 +19,12 @@ pub async fn get_dependency_graph(
         DatabaseType::MySQL => {
             let pool_guard = app_state.mysql_pool.lock().await;
             let pool = pool_guard.as_ref().ok_or("No active MySQL connection")?;
-            super::extractor::build_dependency_graph_mysql(pool, &connection_id).await?
+            super::extractor::build_dependency_graph_mysql(pool, &connection_id, table_name).await?
         },
         DatabaseType::PostgreSQL => {
             let pool_guard = app_state.postgres_pool.lock().await;
             let pool = pool_guard.as_ref().ok_or("No active PostgreSQL connection")?;
-            super::extractor::build_dependency_graph_postgres(pool, &connection_id).await?
+            super::extractor::build_dependency_graph_postgres(pool, &connection_id, table_name).await?
         }
     };
     

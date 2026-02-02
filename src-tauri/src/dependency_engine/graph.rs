@@ -170,4 +170,31 @@ impl DependencyGraph {
         
         cycle_groups
     }
+
+    pub fn filter_neighborhood(&mut self, center_id: &str) {
+        
+        let center_idx = match self.node_indices.get(center_id) {
+            Some(idx) => *idx,
+            None => return,
+        };
+
+        let mut neighbors = std::collections::HashSet::new();
+        neighbors.insert(center_idx);
+
+        // Direct predecessors
+        for idx in self.graph.neighbors_directed(center_idx, petgraph::Direction::Incoming) {
+            neighbors.insert(idx);
+        }
+
+        // Direct successors
+        for idx in self.graph.neighbors_directed(center_idx, petgraph::Direction::Outgoing) {
+            neighbors.insert(idx);
+        }
+
+        // Filter the graph
+        self.graph.retain_nodes(|_, idx| neighbors.contains(&idx));
+        
+        // Update node_indices hashmap
+        self.node_indices.retain(|_, &mut idx| neighbors.contains(&idx));
+    }
 }
