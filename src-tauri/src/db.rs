@@ -19,6 +19,8 @@ use keyring::Entry;
 pub use crate::db_types::*;
 use crate::mysql;
 use crate::postgres;
+use regex::Regex;
+use std::sync::LazyLock;
 
 // Encryption constants
 const SERVICE_NAME: &str = "tactilesql";
@@ -453,6 +455,24 @@ pub async fn execute_query(
         let postgres_pool_arc = app_state.postgres_pool.clone();
         
         tauri::async_runtime::spawn(async move {
+            // Filter out system queries
+            // Filter out system queries
+            static SYSTEM_QUERY_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+                // Matches:
+                // 1. System schemas (information_schema, etc.)
+                // 2. Common keep-alive/metadata queries (SELECT VERSION(), SELECT 1, etc.)
+                //    Allows for comments (/*...*/ or --) at start, case insensitivity, and aliases.
+                Regex::new(r"(?ix)
+                    \b(information_schema|performance_schema|mysql|pg_catalog|pg_toast|sqlite_|sys)\b
+                    |
+                    ^\s* (/\*.*?\*/)? \s* select \s+ (version\(\)|1|current_database\(\)|current_schema\(\)|@@\w+)
+                ").unwrap()
+            });
+
+            if SYSTEM_QUERY_REGEX.is_match(&query_clone) {
+                return;
+            }
+
             let guard = store_arc.lock().await;
             if let Some(store) = guard.as_ref() {
                 let normalized = crate::awareness::profiler::normalize_query(&query_clone);

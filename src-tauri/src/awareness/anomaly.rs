@@ -27,6 +27,7 @@ impl Default for AnomalyConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Anomaly {
     pub query_hash: String,
+    pub query: String, // Normalized query pattern
     pub detected_at: DateTime<Utc>,
     pub severity: Severity,
     pub duration_ms: f64,
@@ -80,6 +81,7 @@ impl AnomalyDetector {
 
         Some(Anomaly {
             query_hash: execution.query_hash.clone(),
+            query: baseline.query_pattern.clone(),
             detected_at: execution.timestamp,
             severity,
             duration_ms: current,
@@ -94,7 +96,11 @@ impl AnomalyDetector {
         // Check for Full Table Scan (MySQL: type "ALL", Postgres: "Seq Scan")
         // Note: Simple string contains check might trigger false positives. logic should be robust enough.
         
-        let has_full_scan = plan.contains("Seq Scan") || plan.contains("\"access_type\": \"ALL\"") || plan.contains("ALL");
+        // Check for Full Table Scan 
+        // MySQL JSON: "access_type": "ALL"
+        // MySQL Text: type: ALL (or just ALL in specific column, difficult to parse without structure)
+        // PostgreSQL: "Seq Scan"
+        let has_full_scan = plan.contains("Seq Scan") || plan.contains("\"access_type\": \"ALL\"");
         
         if has_full_scan {
             return Some(AnomalyCause {

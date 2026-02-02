@@ -1,9 +1,7 @@
 use std::fs;
-use std::path::PathBuf;
 use tauri::AppHandle;
 use tauri::Manager;
 use sqlx::{sqlite::SqlitePoolOptions, Pool, Sqlite, Row};
-use log::{info, error};
 
 pub struct AwarenessStore {
     pool: Pool<Sqlite>,
@@ -116,7 +114,13 @@ impl AwarenessStore {
         &self,
         execution: &crate::awareness::profiler::QueryExecution,
     ) -> Result<Option<crate::awareness::anomaly::Anomaly>, String> {
-        // 1. Insert into execution_history
+        // 1. Get current baseline for anomaly detection (before update)
+        let current_baseline = self.get_baseline_profile(&execution.query_hash).await?;
+
+        // 2. Update/Create baseline profile (Ensures FK constraint for history)
+        self.update_baseline_profile(execution).await?;
+
+        // 3. Insert into execution_history
         sqlx::query(
             r#"
             INSERT INTO execution_history (query_hash, exact_query, duration_ms, timestamp, rows_affected)
@@ -132,10 +136,8 @@ impl AwarenessStore {
         .await
         .map_err(|e| format!("Failed to log execution: {}", e))?;
 
-        // 2. Detect Anomaly
+        // 4. Detect Anomaly (using the PRE-UPDATE baseline)
         let mut detected_anomaly = None;
-        let current_baseline = self.get_baseline_profile(&execution.query_hash).await?;
-        
         if let Some(ref baseline) = current_baseline {
             let config = crate::awareness::anomaly::AnomalyConfig::default(); // TODO: Load from stored config
             if let Some(anomaly) = crate::awareness::anomaly::AnomalyDetector::detect(execution, baseline, &config) {
@@ -146,9 +148,6 @@ impl AwarenessStore {
                  }
             }
         }
-
-        // 3. Update baseline profile
-        self.update_baseline_profile(execution).await?;
 
         Ok(detected_anomaly)
     }
@@ -224,7 +223,6 @@ impl AwarenessStore {
 
         let (new_avg, new_std_dev, new_total) = match current_baseline {
             Some((avg, std_dev, total)) => {
-                let n = total as f64;
                 let new_total = total + 1;
                 let new_val = execution.resources.execution_time_ms;
                 
@@ -323,9 +321,12 @@ impl AwarenessStore {
         
         let rows = sqlx::query(
             r#"
-            SELECT query_hash, detected_at, severity, deviation_details
-            FROM anomaly_log
-            ORDER BY detected_at DESC
+            SELECT 
+                al.query_hash, al.detected_at, al.severity, al.deviation_details,
+                bp.query_pattern
+            FROM anomaly_log al
+            LEFT JOIN baseline_profiles bp ON al.query_hash = bp.query_hash
+            ORDER BY al.detected_at DESC
             LIMIT ?
             "#
         )
@@ -352,6 +353,7 @@ impl AwarenessStore {
 
             anomalies.push(crate::awareness::anomaly::Anomaly {
                 query_hash: row.try_get("query_hash").unwrap_or_default(),
+                query: row.try_get("query_pattern").unwrap_or_else(|_| "Unknown Query".to_string()),
                 detected_at: row.try_get("detected_at").unwrap_or_default(),
                 severity,
                 duration_ms: details["duration"].as_f64().unwrap_or(0.0),

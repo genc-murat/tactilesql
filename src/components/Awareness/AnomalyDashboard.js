@@ -86,7 +86,7 @@ export function AnomalyDashboard() {
                     ${renderSeverityBadge(a.severity)}
                     <span class="text-[10px] opacity-60 font-mono">${formatDate(a.detected_at)}</span>
                 </div>
-                <div class="text-xs font-mono truncate opacity-80 mb-1" title="${a.query_hash}">${a.query_hash}</div>
+                <div class="text-xs font-mono truncate opacity-80 mb-1" title="${a.query || a.query_hash}">${a.query || a.query_hash}</div>
                 <div class="flex items-center gap-2 text-xs">
                      <span class="font-bold text-red-400">+${a.deviation_pct.toFixed(0)}%</span>
                      <span class="opacity-50">(${a.duration_ms.toFixed(0)}ms vs ${a.baseline_duration_ms.toFixed(0)}ms)</span>
@@ -132,11 +132,11 @@ export function AnomalyDashboard() {
                 </div>
 
                 <div>
-                    <h4 class="text-sm font-bold uppercase opacity-70 mb-2">Query Hash</h4>
-                    <div class="p-3 bg-black/20 rounded font-mono text-xs break-all select-all">
-                        ${selectedAnomaly.query_hash}
+                    <h4 class="text-sm font-bold uppercase opacity-70 mb-2">Query</h4>
+                    <div class="p-3 bg-black/20 rounded font-mono text-xs break-all select-all whitespace-pre-wrap">
+                        ${selectedAnomaly.query || selectedAnomaly.query_hash}
                     </div>
-                    <!-- Could fetch query text if available -->
+                    <div class="mt-2 text-[10px] opacity-40 font-mono">Hash: ${selectedAnomaly.query_hash}</div>
                 </div>
             </div>
         ` : `
