@@ -139,6 +139,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         '/data-tools': { component: lazyLoad(() => import('./pages/DataTools.js'), 'DataTools') },
         '/monitor': { component: lazyLoad(() => import('./pages/ServerMonitor.js'), 'ServerMonitor') },
         '/audit': { component: lazyLoad(() => import('./pages/AuditTrail.js'), 'AuditTrail') },
+        '/help': { component: lazyLoad(() => import('./pages/Help.js'), 'Help') },
     };
 
     const router = new Router(routes, mainContent);

@@ -58,6 +58,16 @@ export function NavBar() {
             </div>
 
             <div class="flex items-center gap-3">
+                <a href="#/help" class="flex items-center justify-center w-8 h-8 rounded-md transition-all duration-300 ${currentPath === '/help'
+                ? 'text-mysql-cyan bg-mysql-teal/10 border border-mysql-teal/30'
+                : (isLight || isDawn)
+                    ? 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
+                    : isOceanic
+                        ? 'text-ocean-text/50 hover:text-ocean-text hover:bg-white/5'
+                        : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+            }" title="Help & Documentation">
+                    <span class="material-symbols-outlined text-lg">help</span>
+                </a>
                 <a href="#/settings" class="flex items-center justify-center w-8 h-8 rounded-md transition-all duration-300 ${currentPath === '/settings'
                 ? 'text-mysql-cyan bg-mysql-teal/10 border border-mysql-teal/30'
                 : (isLight || isDawn)

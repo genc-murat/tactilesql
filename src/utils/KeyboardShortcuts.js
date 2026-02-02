@@ -45,7 +45,7 @@ const SHORTCUTS = {
 
     // General
     'escape': { action: 'closeModal', description: 'Close modal/popup', category: 'General' },
-    'f1': { action: 'showHelp', description: 'Shortcut help', category: 'General' },
+    // 'f1': { action: 'showHelp', description: 'Shortcut help', category: 'General' },
     'ctrl+shift+?': { action: 'showHelp', description: 'Shortcut help', category: 'General' },
 
     // Data operations
@@ -141,7 +141,8 @@ function handleKeydown(e) {
     if (handler) {
         handler(e);
     } else if (shortcut.action === 'showHelp') {
-        showShortcutsHelp();
+        window.location.hash = '/help';
+        // showShortcutsHelp();
     } else if (shortcut.action === 'closeModal') {
         closeActiveModal();
     } else if (shortcut.action === 'toggleProfiler') {
@@ -276,10 +277,10 @@ export function showShortcutsHelp() {
 
     searchInput.addEventListener('input', (e) => {
         const query = e.target.value.toLowerCase().trim();
-        
+
         // Show/hide clear button
         clearBtn.classList.toggle('hidden', !query);
-        
+
         let visibleCount = 0;
         let hasVisibleCategories = false;
 
@@ -298,10 +299,10 @@ export function showShortcutsHelp() {
             const description = item.dataset.description;
             const key = item.dataset.key;
             const action = item.dataset.action;
-            const matches = description.includes(query) || 
-                           key.includes(query) || 
-                           action.includes(query);
-            
+            const matches = description.includes(query) ||
+                key.includes(query) ||
+                action.includes(query);
+
             item.classList.toggle('hidden', !matches);
             if (matches) visibleCount++;
         });
