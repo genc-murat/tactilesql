@@ -33,6 +33,7 @@ pub mod schema_tracker;
 pub mod quality_analyzer;
 pub mod dependency_engine;
 pub mod integration;
+pub mod scheduler;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -122,6 +123,10 @@ pub fn run() {
                     Err(e) => eprintln!("Failed to initialize Local Storage: {}", e),
                 }
             });
+
+            // Start Scheduler
+            let scheduler_handle = app.handle().clone();
+            crate::scheduler::start_scheduler(scheduler_handle);
 
             Ok(())
         })

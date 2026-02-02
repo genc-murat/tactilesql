@@ -21,6 +21,9 @@ TactileSQL is a modern, desktop-first MySQL workbench built with Tauri 2 and van
 - **Data Import/Export Wizard** supporting CSV, SQL, and JSON formats with progress tracking.
 - **Backup & Restore** with scheduled backups, compression, and full/incremental backup modes.
 - **Real-time Server Monitor** with live metrics for CPU, memory, connections, queries, and InnoDB status.
+- **Schema Evolution Tracker**: Capture snapshots, detect drifts, and auto-generate migration scripts.
+- **Data Quality Analyzer**: Track data health scores, detect anomalies (NULLs, duplicates), and visualize quality trends.
+- **Dependency Engine**: Visualize lineage between tables, views, and procedures with impact analysis for schema changes.
 - **Connection Manager** with encrypted credential storage, connection testing, and SSH tunnel configuration.
 - **Access Control** viewer for MySQL users and privileges.
 - **Themes**: Dark, Light, and Oceanic.
@@ -160,6 +163,24 @@ npx tauri build
 
 - Theme selection
 - Editor preferences (UI only)
+
+## Advanced Insights
+
+### Schema Evolution Tracker
+- **Snapshots**: Capture database state at any point in time.
+- **Diff Viewer**: Visual comparison between snapshots showing added/dropped/modified tables and columns.
+- **Migration Generation**: Automatically generates SQL scripts to migrate between versions.
+- **Breaking Change Detection**: Alerts on destructive changes (drops, type changes).
+
+### Data Quality Analyzer
+- **Health Score**: 0-100 score based on NULL rates, duplicates, and constraints.
+- **Issue Tracking**: Detailed list of quality violations per table.
+- **Timeline Integration**: View quality scores historically alongside schema changes.
+
+### Dependency Engine
+- **Visual Graph**: Interactive node-link diagram of database dependencies.
+- **Impact Analysis**: Identify downstream objects affected by a proposed change.
+- **Quality Overlay**: Color-coded graph nodes based on data quality scores.
 
 ## Backend Commands (Tauri)
 
