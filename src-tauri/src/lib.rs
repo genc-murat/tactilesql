@@ -32,6 +32,7 @@ pub mod awareness;
 pub mod schema_tracker;
 pub mod quality_analyzer;
 pub mod dependency_engine;
+pub mod integration;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -199,7 +200,8 @@ pub fn run() {
             quality_analyzer::commands::run_quality_analysis,
             quality_analyzer::commands::get_quality_reports,
             // Dependency Engine
-            dependency_engine::commands::get_dependency_graph
+            dependency_engine::commands::get_dependency_graph,
+            integration::commands::check_impact,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

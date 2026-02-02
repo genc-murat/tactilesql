@@ -18,10 +18,10 @@ export function DependencyExplorer() {
             header: `px-6 py-4 flex flex-col gap-4 border-b ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-[#3B4252] border-ocean-border/50' : 'bg-[#13161b] border-white/10'))}`,
             content: `flex-1 relative overflow-hidden ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-[#2E3440]' : 'bg-[#0a0c10]'))}`,
             input: `w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 transition-all cursor-pointer ${isLight
-                    ? 'bg-white border-gray-300 text-gray-900 focus:border-mysql-teal focus:ring-mysql-teal/20'
-                    : (isDawn
-                        ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] focus:border-[#ea9d34] focus:ring-[#ea9d34]/20'
-                        : 'bg-black/20 border-white/10 text-white focus:border-mysql-teal focus:ring-mysql-teal/20')
+                ? 'bg-white border-gray-300 text-gray-900 focus:border-mysql-teal focus:ring-mysql-teal/20'
+                : (isDawn
+                    ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] focus:border-[#ea9d34] focus:ring-[#ea9d34]/20'
+                    : 'bg-black/20 border-white/10 text-white focus:border-mysql-teal focus:ring-mysql-teal/20')
                 }`,
             text: {
                 primary: isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white'),
@@ -38,6 +38,7 @@ export function DependencyExplorer() {
         connections: [],
         selectedConnectionId: null,
         graphData: null,
+        qualityMap: {}, // table.name -> score
         isLoading: false,
         error: null
     };
@@ -74,6 +75,21 @@ export function DependencyExplorer() {
 
             // Fetch graph
             state.graphData = await DependencyEngineApi.getGraph(connId);
+
+            // Fetch Quality Scores (Best Effort)
+            try {
+                const reports = await invoke('get_quality_reports', { connectionId: connId });
+                state.qualityMap = {};
+                reports.forEach(r => {
+                    // Match by table name. 
+                    // Note: Graph nodes might have schema prefix. Quality report has table_name.
+                    // We might need fuzzy matching or schema awareness.
+                    // For now, simple map by name.
+                    state.qualityMap[r.table_name] = r.overall_score;
+                });
+            } catch (ignore) {
+                console.warn("Failed to fetch quality for graph", ignore);
+            }
         } catch (err) {
             console.error('Failed to load graph:', err);
             state.error = err.toString();
@@ -86,6 +102,8 @@ export function DependencyExplorer() {
     const render = () => {
         container.innerHTML = '';
         container.className = classes.container;
+        const isLight = theme === 'light';
+        const isDawn = theme === 'dawn';
 
         // Header
         const header = document.createElement('div');
@@ -125,8 +143,8 @@ export function DependencyExplorer() {
         // Refresh Button
         const refreshBtn = document.createElement('button');
         refreshBtn.className = `px-3 py-2 rounded-lg border text-sm font-bold uppercase tracking-wide transition-all self-end mb-[1px] ${!state.selectedConnectionId || state.isLoading
-                ? 'opacity-50 cursor-not-allowed bg-gray-200 text-gray-400 border-gray-300'
-                : (theme === 'light' ? 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50' : 'bg-transparent border-white/20 text-white hover:bg-white/10')
+            ? 'opacity-50 cursor-not-allowed bg-gray-200 text-gray-400 border-gray-300'
+            : (theme === 'light' ? 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50' : 'bg-transparent border-white/20 text-white hover:bg-white/10')
             }`;
         refreshBtn.innerHTML = '<span class="material-symbols-outlined text-lg">sync</span>';
         refreshBtn.disabled = !state.selectedConnectionId || state.isLoading;
@@ -138,29 +156,125 @@ export function DependencyExplorer() {
 
         // Content
         const content = document.createElement('div');
-        content.className = classes.content;
+        content.className = `${classes.content} flex`;
+
+        // Sidebar (Impact Details) - Hidden by default
+        const sidebar = document.createElement('div');
+        sidebar.className = `w-[300px] border-l transform transition-transform duration-300 absolute right-0 top-0 bottom-0 z-20 translate-x-full ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : 'bg-[#1a202c] border-white/10')}`;
+
+        const renderSidebar = (data) => {
+            if (!data) {
+                sidebar.classList.add('translate-x-full');
+                return;
+            }
+
+            sidebar.classList.remove('translate-x-full');
+            sidebar.innerHTML = `
+                <div class="h-full flex flex-col">
+                    <div class="p-4 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}">
+                        <div class="text-[10px] font-bold uppercase tracking-wider ${classes.text.label} mb-1">${data.type}</div>
+                        <h2 class="text-lg font-bold break-all ${classes.text.primary}">${data.name}</h2>
+                        ${data.qualityScore !== undefined ? `
+                            <div class="mt-2 flex items-center gap-2">
+                                <span class="text-xs font-bold uppercase tracking-wider opacity-60 ${classes.text.label}">Quality Score</span>
+                                <span class="px-2 py-0.5 rounded text-xs font-bold ${data.qualityScore >= 80 ? 'bg-emerald-500/10 text-emerald-500' : (data.qualityScore >= 50 ? 'bg-amber-500/10 text-amber-500' : 'bg-red-500/10 text-red-500')}">
+                                    ${data.qualityScore.toFixed(0)}
+                                </span>
+                            </div>
+                        ` : ''}
+                    </div>
+                    
+                    <div class="flex-1 overflow-y-auto p-4 space-y-6">
+                        <!-- Upstream -->
+                        <div>
+                             <h3 class="text-xs font-bold uppercase tracking-wider text-red-400 mb-2 flex items-center gap-2">
+                                <span class="material-symbols-outlined text-sm">arrow_upward</span>
+                                Depends On (${data.upstreamCount})
+                             </h3>
+                             ${data.upstreamNodes.length > 0
+                    ? `<ul class="text-sm space-y-1 ${classes.text.primary}">
+                                    ${data.upstreamNodes.map(n => `<li class="truncate py-1 px-2 rounded ${isLight ? 'bg-gray-50' : 'bg-white/5'}">${n}</li>`).join('')}
+                                   </ul>`
+                    : `<div class="text-xs italic opacity-50 ${classes.text.primary}">No dependencies</div>`
+                }
+                        </div>
+                        
+                        <!-- Downstream -->
+                        <div>
+                             <h3 class="text-xs font-bold uppercase tracking-wider text-green-400 mb-2 flex items-center gap-2">
+                                <span class="material-symbols-outlined text-sm">arrow_downward</span>
+                                Impacted (${data.downstreamCount})
+                             </h3>
+                              ${data.downstreamNodes.length > 0
+                    ? `<ul class="text-sm space-y-1 ${classes.text.primary}">
+                                    ${data.downstreamNodes.map(n => `<li class="truncate py-1 px-2 rounded ${isLight ? 'bg-gray-50' : 'bg-white/5'}">${n}</li>`).join('')}
+                                   </ul>`
+                    : `<div class="text-xs italic opacity-50 ${classes.text.primary}">No impact</div>`
+                }
+                        </div>
+                    </div>
+                    
+                    <button id="close-sidebar" class="m-4 py-2 border rounded-lg text-xs font-bold uppercase hover:bg-black/5 transition-colors ${classes.text.primary} ${isLight ? 'border-gray-200' : 'border-white/10'}">
+                        Close Details
+                    </button>
+                </div>
+            `;
+
+            // Add close button listener
+            const closeBtn = sidebar.querySelector('#close-sidebar');
+            if (closeBtn) {
+                closeBtn.onclick = () => {
+                    sidebar.classList.add('translate-x-full');
+                };
+            }
+        };
 
         if (state.isLoading) {
             content.innerHTML = `
-                <div class="h-full flex flex-col items-center justify-center gap-3 ${classes.text.primary}">
+                <div class="h-full w-full flex flex-col items-center justify-center gap-3 ${classes.text.primary}">
                     <span class="material-symbols-outlined text-4xl animate-spin">sync</span> 
                     <p class="animate-pulse">Building dependency graph...</p>
                 </div>
             `;
         } else if (state.error) {
             content.innerHTML = `
-                <div class="h-full flex flex-col items-center justify-center gap-3 text-red-400">
+                <div class="h-full w-full flex flex-col items-center justify-center gap-3 text-red-400">
                     <span class="material-symbols-outlined text-4xl">error</span> 
                     <p>${state.error}</p>
                 </div>
             `;
         } else if (state.graphData) {
-            // Render Graph Viewer
-            // We pass the data and theme to the sub-component
-            content.appendChild(GraphViewer(state.graphData, theme));
+            // Search Input
+            const searchContainer = document.createElement('div');
+            searchContainer.className = 'absolute top-4 left-4 z-10 w-64';
+            const searchInput = document.createElement('input');
+            searchInput.type = 'text';
+            searchInput.placeholder = 'Search tables...';
+            searchInput.className = `${classes.input} shadow-lg`;
+            searchContainer.appendChild(searchInput);
+
+            // Viewer
+            const viewer = GraphViewer(state.graphData, theme, state.qualityMap);
+
+            // Events
+            searchInput.oninput = (e) => {
+                if (viewer.updateSearch) viewer.updateSearch(e.target.value);
+            };
+
+            viewer.addEventListener('node-selected', (e) => {
+                renderSidebar(e.detail);
+            });
+
+            viewer.addEventListener('selection-cleared', () => {
+                renderSidebar(null);
+            });
+
+            content.appendChild(searchContainer);
+            content.appendChild(viewer);
+            content.appendChild(sidebar);
         } else {
             content.innerHTML = `
-                <div class="h-full flex flex-col items-center justify-center gap-4 opacity-50 ${classes.text.primary}">
+                <div class="h-full w-full flex flex-col items-center justify-center gap-4 opacity-50 ${classes.text.primary}">
                     <span class="material-symbols-outlined text-6xl">account_tree</span>
                     <div class="text-center">
                         <h3 class="font-bold">Select a Connection</h3>

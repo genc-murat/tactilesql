@@ -69,7 +69,7 @@ pub struct DependencyLink {
 }
 
 pub struct DependencyGraph {
-    graph: DiGraph<GraphNode, GraphEdge>,
+    pub graph: DiGraph<GraphNode, GraphEdge>,
     node_indices: HashMap<String, NodeIndex>,
 }
 

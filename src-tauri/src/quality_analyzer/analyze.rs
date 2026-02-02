@@ -207,6 +207,7 @@ pub async fn analyze_table_mysql(
         row_count: row_count as u64,
         column_metrics,
         issues,
+        schema_snapshot_id: None,
     })
 }
 
@@ -400,5 +401,6 @@ pub async fn analyze_table_postgres(
         row_count: row_count as u64,
         column_metrics,
         issues,
+        schema_snapshot_id: None,
     })
 }

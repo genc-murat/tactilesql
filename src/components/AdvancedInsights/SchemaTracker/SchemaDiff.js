@@ -1,5 +1,6 @@
 import { ThemeManager } from '../../../utils/ThemeManager.js';
 import { highlightSQL } from '../../../utils/SqlHighlighter.js';
+import { invoke } from '@tauri-apps/api/core';
 
 export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGenerateMigration }) {
     const isLight = ThemeManager.getCurrentTheme() === 'light';
@@ -20,60 +21,96 @@ export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGen
     const { new_tables, dropped_tables, modified_tables } = diff;
     const hasChanges = new_tables.length > 0 || dropped_tables.length > 0 || modified_tables.length > 0;
 
+    // Impact State
+    let impactWarnings = null;
+    let loadingImpact = false;
+
     // Header / Stats
     const header = document.createElement('div');
-    header.className = `px-6 py-4 border-b ${isLight ? 'border-gray-200 bg-white' : 'border-white/5 bg-panel-dark'} flex justify-between items-start`;
+    header.className = `px-6 py-4 border-b ${isLight ? 'border-gray-200 bg-white' : 'border-white/5 bg-panel-dark'} flex flex-col gap-4`;
 
-    // Stats HTML
-    const statsHtml = `
-        <div class="flex gap-6">
-            <div class="flex flex-col">
-                <span class="text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-gray-400' : 'text-gray-500'}">New Tables</span>
-                <span class="text-2xl font-light ${new_tables.length > 0 ? 'text-emerald-400' : 'opacity-30'}">${new_tables.length}</span>
-            </div>
-            <div class="flex flex-col">
-                <span class="text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-gray-400' : 'text-gray-500'}">Modified</span>
-                <span class="text-2xl font-light ${modified_tables.length > 0 ? 'text-amber-400' : 'opacity-30'}">${modified_tables.length}</span>
-            </div>
-            <div class="flex flex-col">
-                <span class="text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-gray-400' : 'text-gray-500'}">Dropped</span>
-                <span class="text-2xl font-light ${dropped_tables.length > 0 ? 'text-red-400' : 'opacity-30'}">${dropped_tables.length}</span>
-            </div>
-        </div>
-    `;
-
-    // Breaking Changes Alert
-    let alertHtml = '';
-    if (breakingChanges && breakingChanges.length > 0) {
-        alertHtml = `
-            <div class="mt-4 px-3 py-2 rounded bg-red-500/10 border border-red-500/20 text-red-500 flex items-start gap-2 max-w-xl">
-                <span class="material-symbols-outlined text-lg">warning</span>
-                <div>
-                    <h4 class="text-xs font-bold uppercase">Breaking Changes Detected</h4>
-                    <ul class="text-[10px] list-disc list-inside mt-1 opacity-80">
-                        ${breakingChanges.map(change => `<li>${change.description}</li>`).join('')}
-                    </ul>
+    const renderHeader = () => {
+        // Stats HTML
+        const statsHtml = `
+            <div class="flex gap-6">
+                <div class="flex flex-col">
+                    <span class="text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-gray-400' : 'text-gray-500'}">New Tables</span>
+                    <span class="text-2xl font-light ${new_tables.length > 0 ? 'text-emerald-400' : 'opacity-30'}">${new_tables.length}</span>
+                </div>
+                <div class="flex flex-col">
+                    <span class="text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-gray-400' : 'text-gray-500'}">Modified</span>
+                    <span class="text-2xl font-light ${modified_tables.length > 0 ? 'text-amber-400' : 'opacity-30'}">${modified_tables.length}</span>
+                </div>
+                <div class="flex flex-col">
+                    <span class="text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-gray-400' : 'text-gray-500'}">Dropped</span>
+                    <span class="text-2xl font-light ${dropped_tables.length > 0 ? 'text-red-400' : 'opacity-30'}">${dropped_tables.length}</span>
                 </div>
             </div>
         `;
-    }
 
-    header.innerHTML = `
-        <div>
-            ${statsHtml}
-            ${alertHtml}
-        </div>
-        <div>
-           ${migrationScript ? `
-                <div class="flex flex-col items-end gap-2">
-                     <button id="copy-script-btn" class="px-3 py-1.5 rounded bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 text-xs font-bold flex items-center gap-1.5 transition-colors">
-                        <span class="material-symbols-outlined text-sm">content_copy</span> Copy Migration Script
-                    </button>
-                    <span class="text-[10px] opacity-40">Auto-generated</span>
+        // Impact Alert
+        let impactHtml = '';
+        if (loadingImpact) {
+            impactHtml = `
+                <div class="px-3 py-2 rounded bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center gap-2 max-w-xl animate-pulse">
+                    <span class="material-symbols-outlined text-sm animate-spin">sync</span>
+                    <span class="text-xs font-bold">Checking downstream impact...</span>
                 </div>
-           ` : ''}
-        </div>
-    `;
+             `;
+        } else if (impactWarnings && impactWarnings.length > 0) {
+            impactHtml = `
+                <div class="px-3 py-2 rounded bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-start gap-2 max-w-xl">
+                    <span class="material-symbols-outlined text-lg">warning</span>
+                    <div>
+                        <h4 class="text-xs font-bold uppercase">Impact Analysis Warning</h4>
+                        <ul class="text-[10px] list-disc list-inside mt-1 opacity-80">
+                            ${impactWarnings.map(w => `<li>${w.message}</li>`).join('')}
+                        </ul>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Breaking Changes Alert
+        let alertHtml = '';
+        if (breakingChanges && breakingChanges.length > 0) {
+            alertHtml = `
+                <div class="px-3 py-2 rounded bg-red-500/10 border border-red-500/20 text-red-500 flex items-start gap-2 max-w-xl">
+                    <span class="material-symbols-outlined text-lg">error</span>
+                    <div>
+                        <h4 class="text-xs font-bold uppercase">Breaking Changes Detected</h4>
+                        <ul class="text-[10px] list-disc list-inside mt-1 opacity-80">
+                            ${breakingChanges.map(change => `<li>${change.description}</li>`).join('')}
+                        </ul>
+                    </div>
+                </div>
+            `;
+        }
+
+        header.innerHTML = `
+            <div class="flex justify-between items-start">
+                ${statsHtml}
+                <div>
+                  ${migrationScript ? `
+                        <div class="flex flex-col items-end gap-2">
+                             <button id="copy-script-btn" class="px-3 py-1.5 rounded bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 text-xs font-bold flex items-center gap-1.5 transition-colors">
+                                <span class="material-symbols-outlined text-sm">content_copy</span> Copy Migration Script
+                            </button>
+                            <span class="text-[10px] opacity-40">Auto-generated</span>
+                        </div>
+                   ` : ''}
+                </div>
+            </div>
+            ${impactHtml}
+            ${alertHtml}
+        `;
+
+        header.querySelector('#copy-script-btn')?.addEventListener('click', () => {
+            navigator.clipboard.writeText(migrationScript);
+            alert('Copied to clipboard');
+        });
+    };
+
     container.appendChild(header);
 
     // Main Content (Split View: Visual Diff | Migration Script)
@@ -141,6 +178,33 @@ export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGen
 
     container.appendChild(content);
 
+    // Initial Render without impact
+    renderHeader();
+
+    // Check Impact asynchronously
+    if (hasChanges) {
+        loadingImpact = true;
+        renderHeader();
+
+        // We need connection ID. It's not passed here directly but we can get from local storage or parent should pass it.
+        // For now, let's grab from localStorage as fallback
+        const activeConn = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+
+        if (activeConn.id) {
+            invoke('check_impact', { connectionId: activeConn.id, diff })
+                .then(warnings => {
+                    impactWarnings = warnings;
+                })
+                .catch(err => {
+                    console.error("Impact check failed", err);
+                })
+                .finally(() => {
+                    loadingImpact = false;
+                    renderHeader();
+                });
+        }
+    }
+
     // Utils
     function createDiffCard(type, title, items) {
         const card = document.createElement('div');
@@ -172,11 +236,6 @@ export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGen
         return card;
     }
 
-    // Handlers
-    container.querySelector('#copy-script-btn')?.addEventListener('click', () => {
-        navigator.clipboard.writeText(migrationScript);
-        alert('Copied to clipboard'); // TODO: Use Toast
-    });
-
     return container;
 }
+

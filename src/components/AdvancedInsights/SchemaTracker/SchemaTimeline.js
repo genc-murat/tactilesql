@@ -1,6 +1,6 @@
 import { ThemeManager } from '../../../utils/ThemeManager.js';
 
-export function SchemaTimeline({ snapshots, onSelectSnapshot, selectedSnapshotId }) {
+export function SchemaTimeline({ snapshots, onSelectSnapshot, selectedSnapshotId, qualityScores }) {
     const isLight = ThemeManager.getCurrentTheme() === 'light';
     const container = document.createElement('div');
     container.className = `w-72 border-r ${isLight ? 'border-gray-200 bg-gray-50' : 'border-white/5 bg-[#0f1115]'} h-full flex flex-col flex-shrink-0`;
@@ -61,8 +61,13 @@ export function SchemaTimeline({ snapshots, onSelectSnapshot, selectedSnapshotId
                         <span class="material-symbols-outlined text-[10px]">table_rows</span>
                         ${snap.tables.length}
                     </span>
-                    <!-- Placeholder for changes count, would need diff with prev to know for sure, 
-                         or store it. For now just show table count. -->
+                    <!-- Quality Score Badge -->
+                    ${qualityScores && qualityScores[snap.id] !== undefined ? `
+                        <span class="flex items-center gap-1 ${qualityScores[snap.id] >= 80 ? 'text-emerald-500' : (qualityScores[snap.id] >= 50 ? 'text-amber-500' : 'text-red-500')}" title="Avg Quality Score: ${qualityScores[snap.id].toFixed(1)}">
+                            <span class="material-symbols-outlined text-[10px]">health_and_safety</span>
+                            ${qualityScores[snap.id].toFixed(0)}
+                        </span>
+                    ` : ''}
                 </div>
                 
                 ${isSelected ? `

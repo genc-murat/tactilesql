@@ -11,6 +11,7 @@ pub struct TableQualityReport {
     pub row_count: u64,
     pub column_metrics: Vec<ColumnQualityMetrics>,
     pub issues: Vec<DataQualityIssue>,
+    pub schema_snapshot_id: Option<i64>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

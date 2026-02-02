@@ -3,7 +3,7 @@ import dagre from 'cytoscape-dagre';
 
 cytoscape.use(dagre);
 
-export function GraphViewer(graphData, theme) {
+export function GraphViewer(graphData, theme, qualityMap) {
     const container = document.createElement('div');
     container.className = 'w-full h-full relative graph-viewer-container';
 
@@ -32,11 +32,21 @@ export function GraphViewer(graphData, theme) {
                 label = `${node.schema}.${node.name}`;
             }
 
+            // Quality Score Logic
+            // Try to find score in qualityMap using name or schema.name
+            // qualityMap is { "users": 95, "public.users": 95 }
+            let score = undefined;
+            if (qualityMap) {
+                if (qualityMap[node.name] !== undefined) score = qualityMap[node.name];
+                else if (qualityMap[`${node.schema}.${node.name}`] !== undefined) score = qualityMap[`${node.schema}.${node.name}`];
+            }
+
             elements.push({
                 data: {
                     id: node.id,
                     label: label,
-                    type: node.node_type
+                    type: node.node_type,
+                    qualityScore: score
                 }
             });
         });
@@ -70,8 +80,16 @@ export function GraphViewer(graphData, theme) {
                     selector: 'node',
                     style: {
                         'background-color': colors.nodeBg,
-                        'border-width': 2,
-                        'border-color': colors.nodeBorder,
+                        'border-width': (ele) => ele.data('qualityScore') !== undefined ? 4 : 2,
+                        'border-color': (ele) => {
+                            const score = ele.data('qualityScore');
+                            if (score !== undefined) {
+                                if (score >= 80) return '#10b981'; // Green
+                                if (score >= 50) return '#f59e0b'; // Amber
+                                return '#ef4444'; // Red
+                            }
+                            return colors.nodeBorder;
+                        },
                         'label': 'data(label)',
                         'color': colors.text,
                         'font-size': 12,
@@ -194,7 +212,8 @@ export function GraphViewer(graphData, theme) {
                     upstreamCount: predecessors.nodes().size(),
                     downstreamCount: successors.nodes().size(),
                     upstreamNodes: predecessors.nodes().map(n => n.data('label')),
-                    downstreamNodes: successors.nodes().map(n => n.data('label'))
+                    downstreamNodes: successors.nodes().map(n => n.data('label')),
+                    qualityScore: node.data('qualityScore')
                 }
             }));
         });

@@ -21,7 +21,8 @@ impl QualityAnalyzerStore {
                 table_name TEXT NOT NULL,
                 timestamp INTEGER NOT NULL,
                 overall_score REAL NOT NULL,
-                report_data BLOB NOT NULL
+                report_data BLOB NOT NULL,
+                schema_snapshot_id INTEGER
             );
             
             CREATE INDEX IF NOT EXISTS idx_quality_conn_table ON quality_reports(connection_id, table_name);
@@ -39,8 +40,8 @@ impl QualityAnalyzerStore {
         
         let id = sqlx::query(
             r#"
-            INSERT INTO quality_reports (connection_id, table_name, timestamp, overall_score, report_data)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO quality_reports (connection_id, table_name, timestamp, overall_score, report_data, schema_snapshot_id)
+            VALUES (?, ?, ?, ?, ?, ?)
             RETURNING id
             "#
         )
@@ -49,6 +50,7 @@ impl QualityAnalyzerStore {
         .bind(report.timestamp.timestamp())
         .bind(report.overall_score)
         .bind(data)
+        .bind(report.schema_snapshot_id)
         .fetch_one(&self.pool)
         .await
         .map_err(|e| format!("Failed to save report: {}", e))?

@@ -3,6 +3,7 @@ import { SchemaDiffViewer } from './SchemaDiff.js';
 import { SchemaTrackerApi } from '../../../api/schemaTracker.js';
 import { ThemeManager } from '../../../utils/ThemeManager.js';
 import { Dialog } from '../../UI/Dialog.js'; // Assuming basic dialog exists
+import { invoke } from '@tauri-apps/api/core';
 
 export function SchemaTracker() {
     const isLight = ThemeManager.getCurrentTheme() === 'light';
@@ -46,6 +47,7 @@ export function SchemaTracker() {
     let currentMigration = null;
     let currentBreakingChanges = null;
     let activeConnection = null;
+    let qualityScores = {}; // Map snapshotId -> average score
 
     // --- Logic ---
     const loadSnapshots = async () => {
@@ -53,6 +55,33 @@ export function SchemaTracker() {
         try {
             // Updated to use the corrected API method
             snapshots = await SchemaTrackerApi.getSnapshots(activeConnection.id);
+
+            // Fetch Quality Reports to correlate
+            // Best effort: get last 50 reports for this connection
+            // We need a new API or reuse getQualityReports
+            // For now, let's assume we can fetch them. 
+            // Ideally we'd have a specific "getScoresBySnapshot" endpoint.
+            // Using invoke directly as a workaround if API wrapper missing
+            try {
+                const reports = await invoke('get_quality_reports', { connectionId: activeConnection.id });
+                // Aggregate scores by snapshot ID
+                qualityScores = {};
+                reports.forEach(r => {
+                    if (r.schema_snapshot_id) {
+                        if (!qualityScores[r.schema_snapshot_id]) qualityScores[r.schema_snapshot_id] = [];
+                        qualityScores[r.schema_snapshot_id].push(r.overall_score);
+                    }
+                });
+
+                // Average them
+                Object.keys(qualityScores).forEach(k => {
+                    const scores = qualityScores[k];
+                    qualityScores[k] = scores.reduce((a, b) => a + b, 0) / scores.length;
+                });
+            } catch (ignore) {
+                console.warn("Could not fetch quality scores for timeline", ignore);
+            }
+
             render();
 
             // If we have snapshots and none selected, select the latest
@@ -111,7 +140,8 @@ export function SchemaTracker() {
         const timeline = SchemaTimeline({
             snapshots,
             selectedSnapshotId: selectedSnapshot?.id,
-            onSelectSnapshot: (snap) => selectSnapshot(snap)
+            onSelectSnapshot: (snap) => selectSnapshot(snap),
+            qualityScores: qualityScores // New Prop
         });
         content.appendChild(timeline);
 

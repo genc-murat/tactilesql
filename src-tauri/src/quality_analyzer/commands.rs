@@ -36,7 +36,29 @@ pub async fn run_quality_analysis(
         },
     };
 
-    // 2. Save Report
+    // 2. Fetch Latest Schema Snapshot ID (Best effort)
+    let schema_snapshot_id = {
+         let store_guard = app_state.schema_tracker_store.lock().await;
+         if let Some(store) = store_guard.as_ref() {
+             // We don't have a direct "get_latest" method, but get_snapshots returns order by timestamp DESC
+             // We can fetch limit 1 for optimization if we add that method, or just get all and take first
+             // For performance, let's just get all (assuming < 100 snapshots usually) or add a specialized query?
+             // Re-using get_snapshots for now.
+             if let Ok(snapshots) = store.get_snapshots(&connection_id).await {
+                 snapshots.first().and_then(|s| s.id)
+             } else {
+                 None
+             }
+         } else {
+             None
+         }
+    };
+    
+    // 3. Inject Snapshot ID into Report
+    let mut report = report;
+    report.schema_snapshot_id = schema_snapshot_id;
+
+    // 4. Save Report
     {
         let store_guard = app_state.quality_analyzer_store.lock().await;
         if let Some(store) = store_guard.as_ref() {
