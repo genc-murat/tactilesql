@@ -1,9 +1,9 @@
 import { invoke } from '@tauri-apps/api/core';
 
 export const DependencyEngineApi = {
-    async getGraph(connectionId, tableName = null) {
+    async getGraph(connectionId, database = null, tableName = null) {
         try {
-            return await invoke('get_dependency_graph', { connectionId, tableName });
+            return await invoke('get_dependency_graph', { connectionId, database, tableName });
         } catch (error) {
             console.error('Failed to get dependency graph:', error);
             throw error;

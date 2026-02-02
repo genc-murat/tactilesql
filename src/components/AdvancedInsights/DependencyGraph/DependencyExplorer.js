@@ -39,6 +39,8 @@ export function DependencyExplorer() {
     let state = {
         connections: [],
         selectedConnectionId: null,
+        selectedDatabase: null,
+        availableDatabases: [],
         focusedTable: null,
         graphData: null,
         qualityMap: {}, // table.name -> score
@@ -66,7 +68,7 @@ export function DependencyExplorer() {
         render();
     };
 
-    const selectConnection = async (connId, tableName = null) => {
+    const selectConnection = async (connId, tableName = null, database = null) => {
         state.selectedConnectionId = connId;
         state.focusedTable = tableName;
         state.graphData = null;
@@ -75,15 +77,34 @@ export function DependencyExplorer() {
         const conn = state.connections.find(c => c.id === connId);
         if (!conn) { render(); return; }
 
+        // Default database/schema selection
+        if (!database) {
+            state.selectedDatabase = conn.dbType === 'postgresql' ? conn.schema : conn.database;
+        } else {
+            state.selectedDatabase = database;
+        }
+
         state.isLoading = true;
         render();
 
         try {
-            // Establish connection first
+            // Establish connection first if needed (usually it is already established, but safe to call)
+            // But establish_connection can be slow. Let's only call it if we don't have a pool, 
+            // but we don't know that here. So we call it but wrap it.
             await invoke('establish_connection', { config: conn });
 
+            // Fetch available databases/schemas if not already loaded for this connection
+            if (state.availableDatabases.length === 0) {
+                try {
+                    state.availableDatabases = await invoke('get_databases');
+                } catch (dbErr) {
+                    console.warn("Failed to fetch databases list", dbErr);
+                    state.availableDatabases = state.selectedDatabase ? [state.selectedDatabase] : [];
+                }
+            }
+
             // Fetch graph
-            state.graphData = await DependencyEngineApi.getGraph(connId, state.focusedTable);
+            state.graphData = await DependencyEngineApi.getGraph(connId, state.selectedDatabase, state.focusedTable);
 
             // Fetch Quality Scores (Best Effort)
             try {
@@ -145,7 +166,7 @@ export function DependencyExplorer() {
             select.appendChild(opt);
         });
 
-        select.onchange = (e) => selectConnection(e.target.value);
+        select.onchange = (e) => selectConnection(e.target.value, state.focusedTable);
         div.appendChild(select);
         controls.appendChild(div);
 
@@ -157,7 +178,7 @@ export function DependencyExplorer() {
             }`;
         refreshBtn.innerHTML = '<span class="material-symbols-outlined text-lg">sync</span>';
         refreshBtn.disabled = !state.selectedConnectionId || state.isLoading;
-        refreshBtn.onclick = () => selectConnection(state.selectedConnectionId, state.focusedTable);
+        refreshBtn.onclick = () => selectConnection(state.selectedConnectionId, state.focusedTable, state.selectedDatabase);
         controls.appendChild(refreshBtn);
 
         // Focus indicator & Clear button
@@ -176,9 +197,39 @@ export function DependencyExplorer() {
                 // Clear URL param without reload
                 const newUrl = window.location.hash.split('?')[0];
                 window.history.replaceState(null, '', newUrl);
-                selectConnection(state.selectedConnectionId, null);
+                selectConnection(state.selectedConnectionId, null, state.selectedDatabase);
             };
             controls.appendChild(focusDiv);
+        }
+
+        // Database selector
+        if (state.selectedConnectionId) {
+            const dbDiv = document.createElement('div');
+            dbDiv.className = `flex flex-col gap-1.5 min-w-[200px]`;
+
+            const dbLabel = document.createElement('label');
+            dbLabel.className = `text-[10px] font-bold uppercase tracking-wider ${classes.text.label}`;
+            dbLabel.textContent = 'Scope';
+            dbDiv.appendChild(dbLabel);
+
+            const dbSelect = document.createElement('select');
+            dbSelect.className = classes.input;
+
+            state.availableDatabases.forEach(db => {
+                const opt = document.createElement('option');
+                opt.value = db;
+                opt.textContent = db;
+                if (db === state.selectedDatabase) opt.selected = true;
+                dbSelect.appendChild(opt);
+            });
+
+            dbSelect.onchange = (e) => {
+                const newScope = e.target.value;
+                selectConnection(state.selectedConnectionId, state.focusedTable, newScope);
+            };
+
+            dbDiv.appendChild(dbSelect);
+            controls.appendChild(dbDiv);
         }
 
         header.appendChild(controls);

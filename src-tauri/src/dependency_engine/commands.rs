@@ -7,6 +7,7 @@ use crate::dependency_engine::graph::DependencyGraphData;
 pub async fn get_dependency_graph(
     app_state: State<'_, AppState>,
     connection_id: String,
+    database: Option<String>,
     table_name: Option<String>,
 ) -> Result<DependencyGraphData, String> {
     
@@ -15,18 +16,25 @@ pub async fn get_dependency_graph(
         guard.clone()
     };
     
-    let graph = match db_type {
-        DatabaseType::MySQL => {
-            let pool_guard = app_state.mysql_pool.lock().await;
-            let pool = pool_guard.as_ref().ok_or("No active MySQL connection")?;
-            super::extractor::build_dependency_graph_mysql(pool, &connection_id, table_name).await?
-        },
-        DatabaseType::PostgreSQL => {
-            let pool_guard = app_state.postgres_pool.lock().await;
-            let pool = pool_guard.as_ref().ok_or("No active PostgreSQL connection")?;
-            super::extractor::build_dependency_graph_postgres(pool, &connection_id, table_name).await?
+    let graph_future = async {
+        match db_type {
+            DatabaseType::MySQL => {
+                let pool_guard = app_state.mysql_pool.lock().await;
+                let pool = pool_guard.as_ref().ok_or("No active MySQL connection")?;
+                super::extractor::build_dependency_graph_mysql(pool, &connection_id, database, table_name).await
+            },
+            DatabaseType::PostgreSQL => {
+                let pool_guard = app_state.postgres_pool.lock().await;
+                let pool = pool_guard.as_ref().ok_or("No active PostgreSQL connection")?;
+                super::extractor::build_dependency_graph_postgres(pool, &connection_id, database, table_name).await
+            }
         }
     };
+
+    let graph = tokio::time::timeout(std::time::Duration::from_secs(60), graph_future)
+        .await
+        .map_err(|_| "Dependency graph building timed out after 60 seconds")?
+        .map_err(|e| e.to_string())?;
     
     Ok(graph.to_data())
 }
