@@ -93,9 +93,7 @@ export function DependencyExplorer() {
         render();
 
         try {
-            // Establish connection first if needed (usually it is already established, but safe to call)
-            // But establish_connection can be slow. Let's only call it if we don't have a pool, 
-            // but we don't know that here. So we call it but wrap it.
+            // Establish connection first if needed
             await invoke('establish_connection', { config: conn });
 
             // Fetch available databases/schemas if not already loaded for this connection
@@ -107,19 +105,32 @@ export function DependencyExplorer() {
                     state.availableDatabases = state.selectedDatabase ? [state.selectedDatabase] : [];
                 }
             }
+        } catch (err) {
+            console.error('Failed to select connection:', err);
+            state.error = err.toString();
+        } finally {
+            state.isLoading = false;
+            render();
+        }
+    };
 
+    const fetchGraph = async () => {
+        if (!state.selectedConnectionId || !state.selectedDatabase) return;
+
+        state.isLoading = true;
+        state.error = null;
+        state.graphData = null;
+        render();
+
+        try {
             // Fetch graph
-            state.graphData = await DependencyEngineApi.getGraph(connId, state.selectedDatabase, state.focusedTable);
+            state.graphData = await DependencyEngineApi.getGraph(state.selectedConnectionId, state.selectedDatabase, state.focusedTable);
 
             // Fetch Quality Scores (Best Effort)
             try {
-                const reports = await invoke('get_quality_reports', { connectionId: connId });
+                const reports = await invoke('get_quality_reports', { connectionId: state.selectedConnectionId });
                 state.qualityMap = {};
                 reports.forEach(r => {
-                    // Match by table name. 
-                    // Note: Graph nodes might have schema prefix. Quality report has table_name.
-                    // We might need fuzzy matching or schema awareness.
-                    // For now, simple map by name.
                     state.qualityMap[r.table_name] = r.overall_score;
                 });
             } catch (ignore) {
@@ -175,38 +186,6 @@ export function DependencyExplorer() {
         div.appendChild(select);
         controls.appendChild(div);
 
-        // Refresh Button
-        const refreshBtn = document.createElement('button');
-        refreshBtn.className = `px-3 py-2 rounded-lg border text-sm font-bold uppercase tracking-wide transition-all self-end mb-[1px] ${!state.selectedConnectionId || state.isLoading
-            ? 'opacity-50 cursor-not-allowed bg-gray-200 text-gray-400 border-gray-300'
-            : (theme === 'light' ? 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50' : 'bg-transparent border-white/20 text-white hover:bg-white/10')
-            }`;
-        refreshBtn.innerHTML = '<span class="material-symbols-outlined text-lg">sync</span>';
-        refreshBtn.disabled = !state.selectedConnectionId || state.isLoading;
-        refreshBtn.onclick = () => selectConnection(state.selectedConnectionId, state.focusedTable, state.selectedDatabase);
-        controls.appendChild(refreshBtn);
-
-        // Focus indicator & Clear button
-        if (state.focusedTable) {
-            const focusDiv = document.createElement('div');
-            focusDiv.className = `flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm animate-in slide-in-from-left duration-300 ${isLight ? 'bg-rose-50 border-rose-100 text-rose-600' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'}`;
-            focusDiv.innerHTML = `
-                <span class="material-symbols-outlined text-sm">filter_alt</span>
-                <span class="font-bold">Focus: ${state.focusedTable}</span>
-                <button id="clear-focus" class="ml-1 hover:opacity-70 transition-opacity flex items-center">
-                    <span class="material-symbols-outlined text-base">close</span>
-                </button>
-            `;
-            const clearBtn = focusDiv.querySelector('#clear-focus');
-            clearBtn.onclick = () => {
-                // Clear URL param without reload
-                const newUrl = window.location.hash.split('?')[0];
-                window.history.replaceState(null, '', newUrl);
-                selectConnection(state.selectedConnectionId, null, state.selectedDatabase);
-            };
-            controls.appendChild(focusDiv);
-        }
-
         // Database selector
         if (state.selectedConnectionId) {
             const dbDiv = document.createElement('div');
@@ -229,12 +208,49 @@ export function DependencyExplorer() {
             });
 
             dbSelect.onchange = (e) => {
-                const newScope = e.target.value;
-                selectConnection(state.selectedConnectionId, state.focusedTable, newScope);
+                state.selectedDatabase = e.target.value;
+                render();
             };
 
             dbDiv.appendChild(dbSelect);
             controls.appendChild(dbDiv);
+        }
+
+        // Build Graph Button
+        const buildBtn = document.createElement('button');
+        const canBuild = state.selectedConnectionId && state.selectedDatabase && !state.isLoading;
+        buildBtn.className = `px-4 py-2 rounded-lg border text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 self-end mb-[1px] ${!canBuild
+            ? 'opacity-40 cursor-not-allowed grayscale'
+            : (theme === 'light' ? 'bg-mysql-teal text-white border-mysql-teal shadow-lg hover:shadow-mysql-teal/20' : 'bg-mysql-teal text-white border-mysql-teal shadow-lg shadow-mysql-teal/10 hover:shadow-mysql-teal/30 hover:scale-[1.02]')
+            }`;
+        buildBtn.innerHTML = `
+            <span class="material-symbols-outlined text-base">${state.graphData ? 'refresh' : 'account_tree'}</span>
+            ${state.graphData ? 'Rebuild Graph' : 'Build Graph'}
+        `;
+        buildBtn.disabled = !canBuild;
+        buildBtn.onclick = fetchGraph;
+        controls.appendChild(buildBtn);
+
+        // Focus indicator & Clear button
+        if (state.focusedTable) {
+            const focusDiv = document.createElement('div');
+            focusDiv.className = `flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm animate-in slide-in-from-left duration-300 ${isLight ? 'bg-rose-50 border-rose-100 text-rose-600' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'}`;
+            focusDiv.innerHTML = `
+                <span class="material-symbols-outlined text-sm">filter_alt</span>
+                <span class="font-bold">Focus: ${state.focusedTable}</span>
+                <button id="clear-focus" class="ml-1 hover:opacity-70 transition-opacity flex items-center">
+                    <span class="material-symbols-outlined text-base">close</span>
+                </button>
+            `;
+            const clearBtn = focusDiv.querySelector('#clear-focus');
+            clearBtn.onclick = () => {
+                // Clear URL param without reload
+                const newUrl = window.location.hash.split('?')[0];
+                window.history.replaceState(null, '', newUrl);
+                state.focusedTable = null;
+                render();
+            };
+            controls.appendChild(focusDiv);
         }
 
         header.appendChild(controls);
