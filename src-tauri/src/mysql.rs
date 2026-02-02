@@ -987,3 +987,20 @@ pub async fn get_slow_queries(pool: &Pool<MySql>, limit: i32) -> Result<Vec<Slow
         }
     }
 }
+// --- Execution Plan ---
+
+pub async fn get_execution_plan(pool: &Pool<MySql>, query: &str) -> Result<String, String> {
+    let explain_query = format!("EXPLAIN FORMAT=JSON {}", query);
+    let row = sqlx::query(&explain_query)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| format!("Failed to get execution plan: {}", e))?;
+
+    match row {
+        Some(r) => {
+             let plan: String = r.try_get(0).unwrap_or_default();
+             Ok(plan)
+        },
+        None => Err("No execution plan returned".to_string())
+    }
+}

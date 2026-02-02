@@ -22,6 +22,7 @@ pub struct AppState {
     pub postgres_pool: Arc<Mutex<Option<Pool<Postgres>>>>,
     pub active_db_type: Arc<Mutex<DatabaseType>>,
     pub encryption_key: Arc<Mutex<Option<Vec<u8>>>>,
+    pub awareness_store: Arc<Mutex<Option<crate::awareness::store::AwarenessStore>>>,
 }
 
 impl Default for AppState {
@@ -31,6 +32,7 @@ impl Default for AppState {
             postgres_pool: Arc::new(Mutex::new(None)),
             active_db_type: Arc::new(Mutex::new(DatabaseType::MySQL)),
             encryption_key: Arc::new(Mutex::new(None)),
+            awareness_store: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -42,6 +44,7 @@ impl Clone for AppState {
             postgres_pool: Arc::clone(&self.postgres_pool),
             active_db_type: Arc::clone(&self.active_db_type),
             encryption_key: Arc::clone(&self.encryption_key),
+            awareness_store: Arc::clone(&self.awareness_store),
         }
     }
 }

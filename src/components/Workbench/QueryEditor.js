@@ -123,8 +123,12 @@ export function QueryEditor() {
     let suggestions = [];
     let selectedIndex = 0;
     let autocompleteVisible = false;
-    // Using centralized DatabaseCache instead of local variables
-    // cachedDatabases, cachedTables, cachedColumns are now managed by DatabaseCache
+
+    // Cache state
+    let cachedDatabases = [];
+    let cachedTables = {};
+    let cachedColumns = {};
+
     let currentGhostText = ''; // State for ghost text prediction
 
     // --- Autocomplete Logic ---
@@ -224,10 +228,10 @@ export function QueryEditor() {
         const currentDb = activeConfig.database || '';
         const query = textarea?.value || '';
         const cursorPos = textarea?.selectionStart || 0;
-        
+
         // Get database type from activeDbType in localStorage
         const activeDbType = localStorage.getItem('activeDbType') || 'mysql';
-        
+
         // Set connection ID for cache tracking
         if (activeConfig.id) {
             DatabaseCache.setConnectionId(activeConfig.id);
@@ -431,7 +435,7 @@ export function QueryEditor() {
         const sortedTabs = getSortedTabs();
         const visibleTabs = sortedTabs.slice(0, maxVisibleTabs);
         const overflowTabs = sortedTabs.slice(maxVisibleTabs);
-        
+
         // Check if PostgreSQL (hide database selector for PostgreSQL)
         const activeDbType = localStorage.getItem('activeDbType') || 'mysql';
         const isPg = activeDbType === 'postgresql';
@@ -1581,7 +1585,7 @@ export function QueryEditor() {
                 // Get database type for correct EXPLAIN syntax
                 const activeDbType = localStorage.getItem('activeDbType') || 'mysql';
                 // PostgreSQL: EXPLAIN (FORMAT TEXT), MySQL: EXPLAIN FORMAT=TRADITIONAL
-                const explainQuery = activeDbType === 'postgresql' 
+                const explainQuery = activeDbType === 'postgresql'
                     ? `EXPLAIN (FORMAT TEXT) ${queryToRun}`
                     : `EXPLAIN FORMAT=TRADITIONAL ${queryToRun}`;
                 const originalHTML = explainBtn.innerHTML;

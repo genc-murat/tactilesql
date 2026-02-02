@@ -27,6 +27,7 @@ mod db_types;
 mod mysql;
 mod postgres;
 mod db;
+pub mod awareness;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -60,6 +61,20 @@ pub fn run() {
                     // Without key, load_connections and save_connection will fail.
                 }
             }
+
+            // Initialize Awareness Store
+            let app_handle_clone = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                match crate::awareness::store::AwarenessStore::new(&app_handle_clone).await {
+                    Ok(store) => {
+                         let state = app_handle_clone.state::<db::AppState>();
+                         let mut guard = state.awareness_store.lock().await;
+                         *guard = Some(store);
+                         println!("Awareness Store initialized successfully.");
+                    },
+                    Err(e) => eprintln!("Failed to initialize Awareness Store: {}", e),
+                }
+            });
 
             Ok(())
         })
@@ -116,7 +131,12 @@ pub fn run() {
             db::get_slow_queries,
             // Query Analysis
             db::analyze_query,
+            db::analyze_query,
             db::get_index_suggestions,
+            db::get_execution_plan,
+            db::compare_queries,
+            db::get_anomaly_history,
+            db::get_query_history,
             // PostgreSQL Specific
             db::get_sequences,
             db::get_custom_types,

@@ -58,6 +58,15 @@ export function NavBar() {
             </div>
 
             <div class="flex items-center gap-3">
+                <!-- Awareness Tools -->
+                <button id="btn-query-comparator" class="flex items-center justify-center w-8 h-8 rounded-md transition-all duration-300 ${(isLight || isDawn) ? 'text-gray-400 hover:text-gray-700 hover:bg-gray-100' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'}" title="Query Comparator">
+                    <span class="material-symbols-outlined text-lg">compare_arrows</span>
+                </button>
+                <button id="btn-anomaly-dashboard" class="flex items-center justify-center w-8 h-8 rounded-md transition-all duration-300 ${(isLight || isDawn) ? 'text-gray-400 hover:text-gray-700 hover:bg-gray-100' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'}" title="Anomaly Dashboard">
+                     <span class="material-symbols-outlined text-lg text-red-400">warning</span>
+                </button>
+                <div class="w-px h-4 ${(isLight || isDawn) ? 'bg-gray-300' : 'bg-white/10'} mx-1"></div>
+
                 <a href="#/help" class="flex items-center justify-center w-8 h-8 rounded-md transition-all duration-300 ${currentPath === '/help'
                 ? 'text-mysql-cyan bg-mysql-teal/10 border border-mysql-teal/30'
                 : (isLight || isDawn)
@@ -80,6 +89,15 @@ export function NavBar() {
                 </a>
             </div>
         `;
+
+        // Bind Awareness Events
+        nav.querySelector('#btn-query-comparator').addEventListener('click', () => {
+            window.dispatchEvent(new CustomEvent('tactilesql:toggle-comparator'));
+        });
+
+        nav.querySelector('#btn-anomaly-dashboard').addEventListener('click', () => {
+            window.dispatchEvent(new CustomEvent('tactilesql:toggle-anomaly-dashboard'));
+        });
     };
 
     // --- Theme Handling ---

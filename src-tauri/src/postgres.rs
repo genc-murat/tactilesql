@@ -1250,3 +1250,23 @@ pub async fn get_slow_queries(pool: &Pool<Postgres>, limit: i32) -> Result<Vec<S
     }
     Ok(queries)
 }
+// --- Execution Plan ---
+
+pub async fn get_execution_plan(pool: &Pool<Postgres>, query: &str) -> Result<String, String> {
+    let explain_query = format!("EXPLAIN (FORMAT JSON) {}", query);
+    let row = sqlx::query(&explain_query)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| format!("Failed to get execution plan: {}", e))?;
+
+    match row {
+        Some(r) => {
+             // Postgres returns JSON as a Value or String.
+             // Usually column is QUERY PLAN and type is JSON/JSONB or TEXT.
+             // Try to get as Value first then to string.
+             let plan: serde_json::Value = r.try_get(0).unwrap_or(serde_json::Value::Null);
+             Ok(plan.to_string())
+        },
+        None => Err("No execution plan returned".to_string())
+    }
+}

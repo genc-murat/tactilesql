@@ -414,25 +414,99 @@ pub async fn execute_query(
     app_state: State<'_, AppState>,
     query: String
 ) -> Result<Vec<QueryResult>, String> {
+    let start_time = chrono::Utc::now();
+    
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
         guard.clone()
     };
 
-    match db_type {
+    let result = match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
             let pool = guard.as_ref()
                 .ok_or("No PostgreSQL connection established")?;
-            postgres::execute_query(pool, query).await
+            postgres::execute_query(pool, query.clone()).await
         },
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
-            mysql::execute_query(pool, query).await
+            mysql::execute_query(pool, query.clone()).await
         }
+    };
+
+    let duration_ms = (chrono::Utc::now() - start_time).num_milliseconds() as f64;
+
+    if let Ok(ref res) = result {
+        // Calculate total rows
+        let rows_affected = res.iter().map(|r| r.rows.len()).sum::<usize>() as u64;
+        
+        // Asynchronously log to Awareness Store
+        let store_arc = app_state.awareness_store.clone();
+        let query_clone = query.clone();
+        let timestamp = start_time;
+        
+        // Capture dependencies for background analysis
+        let db_type_clone = db_type.clone();
+        let mysql_pool_arc = app_state.mysql_pool.clone();
+        let postgres_pool_arc = app_state.postgres_pool.clone();
+        
+        tauri::async_runtime::spawn(async move {
+            let guard = store_arc.lock().await;
+            if let Some(store) = guard.as_ref() {
+                let normalized = crate::awareness::profiler::normalize_query(&query_clone);
+                let execution = crate::awareness::profiler::QueryExecution {
+                    query_hash: crate::awareness::profiler::calculate_query_hash(&normalized),
+                    exact_query: query_clone.clone(),
+                    timestamp,
+                    resources: crate::awareness::profiler::ResourceUsage {
+                        execution_time_ms: duration_ms,
+                        rows_affected,
+                    }
+                };
+                
+                match store.log_query_execution(&execution).await {
+                    Ok(Some(anomaly)) => {
+                        // Anomaly detected! Perform cause analysis
+                        
+                        // 1. Fetch Execution Plan
+                        let plan_result = match db_type_clone {
+                            DatabaseType::MySQL => {
+                                let g = mysql_pool_arc.lock().await;
+                                if let Some(pool) = g.as_ref() {
+                                    crate::mysql::get_execution_plan(pool, &query_clone).await
+                                } else {
+                                    Err("MySQL pool not available".to_string())
+                                }
+                            },
+                             DatabaseType::PostgreSQL => {
+                                let g = postgres_pool_arc.lock().await;
+                                if let Some(pool) = g.as_ref() {
+                                    crate::postgres::get_execution_plan(pool, &query_clone).await
+                                } else {
+                                    Err("Postgres pool not available".to_string())
+                                }
+                            }
+                        };
+                        
+                        // 2. Analyze Cause and Update Log
+                        if let Ok(plan) = plan_result {
+                            if let Some(cause) = crate::awareness::anomaly::AnomalyDetector::analyze_cause(&plan) {
+                                if let Err(e) = store.update_anomaly_cause(&anomaly.query_hash, anomaly.detected_at, &cause).await {
+                                     eprintln!("Failed to update anomaly cause: {}", e);
+                                }
+                            }
+                        }
+                    },
+                    Ok(None) => {}, // No anomaly
+                    Err(e) => eprintln!("Failed to log query execution: {}", e),
+                }
+            }
+        });
     }
+
+    result
 }
 
 // =====================================================
@@ -1081,7 +1155,31 @@ pub async fn get_innodb_status(app_state: State<'_, AppState>) -> Result<String,
         }
     }
 }
+#[tauri::command]
+pub async fn get_execution_plan(
+    app_state: State<'_, AppState>,
+    query: String
+) -> Result<String, String> {
+    let db_type = {
+        let guard = app_state.active_db_type.lock().await;
+        guard.clone()
+    };
 
+    match db_type {
+        DatabaseType::PostgreSQL => {
+            let guard = app_state.postgres_pool.lock().await;
+            let pool = guard.as_ref()
+                .ok_or("No PostgreSQL connection established")?;
+            postgres::get_execution_plan(pool, &query).await
+        },
+        DatabaseType::MySQL => {
+            let guard = app_state.mysql_pool.lock().await;
+            let pool = guard.as_ref()
+                .ok_or("No MySQL connection established")?;
+            mysql::get_execution_plan(pool, &query).await
+        }
+    }
+}
 #[tauri::command]
 pub async fn get_replication_status(app_state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let db_type = {
@@ -1299,5 +1397,78 @@ pub async fn get_tablespaces(app_state: State<'_, AppState>) -> Result<Vec<Strin
         DatabaseType::MySQL => {
             Ok(Vec::new())
         }
+    }
+}
+
+#[tauri::command]
+pub async fn compare_queries(
+    app_state: State<'_, AppState>,
+    query_a: String,
+    query_b: String
+) -> Result<crate::awareness::comparator::ComparisonResult, String> {
+    // 1. Syntax Diff
+    let syntax_diff = crate::awareness::comparator::Comparator::compare_syntax(&query_a, &query_b);
+
+    // 2. Metrics Comparison
+    // Fetch profiles for both queries
+    let store_guard = app_state.awareness_store.lock().await;
+    let metrics = if let Some(store) = store_guard.as_ref() {
+        let hash_a = crate::awareness::profiler::calculate_query_hash(&crate::awareness::profiler::normalize_query(&query_a));
+        let hash_b = crate::awareness::profiler::calculate_query_hash(&crate::awareness::profiler::normalize_query(&query_b));
+
+        let profile_a = store.get_baseline_profile(&hash_a).await?
+            .unwrap_or(crate::awareness::profiler::BaselineProfile {
+                query_hash: hash_a,
+                query_pattern: "".to_string(),
+                avg_duration_ms: 0.0,
+                std_dev_duration_ms: 0.0,
+                total_executions: 0,
+                last_updated: chrono::Utc::now(),
+            });
+        
+        let profile_b = store.get_baseline_profile(&hash_b).await?
+            .unwrap_or(crate::awareness::profiler::BaselineProfile {
+                query_hash: hash_b,
+                query_pattern: "".to_string(),
+                avg_duration_ms: 0.0,
+                std_dev_duration_ms: 0.0,
+                total_executions: 0,
+                last_updated: chrono::Utc::now(),
+            });
+
+        crate::awareness::comparator::Comparator::compare_metrics(&profile_a, &profile_b)
+    } else {
+        Vec::new()
+    };
+
+    Ok(crate::awareness::comparator::ComparisonResult {
+        syntax_diff,
+        metrics,
+    })
+}
+
+#[tauri::command]
+pub async fn get_anomaly_history(
+    app_state: State<'_, AppState>,
+    limit: i64
+) -> Result<Vec<crate::awareness::anomaly::Anomaly>, String> {
+    let guard = app_state.awareness_store.lock().await;
+    if let Some(store) = guard.as_ref() {
+        store.get_anomalies(limit).await
+    } else {
+        Err("Awareness store not initialized".to_string())
+    }
+}
+
+#[tauri::command]
+pub async fn get_query_history(
+    app_state: State<'_, AppState>,
+    limit: i64
+) -> Result<Vec<crate::awareness::profiler::QueryExecution>, String> {
+    let guard = app_state.awareness_store.lock().await;
+    if let Some(store) = guard.as_ref() {
+        store.get_query_history(limit).await
+    } else {
+        Err("Awareness store not initialized".to_string())
     }
 }

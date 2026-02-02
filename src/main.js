@@ -5,6 +5,8 @@ import { TitleBar } from './components/TitleBar.js';
 import { NavBar } from './components/Layout/NavBar.js';
 import { ThemeManager } from './utils/ThemeManager.js';
 import { initKeyboardShortcuts, registerHandler, showShortcutsHelp } from './utils/KeyboardShortcuts.js';
+import { QueryComparator } from './components/Awareness/QueryComparator.js';
+import { AnomalyDashboard } from './components/Awareness/AnomalyDashboard.js';
 
 // Lazy load page components for better initial load time
 const lazyLoad = (importFn, exportName) => async () => {
@@ -143,6 +145,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     const router = new Router(routes, mainContent);
+
+    // Initialize Awareness Components
+    const comparator = QueryComparator();
+    document.body.appendChild(comparator.element);
+
+    const anomalyDashboard = AnomalyDashboard();
+    document.body.appendChild(anomalyDashboard.element);
+
+    // Expose toggles globally via Custom Events
+    window.addEventListener('tactilesql:toggle-comparator', () => comparator.toggle());
+    window.addEventListener('tactilesql:toggle-anomaly-dashboard', () => anomalyDashboard.toggle());
 
     // Manually trigger initial route since 'load' event already fired
     router.handleRoute();

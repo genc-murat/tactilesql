@@ -106,6 +106,12 @@ npx tauri build
 - Similar/duplicate query detection
 - Workload profiling with auto-labeling (hot/slow/error-prone)
 
+### Awareness Features
+
+- **Query Comparator**: Visual diff of two queries with syntax highlighting and performance metric comparison (execution time, rows affected, etc.).
+- **Anomaly Dashboard**: Detects and displays performance regressions by comparing current execution against historical baselines.
+- **Performance Profiler**: Backend service that tracks query execution history and builds baseline profiles for anomaly detection.
+
 ### Dashboard
 
 - KPIs: threads, buffer pool, traffic
@@ -167,6 +173,11 @@ The Rust backend exposes the following commands (used by the UI):
 ### Query Execution
 - `execute_query` — Execute SQL statements
 - `analyze_query` — Analyze query performance and get optimization suggestions
+
+### Awareness Features
+- `compare_queries` — Compare syntax and performance of two queries
+- `get_anomaly_history` — Retrieve history of detected performance anomalies
+- `get_query_history` — Retrieve execution history for specific queries
 
 ### Database Schema
 - `get_databases`, `get_tables`, `get_table_schema`
