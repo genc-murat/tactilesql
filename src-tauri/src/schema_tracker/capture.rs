@@ -112,22 +112,110 @@ pub async fn capture_snapshot_mysql(
     }
 
     // 4. Fetch Constraints (Constraints + Key Usage for FKs/PKs)
-    
-    // ... For brevity, assume simplified FK/PK fetching or reuse db logic if needed, 
-    // but better to implement bulk logic.
-    // Let's implement minimal PK/FK now.
+    let fk_query = format!(r#"
+        SELECT 
+            TABLE_NAME,
+            CONSTRAINT_NAME,
+            COLUMN_NAME,
+            REFERENCED_TABLE_NAME,
+            REFERENCED_COLUMN_NAME
+        FROM information_schema.KEY_COLUMN_USAGE
+        WHERE TABLE_SCHEMA = '{}'
+            AND REFERENCED_TABLE_NAME IS NOT NULL
+    "#, database);
+
+    let fk_rows = sqlx::query(&fk_query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch foreign keys: {}", e))?;
+
+    let mut foreign_keys_by_table: HashMap<String, Vec<ForeignKey>> = HashMap::new();
+    for row in fk_rows {
+        let table_name: String = row.try_get("TABLE_NAME").unwrap_or_default();
+        foreign_keys_by_table.entry(table_name).or_insert_with(Vec::new).push(ForeignKey {
+            constraint_name: row.try_get("CONSTRAINT_NAME").unwrap_or_default(),
+            column_name: row.try_get("COLUMN_NAME").unwrap_or_default(),
+            referenced_table: row.try_get("REFERENCED_TABLE_NAME").unwrap_or_default(),
+            referenced_column: row.try_get("REFERENCED_COLUMN_NAME").unwrap_or_default(),
+        });
+    }
+
+    let pk_query = format!(r#"
+        SELECT TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION
+        FROM information_schema.KEY_COLUMN_USAGE
+        WHERE TABLE_SCHEMA = '{}'
+            AND CONSTRAINT_NAME = 'PRIMARY'
+        ORDER BY TABLE_NAME, ORDINAL_POSITION
+    "#, database);
+
+    let pk_rows = sqlx::query(&pk_query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch primary keys: {}", e))?;
+
+    let mut primary_keys_by_table: HashMap<String, Vec<PrimaryKey>> = HashMap::new();
+    for row in pk_rows {
+        let table_name: String = row.try_get("TABLE_NAME").unwrap_or_default();
+        primary_keys_by_table.entry(table_name).or_insert_with(Vec::new).push(PrimaryKey {
+            column_name: row.try_get("COLUMN_NAME").unwrap_or_default(),
+            ordinal_position: row.try_get::<i32, _>("ORDINAL_POSITION").unwrap_or(0),
+        });
+    }
+
+    let constraints_query = format!(r#"
+        SELECT 
+            tc.TABLE_NAME,
+            tc.CONSTRAINT_NAME,
+            tc.CONSTRAINT_TYPE,
+            kcu.COLUMN_NAME
+        FROM information_schema.TABLE_CONSTRAINTS tc
+        LEFT JOIN information_schema.KEY_COLUMN_USAGE kcu
+            ON tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
+            AND tc.TABLE_SCHEMA = kcu.TABLE_SCHEMA
+            AND tc.TABLE_NAME = kcu.TABLE_NAME
+        WHERE tc.TABLE_SCHEMA = '{}'
+    "#, database);
+
+    let constraint_rows = sqlx::query(&constraints_query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch constraints: {}", e))?;
+
+    let mut constraints_by_table: HashMap<String, Vec<TableConstraint>> = HashMap::new();
+    for row in constraint_rows {
+        let table_name: String = row.try_get("TABLE_NAME").unwrap_or_default();
+        constraints_by_table.entry(table_name).or_insert_with(Vec::new).push(TableConstraint {
+            name: row.try_get("CONSTRAINT_NAME").unwrap_or_default(),
+            constraint_type: row.try_get("CONSTRAINT_TYPE").unwrap_or_default(),
+            column_name: row.try_get("COLUMN_NAME").unwrap_or_default(),
+        });
+    }
 
     let tables: Vec<TableDefinition> = table_names.iter().map(|t_name| {
         TableDefinition {
             name: t_name.clone(),
             columns: columns_by_table.get(t_name).cloned().unwrap_or_default(),
             indexes: indexes_by_table.get(t_name).cloned().unwrap_or_default(),
-            foreign_keys: vec![], // TODO: Implement bulk FK fetch
-            primary_keys: vec![], // TODO: Implement bulk PK fetch
-            constraints: vec![],  // TODO: Implement bulk constraints fetch
+            foreign_keys: foreign_keys_by_table.get(t_name).cloned().unwrap_or_default(),
+            primary_keys: primary_keys_by_table.get(t_name).cloned().unwrap_or_default(),
+            constraints: constraints_by_table.get(t_name).cloned().unwrap_or_default(),
             row_count: table_stats.get(t_name).cloned().flatten(),
         }
     }).collect();
+
+    let view_names = crate::mysql::get_views(pool, database).await?;
+    let mut views = Vec::new();
+    for view_name in view_names {
+        if let Ok(def) = crate::mysql::get_view_definition(pool, database, &view_name).await {
+            views.push(def);
+        }
+    }
+
+    let mut routines = Vec::new();
+    routines.extend(crate::mysql::get_procedures(pool, database).await?);
+    routines.extend(crate::mysql::get_functions(pool, database).await?);
+
+    let triggers = crate::mysql::get_triggers(pool, database).await?;
     
     // Calculate simple hash of the schema
     let mut hasher = Sha256::new();
@@ -141,13 +229,12 @@ pub async fn capture_snapshot_mysql(
         timestamp: Utc::now(),
         schema_hash: hash,
         tables,
-        views: vec![], // TODO
-        routines: vec![], // TODO
-        triggers: vec![], // TODO
+        views,
+        routines,
+        triggers,
     })
 }
 
-// TODO: capture_snapshot_postgres
 pub async fn capture_snapshot_postgres(
     pool: &Pool<Postgres>,
     schema: &str, // Postgres uses schemas (e.g., 'public'), 'database' is usually connection level
@@ -283,12 +370,13 @@ pub async fn capture_snapshot_postgres(
 
     // 4. Update PK info in columns (Postgres doesn't put PRI in information_schema.columns directly)
     let pk_query = format!(r#"
-        SELECT tc.table_name, kcu.column_name
+        SELECT tc.table_name, kcu.column_name, kcu.ordinal_position
         FROM information_schema.table_constraints tc
         JOIN information_schema.key_column_usage kcu 
             ON tc.constraint_name = kcu.constraint_name
             AND tc.table_schema = kcu.table_schema
         WHERE tc.table_schema = '{}' AND tc.constraint_type = 'PRIMARY KEY'
+        ORDER BY tc.table_name, kcu.ordinal_position
     "#, schema);
 
     let pk_rows = sqlx::query(&pk_query)
@@ -296,6 +384,7 @@ pub async fn capture_snapshot_postgres(
         .await
         .map_err(|e| format!("Failed to fetch PKs: {}", e))?;
 
+    let mut primary_keys_by_table: HashMap<String, Vec<PrimaryKey>> = HashMap::new();
     for row in pk_rows {
         let t_name: String = row.try_get("table_name").unwrap_or_default();
         let c_name: String = row.try_get("column_name").unwrap_or_default();
@@ -307,6 +396,74 @@ pub async fn capture_snapshot_postgres(
                 }
             }
         }
+
+        let ordinal: i32 = row.try_get("ordinal_position").unwrap_or(0);
+        primary_keys_by_table.entry(t_name).or_insert_with(Vec::new).push(PrimaryKey {
+            column_name: c_name,
+            ordinal_position: ordinal,
+        });
+    }
+
+    let fk_query = format!(r#"
+        SELECT 
+            tc.table_name,
+            tc.constraint_name,
+            kcu.column_name,
+            ccu.table_name AS referenced_table,
+            ccu.column_name AS referenced_column
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu
+            ON tc.constraint_name = kcu.constraint_name
+            AND tc.table_schema = kcu.table_schema
+        JOIN information_schema.constraint_column_usage ccu
+            ON ccu.constraint_name = tc.constraint_name
+            AND ccu.table_schema = tc.table_schema
+        WHERE tc.constraint_type = 'FOREIGN KEY'
+            AND tc.table_schema = '{}'
+    "#, schema);
+
+    let fk_rows = sqlx::query(&fk_query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch foreign keys: {}", e))?;
+
+    let mut foreign_keys_by_table: HashMap<String, Vec<ForeignKey>> = HashMap::new();
+    for row in fk_rows {
+        let t_name: String = row.try_get("table_name").unwrap_or_default();
+        foreign_keys_by_table.entry(t_name).or_insert_with(Vec::new).push(ForeignKey {
+            constraint_name: row.try_get("constraint_name").unwrap_or_default(),
+            column_name: row.try_get("column_name").unwrap_or_default(),
+            referenced_table: row.try_get("referenced_table").unwrap_or_default(),
+            referenced_column: row.try_get("referenced_column").unwrap_or_default(),
+        });
+    }
+
+    let constraints_query = format!(r#"
+        SELECT 
+            tc.table_name,
+            tc.constraint_name,
+            tc.constraint_type,
+            kcu.column_name
+        FROM information_schema.table_constraints tc
+        LEFT JOIN information_schema.key_column_usage kcu
+            ON tc.constraint_name = kcu.constraint_name
+            AND tc.table_schema = kcu.table_schema
+        WHERE tc.table_schema = '{}'
+    "#, schema);
+
+    let constraint_rows = sqlx::query(&constraints_query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch constraints: {}", e))?;
+
+    let mut constraints_by_table: HashMap<String, Vec<TableConstraint>> = HashMap::new();
+    for row in constraint_rows {
+        let t_name: String = row.try_get("table_name").unwrap_or_default();
+        constraints_by_table.entry(t_name).or_insert_with(Vec::new).push(TableConstraint {
+            name: row.try_get("constraint_name").unwrap_or_default(),
+            constraint_type: row.try_get("constraint_type").unwrap_or_default(),
+            column_name: row.try_get("column_name").unwrap_or_default(),
+        });
     }
 
     let tables: Vec<TableDefinition> = table_names.iter().map(|t_name| {
@@ -314,9 +471,9 @@ pub async fn capture_snapshot_postgres(
             name: t_name.clone(),
             columns: columns_by_table.get(t_name).cloned().unwrap_or_default(),
             indexes: indexes_by_table.get(t_name).cloned().unwrap_or_default(),
-            foreign_keys: vec![], // TODO
-            primary_keys: vec![], // TODO: technically captured in columns now, but struct field is separate
-            constraints: vec![],
+            foreign_keys: foreign_keys_by_table.get(t_name).cloned().unwrap_or_default(),
+            primary_keys: primary_keys_by_table.get(t_name).cloned().unwrap_or_default(),
+            constraints: constraints_by_table.get(t_name).cloned().unwrap_or_default(),
             row_count: table_stats.get(t_name).cloned().flatten(),
         }
     }).collect();
@@ -327,14 +484,28 @@ pub async fn capture_snapshot_postgres(
     hasher.update(schema_json);
     let hash = format!("{:x}", hasher.finalize());
 
+    let view_names = crate::postgres::get_views(pool, schema).await?;
+    let mut views = Vec::new();
+    for view_name in view_names {
+        if let Ok(def) = crate::postgres::get_view_definition(pool, schema, &view_name).await {
+            views.push(def);
+        }
+    }
+
+    let mut routines = Vec::new();
+    routines.extend(crate::postgres::get_procedures(pool, schema).await?);
+    routines.extend(crate::postgres::get_functions(pool, schema).await?);
+
+    let triggers = crate::postgres::get_triggers(pool, schema).await?;
+
     Ok(SchemaSnapshot {
         id: None,
         connection_id: connection_id.to_string(),
         timestamp: Utc::now(),
         schema_hash: hash,
         tables,
-        views: vec![], // TODO
-        routines: vec![], // TODO
-        triggers: vec![], // TODO
+        views,
+        routines,
+        triggers,
     })
 }
