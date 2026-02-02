@@ -8,4 +8,18 @@ export default defineConfig({
         port: 1420,
         strictPort: true,
     },
+    build: {
+        rollupOptions: {
+            output: {
+                manualChunks(id) {
+                    if (id.includes('node_modules')) {
+                        if (id.includes('cytoscape')) {
+                            return 'vendor-cytoscape';
+                        }
+                        return 'vendor';
+                    }
+                }
+            }
+        }
+    }
 })
