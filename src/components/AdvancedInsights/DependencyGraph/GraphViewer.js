@@ -238,8 +238,8 @@ export function GraphViewer(graphData, theme, qualityMap) {
                     type: node.data('type'),
                     upstreamCount: predecessors.nodes().size(),
                     downstreamCount: successors.nodes().size(),
-                    upstreamNodes: predecessors.nodes().map(n => n.data('label')),
-                    downstreamNodes: successors.nodes().map(n => n.data('label')),
+                    upstreamNodes: predecessors.nodes().map(n => ({ id: n.id(), label: n.data('label'), type: n.data('type') })),
+                    downstreamNodes: successors.nodes().map(n => ({ id: n.id(), label: n.data('label'), type: n.data('type') })),
                     qualityScore: node.data('qualityScore')
                 }
             }));

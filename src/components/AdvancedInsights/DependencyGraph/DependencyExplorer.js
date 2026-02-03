@@ -235,8 +235,8 @@ export function DependencyExplorer() {
         if (state.graphData && !state.isLoading) {
             const exportBtn = document.createElement('button');
             exportBtn.className = `px-4 py-2 rounded-lg border text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 self-end mb-[1px] ${theme === 'light'
-                    ? 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                    : 'bg-white/5 text-white border-white/10 hover:bg-white/10'
+                ? 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                : 'bg-white/5 text-white border-white/10 hover:bg-white/10'
                 }`;
             exportBtn.innerHTML = `
                 <span class="material-symbols-outlined text-base">download</span>
@@ -349,6 +349,14 @@ export function DependencyExplorer() {
                                 </span>
                             </div>
                         ` : ''}
+                        
+                        <button id="sidebar-export-mermaid" class="mt-3 w-full py-2 flex items-center justify-center gap-2 rounded border text-xs font-bold uppercase tracking-wider transition-all ${isLight
+                    ? 'bg-white border-gray-200 hover:bg-gray-50 text-gray-700'
+                    : 'bg-white/5 border-white/10 hover:bg-white/10 text-white'
+                }">
+                            <span class="material-symbols-outlined text-sm">download</span>
+                            Export Lineage
+                        </button>
                     </div>
                     
                     <div class="flex-1 overflow-y-auto p-4 space-y-6">
@@ -360,7 +368,7 @@ export function DependencyExplorer() {
                              </h3>
                              ${data.upstreamNodes.length > 0
                     ? `<ul class="text-sm space-y-1 ${classes.text.primary}">
-                                    ${data.upstreamNodes.map(n => `<li class="truncate py-1 px-2 rounded ${isLight ? 'bg-gray-50' : 'bg-white/5'}">${n}</li>`).join('')}
+                                    ${data.upstreamNodes.map(n => `<li class="truncate py-1 px-2 rounded ${isLight ? 'bg-gray-50' : 'bg-white/5'}">${n.label}</li>`).join('')}
                                    </ul>`
                     : `<div class="text-xs italic opacity-50 ${classes.text.primary}">No dependencies</div>`
                 }
@@ -374,7 +382,7 @@ export function DependencyExplorer() {
                              </h3>
                               ${data.downstreamNodes.length > 0
                     ? `<ul class="text-sm space-y-1 ${classes.text.primary}">
-                                    ${data.downstreamNodes.map(n => `<li class="truncate py-1 px-2 rounded ${isLight ? 'bg-gray-50' : 'bg-white/5'}">${n}</li>`).join('')}
+                                    ${data.downstreamNodes.map(n => `<li class="truncate py-1 px-2 rounded ${isLight ? 'bg-gray-50' : 'bg-white/5'}">${n.label}</li>`).join('')}
                                    </ul>`
                     : `<div class="text-xs italic opacity-50 ${classes.text.primary}">No impact</div>`
                 }
@@ -386,6 +394,56 @@ export function DependencyExplorer() {
                     </button>
                 </div>
             `;
+
+            // Sidebar Export Logic
+            const sidebarExportBtn = sidebar.querySelector('#sidebar-export-mermaid');
+            if (sidebarExportBtn) {
+                sidebarExportBtn.onclick = () => {
+                    let mermaid = 'graph LR\n';
+                    mermaid += '    %% Styles\n';
+                    mermaid += '    classDef table fill:#fff,stroke:#333,stroke-width:2px;\n';
+                    mermaid += '    classDef view fill:#f9f,stroke:#333,stroke-width:2px;\n';
+                    mermaid += '    classDef focus stroke:#3b82f6,stroke-width:3px;\n'; // Highlight central node
+
+                    const sanitizeId = (id) => id.replace(/[^a-zA-Z0-9]/g, '_');
+                    const sanitizeLabel = (label) => label.replace(/"/g, '#quot;');
+
+                    const centralId = sanitizeId(data.id);
+                    const centralLabel = sanitizeLabel(data.name); // data.name is passed as label from GraphViewer
+                    const centralClass = data.type === 'Table' ? 'table' : 'view';
+
+                    mermaid += `    ${centralId}("${centralLabel}"):::${centralClass}\n`;
+                    mermaid += `    class ${centralId} focus\n`;
+
+                    // Upstream
+                    data.upstreamNodes.forEach(node => {
+                        const nodeId = sanitizeId(node.id);
+                        const nodeLabel = sanitizeLabel(node.label);
+                        const nodeClass = node.type === 'Table' ? 'table' : 'view';
+                        mermaid += `    ${nodeId}("${nodeLabel}"):::${nodeClass}\n`;
+                        mermaid += `    ${nodeId} --> ${centralId}\n`;
+                    });
+
+                    // Downstream
+                    data.downstreamNodes.forEach(node => {
+                        const nodeId = sanitizeId(node.id);
+                        const nodeLabel = sanitizeLabel(node.label);
+                        const nodeClass = node.type === 'Table' ? 'table' : 'view';
+                        mermaid += `    ${nodeId}("${nodeLabel}"):::${nodeClass}\n`;
+                        mermaid += `    ${centralId} --> ${nodeId}\n`;
+                    });
+
+                    const blob = new Blob([mermaid], { type: 'text/vnd.mermaid' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `lineage_${data.name.replace(/[^a-zA-Z0-9-_]/g, '')}.mmd`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                };
+            }
 
             // Add close button listener
             const closeBtn = sidebar.querySelector('#close-sidebar');
