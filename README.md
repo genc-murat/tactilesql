@@ -8,7 +8,8 @@ TactileSQL is a modern, desktop-first MySQL workbench built with Tauri 2 and van
 - **Smart Autocomplete++** with context-aware suggestions, FK-based JOIN hints, and frequency learning.
 - **Query Audit Trail** for compliance tracking with exportable logs, statistics, and filtering.
 - **Visual Explain** and **Query Profiler** for performance insights.
-- **Query Analyzer** with optimization suggestions, index recommendations, execution cost analysis, and index impact estimates.
+- **AI Assistant**: SQL generation and natural language query support powered by multiple providers (OpenAI, Gemini, Anthropic, DeepSeek, Groq, Mistral, and Local AI).
+- **AI Query Profiler Analysis**: One-click AI interpretation of query performance metrics with actionable optimization advice.
 - **Latency prediction & slow-query early warning** based on historical execution patterns.
 - **Parameter suggestions** using historical value distributions.
 - **What‑If Optimizer** to compare query variants with estimated cost.
@@ -97,6 +98,8 @@ npx tauri build
 ### Workbench
 
 - Multi-tab SQL editor with autocomplete and syntax highlighting
+- **AI Assistant (Ctrl+I)**: Generate SQL from natural language or edit existing queries.
+- **AI Profiler Analysis**: Interpretation of performance metrics (Tmp tables, lock waits, etc.) with AI-driven recommendations.
 - Format SQL and explain plan with visual query analyzer
 - Query optimization suggestions with index recommendations and index impact estimates
 - Slow query early warning and latency estimates
@@ -246,6 +249,7 @@ Common shortcuts (see the in-app help with `F1`):
 - `Ctrl+/` — Toggle comment
 - `Ctrl+S` — Save as snippet
 - `Ctrl+Space` — Autocomplete
+- `Ctrl+I` — Ask AI Assistant
 
 ### Navigation
 - `Ctrl+Shift+E` — Focus Object Explorer
