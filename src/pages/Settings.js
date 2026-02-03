@@ -117,28 +117,16 @@ export function Settings() {
                         <!-- Provider Selection -->
                         <div class="space-y-2">
                             <label class="text-xs font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">AI Provider</label>
-                            <div class="grid grid-cols-2 gap-2">
-                                <button type="button" id="provider-openai" class="provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${!['gemini', 'anthropic', 'deepseek', 'groq', 'mistral', 'local'].includes(localStorage.getItem('ai_provider')) ? 'bg-mysql-teal/10 border-mysql-teal text-mysql-teal' : (isLight ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-white/5 border-white/10 text-gray-400')}">
-                                    <span>OpenAI</span>
-                                </button>
-                                 <button type="button" id="provider-gemini" class="provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${localStorage.getItem('ai_provider') === 'gemini' ? 'bg-mysql-teal/10 border-mysql-teal text-mysql-teal' : (isLight ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-white/5 border-white/10 text-gray-400')}">
-                                    <span>Gemini</span>
-                                </button>
-                                <button type="button" id="provider-anthropic" class="provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${localStorage.getItem('ai_provider') === 'anthropic' ? 'bg-mysql-teal/10 border-mysql-teal text-mysql-teal' : (isLight ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-white/5 border-white/10 text-gray-400')}">
-                                    <span>Anthropic</span>
-                                </button>
-                                <button type="button" id="provider-deepseek" class="provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${localStorage.getItem('ai_provider') === 'deepseek' ? 'bg-mysql-teal/10 border-mysql-teal text-mysql-teal' : (isLight ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-white/5 border-white/10 text-gray-400')}">
-                                    <span>DeepSeek</span>
-                                </button>
-                                <button type="button" id="provider-groq" class="provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${localStorage.getItem('ai_provider') === 'groq' ? 'bg-mysql-teal/10 border-mysql-teal text-mysql-teal' : (isLight ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-white/5 border-white/10 text-gray-400')}">
-                                    <span>Groq</span>
-                                </button>
-                                <button type="button" id="provider-mistral" class="provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${localStorage.getItem('ai_provider') === 'mistral' ? 'bg-mysql-teal/10 border-mysql-teal text-mysql-teal' : (isLight ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-white/5 border-white/10 text-gray-400')}">
-                                    <span>Mistral</span>
-                                </button>
-                                <button type="button" id="provider-local" class="provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${localStorage.getItem('ai_provider') === 'local' ? 'bg-mysql-teal/10 border-mysql-teal text-mysql-teal' : (isLight ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-white/5 border-white/10 text-gray-400')}">
-                                    <span>Local AI</span>
-                                </button>
+                            <div class="relative">
+                                <select id="setting-ai-provider" class="w-full ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-300')} rounded px-3 py-2 text-sm outline-none focus:border-mysql-teal transition-colors appearance-none bg-no-repeat bg-[right_0.75rem_center]" style="background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGZpbGw9Im5vbmUiIHZpZXdCb3g9IjAgMCAyNCAyNCIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZT0iIzZCNTU2MyIgY2xhc3M9InNpemUtNiI+PHBhdGggc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBkPSJtMTkuNSA4LjI1LTcuNSA3LjUtNy41LTcuNSIgLz48L3N2Zz4='); background-size: 1.25em;">
+                                    <option value="openai">OpenAI</option>
+                                    <option value="gemini">Google Gemini</option>
+                                    <option value="anthropic">Anthropic Claude</option>
+                                    <option value="deepseek">DeepSeek</option>
+                                    <option value="groq">Groq</option>
+                                    <option value="mistral">Mistral AI</option>
+                                    <option value="local">Local AI (Ollama/Custom)</option>
+                                </select>
                             </div>
                         </div>
 
@@ -462,17 +450,11 @@ export function Settings() {
         const aiVisibilityBtn = container.querySelector('#toggle-ai-key-visibility');
         const aiKeyLabel = container.querySelector('#ai-key-label');
         const aiKeyLink = container.querySelector('#ai-key-link');
-        const providerOpenAI = container.querySelector('#provider-openai');
-        const providerGemini = container.querySelector('#provider-gemini');
-        const providerAnthropic = container.querySelector('#provider-anthropic');
-        const providerDeepSeek = container.querySelector('#provider-deepseek');
-        const providerGroq = container.querySelector('#provider-groq');
-        const providerMistral = container.querySelector('#provider-mistral');
-        const providerLocal = container.querySelector('#provider-local');
+        const providerSelect = container.querySelector('#setting-ai-provider');
         const aiLocalUrlContainer = container.querySelector('#ai-local-url-container');
         const aiLocalUrlInput = container.querySelector('#setting-ai-local-url');
 
-        if (aiKeyInput && aiModelSelect && aiSaveBtn && aiVisibilityBtn && aiKeyLabel && aiKeyLink && providerOpenAI && providerGemini && providerAnthropic && providerDeepSeek && providerLocal) {
+        if (aiKeyInput && aiModelSelect && aiSaveBtn && aiVisibilityBtn && aiKeyLabel && aiKeyLink && providerSelect) {
             let activeProvider = localStorage.getItem('ai_provider') || 'openai';
 
             // Initial Check/Values for change detection
@@ -526,16 +508,7 @@ export function Settings() {
                 const isLight = theme === 'light' || theme === 'dawn';
 
                 // 1. Update Buttons
-                const activeClass = 'bg-mysql-teal/10 border-mysql-teal text-mysql-teal';
-                const inactiveClass = isLight ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-white/5 border-white/10 text-gray-400';
-
-                providerOpenAI.className = `provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${provider === 'openai' ? activeClass : inactiveClass}`;
-                providerGemini.className = `provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${provider === 'gemini' ? activeClass : inactiveClass}`;
-                providerAnthropic.className = `provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${provider === 'anthropic' ? activeClass : inactiveClass}`;
-                providerDeepSeek.className = `provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${provider === 'deepseek' ? activeClass : inactiveClass}`;
-                providerGroq.className = `provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${provider === 'groq' ? activeClass : inactiveClass}`;
-                providerMistral.className = `provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${provider === 'mistral' ? activeClass : inactiveClass}`;
-                providerLocal.className = `provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${provider === 'local' ? activeClass : inactiveClass}`;
+                providerSelect.value = provider;
 
                 // 2. Update Label & Link
                 const links = {
@@ -602,13 +575,7 @@ export function Settings() {
             // Initial setup based on saved provider
             switchProvider(activeProvider);
 
-            providerOpenAI.addEventListener('click', () => switchProvider('openai'));
-            providerGemini.addEventListener('click', () => switchProvider('gemini'));
-            providerAnthropic.addEventListener('click', () => switchProvider('anthropic'));
-            providerDeepSeek.addEventListener('click', () => switchProvider('deepseek'));
-            providerGroq.addEventListener('click', () => switchProvider('groq'));
-            providerMistral.addEventListener('click', () => switchProvider('mistral'));
-            providerLocal.addEventListener('click', () => switchProvider('local'));
+            providerSelect.addEventListener('change', (e) => switchProvider(e.target.value));
             aiLocalUrlInput?.addEventListener('input', checkForChanges);
 
             // Visibility Toggle
