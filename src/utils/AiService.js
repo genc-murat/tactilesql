@@ -39,28 +39,46 @@ Network Sent/Received: ${metrics.bytesSent}/${metrics.bytesReceived} bytes
 
 Format your response as a short, bulleted technical analysis. Max 150 words.
 `;
+        return await this.generateResponse(provider, apiKey, model, prompt, "EXPLAIN");
+    }
 
+    static async explainQuery(provider, apiKey, model, sql, context) {
+        const prompt = `Explain what this SQL query does in plain English. Break it down step by step if it's complex.\n\nSQL:\n${sql}`;
+        return await this.generateResponse(provider, apiKey, model, prompt, "EXPLAIN", context);
+    }
+
+    static async optimizeQuery(provider, apiKey, model, sql, context) {
+        const prompt = `Analyze this SQL query and suggest performance or readability optimizations (e.g., adding indexes, using JOINs instead of subqueries, or better naming). Return the optimized SQL and a brief explanation of the changes.\n\nSQL:\n${sql}`;
+        return await this.generateResponse(provider, apiKey, model, prompt, "OPTIMIZE", context);
+    }
+
+    static async fixQueryError(provider, apiKey, model, sql, error, context) {
+        const prompt = `This SQL query failed with the following error. Please analyze the code and the error, then provide a working fix.\n\nSQL:\n${sql}\n\nERROR:\n${error}`;
+        return await this.generateResponse(provider, apiKey, model, prompt, "FIX", context);
+    }
+
+    static async generateResponse(provider, apiKey, model, prompt, mode, context = "") {
         switch (provider) {
             case 'openai':
-                return await this.callOpenAI(apiKey, model, prompt, "Execution Analysis Context");
+                return await this.callOpenAI(apiKey, model, prompt, context, mode);
             case 'gemini':
-                return await this.callGemini(apiKey, model, prompt, "Execution Analysis Context");
+                return await this.callGemini(apiKey, model, prompt, context, mode);
             case 'anthropic':
-                return await this.callAnthropic(apiKey, model, prompt, "Execution Analysis Context");
+                return await this.callAnthropic(apiKey, model, prompt, context, mode);
             case 'deepseek':
-                return await this.callDeepSeek(apiKey, model, prompt, "Execution Analysis Context");
+                return await this.callDeepSeek(apiKey, model, prompt, context, mode);
             case 'groq':
-                return await this.callGroq(apiKey, model, prompt, "Execution Analysis Context");
+                return await this.callGroq(apiKey, model, prompt, context, mode);
             case 'mistral':
-                return await this.callMistral(apiKey, model, prompt, "Execution Analysis Context");
+                return await this.callMistral(apiKey, model, prompt, context, mode);
             case 'local':
-                return await this.callLocalAI(apiKey, model, prompt, "Execution Analysis Context");
+                return await this.callLocalAI(apiKey, model, prompt, context, mode);
             default:
                 throw new Error(`Unsupported AI provider: ${provider}`);
         }
     }
 
-    static async callOpenAI(apiKey, model, prompt, context) {
+    static async callOpenAI(apiKey, model, prompt, context, mode = "GEN") {
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -72,14 +90,14 @@ Format your response as a short, bulleted technical analysis. Max 150 words.
                 messages: [
                     {
                         role: "system",
-                        content: this.getSystemPrompt(context)
+                        content: this.getSystemPrompt(context, mode)
                     },
                     {
                         role: "user",
                         content: `Schema Context:\n${context}\n\nRequest: ${prompt}`
                     }
                 ],
-                temperature: 0.1
+                temperature: mode === 'GEN' ? 0.1 : 0.3
             })
         });
 
@@ -89,12 +107,13 @@ Format your response as a short, bulleted technical analysis. Max 150 words.
         }
 
         const data = await response.json();
-        return this.cleanSQL(data.choices[0]?.message?.content || '');
+        const content = data.choices[0]?.message?.content || '';
+        return mode === 'GEN' ? this.cleanSQL(content) : content;
     }
 
-    static async callGemini(apiKey, model, prompt, context) {
+    static async callGemini(apiKey, model, prompt, context, mode = "GEN") {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        const systemPrompt = this.getSystemPrompt(context);
+        const systemPrompt = this.getSystemPrompt(context, mode);
 
         const response = await fetch(url, {
             method: 'POST',
@@ -102,7 +121,7 @@ Format your response as a short, bulleted technical analysis. Max 150 words.
             body: JSON.stringify({
                 system_instruction: { parts: [{ text: systemPrompt }] },
                 contents: [{ parts: [{ text: `User Request: ${prompt}` }] }],
-                generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
+                generationConfig: { temperature: mode === 'GEN' ? 0.1 : 0.3, maxOutputTokens: 2048 }
             })
         });
 
@@ -112,10 +131,11 @@ Format your response as a short, bulleted technical analysis. Max 150 words.
         }
 
         const data = await response.json();
-        return this.cleanSQL(data.candidates?.[0]?.content?.parts?.[0]?.text || '');
+        const content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        return mode === 'GEN' ? this.cleanSQL(content) : content;
     }
 
-    static async callAnthropic(apiKey, model, prompt, context) {
+    static async callAnthropic(apiKey, model, prompt, context, mode = "GEN") {
         const response = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
             headers: {
@@ -128,10 +148,10 @@ Format your response as a short, bulleted technical analysis. Max 150 words.
                 model: model,
                 messages: [{
                     role: "user",
-                    content: `${this.getSystemPrompt(context)}\n\nSchema Context:\n${context}\n\nUser Request: ${prompt}`
+                    content: `${this.getSystemPrompt(context, mode)}\n\nSchema Context:\n${context}\n\nUser Request: ${prompt}`
                 }],
-                max_tokens: 1024,
-                temperature: 0.1
+                max_tokens: 2048,
+                temperature: mode === 'GEN' ? 0.1 : 0.3
             })
         });
 
@@ -141,28 +161,29 @@ Format your response as a short, bulleted technical analysis. Max 150 words.
         }
 
         const data = await response.json();
-        return this.cleanSQL(data.content?.[0]?.text || '');
+        const content = data.content?.[0]?.text || '';
+        return mode === 'GEN' ? this.cleanSQL(content) : content;
     }
 
-    static async callDeepSeek(apiKey, model, prompt, context) {
-        return await this.callOpenAICompatible(apiKey, 'https://api.deepseek.com/v1/chat/completions', model, prompt, context, 'DeepSeek');
+    static async callDeepSeek(apiKey, model, prompt, context, mode = "GEN") {
+        return await this.callOpenAICompatible(apiKey, 'https://api.deepseek.com/v1/chat/completions', model, prompt, context, 'DeepSeek', mode);
     }
 
-    static async callGroq(apiKey, model, prompt, context) {
-        return await this.callOpenAICompatible(apiKey, 'https://api.groq.com/openai/v1/chat/completions', model, prompt, context, 'Groq');
+    static async callGroq(apiKey, model, prompt, context, mode = "GEN") {
+        return await this.callOpenAICompatible(apiKey, 'https://api.groq.com/openai/v1/chat/completions', model, prompt, context, 'Groq', mode);
     }
 
-    static async callMistral(apiKey, model, prompt, context) {
-        return await this.callOpenAICompatible(apiKey, 'https://api.mistral.ai/v1/chat/completions', model, prompt, context, 'Mistral');
+    static async callMistral(apiKey, model, prompt, context, mode = "GEN") {
+        return await this.callOpenAICompatible(apiKey, 'https://api.mistral.ai/v1/chat/completions', model, prompt, context, 'Mistral', mode);
     }
 
-    static async callLocalAI(apiKey, model, prompt, context) {
+    static async callLocalAI(apiKey, model, prompt, context, mode = "GEN") {
         const baseUrl = localStorage.getItem('local_base_url') || 'http://localhost:11434/v1';
         const url = baseUrl.endsWith('/') ? `${baseUrl}chat/completions` : `${baseUrl}/chat/completions`;
-        return await this.callOpenAICompatible(apiKey, url, model, prompt, context, 'Local AI');
+        return await this.callOpenAICompatible(apiKey, url, model, prompt, context, 'Local AI', mode);
     }
 
-    static async callOpenAICompatible(apiKey, url, model, prompt, context, providerName) {
+    static async callOpenAICompatible(apiKey, url, model, prompt, context, providerName, mode = "GEN") {
         const response = await fetch(url, {
             method: 'POST',
             headers: {
@@ -172,10 +193,10 @@ Format your response as a short, bulleted technical analysis. Max 150 words.
             body: JSON.stringify({
                 model: model,
                 messages: [
-                    { role: "system", content: this.getSystemPrompt(context) },
+                    { role: "system", content: this.getSystemPrompt(context, mode) },
                     { role: "user", content: `Schema Context:\n${context}\n\nRequest: ${prompt}` }
                 ],
-                temperature: 0.1
+                temperature: mode === 'GEN' ? 0.1 : 0.3
             })
         });
 
@@ -185,11 +206,28 @@ Format your response as a short, bulleted technical analysis. Max 150 words.
         }
 
         const data = await response.json();
-        return this.cleanSQL(data.choices[0]?.message?.content || '');
+        const content = data.choices[0]?.message?.content || '';
+        return mode === 'GEN' ? this.cleanSQL(content) : content;
     }
 
-    static getSystemPrompt(context) {
+    static getSystemPrompt(context, mode = "GEN") {
         const dialect = context.split('\n')[0] || 'SQL';
+
+        if (mode === 'EXPLAIN') {
+            return `You are an expert SQL analyst. Explain the provided SQL query in a clear, concise, and technical manner. Focus on what the query aims to achieve and how it processes data according to the ${dialect} dialect. Use markdown for formatting.`;
+        }
+
+        if (mode === 'OPTIMIZE') {
+            return `You are a Senior Database Administrator. Analyze the provided ${dialect} query for performance bottlenecks and readability issues. 
+Provide an optimized version of the query inside a markdown SQL block, followed by a bulleted explanation of your changes (e.g., index hints, join optimizations, or readability improvements).`;
+        }
+
+        if (mode === 'FIX') {
+            return `You are an expert SQL Developer. A query has failed with an error. 
+Analyze the existing SQL and the error message in the context of the provided ${dialect} schema. 
+Provide the corrected SQL query inside a markdown block, followed by a brief explanation of what was fixed.`;
+        }
+
         return `You are an expert SQL assistant. 
 Your task is to generate valid SQL queries based on the user's natural language request and the provided database schema.
 

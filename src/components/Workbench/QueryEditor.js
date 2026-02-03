@@ -11,6 +11,8 @@ import { toastSuccess, toastError, toastWarning } from '../../utils/Toast.js';
 import { debounce, DatabaseCache, CacheTypes } from '../../utils/helpers.js';
 import { AskAiModal } from '../UI/AskAiModal.js';
 import { AskAiBar } from '../UI/AskAiBar.js';
+import { AiService } from '../../utils/AiService.js';
+import { AiAssistanceModal } from '../UI/AiAssistanceModal.js';
 
 // SQL Keywords for autocomplete
 // Imported from SqlHighlighter.js
@@ -651,10 +653,10 @@ export function QueryEditor() {
                         <button id="format-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-gray-700 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text' : 'bg-[#1a1d23] border-white/10 text-gray-300'))} border rounded hover:opacity-80 active:scale-95 transition-all" title="Format SQL (Ctrl+Shift+F)">
                             <span class="material-symbols-outlined text-sm">format_align_left</span>
                         </button>
-                        <button id="explain-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-gray-700 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text' : 'bg-[#1a1d23] border-white/10 text-gray-300'))} border rounded hover:opacity-80 active:scale-95 transition-all" title="Explain Query Plan">
+                         <button id="explain-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-gray-700 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text' : 'bg-[#1a1d23] border-white/10 text-gray-300'))} border rounded hover:opacity-80 active:scale-95 transition-all" title="Explain Query Plan (Shift+Click for AI Explanation)">
                             <span class="material-symbols-outlined text-sm">analytics</span>
                         </button>
-                        <button id="analyze-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-amber-600 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#ea9d34]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-amber-400' : 'bg-[#1a1d23] border-white/10 text-amber-400'))} border rounded hover:opacity-80 active:scale-95 transition-all" title="Analyze & Optimize Query">
+                        <button id="analyze-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-amber-600 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#ea9d34]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-amber-400' : 'bg-[#1a1d23] border-white/10 text-amber-400'))} border rounded hover:opacity-80 active:scale-95 transition-all" title="Analyze & Optimize Query (Right-Click for AI Optimization)">
                             <span class="material-symbols-outlined text-sm">speed</span>
                         </button>
                         <button id="param-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-indigo-600 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#56949f]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-frost' : 'bg-[#1a1d23] border-white/10 text-indigo-400'))} border rounded hover:opacity-80 active:scale-95 transition-all" title="Parameter Suggestions">
@@ -1762,7 +1764,6 @@ export function QueryEditor() {
                     }));
 
                     // Log to Audit Trail
-                    // Log to Audit Trail
                     auditTrail.logQuery({
                         query: editorContent,
                         status: 'ERROR',
@@ -1770,8 +1771,18 @@ export function QueryEditor() {
                         error: error.message || error.toString(),
                     });
 
-                    Dialog.alert(`Query execution failed: ${String(error).replace(/\n/g, '<br>')}`, 'Query Execution Error');
-                    render(); // Show execution time even on error
+                    // Offering AI Fix
+                    const fixResult = await Dialog.confirm(
+                        `Query failed: ${error.message || error}\n\nWould you like AI to analyze and fix this?`,
+                        'Query Execution Error',
+                        'Fix with AI'
+                    );
+
+                    if (fixResult) {
+                        handleAiFix(editorContent, error.message || error.toString());
+                    } else {
+                        render(); // Show execution time even on error
+                    }
                 } finally {
                     executeBtn.innerHTML = originalHTML;
                     executeBtn.classList.remove('opacity-70', 'cursor-wait');
@@ -1788,14 +1799,27 @@ export function QueryEditor() {
             analyzeBtn.addEventListener('click', () => {
                 window.dispatchEvent(new CustomEvent('tactilesql:toggle-profiler'));
             });
+
+            // Right click or Long press for AI Optimization
+            analyzeBtn.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                handleAiOptimize();
+            });
         }
 
-        // Explain Logic
+        // Explain Logic (Standard Explain + AI Explain)
         const explainBtn = container.querySelector('#explain-btn');
         if (explainBtn) {
             let isExplaining = false;
-            explainBtn.addEventListener('click', async () => {
+            explainBtn.addEventListener('click', async (e) => {
                 if (isExplaining) return; // Prevent double-click
+
+                // If Shift is pressed, use AI Explain
+                if (e.shiftKey) {
+                    handleAiExplain();
+                    return;
+                }
+
                 isExplaining = true;
 
                 const textarea = container.querySelector('#query-input');
@@ -2338,6 +2362,146 @@ export function QueryEditor() {
             }
         }, 100);
     });
+
+    // --- AI Assistance Handlers ---
+    const getAiConfig = () => {
+        const provider = localStorage.getItem('ai_provider') || 'openai';
+        const apiKey = localStorage.getItem(`${provider}_api_key`) || '';
+        const model = localStorage.getItem(`${provider}_model`) ||
+            (provider === 'gemini' ? 'gemini-3.0-flash' :
+                provider === 'anthropic' ? 'claude-3-5-sonnet-20241022' :
+                    provider === 'deepseek' ? 'deepseek-chat' : 'gpt-4o');
+        return { provider, apiKey, model };
+    };
+
+    const handleAiExplain = async () => {
+        try {
+            const textarea = container.querySelector('#query-input');
+            const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
+            const sql = selectedText.trim() ? selectedText : textarea.value;
+
+            if (!sql.trim()) return Dialog.alert('Please enter a query to explain.', 'Info');
+
+            const { provider, apiKey, model } = getAiConfig();
+            if (!apiKey && provider !== 'local') return Dialog.alert(`Please configure your ${provider} API key in Settings first.`, 'AI Config Missing');
+
+            // Show loading
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 bg-black/20 backdrop-blur-[1px] z-[10001] flex items-center justify-center';
+            overlay.innerHTML = '<div class="bg-mysql-teal/20 p-4 rounded-xl backdrop-blur-md border border-mysql-teal/30 flex items-center gap-3"><span class="material-symbols-outlined animate-spin text-mysql-teal">sync</span><span class="text-xs font-bold text-mysql-teal uppercase tracking-widest">AI is Thinking...</span></div>';
+            document.body.appendChild(overlay);
+
+            try {
+                const context = await AskAiModal.gatherSchemaContext();
+                const explanation = await AiService.explainQuery(provider, apiKey, model, sql, context);
+
+                // Remove loading BEFORE showing the result modal
+                overlay.remove();
+
+                await AiAssistanceModal.show("Query Explanation", explanation);
+            } finally {
+                if (overlay && overlay.parentNode) overlay.remove();
+            }
+        } catch (error) {
+            Dialog.alert(`AI Explain failed: ${error.message}`, 'AI Error');
+        }
+    };
+
+    const handleAiOptimize = async () => {
+        try {
+            const textarea = container.querySelector('#query-input');
+            const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
+            const sql = selectedText.trim() ? selectedText : textarea.value;
+
+            if (!sql.trim()) return Dialog.alert('Please enter a query to optimize.', 'Info');
+
+            const { provider, apiKey, model } = getAiConfig();
+            if (!apiKey && provider !== 'local') return Dialog.alert(`Please configure your ${provider} API key in Settings first.`, 'AI Config Missing');
+
+            // Show loading
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 bg-black/20 backdrop-blur-[1px] z-[10001] flex items-center justify-center';
+            overlay.innerHTML = '<div class="bg-mysql-teal/20 p-4 rounded-xl backdrop-blur-md border border-mysql-teal/30 flex items-center gap-3"><span class="material-symbols-outlined animate-spin text-mysql-teal">sync</span><span class="text-xs font-bold text-mysql-teal uppercase tracking-widest">AI Optimizing...</span></div>';
+            document.body.appendChild(overlay);
+
+            try {
+                const context = await AskAiModal.gatherSchemaContext();
+                const result = await AiService.optimizeQuery(provider, apiKey, model, sql, context);
+
+                // Remove loading BEFORE showing the result modal
+                overlay.remove();
+
+                const optimizedSql = await AiAssistanceModal.show("Optimization Suggestions", result, { showApply: true });
+                if (optimizedSql) {
+                    const activeTab = tabs.find(t => t.id === activeTabId);
+                    if (activeTab) {
+                        if (selectedText.trim()) {
+                            // Update content with part replacement
+                            const text = textarea.value;
+                            const newContent = text.substring(0, textarea.selectionStart) +
+                                optimizedSql +
+                                text.substring(textarea.selectionEnd);
+                            activeTab.content = newContent;
+                        } else {
+                            activeTab.content = optimizedSql;
+                        }
+                        saveState();
+                        render();
+
+                        // Scroll to sync
+                        const newTextarea = container.querySelector('#query-input');
+                        if (newTextarea) {
+                            newTextarea.dispatchEvent(new Event('input'));
+                        }
+                    }
+                }
+            } finally {
+                if (overlay && overlay.parentNode) overlay.remove();
+            }
+        } catch (error) {
+            Dialog.alert(`AI Optimization failed: ${error.message}`, 'AI Error');
+        }
+    };
+
+    const handleAiFix = async (sql, errorMsg) => {
+        try {
+            const { provider, apiKey, model } = getAiConfig();
+            if (!apiKey && provider !== 'local') return Dialog.alert(`Please configure your ${provider} API key in Settings first.`, 'AI Config Missing');
+
+            // Show loading
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 bg-black/20 backdrop-blur-[1px] z-[10001] flex items-center justify-center';
+            overlay.innerHTML = '<div class="bg-mysql-teal/20 p-4 rounded-xl backdrop-blur-md border border-mysql-teal/30 flex items-center gap-3"><span class="material-symbols-outlined animate-spin text-mysql-teal">sync</span><span class="text-xs font-bold text-mysql-teal uppercase tracking-widest">AI Repairing Query...</span></div>';
+            document.body.appendChild(overlay);
+
+            try {
+                const context = await AskAiModal.gatherSchemaContext();
+                const result = await AiService.fixQueryError(provider, apiKey, model, sql, errorMsg, context);
+
+                // Remove loading BEFORE showing the result modal
+                overlay.remove();
+
+                const fixedSql = await AiAssistanceModal.show("AI Query Repair", result, { showApply: true });
+                if (fixedSql) {
+                    const activeTab = tabs.find(t => t.id === activeTabId);
+                    if (activeTab) {
+                        activeTab.content = fixedSql;
+                        saveState();
+                        render();
+
+                        const newTextarea = container.querySelector('#query-input');
+                        if (newTextarea) {
+                            newTextarea.dispatchEvent(new Event('input'));
+                        }
+                    }
+                }
+            } finally {
+                if (overlay && overlay.parentNode) overlay.remove();
+            }
+        } catch (error) {
+            Dialog.alert(`AI Fix failed: ${error.message}`, 'AI Error');
+        }
+    };
 
     return container;
 }

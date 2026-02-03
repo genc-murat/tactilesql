@@ -9,6 +9,7 @@ TactileSQL is a modern, desktop-first MySQL workbench built with Tauri 2 and van
 - **Query Audit Trail** for compliance tracking with exportable logs, statistics, and filtering.
 - **Visual Explain** and **Query Profiler** for performance insights.
 - **AI Assistant**: SQL generation and natural language query support powered by multiple providers (OpenAI, Gemini, Anthropic, DeepSeek, Groq, Mistral, and Local AI).
+- **AI Query Assistance**: Step-by-step query explanation (**Shift+Click Explain**), performance optimization suggestions (**Right-Click Analyze**), and automated error fixing (**Fix with AI**).
 - **AI Query Profiler Analysis**: One-click AI interpretation of query performance metrics with actionable optimization advice.
 - **Latency prediction & slow-query early warning** based on historical execution patterns.
 - **Parameter suggestions** using historical value distributions.
