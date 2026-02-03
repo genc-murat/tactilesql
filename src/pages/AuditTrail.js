@@ -201,24 +201,26 @@ export function AuditTrail() {
 
     const getStatusBadge = (status, isLight, isDawn) => {
         const colors = {
-            SUCCESS: isLight ? 'bg-green-100 text-green-700' : 'bg-green-500/20 text-green-400',
-            ERROR: isLight ? 'bg-red-100 text-red-700' : 'bg-red-500/20 text-red-400',
-            CANCELLED: isLight ? 'bg-yellow-100 text-yellow-700' : 'bg-yellow-500/20 text-yellow-400',
+            SUCCESS: isLight ? 'bg-green-100/50 text-green-700 border-green-200' : 'bg-green-500/10 text-green-400 border-green-500/20',
+            ERROR: isLight ? 'bg-red-100/50 text-red-700 border-red-200' : 'bg-red-500/10 text-red-400 border-red-500/20',
+            CANCELLED: isLight ? 'bg-yellow-100/50 text-yellow-700 border-yellow-200' : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
         };
-        return colors[status] || (isLight ? 'bg-gray-100 text-gray-700' : 'bg-gray-500/20 text-gray-400');
+        const colorClass = colors[status] || (isLight ? 'bg-gray-100/50 text-gray-700 border-gray-200' : 'bg-gray-500/10 text-gray-400 border-gray-500/20');
+        return `${colorClass} border px-2 py-0.5 rounded-full backdrop-blur-sm`;
     };
 
     const getTypeBadge = (type, isLight) => {
         const colors = {
-            SELECT: isLight ? 'bg-blue-100 text-blue-700' : 'bg-blue-500/20 text-blue-400',
-            INSERT: isLight ? 'bg-green-100 text-green-700' : 'bg-green-500/20 text-green-400',
-            UPDATE: isLight ? 'bg-orange-100 text-orange-700' : 'bg-orange-500/20 text-orange-400',
-            DELETE: isLight ? 'bg-red-100 text-red-700' : 'bg-red-500/20 text-red-400',
-            DDL: isLight ? 'bg-purple-100 text-purple-700' : 'bg-purple-500/20 text-purple-400',
-            DCL: isLight ? 'bg-pink-100 text-pink-700' : 'bg-pink-500/20 text-pink-400',
-            TCL: isLight ? 'bg-cyan-100 text-cyan-700' : 'bg-cyan-500/20 text-cyan-400',
+            SELECT: isLight ? 'bg-blue-100/50 text-blue-700 border-blue-200' : 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+            INSERT: isLight ? 'bg-green-100/50 text-green-700 border-green-200' : 'bg-green-500/10 text-green-400 border-green-500/20',
+            UPDATE: isLight ? 'bg-orange-100/50 text-orange-700 border-orange-200' : 'bg-orange-500/10 text-orange-400 border-orange-500/20',
+            DELETE: isLight ? 'bg-red-100/50 text-red-700 border-red-200' : 'bg-red-500/10 text-red-400 border-red-500/20',
+            DDL: isLight ? 'bg-purple-100/50 text-purple-700 border-purple-200' : 'bg-purple-500/10 text-purple-400 border-purple-500/20',
+            DCL: isLight ? 'bg-pink-100/50 text-pink-700 border-pink-200' : 'bg-pink-500/10 text-pink-400 border-pink-500/20',
+            TCL: isLight ? 'bg-cyan-100/50 text-cyan-700 border-cyan-200' : 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',
         };
-        return colors[type] || (isLight ? 'bg-gray-100 text-gray-700' : 'bg-gray-500/20 text-gray-400');
+        const colorClass = colors[type] || (isLight ? 'bg-gray-100/50 text-gray-700 border-gray-200' : 'bg-gray-500/10 text-gray-400 border-gray-500/20');
+        return `${colorClass} border px-2 py-0.5 rounded-full backdrop-blur-sm`;
     };
 
     const handleExport = async (format) => {
@@ -269,14 +271,14 @@ export function AuditTrail() {
         container.innerHTML = `
             <div class="h-full flex flex-col">
                 <!-- Header -->
-                <div class="flex items-center justify-between p-6 border-b ${isLight ? 'border-gray-200 bg-white' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border/50 bg-ocean-panel' : 'border-white/5 bg-[#121418]'))}">
-                    <div class="flex items-center gap-4">
-                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center shadow-lg">
-                            <span class="material-symbols-outlined text-white text-2xl">history</span>
+                <div class="flex items-center justify-between p-3 border-b ${isLight ? 'border-gray-200 bg-white' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border/50 bg-ocean-panel' : 'border-white/5 bg-[#121418]'))}">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center shadow-lg">
+                            <span class="material-symbols-outlined text-white text-xl">history</span>
                         </div>
                         <div>
-                            <h1 class="text-xl font-bold ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')}">Query Audit Trail</h1>
-                            <p class="text-sm ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Track and audit all query executions • ${totalEntries.toLocaleString()} entries</p>
+                            <h1 class="text-lg font-bold ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')}">Query Audit Trail</h1>
+                            <p class="text-[11px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Track and audit all query executions • ${totalEntries.toLocaleString()} entries</p>
                         </div>
                     </div>
                     <div class="flex items-center gap-3">
@@ -314,52 +316,80 @@ export function AuditTrail() {
     const renderLogTab = (isLight, isDawn, isOceanic) => `
         <div class="flex-1 flex overflow-hidden">
             <!-- Filters Sidebar -->
-            <div class="w-64 border-r ${isLight ? 'border-gray-200 bg-white' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3]' : (isOceanic ? 'border-ocean-border/50 bg-ocean-panel' : 'border-white/5 bg-[#0f1115]'))} p-4 space-y-4 overflow-y-auto custom-scrollbar">
-                <div class="space-y-2">
-                    <label class="text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-400')}">Search</label>
-                    <input type="text" id="filter-search" value="${filters.searchTerm}" placeholder="Search queries..." 
-                        class="w-full px-3 py-2 rounded-lg text-sm ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text placeholder-ocean-text/40' : 'bg-white/5 border-white/10 text-white'))} border outline-none focus:border-mysql-teal transition-colors">
+            <div class="w-56 border-r ${isLight ? 'border-gray-200 bg-white' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3]' : (isOceanic ? 'border-ocean-border/50 bg-ocean-panel' : 'border-white/5 bg-[#0f1115]'))} p-3 space-y-3 overflow-y-auto custom-scrollbar">
+                <div class="space-y-1">
+                    <label class="text-[9px] font-bold uppercase tracking-[0.15em] ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500')} ml-1">Search</label>
+                    <div class="relative group">
+                        <span class="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-sm ${isLight ? 'text-gray-400' : 'text-gray-500'} group-focus-within:text-mysql-teal transition-colors">search</span>
+                        <input type="text" id="filter-search" value="${filters.searchTerm}" placeholder="Filter queries..." 
+                            class="w-full pl-9 pr-3 py-1.5 rounded-lg text-[13px] ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-bg/50 border-ocean-border text-ocean-text placeholder-ocean-text/30' : 'bg-white/5 border-white/10 text-white'))} border outline-none focus:ring-1 focus:ring-mysql-teal/30 focus:border-mysql-teal transition-all">
+                    </div>
                 </div>
 
-                <div class="space-y-2">
-                    <label class="text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-400')}">Status</label>
-                    <select id="filter-status" class="w-full px-3 py-2 rounded-lg text-sm ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text' : 'bg-white/5 border-white/10 text-white'))} border outline-none">
-                        <option value="">All Statuses</option>
-                        ${filterOptions.statuses.map(s => `<option value="${s}" ${filters.status === s ? 'selected' : ''}>${s}</option>`).join('')}
-                    </select>
+                <div class="space-y-1.5 pt-1">
+                    <label class="text-[9px] font-bold uppercase tracking-[0.1em] ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500')} ml-1 flex items-center gap-1.5">
+                        <span class="material-symbols-outlined text-[14px]">filter_alt</span>Status
+                    </label>
+                    <div class="relative">
+                        <select id="filter-status" class="w-full pl-3 pr-8 py-1.5 rounded-lg text-[13px] ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-bg/50 border-ocean-border text-ocean-text' : 'bg-white/5 border-white/10 text-white'))} border outline-none focus:ring-1 focus:ring-mysql-teal/30 focus:border-mysql-teal transition-all appearance-none cursor-pointer">
+                            <option value="">All Statuses</option>
+                            ${filterOptions.statuses.map(s => `<option value="${s}" ${filters.status === s ? 'selected' : ''}>${s}</option>`).join('')}
+                        </select>
+                        <span class="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-sm pointer-events-none ${isLight ? 'text-gray-400' : 'text-gray-500'}">expand_more</span>
+                    </div>
                 </div>
 
-                <div class="space-y-2">
-                    <label class="text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-400')}">Query Type</label>
-                    <select id="filter-type" class="w-full px-3 py-2 rounded-lg text-sm ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text' : 'bg-white/5 border-white/10 text-white'))} border outline-none">
-                        <option value="">All Types</option>
-                        ${filterOptions.queryTypes.map(t => `<option value="${t}" ${filters.queryType === t ? 'selected' : ''}>${t}</option>`).join('')}
-                    </select>
+                <div class="space-y-1.5">
+                    <label class="text-[9px] font-bold uppercase tracking-[0.1em] ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500')} ml-1 flex items-center gap-1.5">
+                        <span class="material-symbols-outlined text-[14px]">code</span>Query Type
+                    </label>
+                    <div class="relative">
+                        <select id="filter-type" class="w-full pl-3 pr-8 py-1.5 rounded-lg text-[13px] ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-bg/50 border-ocean-border text-ocean-text' : 'bg-white/5 border-white/10 text-white'))} border outline-none focus:ring-1 focus:ring-mysql-teal/30 focus:border-mysql-teal transition-all appearance-none cursor-pointer">
+                            <option value="">All Types</option>
+                            ${filterOptions.queryTypes.map(t => `<option value="${t}" ${filters.queryType === t ? 'selected' : ''}>${t}</option>`).join('')}
+                        </select>
+                        <span class="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-sm pointer-events-none ${isLight ? 'text-gray-400' : 'text-gray-500'}">expand_more</span>
+                    </div>
                 </div>
 
-                <div class="space-y-2">
-                    <label class="text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-400')}">Database</label>
-                    <select id="filter-db" class="w-full px-3 py-2 rounded-lg text-sm ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text' : 'bg-white/5 border-white/10 text-white'))} border outline-none">
-                        <option value="">All Databases</option>
-                        ${filterOptions.databases.map(d => `<option value="${d}" ${filters.database === d ? 'selected' : ''}>${d}</option>`).join('')}
-                    </select>
+                <div class="space-y-1.5">
+                    <label class="text-[9px] font-bold uppercase tracking-[0.1em] ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500')} ml-1 flex items-center gap-1.5">
+                        <span class="material-symbols-outlined text-[14px]">database</span>Database
+                    </label>
+                    <div class="relative">
+                        <select id="filter-db" class="w-full pl-3 pr-8 py-1.5 rounded-lg text-[13px] ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-bg/50 border-ocean-border text-ocean-text' : 'bg-white/5 border-white/10 text-white'))} border outline-none focus:ring-1 focus:ring-mysql-teal/30 focus:border-mysql-teal transition-all appearance-none cursor-pointer">
+                            <option value="">All Databases</option>
+                            ${filterOptions.databases.map(d => `<option value="${d}" ${filters.database === d ? 'selected' : ''}>${d}</option>`).join('')}
+                        </select>
+                        <span class="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-sm pointer-events-none ${isLight ? 'text-gray-400' : 'text-gray-500'}">expand_more</span>
+                    </div>
                 </div>
 
-                <div class="space-y-2">
-                    <label class="text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-400')}">Date Range</label>
-                    <input type="date" id="filter-start" value="${filters.startDate}" 
-                        class="w-full px-3 py-2 rounded-lg text-sm ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text' : 'bg-white/5 border-white/10 text-white'))} border outline-none">
-                    <input type="date" id="filter-end" value="${filters.endDate}" 
-                        class="w-full px-3 py-2 rounded-lg text-sm mt-2 ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text' : 'bg-white/5 border-white/10 text-white'))} border outline-none">
+                <div class="space-y-1.5">
+                    <label class="text-[9px] font-bold uppercase tracking-[0.1em] ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500')} ml-1 flex items-center gap-1.5">
+                        <span class="material-symbols-outlined text-[14px]">calendar_today</span>Date Range
+                    </label>
+                    <div class="grid grid-cols-1 gap-2">
+                        <div class="relative">
+                            <input type="date" id="filter-start" value="${filters.startDate}" 
+                                class="w-full pl-3 pr-2 py-1.5 rounded-lg text-[12px] ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-bg/50 border-ocean-border text-ocean-text' : 'bg-white/5 border-white/10 text-white'))} border outline-none focus:ring-1 focus:ring-mysql-teal/30 focus:border-mysql-teal transition-all">
+                        </div>
+                        <div class="relative">
+                            <input type="date" id="filter-end" value="${filters.endDate}" 
+                                class="w-full pl-3 pr-2 py-1.5 rounded-lg text-[12px] ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-bg/50 border-ocean-border text-ocean-text' : 'bg-white/5 border-white/10 text-white'))} border outline-none focus:ring-1 focus:ring-mysql-teal/30 focus:border-mysql-teal transition-all">
+                        </div>
+                    </div>
                 </div>
 
-                <button id="apply-filters" class="w-full px-4 py-2 rounded-lg text-sm font-bold bg-mysql-teal text-white hover:brightness-110 transition-all">
-                    Apply Filters
-                </button>
-                
-                <button id="reset-filters" class="w-full px-4 py-2 rounded-lg text-sm ${isLight ? 'text-gray-600 hover:bg-gray-100' : (isOceanic ? 'text-ocean-text/70 hover:bg-ocean-bg' : 'text-gray-400 hover:bg-white/5')} transition-all">
-                    Reset Filters
-                </button>
+                <div class="pt-2 space-y-2">
+                    <button id="apply-filters" class="w-full py-2 rounded-xl text-sm font-black bg-gradient-to-r from-mysql-teal to-blue-600 text-white shadow-lg shadow-mysql-teal/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2">
+                        <span class="material-symbols-outlined text-sm">done_all</span>Apply Filters
+                    </button>
+                    
+                    <button id="reset-filters" class="w-full py-1.5 rounded-xl text-[11px] font-bold ${isLight ? 'text-gray-400 hover:bg-gray-100 hover:text-gray-600' : (isOceanic ? 'text-ocean-text/40 hover:bg-ocean-bg hover:text-ocean-text' : 'text-gray-500 hover:bg-white/5 hover:text-gray-300')} transition-all flex items-center justify-center gap-1.5">
+                        <span class="material-symbols-outlined text-[14px]">restart_alt</span>Clear Filters
+                    </button>
+                </div>
             </div>
 
             <!-- Audit Log Table -->
@@ -376,52 +406,59 @@ export function AuditTrail() {
                         <table class="w-full text-left">
                             <thead class="sticky top-0 ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#faf4ed]' : 'bg-[#16191e]')} z-10">
                                 <tr class="text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-gray-500' : 'text-gray-400'}">
-                                    <th class="px-4 py-3">Timestamp</th>
-                                    <th class="px-4 py-3">Status</th>
-                                    <th class="px-4 py-3">Type</th>
-                                    <th class="px-4 py-3">Database</th>
-                                    <th class="px-4 py-3">User</th>
-                                    <th class="px-4 py-3">Duration</th>
-                                    <th class="px-4 py-3">Query</th>
-                                    <th class="px-4 py-3 w-12"></th>
+                                    <th class="px-3 py-2">Timestamp</th>
+                                    <th class="px-3 py-2">Status</th>
+                                    <th class="px-3 py-2">Type</th>
+                                    <th class="px-3 py-2">Database</th>
+                                    <th class="px-3 py-2">User</th>
+                                    <th class="px-3 py-2">Duration</th>
+                                    <th class="px-3 py-2">Query</th>
+                                    <th class="px-3 py-2 w-10"></th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y ${isLight ? 'divide-gray-100' : 'divide-white/5'}">
                                 ${entries.length === 0 ? `
                                     <tr>
-                                        <td colspan="8" class="px-4 py-12 text-center ${isLight ? 'text-gray-400' : 'text-gray-500'}">
+                                        <td colspan="8" class="px-3 py-8 text-center ${isLight ? 'text-gray-400' : 'text-gray-500'}">
                                             <span class="material-symbols-outlined text-4xl mb-2 block">search_off</span>
                                             No audit entries found
                                         </td>
                                     </tr>
                                 ` : entries.map(entry => `
-                                    <tr class="audit-row hover:${isLight ? 'bg-gray-50' : 'bg-white/5'} cursor-pointer transition-colors" data-id="${entry.id}">
-                                        <td class="px-4 py-3">
-                                            <div class="text-xs font-mono ${isLight ? 'text-gray-700' : 'text-gray-300'}">${new Date(entry.timestamp).toLocaleDateString()}</div>
-                                            <div class="text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-500'}">${new Date(entry.timestamp).toLocaleTimeString()}</div>
+                                    <tr class="audit-row group hover:${isLight ? 'bg-white shadow-sm' : 'bg-white/[0.03]'} cursor-pointer transition-all duration-200" data-id="${entry.id}">
+                                        <td class="px-3 py-2 border-b ${isLight ? 'border-gray-50/50' : 'border-white/[0.03]'}">
+                                            <div class="text-[11px] font-medium ${isLight ? 'text-gray-600' : 'text-gray-300'}">${new Date(entry.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</div>
+                                            <div class="text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-500'} font-mono">${new Date(entry.timestamp).toLocaleTimeString(undefined, { hour12: false, hour: '2-digit', minute: '2-digit' })}</div>
                                         </td>
-                                        <td class="px-4 py-3">
-                                            <span class="px-2 py-0.5 rounded text-[10px] font-bold ${getStatusBadge(entry.status, isLight, isDawn)}">${entry.status}</span>
+                                        <td class="px-3 py-2 border-b ${isLight ? 'border-gray-50/50' : 'border-white/[0.03]'}">
+                                            <span class="text-[10px] font-bold ${getStatusBadge(entry.status, isLight, isDawn)}">${entry.status}</span>
                                         </td>
-                                        <td class="px-4 py-3">
-                                            <span class="px-2 py-0.5 rounded text-[10px] font-bold ${getTypeBadge(entry.queryType, isLight)}">${entry.queryType}</span>
+                                        <td class="px-3 py-2 border-b ${isLight ? 'border-gray-50/50' : 'border-white/[0.03]'}">
+                                            <span class="text-[10px] font-bold ${getTypeBadge(entry.queryType, isLight)}">${entry.queryType}</span>
                                         </td>
-                                        <td class="px-4 py-3">
-                                            <span class="text-xs font-mono ${isLight ? 'text-gray-700' : 'text-gray-300'}">${entry.connection.database}</span>
+                                        <td class="px-3 py-2 border-b ${isLight ? 'border-gray-50/50' : 'border-white/[0.03]'}">
+                                            <span class="text-[11px] font-mono ${isLight ? 'text-gray-500 underline decoration-gray-200 underline-offset-2' : 'text-gray-400 underline decoration-white/10 underline-offset-2'}">${entry.connection.database}</span>
                                         </td>
-                                        <td class="px-4 py-3">
-                                            <span class="text-xs ${isLight ? 'text-gray-600' : 'text-gray-400'}">${entry.connection.user}@${entry.connection.host.substring(0, 15)}</span>
+                                        <td class="px-3 py-2 border-b ${isLight ? 'border-gray-50/50' : 'border-white/[0.03]'}">
+                                            <span class="text-[11px] ${isLight ? 'text-gray-400' : 'text-gray-500'} italic flex items-center gap-1">
+                                                <span class="material-symbols-outlined text-[10px]">person</span>
+                                                ${entry.connection.user}
+                                            </span>
                                         </td>
-                                        <td class="px-4 py-3">
-                                            <span class="text-xs font-mono ${entry.duration > 1000 ? 'text-yellow-400' : (isLight ? 'text-gray-600' : 'text-gray-400')}">${formatDuration(entry.duration)}</span>
+                                        <td class="px-3 py-2 border-b ${isLight ? 'border-gray-50/50' : 'border-white/[0.03]'}">
+                                            <span class="text-[11px] font-mono ${entry.duration > 1000 ? 'text-yellow-500 font-bold' : (isLight ? 'text-gray-600' : 'text-gray-400')} px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/5">${formatDuration(entry.duration)}</span>
                                         </td>
-                                        <td class="px-4 py-3 max-w-md">
-                                            <div class="text-xs font-mono ${isLight ? 'text-gray-700' : 'text-gray-300'} truncate" title="${escapeHtml(entry.query)}">${escapeHtml(entry.query.substring(0, 80))}${entry.query.length > 80 ? '...' : ''}</div>
-                                            ${entry.tables.length > 0 ? `<div class="text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-500'} mt-0.5">Tables: ${entry.tables.map(t => escapeHtml(t)).join(', ')}</div>` : ''}
+                                        <td class="px-3 py-2 border-b ${isLight ? 'border-gray-50/50' : 'border-white/[0.03]'} max-w-2xl">
+                                            <div class="text-[12px] font-mono ${isLight ? 'text-gray-700' : 'text-gray-200'} truncate group-hover:text-mysql-teal transition-colors" title="${escapeHtml(entry.query)}">${escapeHtml(entry.query.substring(0, 150))}${entry.query.length > 150 ? '...' : ''}</div>
+                                            ${entry.tables.length > 0 ? `
+                                                <div class="flex flex-wrap gap-1 mt-1">
+                                                    ${entry.tables.map(t => `<span class="text-[9px] px-1.5 py-0 rounded-sm ${isLight ? 'bg-gray-100/80 text-gray-500 border border-gray-200' : 'bg-white/5 text-gray-400 border border-white/10'}">${escapeHtml(t)}</span>`).join('')}
+                                                </div>
+                                            ` : ''}
                                         </td>
-                                        <td class="px-4 py-3">
-                                            <button class="view-details w-7 h-7 rounded flex items-center justify-center ${isLight ? 'hover:bg-gray-100' : 'hover:bg-white/10'} transition-colors" data-id="${entry.id}">
-                                                <span class="material-symbols-outlined text-sm ${isLight ? 'text-gray-400' : 'text-gray-500'}">visibility</span>
+                                        <td class="px-3 py-2 border-b ${isLight ? 'border-gray-50/50' : 'border-white/[0.03]'} text-right">
+                                            <button class="view-details w-7 h-7 rounded-full inline-flex items-center justify-center ${isLight ? 'hover:bg-mysql-teal/10 hover:text-mysql-teal' : 'hover:bg-mysql-teal/20 hover:text-mysql-teal'} text-gray-400 transition-all opacity-0 group-hover:opacity-100" data-id="${entry.id}">
+                                                <span class="material-symbols-outlined text-base">arrow_forward</span>
                                             </button>
                                         </td>
                                     </tr>
@@ -456,132 +493,149 @@ export function AuditTrail() {
         if (!statistics) return '<div class="flex-1 flex items-center justify-center"><p class="text-gray-400">Loading statistics...</p></div>';
 
         return `
-            <div class="flex-1 overflow-auto custom-scrollbar p-6">
+            <div class="flex-1 overflow-auto custom-scrollbar p-3">
                 <!-- Summary Cards -->
-                <div class="grid grid-cols-4 gap-4 mb-6">
-                    <div class="p-4 rounded-xl ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1]' : 'bg-white/5 border border-white/10')}">
-                        <div class="text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-gray-400' : 'text-gray-500'} mb-1">Total Queries</div>
-                        <div class="text-2xl font-black ${isLight ? 'text-gray-800' : 'text-white'}">${statistics.totalQueries.toLocaleString()}</div>
+                <div class="grid grid-cols-4 gap-3 mb-6">
+                    <div class="p-3 rounded-2xl ${isLight ? 'bg-white/80 border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)]' : 'bg-white/[0.03] border-white/5 shadow-2xl'} border backdrop-blur-md relative overflow-hidden group hover:scale-[1.02] transition-all duration-300">
+                        <div class="absolute top-0 right-0 w-24 h-24 bg-mysql-teal/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-700"></div>
+                        <div class="text-[10px] font-bold uppercase tracking-[0.1em] ${isLight ? 'text-gray-400' : 'text-gray-500'} mb-1.5 flex items-center gap-1.5">
+                            <span class="material-symbols-outlined text-[14px]">analytics</span>Total
+                        </div>
+                        <div class="text-2xl font-black ${isLight ? 'text-gray-800' : 'text-white'} tracking-tight">${statistics.totalQueries.toLocaleString()}</div>
                     </div>
-                    <div class="p-4 rounded-xl ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1]' : 'bg-white/5 border border-white/10')}">
-                        <div class="text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-gray-400' : 'text-gray-500'} mb-1">Success Rate</div>
-                        <div class="text-2xl font-black text-green-400">${statistics.totalQueries > 0 ? Math.round((statistics.successCount / statistics.totalQueries) * 100) : 0}%</div>
+                    <div class="p-3 rounded-2xl ${isLight ? 'bg-white/80 border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)]' : 'bg-white/[0.03] border-white/5 shadow-2xl'} border backdrop-blur-md relative overflow-hidden group hover:scale-[1.02] transition-all duration-300">
+                        <div class="absolute top-0 right-0 w-24 h-24 bg-green-500/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-700"></div>
+                        <div class="text-[10px] font-bold uppercase tracking-[0.1em] ${isLight ? 'text-gray-400' : 'text-gray-500'} mb-1.5 flex items-center gap-1.5">
+                            <span class="material-symbols-outlined text-[14px]">check_circle</span>Success
+                        </div>
+                        <div class="text-2xl font-black text-green-500 tracking-tight">${statistics.totalQueries > 0 ? Math.round((statistics.successCount / statistics.totalQueries) * 100) : 0}%</div>
                     </div>
-                    <div class="p-4 rounded-xl ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1]' : 'bg-white/5 border border-white/10')}">
-                        <div class="text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-gray-400' : 'text-gray-500'} mb-1">Errors</div>
-                        <div class="text-2xl font-black text-red-400">${statistics.errorCount.toLocaleString()}</div>
+                    <div class="p-3 rounded-2xl ${isLight ? 'bg-white/80 border-gray-100 shadow-[0_8_30px_rgb(0,0,0,0.04)]' : 'bg-white/[0.03] border-white/5 shadow-2xl'} border backdrop-blur-md relative overflow-hidden group hover:scale-[1.02] transition-all duration-300">
+                        <div class="absolute top-0 right-0 w-24 h-24 bg-red-500/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-700"></div>
+                        <div class="text-[10px] font-bold uppercase tracking-[0.1em] ${isLight ? 'text-gray-400' : 'text-gray-500'} mb-1.5 flex items-center gap-1.5">
+                            <span class="material-symbols-outlined text-[14px]">error_outline</span>Errors
+                        </div>
+                        <div class="text-2xl font-black text-red-500 tracking-tight">${statistics.errorCount.toLocaleString()}</div>
                     </div>
-                    <div class="p-4 rounded-xl ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1]' : 'bg-white/5 border border-white/10')}">
-                        <div class="text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-gray-400' : 'text-gray-500'} mb-1">Avg Duration</div>
-                        <div class="text-2xl font-black ${isLight ? 'text-gray-800' : 'text-white'}">${formatDuration(statistics.avgDuration)}</div>
+                    <div class="p-3 rounded-2xl ${isLight ? 'bg-white/80 border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)]' : 'bg-white/[0.03] border-white/5 shadow-2xl'} border backdrop-blur-md relative overflow-hidden group hover:scale-[1.02] transition-all duration-300">
+                        <div class="absolute top-0 right-0 w-24 h-24 bg-yellow-500/5 rounded-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-700"></div>
+                        <div class="text-[10px] font-bold uppercase tracking-[0.1em] ${isLight ? 'text-gray-400' : 'text-gray-500'} mb-1.5 flex items-center gap-1.5">
+                            <span class="material-symbols-outlined text-[14px]">timer</span>Latency
+                        </div>
+                        <div class="text-2xl font-black ${isLight ? 'text-gray-800' : 'text-white'} tracking-tight">${formatDuration(statistics.avgDuration)}</div>
                     </div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-6">
+                <div class="grid grid-cols-2 gap-4">
                     <!-- Query Types Distribution -->
-                    <div class="p-4 rounded-xl ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1]' : 'bg-white/5 border border-white/10')}">
-                        <h3 class="text-sm font-bold ${isLight ? 'text-gray-800' : 'text-white'} mb-4 flex items-center gap-2">
-                            <span class="material-symbols-outlined text-mysql-teal">pie_chart</span>
-                            Query Types Distribution
+                    <div class="p-4 rounded-2xl ${isLight ? 'bg-white border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)]' : 'bg-white/[0.03] border-white/5 shadow-2xl'} border">
+                        <h3 class="text-xs font-bold ${isLight ? 'text-gray-800' : 'text-white'} mb-4 flex items-center gap-2">
+                            <div class="w-6 h-6 rounded-lg bg-mysql-teal/10 flex items-center justify-center">
+                                <span class="material-symbols-outlined text-mysql-teal text-sm">pie_chart</span>
+                            </div>
+                            Distribution by Type
                         </h3>
-                        <div class="space-y-2">
+                        <div class="space-y-2.5">
                             ${Object.entries(statistics.byType).sort((a, b) => b[1] - a[1]).map(([type, count]) => `
-                                <div class="flex items-center justify-between">
-                                    <div class="flex items-center gap-2">
-                                        <span class="px-2 py-0.5 rounded text-[10px] font-bold ${getTypeBadge(type, isLight)}">${type}</span>
+                                <div class="flex items-center gap-3">
+                                    <div class="w-16">
+                                        <span class="text-[10px] font-bold ${getTypeBadge(type, isLight)}">${type}</span>
                                     </div>
-                                    <div class="flex items-center gap-2">
-                                        <div class="w-24 h-2 rounded-full ${isLight ? 'bg-gray-100' : 'bg-white/10'} overflow-hidden">
-                                            <div class="h-full bg-mysql-teal rounded-full" style="width: ${(count / statistics.totalQueries) * 100}%"></div>
-                                        </div>
-                                        <span class="text-xs font-mono ${isLight ? 'text-gray-600' : 'text-gray-400'} w-12 text-right">${count}</span>
+                                    <div class="flex-1 h-1.5 rounded-full ${isLight ? 'bg-gray-100' : 'bg-white/5'} overflow-hidden">
+                                        <div class="h-full bg-gradient-to-r from-mysql-teal to-blue-500 rounded-full" style="width: ${(count / statistics.totalQueries) * 100}%"></div>
                                     </div>
+                                    <span class="text-[11px] font-mono ${isLight ? 'text-gray-500' : 'text-gray-400'} w-8 text-right font-bold">${count}</span>
                                 </div>
                             `).join('')}
                         </div>
                     </div>
 
                     <!-- Top Tables -->
-                    <div class="p-4 rounded-xl ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1]' : 'bg-white/5 border border-white/10')}">
-                        <h3 class="text-sm font-bold ${isLight ? 'text-gray-800' : 'text-white'} mb-4 flex items-center gap-2">
-                            <span class="material-symbols-outlined text-mysql-teal">table_rows</span>
-                            Most Queried Tables
+                    <div class="p-4 rounded-2xl ${isLight ? 'bg-white border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)]' : 'bg-white/[0.03] border-white/5 shadow-2xl'} border">
+                        <h3 class="text-xs font-bold ${isLight ? 'text-gray-800' : 'text-white'} mb-4 flex items-center gap-2">
+                            <div class="w-6 h-6 rounded-lg bg-indigo-500/10 flex items-center justify-center">
+                                <span class="material-symbols-outlined text-indigo-500 text-sm">table_rows</span>
+                            </div>
+                            Top Queried Tables
                         </h3>
-                        <div class="space-y-2">
+                        <div class="space-y-2.5">
                             ${Object.entries(statistics.topTables).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([table, count]) => `
-                                <div class="flex items-center justify-between">
-                                    <span class="text-xs font-mono ${isLight ? 'text-gray-700' : 'text-gray-300'}">${table}</span>
-                                    <span class="text-xs font-mono ${isLight ? 'text-gray-500' : 'text-gray-400'}">${count}</span>
+                                <div class="flex items-center justify-between group/item">
+                                    <span class="text-[11px] font-mono ${isLight ? 'text-gray-600 group-hover/item:text-mysql-teal' : 'text-gray-400 group-hover/item:text-mysql-teal'} transition-colors">${table}</span>
+                                    <span class="text-[10px] font-bold ${isLight ? 'bg-gray-50 text-gray-500' : 'bg-white/5 text-gray-500'} px-1.5 py-0.5 rounded">${count}</span>
                                 </div>
                             `).join('')}
                         </div>
                     </div>
 
                     <!-- Slowest Queries -->
-                    <div class="p-4 rounded-xl ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1]' : 'bg-white/5 border border-white/10')}">
-                        <h3 class="text-sm font-bold ${isLight ? 'text-gray-800' : 'text-white'} mb-4 flex items-center gap-2">
-                            <span class="material-symbols-outlined text-yellow-400">schedule</span>
+                    <div class="p-4 rounded-2xl ${isLight ? 'bg-white border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)]' : 'bg-white/[0.03] border-white/5 shadow-2xl'} border">
+                        <h3 class="text-xs font-bold ${isLight ? 'text-gray-800' : 'text-white'} mb-4 flex items-center gap-2">
+                            <div class="w-6 h-6 rounded-lg bg-yellow-500/10 flex items-center justify-center">
+                                <span class="material-symbols-outlined text-yellow-500 text-sm">schedule</span>
+                            </div>
                             Slowest Queries
                         </h3>
-                        <div class="space-y-3">
-                            ${statistics.slowestQueries.slice(0, 5).map(q => `
-                                <div class="p-2 rounded-lg ${isLight ? 'bg-gray-50' : 'bg-white/5'}">
+                        <div class="space-y-2.5">
+                            ${statistics.slowestQueries.slice(0, 4).map(q => `
+                                <div class="p-2 rounded-xl ${isLight ? 'bg-gray-50/50' : 'bg-white/[0.02]'} border ${isLight ? 'border-gray-100' : 'border-white/5'} hover:border-yellow-500/30 transition-all">
                                     <div class="flex items-center justify-between mb-1">
-                                        <span class="text-xs font-bold text-yellow-400">${formatDuration(q.duration)}</span>
-                                        <span class="text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-500'}">${q.database}</span>
+                                        <span class="text-[10px] font-bold text-yellow-600 bg-yellow-500/10 px-1.5 rounded-full">${formatDuration(q.duration)}</span>
+                                        <span class="text-[9px] font-mono ${isLight ? 'text-gray-400' : 'text-gray-500'}">${q.database}</span>
                                     </div>
-                                    <div class="text-xs font-mono ${isLight ? 'text-gray-600' : 'text-gray-400'} truncate">${q.query}</div>
+                                    <div class="text-[10px] font-mono ${isLight ? 'text-gray-500' : 'text-gray-400'} truncate">${q.query}</div>
                                 </div>
                             `).join('')}
                         </div>
                     </div>
 
                     <!-- Recent Errors -->
-                    <div class="p-4 rounded-xl ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1]' : 'bg-white/5 border border-white/10')}">
-                        <h3 class="text-sm font-bold ${isLight ? 'text-gray-800' : 'text-white'} mb-4 flex items-center gap-2">
-                            <span class="material-symbols-outlined text-red-400">error</span>
+                    <div class="p-4 rounded-2xl ${isLight ? 'bg-white border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)]' : 'bg-white/[0.03] border-white/5 shadow-2xl'} border">
+                        <h3 class="text-xs font-bold ${isLight ? 'text-gray-800' : 'text-white'} mb-4 flex items-center gap-2">
+                            <div class="w-6 h-6 rounded-lg bg-red-500/10 flex items-center justify-center">
+                                <span class="material-symbols-outlined text-red-500 text-sm">error_outline</span>
+                            </div>
                             Recent Errors
                         </h3>
-                        <div class="space-y-3">
+                        <div class="space-y-2.5">
                             ${statistics.recentErrors.length === 0 ? `
-                                <div class="text-center py-4 ${isLight ? 'text-gray-400' : 'text-gray-500'}">
-                                    <span class="material-symbols-outlined text-2xl text-green-400 mb-2 block">check_circle</span>
-                                    No recent errors
+                                <div class="flex flex-col items-center justify-center py-6">
+                                    <span class="material-symbols-outlined text-2xl text-green-500/30 mb-1">check_circle</span>
+                                    <p class="text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-600'}">System Healthy</p>
                                 </div>
-                            ` : statistics.recentErrors.slice(0, 5).map(e => `
-                                <div class="p-2 rounded-lg bg-red-500/10 border border-red-500/20">
-                                    <div class="text-xs font-mono text-red-400 truncate">${e.query}</div>
-                                    <div class="text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-400'} mt-1">${e.error?.substring(0, 50) || 'Unknown error'}</div>
+                            ` : statistics.recentErrors.slice(0, 4).map(e => `
+                                <div class="p-2 rounded-xl bg-red-500/[0.03] border border-red-500/10 hover:border-red-500/30 transition-all">
+                                    <div class="text-[10px] font-mono text-red-500/80 truncate mb-1">${e.query}</div>
+                                    <div class="text-[9px] ${isLight ? 'text-gray-500' : 'text-gray-400'} line-clamp-2">${e.error || 'Connection failed'}</div>
                                 </div>
                             `).join('')}
                         </div>
                     </div>
 
                     <!-- Similar Query Groups -->
-                    <div class="p-4 rounded-xl col-span-2 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1]' : 'bg-white/5 border border-white/10')}">
-                        <h3 class="text-sm font-bold ${isLight ? 'text-gray-800' : 'text-white'} mb-4 flex items-center gap-2">
-                            <span class="material-symbols-outlined text-mysql-teal">content_copy</span>
-                            Similar / Duplicate Queries
+                    <div class="p-4 rounded-2xl col-span-2 ${isLight ? 'bg-white border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)]' : 'bg-white/[0.03] border-white/5 shadow-2xl'} border">
+                        <h3 class="text-xs font-bold ${isLight ? 'text-gray-800' : 'text-white'} mb-4 flex items-center gap-2">
+                            <div class="w-6 h-6 rounded-lg bg-mysql-teal/10 flex items-center justify-center">
+                                <span class="material-symbols-outlined text-mysql-teal text-sm">content_copy</span>
+                            </div>
+                            Redundant Patterns
                         </h3>
-                        <div class="space-y-3">
-                            ${similarGroups.length === 0 ? `
-                                <div class="text-center py-6 ${isLight ? 'text-gray-400' : 'text-gray-500'}">
-                                    <span class="material-symbols-outlined text-2xl text-green-400 mb-2 block">check_circle</span>
-                                    No repeated query patterns detected
-                                </div>
-                            ` : similarGroups.map((g, idx) => `
-                                <div class="similar-item p-3 rounded-lg ${isLight ? 'bg-gray-50 border border-gray-100' : 'bg-white/5 border border-white/10'}" data-group-index="${idx}">
+                        <div class="grid grid-cols-2 gap-3">
+                            ${similarGroups.slice(0, 4).map((g, idx) => `
+                                <div class="p-2.5 rounded-2xl ${isLight ? 'bg-gray-50/50' : 'bg-white/[0.02]'} border ${isLight ? 'border-gray-100' : 'border-white/5'} hover:border-mysql-teal/30 transition-all group/card">
                                     <div class="flex items-center justify-between mb-2">
-                                        <div class="flex items-center gap-2">
-                                            <span class="px-2 py-0.5 rounded text-[10px] font-bold ${isLight ? 'bg-indigo-100 text-indigo-700' : 'bg-indigo-500/20 text-indigo-400'}">${g.count}x</span>
-                                            <span class="text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-400'}">Avg ${formatDuration(g.avgDuration)}</span>
-                                            <span class="text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-500'}">Last: ${formatTimestamp(g.lastSeen)}</span>
+                                        <div class="flex items-center gap-1.5">
+                                            <span class="px-2 py-0.5 rounded-full text-[9px] font-bold bg-indigo-500/10 text-indigo-500">${g.count}x</span>
+                                            <span class="text-[9px] ${isLight ? 'text-gray-400' : 'text-gray-500'} font-mono">${formatDuration(g.avgDuration)} avg</span>
                                         </div>
-                                        <button class="similar-open px-2 py-1 rounded text-[10px] ${isLight ? 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100' : 'bg-white/10 text-gray-300 border border-white/10 hover:bg-white/20'}" data-group-index="${idx}">Open</button>
+                                        <button class="similar-open w-5 h-5 rounded-full flex items-center justify-center bg-mysql-teal/10 text-mysql-teal opacity-0 group-hover/card:opacity-100 transition-all" data-group-index="${idx}">
+                                            <span class="material-symbols-outlined text-[12px]">open_in_new</span>
+                                        </button>
                                     </div>
-                                    <div class="text-xs font-mono ${isLight ? 'text-gray-700' : 'text-gray-300'} truncate">${g.sampleQuery}</div>
-                                    <div class="text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-400'} mt-1">
-                                        DBs: ${g.databases.join(', ') || '-'} • Users: ${g.users.join(', ') || '-'}
+                                    <div class="text-[10px] font-mono ${isLight ? 'text-gray-600' : 'text-gray-300'} truncate mb-1.5">${g.sampleQuery}</div>
+                                    <div class="flex items-center gap-2 text-[9px] ${isLight ? 'text-gray-400' : 'text-gray-500'}">
+                                        <span class="flex items-center gap-0.5"><span class="material-symbols-outlined text-[10px]">database</span>${g.databases[0]}</span>
+                                        <span class="flex items-center gap-0.5"><span class="material-symbols-outlined text-[10px]">person</span>${g.users[0]}</span>
                                     </div>
                                 </div>
                             `).join('')}
@@ -589,34 +643,32 @@ export function AuditTrail() {
                     </div>
 
                     <!-- Workload Profile -->
-                    <div class="p-4 rounded-xl col-span-2 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1]' : 'bg-white/5 border border-white/10')}">
-                        <h3 class="text-sm font-bold ${isLight ? 'text-gray-800' : 'text-white'} mb-4 flex items-center gap-2">
-                            <span class="material-symbols-outlined text-mysql-teal">stacked_line_chart</span>
-                            Workload Profile
+                    <div class="p-4 rounded-2xl col-span-2 ${isLight ? 'bg-white border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)]' : 'bg-white/[0.03] border-white/5 shadow-2xl'} border">
+                        <h3 class="text-xs font-bold ${isLight ? 'text-gray-800' : 'text-white'} mb-4 flex items-center gap-2">
+                            <div class="w-6 h-6 rounded-lg bg-mysql-teal/10 flex items-center justify-center">
+                                <span class="material-symbols-outlined text-mysql-teal text-sm">stacked_line_chart</span>
+                            </div>
+                            Workload DNA
                         </h3>
-                        <div class="space-y-3">
-                            ${workloadProfiles.length === 0 ? `
-                                <div class="text-center py-6 ${isLight ? 'text-gray-400' : 'text-gray-500'}">
-                                    <span class="material-symbols-outlined text-2xl text-green-400 mb-2 block">check_circle</span>
-                                    No workload groups detected yet
-                                </div>
-                            ` : workloadProfiles.map((g, idx) => `
-                                <div class="workload-item p-3 rounded-lg ${isLight ? 'bg-gray-50 border border-gray-100' : 'bg-white/5 border border-white/10'}" data-workload-index="${idx}">
+                        <div class="grid grid-cols-2 gap-3">
+                            ${workloadProfiles.slice(0, 4).map((g, idx) => `
+                                <div class="p-2.5 rounded-2xl ${isLight ? 'bg-gray-50/50' : 'bg-white/[0.02]'} border ${isLight ? 'border-gray-100' : 'border-white/5'} hover:border-mysql-teal/30 transition-all group/card">
                                     <div class="flex items-center justify-between mb-2">
-                                        <div class="flex items-center gap-2">
-                                            <span class="px-2 py-0.5 rounded text-[10px] font-bold ${isLight ? 'bg-indigo-100 text-indigo-700' : 'bg-indigo-500/20 text-indigo-400'}">${g.count}x</span>
-                                            <span class="text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-400'}">Avg ${formatDuration(g.avgDuration)}</span>
-                                            <span class="text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-500'}">Err ${(g.errorRate * 100).toFixed(0)}%</span>
-                                            <span class="text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-500'}">${g.table}</span>
+                                        <div class="flex items-center gap-1.5">
+                                            <span class="px-2 py-0.5 rounded-full text-[9px] font-bold bg-mysql-teal/10 text-mysql-teal">${g.count}x</span>
+                                            <span class="text-[9px] ${isLight ? 'text-gray-400' : 'text-gray-500'} font-mono">${formatDuration(g.avgDuration)} avg</span>
                                         </div>
-                                        <button class="workload-open px-2 py-1 rounded text-[10px] ${isLight ? 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100' : 'bg-white/10 text-gray-300 border border-white/10 hover:bg-white/20'}" data-workload-index="${idx}">Open</button>
+                                        <button class="workload-open w-5 h-5 rounded-full flex items-center justify-center bg-mysql-teal/10 text-mysql-teal opacity-0 group-hover/card:opacity-100 transition-all" data-workload-index="${idx}">
+                                            <span class="material-symbols-outlined text-[12px]">open_in_new</span>
+                                        </button>
                                     </div>
                                     <div class="flex flex-wrap gap-1 mb-2">
                                         ${g.labels.map(label => `
-                                            <span class="px-2 py-0.5 rounded text-[9px] font-bold ${isLight ? 'bg-gray-100 text-gray-700' : 'bg-white/10 text-gray-300'}">${label}</span>
+                                            <span class="px-1.5 py-0 rounded text-[8px] font-bold ${label === 'error-prone' ? 'bg-red-500/10 text-red-500' : (isLight ? 'bg-gray-100/80 text-gray-500' : 'bg-white/5 text-gray-400')} uppercase">${label}</span>
                                         `).join('')}
                                     </div>
-                                    <div class="text-xs font-mono ${isLight ? 'text-gray-700' : 'text-gray-300'} truncate">${g.sampleQuery}</div>
+                                    <div class="text-[10px] font-mono ${isLight ? 'text-gray-700' : 'text-gray-300'} truncate mb-0.5">${g.sampleQuery}</div>
+                                    <div class="text-[9px] ${isLight ? 'text-mysql-teal/70 font-bold' : 'text-mysql-teal/80 font-bold'}">${g.table}</div>
                                 </div>
                             `).join('')}
                         </div>
