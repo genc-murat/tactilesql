@@ -32,10 +32,11 @@
         "height": 800,
         "decorations": false,
         "resizable": false,
-        "transparent": false,
-        "backgroundColor": "#0a0c10",
+        "transparent": true,
+        "backgroundColor": "#00000000",
         "visible": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "shadow": false
       }
     ],
     "security": {

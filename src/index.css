@@ -4,12 +4,20 @@
 
 @layer base {
 
+    html {
+        @apply h-full w-full bg-[#0a0c10] overflow-hidden;
+    }
+
     /* Dark theme (default) */
     body {
-        @apply bg-[#0a0c10] text-gray-400 font-['Inter'] antialiased;
+        @apply h-full w-full bg-[#0a0c10] text-gray-400 font-['Inter'] antialiased overflow-hidden;
     }
 
     /* Light theme */
+    html.light {
+        @apply bg-gray-50;
+    }
+
     .light body,
     html.light body {
         @apply bg-gray-50 text-gray-700;
@@ -26,6 +34,7 @@
     }
 
     html.oceanic {
+        background-color: #2E3440;
         --bg-primary: #2E3440;
         --bg-secondary: #3B4252;
         --bg-tertiary: #4C566A;
@@ -36,6 +45,7 @@
     }
 
     html.dawn {
+        background-color: #faf4ed;
         --bg-primary: #faf4ed;
         --bg-secondary: #fffaf3;
         --bg-tertiary: #f2e9e1;
@@ -56,6 +66,7 @@
     }
 
     html.ember {
+        background-color: #140c12;
         --bg-primary: #140c12;
         --bg-secondary: #1d141c;
         --bg-tertiary: #241821;
@@ -66,6 +77,7 @@
     }
 
     html.aurora {
+        background-color: #0b1214;
         --bg-primary: #0b1214;
         --bg-secondary: #0f1a1d;
         --bg-tertiary: #122226;
@@ -1081,7 +1093,8 @@
     .window-resize-handle {
         position: fixed;
         z-index: 9999;
-        background: transparent;
+        background-color: transparent !important;
+        opacity: 0 !important;
         pointer-events: auto;
         -webkit-app-region: no-drag;
     }
