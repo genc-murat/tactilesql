@@ -7,7 +7,8 @@ use crate::quality_analyzer::models::TableQualityReport;
 pub async fn run_quality_analysis(
     app_state: State<'_, AppState>,
     connection_id: String,
-    table: String
+    table: String,
+    schema: Option<String>
 ) -> Result<TableQualityReport, String> {
     // 1. Determine DB Type and Pool
     let db_type = {
@@ -19,18 +20,27 @@ pub async fn run_quality_analysis(
         crate::db_types::DatabaseType::MySQL => {
             let pool_guard = app_state.mysql_pool.lock().await;
             let pool = pool_guard.as_ref().ok_or("MySQL pool not initialized")?;
-            // Assume database name is needed; for now get active one
-             let row: (String,) = sqlx::query_as("SELECT DATABASE()").fetch_one(pool).await.map_err(|e| e.to_string())?;
-            let db_name = row.0;
+            
+            // Use provided schema (database) or fallback to active one
+            let db_name = if let Some(s) = schema {
+                s
+            } else {
+                let row: (Option<String>,) = sqlx::query_as("SELECT DATABASE()").fetch_one(pool).await.map_err(|e| e.to_string())?;
+                row.0.ok_or("No database selected")?
+            };
             
             crate::quality_analyzer::analyze::analyze_table_mysql(pool, &db_name, &table, &connection_id).await?
         },
         crate::db_types::DatabaseType::PostgreSQL => {
             let pool_guard = app_state.postgres_pool.lock().await;
             let pool = pool_guard.as_ref().ok_or("PostgreSQL pool not initialized")?;
-            // Assume 'public' or current schema
-             let row: (String,) = sqlx::query_as("SELECT current_schema()").fetch_one(pool).await.map_err(|e| e.to_string())?;
-            let schema_name = row.0;
+            
+            let schema_name = if let Some(s) = schema {
+                s
+            } else {
+                 let row: (String,) = sqlx::query_as("SELECT current_schema()").fetch_one(pool).await.map_err(|e| e.to_string())?;
+                 row.0
+            };
             
             crate::quality_analyzer::analyze::analyze_table_postgres(pool, &schema_name, &table, &connection_id).await?
         },

@@ -16,7 +16,7 @@ pub async fn analyze_table_mysql(
     
     // 2. Get Columns
     let columns_query = format!(
-        "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = '{}' AND TABLE_NAME = '{}'",
+        "SELECT CAST(COLUMN_NAME AS CHAR) as COLUMN_NAME, CAST(DATA_TYPE AS CHAR) as DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = '{}' AND TABLE_NAME = '{}'",
         database, table
     );
     let columns: Vec<(String, String)> = sqlx::query_as(&columns_query)

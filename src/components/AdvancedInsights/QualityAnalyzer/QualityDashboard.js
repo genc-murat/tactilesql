@@ -24,14 +24,14 @@ export function QualityDashboard() {
                 accent: isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal'
             },
             input: `w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 transition-all cursor-pointer ${isLight
-                    ? 'bg-white border-gray-300 text-gray-900 focus:border-mysql-teal focus:ring-mysql-teal/20'
-                    : (isDawn
-                        ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] focus:border-[#ea9d34] focus:ring-[#ea9d34]/20'
-                        : 'bg-black/20 border-white/10 text-white focus:border-mysql-teal focus:ring-mysql-teal/20')
+                ? 'bg-white border-gray-300 text-gray-900 focus:border-mysql-teal focus:ring-mysql-teal/20'
+                : (isDawn
+                    ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] focus:border-[#ea9d34] focus:ring-[#ea9d34]/20'
+                    : 'bg-black/20 border-white/10 text-white focus:border-mysql-teal focus:ring-mysql-teal/20')
                 }`,
             tabBtn: (active) => `relative px-1 py-3 text-sm font-medium transition-colors ${active
-                    ? (isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal')
-                    : (isLight ? 'text-gray-500 hover:text-gray-700' : (isDawn ? 'text-[#9893a5] hover:text-[#575279]' : 'text-gray-400 hover:text-white'))
+                ? (isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal')
+                : (isLight ? 'text-gray-500 hover:text-gray-700' : (isDawn ? 'text-[#9893a5] hover:text-[#575279]' : 'text-gray-400 hover:text-white'))
                 } ${active ? 'border-b-2' : ''}`,
             tabBorder: isDawn ? 'border-[#ea9d34]' : 'border-mysql-teal'
         };
@@ -160,13 +160,7 @@ export function QualityDashboard() {
         render();
 
         try {
-            if (state.activeDbType === 'postgresql') {
-                await invoke('execute_query', { query: `SET search_path TO "${state.selectedDatabase}"` });
-            } else {
-                await invoke('execute_query', { query: `USE \`${state.selectedDatabase}\`` });
-            }
-
-            const report = await QualityAnalyzerApi.runAnalysis(state.selectedConnectionId, state.selectedTable);
+            const report = await QualityAnalyzerApi.runAnalysis(state.selectedConnectionId, state.selectedTable, state.selectedDatabase);
             state.currentReport = report;
             state.activeTab = 'overview';
 
@@ -251,8 +245,8 @@ export function QualityDashboard() {
         const runBtn = document.createElement('button');
         runBtn.id = 'run-btn';
         runBtn.className = `px-5 py-2.5 rounded-lg text-sm font-bold uppercase tracking-wide transition-all ${(!state.selectedTable || state.isLoading)
-                ? 'opacity-50 cursor-not-allowed bg-gray-300 text-gray-500'
-                : (theme === 'dawn' ? 'bg-[#ea9d34] text-[#fffaf3] hover:bg-[#d7821a] shadow-lg shadow-[#ea9d34]/20' : 'bg-mysql-teal text-white hover:bg-mysql-cyan shadow-lg shadow-mysql-teal/20')
+            ? 'opacity-50 cursor-not-allowed bg-gray-300 text-gray-500'
+            : (theme === 'dawn' ? 'bg-[#ea9d34] text-[#fffaf3] hover:bg-[#d7821a] shadow-lg shadow-[#ea9d34]/20' : 'bg-mysql-teal text-white hover:bg-mysql-cyan shadow-lg shadow-mysql-teal/20')
             }`;
         runBtn.innerHTML = state.isLoading
             ? '<span class="material-symbols-outlined text-sm animate-spin align-bottom mr-1">sync</span> Analyzing...'
