@@ -230,7 +230,7 @@ export function Settings() {
                             </button>
                         </div>
 
-                        <div class="flex items-center justify-between py-4">
+                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
                             <div>
                                 <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Line Numbers</h3>
                                 <p class="text-xs text-gray-500 mt-1">Show line numbers in the editor</p>
@@ -238,6 +238,18 @@ export function Settings() {
                             <button class="relative w-12 h-6 rounded-full bg-gradient-to-r from-mysql-teal to-mysql-cyan transition-all">
                                 <span class="absolute right-1 top-1 w-4 h-4 rounded-full bg-white shadow-md transition-transform"></span>
                             </button>
+                        </div>
+
+                        <div class="flex items-center justify-between py-4">
+                            <div>
+                                <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">AI Command</h3>
+                                <p class="text-xs text-gray-500 mt-1">Generate SQL using Natural Language</p>
+                            </div>
+                            <div class="flex items-center gap-1">
+                                <span class="px-2 py-1 rounded bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-[10px] font-mono font-bold text-gray-400">Ctrl</span>
+                                <span class="text-gray-400 font-bold">+</span>
+                                <span class="px-2 py-1 rounded bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-[10px] font-mono font-bold text-gray-400">I</span>
+                            </div>
                         </div>
                     </div>
                 </div>
