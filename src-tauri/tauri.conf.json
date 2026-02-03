@@ -35,7 +35,7 @@
         "transparent": false,
         "backgroundColor": "#0a0c10",
         "visible": true,
-        "fullscreen": true
+        "fullscreen": false
       }
     ],
     "security": {
