@@ -9,6 +9,7 @@ import { auditTrail } from '../../utils/QueryAuditTrail.js';
 import { smartAutocomplete } from '../../utils/SmartAutocomplete.js';
 import { toastSuccess, toastError, toastWarning } from '../../utils/Toast.js';
 import { debounce, DatabaseCache, CacheTypes } from '../../utils/helpers.js';
+import { AskAiModal } from '../UI/AskAiModal.js';
 
 // SQL Keywords for autocomplete
 // Imported from SqlHighlighter.js
@@ -663,6 +664,9 @@ export function QueryEditor() {
                         </button>
                         <button id="sample-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-emerald-600 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#3e8fb0]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-mint' : 'bg-[#1a1d23] border-white/10 text-emerald-400'))} border rounded hover:opacity-80 active:scale-95 transition-all" title="Generate Sample Queries">
                             <span class="material-symbols-outlined text-sm">auto_awesome</span>
+                        </button>
+                        <button id="ask-ai-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-rose-500 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#d7827e]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-rose-400' : 'bg-[#1a1d23] border-white/10 text-rose-500'))} border rounded hover:opacity-80 active:scale-95 transition-all group" title="Ask AI to Generate SQL">
+                            <span class="material-symbols-outlined text-sm group-hover:scale-110 transition-transform">sparkles</span>
                         </button>
                         <button id="execute-btn" class="relative flex items-center justify-center p-0.5 bg-mysql-teal text-black rounded shadow-[0_0_8px_rgba(0,200,255,0.15)] hover:shadow-[0_0_20px_rgba(0,200,255,0.4)] hover:brightness-110 active:scale-95 transition-all duration-300 overflow-hidden group" title="Execute Query (Ctrl+Enter)">
                             <span class="material-symbols-outlined text-sm relative z-10 group-hover:scale-110 transition-transform duration-200">play_arrow</span>
@@ -1582,6 +1586,29 @@ export function QueryEditor() {
             // Hide autocomplete on blur
             textarea.addEventListener('blur', () => {
                 setTimeout(hideAutocomplete, 150);
+            });
+        }
+
+        // Ask AI Button Logic
+        const askAiBtn = container.querySelector('#ask-ai-btn');
+        if (askAiBtn) {
+            askAiBtn.addEventListener('click', () => {
+                const textarea = container.querySelector('#query-input');
+                AskAiModal.show((sql) => {
+                    if (textarea) {
+                        textarea.value = sql;
+                        const activeTab = tabs.find(t => t.id === activeTabId);
+                        if (activeTab) {
+                            activeTab.content = sql;
+                            saveState();
+                        }
+                        // Need to expose updateSyntaxHighlight somehow or re-trigger input? 
+                        // Actually updateSyntaxHighlight is defined inside attachEvents scope, so we are good if we place this inside attachEvents.
+                        // wait, attachEvents accesses updateSyntaxHighlight which is defined inside attachEvents? Yes.
+                        updateSyntaxHighlight();
+                        updateLineNumbers();
+                    }
+                });
             });
         }
 

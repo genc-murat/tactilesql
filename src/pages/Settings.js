@@ -100,8 +100,92 @@ export function Settings() {
                     </div>
                 </div>
 
-                <!-- Editor Section -->
+                <!-- AI Assistant Section -->
                 <div class="tactile-card ${isLight ? (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : 'bg-white border-gray-200') + ' shadow-sm' : ''} rounded-xl p-6">
+                    <div class="flex items-center gap-3 mb-6">
+                        <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-rose-500 to-rose-600 flex items-center justify-center">
+                            <span class="material-symbols-outlined text-white">auto_awesome</span>
+                        </div>
+                        <div>
+                            <h2 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'}">AI Assistant</h2>
+                            <p class="text-sm text-gray-500">Configure Natural Language to SQL settings</p>
+                        </div>
+                    </div>
+
+                    <div class="space-y-4">
+                    <div class="space-y-4">
+                        <!-- Provider Selection -->
+                        <div class="space-y-2">
+                            <label class="text-xs font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">AI Provider</label>
+                            <div class="grid grid-cols-2 gap-2">
+                                <button type="button" id="provider-openai" class="provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${localStorage.getItem('ai_provider') !== 'gemini' ? 'bg-mysql-teal/10 border-mysql-teal text-mysql-teal' : (isLight ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-white/5 border-white/10 text-gray-400')}">
+                                    <span>OpenAI</span>
+                                </button>
+                                 <button type="button" id="provider-gemini" class="provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${localStorage.getItem('ai_provider') === 'gemini' ? 'bg-mysql-teal/10 border-mysql-teal text-mysql-teal' : (isLight ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-white/5 border-white/10 text-gray-400')}">
+                                    <span>Google Gemini</span>
+                                    <span class="text-[9px] bg-green-500/20 text-green-500 px-1.5 rounded uppercase tracking-wider font-bold">Free</span>
+                                </button>
+                                <button type="button" id="provider-local" class="provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${localStorage.getItem('ai_provider') === 'local' ? 'bg-mysql-teal/10 border-mysql-teal text-mysql-teal' : (isLight ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-white/5 border-white/10 text-gray-400')}">
+                                    <span>Local AI</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Local Base URL (Hidden by default unless local is active) -->
+                        <div id="ai-local-url-container" class="space-y-2 ${localStorage.getItem('ai_provider') === 'local' ? '' : 'hidden'}">
+                            <label class="text-xs font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">Base URL</label>
+                            <input type="text" id="setting-ai-local-url" class="w-full ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-300')} rounded px-3 py-2 text-sm font-mono outline-none focus:border-mysql-teal transition-colors" placeholder="http://localhost:11434/v1" value="${localStorage.getItem('local_base_url') || 'http://localhost:11434/v1'}">
+                            <p class="text-[10px] text-gray-500">Ollama/LM Studio etc. (OpenAI compatible API)</p>
+                        </div>
+
+                        <div class="space-y-2">
+                             <div class="flex items-center justify-between">
+                                <label id="ai-key-label" class="text-xs font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">
+                                    ${localStorage.getItem('ai_provider') === 'gemini' ? 'Google AI Studio Key' : (localStorage.getItem('ai_provider') === 'local' ? 'API Key (Optional)' : 'OpenAI API Key')}
+                                </label>
+                                <a id="ai-key-link" href="${localStorage.getItem('ai_provider') === 'gemini' ? 'https://aistudio.google.com/app/apikey' : 'https://platform.openai.com/api-keys'}" target="_blank" class="text-[10px] text-mysql-teal hover:underline flex items-center gap-1 ${localStorage.getItem('ai_provider') === 'local' ? 'hidden' : ''}">
+                                    Get API Key <span class="material-symbols-outlined text-[10px]">open_in_new</span>
+                                </a>
+                             </div>
+                            <div class="relative">
+                                <input type="password" id="setting-ai-key" class="w-full ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-300')} rounded px-3 py-2 text-sm font-mono outline-none focus:border-mysql-teal transition-colors pr-10" placeholder="${localStorage.getItem('ai_provider') === 'local' ? 'Local API Key' : 'sk-...'}" value="${localStorage.getItem('ai_provider') === 'gemini' ? (localStorage.getItem('gemini_api_key') || '') : (localStorage.getItem('ai_provider') === 'local' ? (localStorage.getItem('local_api_key') || '') : (localStorage.getItem('openai_api_key') || ''))}">
+                                <button id="toggle-ai-key-visibility" class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors">
+                                    <span class="material-symbols-outlined text-lg">visibility</span>
+                                </button>
+                            </div>
+                            <p class="text-[10px] text-gray-500">Your key is stored locally on your device and never sent to our servers.</p>
+                        </div>
+
+                        <div id="ai-model-container" class="space-y-2 pt-2">
+                            <label class="text-xs font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">Default Model</label>
+                            <div id="ai-model-select-wrapper">
+                                ${localStorage.getItem('ai_provider') === 'local' ? `
+                                    <input type="text" id="setting-ai-model" class="w-full ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-300')} rounded px-3 py-2 text-sm font-mono outline-none focus:border-mysql-teal transition-colors" placeholder="e.g. llama3" value="${localStorage.getItem('local_model') || 'llama3'}">
+                                ` : `
+                                    <select id="setting-ai-model" class="w-full ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-300')} rounded px-3 py-2 text-sm outline-none focus:border-mysql-teal transition-colors appearance-none bg-no-repeat bg-[right_0.75rem_center]" style="background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGZpbGw9Im5vbmUiIHZpZXdCb3g9IjAgMCAyNCAyNCIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZT0iIzZCNTU2MyIgY2xhc3M9InNpemUtNiI+PHBhdGggc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBkPSJtMTkuNSA4LjI1LTcuNSA3LjUtNy41LTcuNSIgLz48L3N2Zz4='); background-size: 1.25em;">
+                                        ${localStorage.getItem('ai_provider') === 'gemini' ? `
+                                            <option value="gemini-3.0-flash" ${localStorage.getItem('gemini_model') === 'gemini-3.0-flash' ? 'selected' : ''}>Gemini 3.0 Flash (Newest)</option>
+                                            <option value="gemini-2.5-flash" ${localStorage.getItem('gemini_model') === 'gemini-2.5-flash' ? 'selected' : ''}>Gemini 2.5 Flash</option>
+                                            <option value="gemini-2.0-flash-exp" ${localStorage.getItem('gemini_model') === 'gemini-2.0-flash-exp' ? 'selected' : ''}>Gemini 2.0 Flash (Exp)</option>
+                                            <option value="gemini-1.5-flash" ${localStorage.getItem('gemini_model') === 'gemini-1.5-flash' ? 'selected' : ''}>Gemini 1.5 Flash (Fast)</option>
+                                            <option value="gemini-1.5-pro" ${localStorage.getItem('gemini_model') === 'gemini-1.5-pro' ? 'selected' : ''}>Gemini 1.5 Pro</option>
+                                        ` : `
+                                            <option value="gpt-4o" ${localStorage.getItem('openai_model') === 'gpt-4o' ? 'selected' : ''}>GPT-4o (Recommended)</option>
+                                            <option value="gpt-4o-mini" ${localStorage.getItem('openai_model') === 'gpt-4o-mini' ? 'selected' : ''}>GPT-4o Mini</option>
+                                            <option value="gpt-3.5-turbo" ${localStorage.getItem('openai_model') === 'gpt-3.5-turbo' ? 'selected' : ''}>GPT-3.5 Turbo</option>
+                                        `}
+                                    </select>
+                                `}
+                            </div>
+                         </div>
+                        
+                         <div class="flex justify-end pt-2">
+                            <button id="save-ai-settings-btn" class="px-4 py-2 rounded-lg bg-mysql-teal text-black text-xs font-bold uppercase tracking-wider hover:brightness-110 transition-all flex items-center gap-2 opacity-50 cursor-not-allowed" disabled>
+                                <span class="material-symbols-outlined text-sm">save</span> Save Changes
+                            </button>
+                        </div>
+                    </div>
+                </div>
                     <div class="flex items-center gap-3 mb-6">
                         <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500 to-cyan-600 flex items-center justify-center">
                             <span class="material-symbols-outlined text-white">code</span>
@@ -339,6 +423,166 @@ export function Settings() {
         reloadBtn?.addEventListener('click', () => {
             window.location.reload();
         });
+
+        // AI Settings Logic
+        const aiKeyInput = container.querySelector('#setting-ai-key');
+        const aiModelSelect = container.querySelector('#setting-ai-model');
+        const aiSaveBtn = container.querySelector('#save-ai-settings-btn');
+        const aiVisibilityBtn = container.querySelector('#toggle-ai-key-visibility');
+        const aiKeyLabel = container.querySelector('#ai-key-label');
+        const aiKeyLink = container.querySelector('#ai-key-link');
+        const providerOpenAI = container.querySelector('#provider-openai');
+        const providerGemini = container.querySelector('#provider-gemini');
+        const providerLocal = container.querySelector('#provider-local');
+        const aiLocalUrlContainer = container.querySelector('#ai-local-url-container');
+        const aiLocalUrlInput = container.querySelector('#setting-ai-local-url');
+
+        if (aiKeyInput && aiModelSelect && aiSaveBtn && aiVisibilityBtn && aiKeyLabel && aiKeyLink && providerOpenAI && providerGemini && providerLocal) {
+            let activeProvider = localStorage.getItem('ai_provider') || 'openai';
+
+            // Initial Check/Values for change detection
+            // We need to track what's currently in the fields vs what was saved
+            const getSavedKey = (p) => localStorage.getItem(p === 'gemini' ? 'gemini_api_key' : (p === 'local' ? 'local_api_key' : 'openai_api_key')) || '';
+            const getSavedModel = (p) => localStorage.getItem(p === 'gemini' ? 'gemini_model' : (p === 'local' ? 'local_model' : 'openai_model')) || (p === 'gemini' ? 'gemini-3.0-flash' : (p === 'local' ? 'llama3' : 'gpt-4o'));
+            const getSavedBaseUrl = () => localStorage.getItem('local_base_url') || 'http://localhost:11434/v1';
+
+            // Change Detection defined early to be used by switchProvider
+            const checkForChanges = () => {
+                const currentKey = aiKeyInput.value.trim();
+                const currentModel = container.querySelector('#setting-ai-model').value;
+                const currentUrl = aiLocalUrlInput?.value.trim() || '';
+                const savedKey = getSavedKey(activeProvider);
+                const savedModel = getSavedModel(activeProvider);
+                const savedUrl = getSavedBaseUrl();
+                const savedProvider = localStorage.getItem('ai_provider') || 'openai';
+
+                const hasChanges = currentKey !== savedKey || currentModel !== savedModel || activeProvider !== savedProvider || (activeProvider === 'local' && currentUrl !== savedUrl);
+
+                if (hasChanges) {
+                    aiSaveBtn.disabled = false;
+                    aiSaveBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                } else {
+                    aiSaveBtn.disabled = true;
+                    aiSaveBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                }
+            };
+
+            // Helper to update UI based on provider
+            const switchProvider = (provider) => {
+                activeProvider = provider;
+                const isGemini = provider === 'gemini';
+                const isLocal = provider === 'local';
+                const isLight = theme === 'light' || theme === 'dawn';
+
+                // 1. Update Buttons
+                const activeClass = 'bg-mysql-teal/10 border-mysql-teal text-mysql-teal';
+                const inactiveClass = isLight ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-white/5 border-white/10 text-gray-400';
+
+                providerOpenAI.className = `provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${provider === 'openai' ? activeClass : inactiveClass}`;
+                providerGemini.className = `provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${provider === 'gemini' ? activeClass : inactiveClass}`;
+                providerLocal.className = `provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${provider === 'local' ? activeClass : inactiveClass}`;
+
+                // 2. Update Label & Link
+                aiKeyLabel.textContent = isGemini ? 'Google AI Studio Key' : (isLocal ? 'API Key (Optional)' : 'OpenAI API Key');
+                aiKeyInput.placeholder = isLocal ? 'Local API Key' : 'sk-...';
+                aiLocalUrlContainer.classList.toggle('hidden', !isLocal);
+                aiKeyLink.classList.toggle('hidden', isLocal);
+                if (!isLocal) {
+                    aiKeyLink.href = isGemini ? 'https://aistudio.google.com/app/apikey' : 'https://platform.openai.com/api-keys';
+                }
+
+                // 3. Update Input Value
+                aiKeyInput.value = getSavedKey(provider); // Reset to saved value for that provider
+
+                // 4. Update Model Select Options
+                const modelWrapper = container.querySelector('#ai-model-select-wrapper');
+                if (isLocal) {
+                    modelWrapper.innerHTML = `<input type="text" id="setting-ai-model" class="w-full ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (theme === 'dawn' ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-300')} rounded px-3 py-2 text-sm font-mono outline-none focus:border-mysql-teal transition-colors" placeholder="e.g. llama3" value="${getSavedModel('local')}">`;
+                    container.querySelector('#setting-ai-model').addEventListener('input', checkForChanges);
+                } else {
+                    modelWrapper.innerHTML = `
+                        <select id="setting-ai-model" class="w-full ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (theme === 'dawn' ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-300')} rounded px-3 py-2 text-sm outline-none focus:border-mysql-teal transition-colors appearance-none bg-no-repeat bg-[right_0.75rem_center]" style="background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGZpbGw9Im5vbmUiIHZpZXdCb3g9IjAgMCAyNCAyNCIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZT0iIzZCNTU2MyIgY2xhc3M9InNpemUtNiI+PHBhdGggc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBkPSJtMTkuNSA4LjI1LTcuNSA3LjUtNy41LTcuNSIgLz48L3N2Zz4='); background-size: 1.25em;">
+                            ${isGemini ? `
+                                <option value="gemini-3.0-flash">Gemini 3.0 Flash (Newest)</option>
+                                <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                                <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash (Exp)</option>
+                                <option value="gemini-1.5-flash">Gemini 1.5 Flash (Fast)</option>
+                                <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                            ` : `
+                                <option value="gpt-4o">GPT-4o (Recommended)</option>
+                                <option value="gpt-4o-mini">GPT-4o Mini</option>
+                                <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                            `}
+                        </select>
+                    `;
+                    const modelSelect = container.querySelector('#setting-ai-model');
+                    modelSelect.addEventListener('change', checkForChanges);
+
+                    // Set selected model
+                    const savedModel = getSavedModel(provider);
+                    if (Array.from(modelSelect.options).some(o => o.value === savedModel)) {
+                        modelSelect.value = savedModel;
+                    } else {
+                        modelSelect.value = isGemini ? 'gemini-3.0-flash' : 'gpt-4o';
+                    }
+                }
+
+                checkForChanges();
+            };
+
+            // Initial setup based on saved provider
+            switchProvider(activeProvider);
+
+            providerOpenAI.addEventListener('click', () => switchProvider('openai'));
+            providerGemini.addEventListener('click', () => switchProvider('gemini'));
+            providerLocal.addEventListener('click', () => switchProvider('local'));
+            aiLocalUrlInput?.addEventListener('input', checkForChanges);
+
+            // Visibility Toggle
+            aiVisibilityBtn.addEventListener('click', () => {
+                const type = aiKeyInput.getAttribute('type') === 'password' ? 'text' : 'password';
+                aiKeyInput.setAttribute('type', type);
+                const icon = aiVisibilityBtn.querySelector('span');
+                icon.textContent = type === 'password' ? 'visibility' : 'visibility_off';
+            });
+
+            aiKeyInput.addEventListener('input', checkForChanges);
+            aiModelSelect.addEventListener('change', checkForChanges);
+
+            // Save Action
+            aiSaveBtn.addEventListener('click', async () => {
+                const newKey = aiKeyInput.value.trim();
+                const newModel = aiModelSelect.value;
+
+                // Save Provider
+                localStorage.setItem('ai_provider', activeProvider);
+
+                // Save Key & Model to specific slots
+                if (activeProvider === 'gemini') {
+                    localStorage.setItem('gemini_api_key', newKey);
+                    localStorage.setItem('gemini_model', newModel);
+                } else if (activeProvider === 'local') {
+                    localStorage.setItem('local_api_key', newKey);
+                    localStorage.setItem('local_model', newModel);
+                    localStorage.setItem('local_base_url', aiLocalUrlInput.value.trim());
+                } else {
+                    localStorage.setItem('openai_api_key', newKey);
+                    localStorage.setItem('openai_model', newModel);
+                }
+
+                // Import Toast dynamically to avoid circular dependencies if simple import fails, 
+                // but usually standard import works. Assuming Toast is available or we use a simple alert/fallback.
+                // We'll try to use the imported Dialog if available or just update button state.
+
+                aiSaveBtn.innerHTML = `<span class="material-symbols-outlined text-sm">check</span> Saved!`;
+                aiSaveBtn.disabled = true;
+                aiSaveBtn.classList.add('opacity-50', 'cursor-not-allowed');
+
+                setTimeout(() => {
+                    aiSaveBtn.innerHTML = `<span class="material-symbols-outlined text-sm">save</span> Save Changes`;
+                }, 2000);
+            });
+        }
     };
 
     const onThemeChange = (e) => {
