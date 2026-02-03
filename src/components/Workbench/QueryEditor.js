@@ -131,6 +131,68 @@ export function QueryEditor() {
 
     let currentGhostText = ''; // State for ghost text prediction
 
+    // --- Context Menu State ---
+    let contextMenu = {
+        visible: false,
+        x: 0,
+        y: 0,
+        tabId: null
+    };
+
+    // --- Tab Management Helpers ---
+    const closeTab = (id) => {
+        const tab = tabs.find(t => t.id === id);
+        // Don't allow closing pinned tabs directly (they must be unpinned first)
+        // But for context menu actions like "Close All", we might want to override or skip pinned?
+        // Standard behavior: Close All closes unpinned. Close Others closes unpinned others.
+        // The user request was simple "close all", usually implies resetting workspace.
+        // Let's stick to: Pinned tabs are protected from mass closure unless explicitly unpinned?
+        // Or "Close All" wipes everything. Let's make "Close All" wipe everything for simplicity as per plan "Reset to single empty Query 1".
+
+        if (tabs.length === 1) {
+            // If closing the last tab, reset it instead of removing
+            tabs = [{ id: Date.now().toString(), title: 'Query 1', content: '', pinned: false }];
+            activeTabId = tabs[0].id;
+        } else {
+            const idx = tabs.findIndex(t => t.id === id);
+            if (idx === -1) return; // Tab not found
+
+            tabs = tabs.filter(t => t.id !== id);
+            if (activeTabId === id) {
+                const newIdx = Math.max(0, idx - 1);
+                activeTabId = tabs[newIdx].id;
+            }
+        }
+        saveState();
+        render();
+    };
+
+    const closeOtherTabs = (id) => {
+        const targetTab = tabs.find(t => t.id === id);
+        if (!targetTab) return;
+
+        // Keep the target tab, remove all others.
+        // Optional: Keep pinned tabs? Usually "Close Others" keeps pinned tabs too in VS Code etc.
+        // Let's implement smart "Close Others": Keep target + Pinned tabs.
+        // But for simplicity based on user request "close others", usually implies "focus on this one".
+        // Let's keep ONLY the target tab to be safe and simple, or maybe keep pinned?
+        // Let's go with: Keep target tab AND pinned tabs.
+
+        tabs = tabs.filter(t => t.id === id || t.pinned);
+        activeTabId = id;
+        saveState();
+        render();
+    };
+
+    const closeAllTabs = () => {
+        // Reset to initial state
+        const newId = Date.now().toString();
+        tabs = [{ id: newId, title: 'Query 1', content: '', pinned: false, connectionName: '', connectionColor: '' }];
+        activeTabId = newId;
+        saveState();
+        render();
+    };
+
     // --- Autocomplete Logic ---
     const getCurrentWord = (textarea) => {
         const cursorPos = textarea.selectionStart;
@@ -429,6 +491,93 @@ export function QueryEditor() {
         textarea.focus();
     };
 
+
+    // --- Context Menu Logic ---
+    const showContextMenu = (x, y, tabId) => {
+        // Prevent menu from going off-screen
+        const menuWidth = 160;
+        const menuHeight = 110;
+        const winWidth = window.innerWidth;
+        const winHeight = window.innerHeight;
+
+        let finalX = x;
+        let finalY = y;
+
+        if (x + menuWidth > winWidth) finalX = winWidth - menuWidth - 10;
+        if (y + menuHeight > winHeight) finalY = winHeight - menuHeight - 10;
+
+        contextMenu = {
+            visible: true,
+            x: finalX,
+            y: finalY,
+            tabId // The tab that was right-clicked
+        };
+        renderContextMenu();
+    };
+
+    const hideContextMenu = () => {
+        contextMenu.visible = false;
+        const menu = document.getElementById('tab-context-menu');
+        if (menu) menu.remove();
+    };
+
+    const renderContextMenu = () => {
+        const existing = document.getElementById('tab-context-menu');
+        if (existing) existing.remove();
+
+        if (!contextMenu.visible) return;
+
+        const menu = document.createElement('div');
+        menu.id = 'tab-context-menu';
+        menu.className = `fixed z-[9999] py-1 rounded-lg border shadow-xl ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-[#1a1f26] border-ocean-border/50' : 'bg-[#16191e] border-white/10'))} min-w-[160px] animate-in fade-in zoom-in-95 duration-100`;
+        menu.style.left = `${contextMenu.x}px`;
+        menu.style.top = `${contextMenu.y}px`;
+
+        const itemClass = `px-4 py-2 text-xs flex items-center gap-2 cursor-pointer transition-colors ${isLight ? 'text-gray-700 hover:bg-gray-50' : (isDawn ? 'text-[#575279] hover:bg-[#faf4ed]' : (isOceanic ? 'text-ocean-text hover:bg-white/5' : 'text-gray-300 hover:bg-white/5'))}`;
+        const dangerClass = `px-4 py-2 text-xs flex items-center gap-2 cursor-pointer transition-colors ${isLight ? 'text-red-600 hover:bg-red-50' : 'text-red-400 hover:bg-red-500/10'}`;
+        const separatorClass = `h-px my-1 ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#f2e9e1]' : 'bg-white/5')}`;
+
+        menu.innerHTML = `
+            <div id="ctx-close" class="${itemClass}">
+                <span class="material-symbols-outlined text-sm">close</span>
+                <span>Close</span>
+            </div>
+            <div id="ctx-close-others" class="${itemClass}">
+                <span class="material-symbols-outlined text-sm">tab_close</span>
+                <span>Close Others</span>
+            </div>
+            <div class="${separatorClass}"></div>
+            <div id="ctx-close-all" class="${dangerClass}">
+                <span class="material-symbols-outlined text-sm">close_fullscreen</span>
+                <span>Close All</span>
+            </div>
+        `;
+
+        // Event Handlers
+        menu.querySelector('#ctx-close').addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeTab(contextMenu.tabId);
+            hideContextMenu();
+        });
+
+        menu.querySelector('#ctx-close-others').addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeOtherTabs(contextMenu.tabId);
+            hideContextMenu();
+        });
+
+        menu.querySelector('#ctx-close-all').addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeAllTabs();
+            hideContextMenu();
+        });
+
+        // Click outside to close (handled by global listener in attachEvents usually, but let's add specific ones)
+        // Actually, we can just rely on the existing render's event listeners or add a one-time listener to body
+
+        document.body.appendChild(menu);
+    };
+
     // --- Render ---
     const render = () => {
         const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0];
@@ -530,6 +679,38 @@ export function QueryEditor() {
                 </div>
             </div>
         `;
+
+
+        // Global click to close context menu
+        const onGlobalClick = (e) => {
+            if (contextMenu.visible && !e.target.closest('#tab-context-menu')) {
+                hideContextMenu();
+            }
+        };
+        // Remove existing listener if any to prevent duplicates (though attachEvents is called on render, which rebuilds DOM, listeners on elements might be lost but window/document listeners persist?)
+        // Wait, attachEvents is called inside render. If we add document listener here, it will stack up!
+        // We need to manage lifecycle. 
+        // The QueryEditor component returns a container. It doesn't seem to have a clear unmount lifecycle in this file structure easily accessible inside attachEvents.
+        // However, `container.onUnmount` is defined at the end of the file export.
+        // We should add this listener to the container or handle it carefully.
+        // For now, let's use a named function and remove it before adding, but we're inside the closure.
+        // Better: Add click listener to the *container*. 
+
+        // Let's add it to document but check if we need to clean it up.
+        // Actually, looking at the code structure:
+        // `render` wipes `container.innerHTML` and calls `attachEvents`.
+        // So `attachEvents` runs every render.
+        // If we attach to `document`, we definitely duplicate listeners.
+        // Let's attach to `container`. Bubbling will reach it.
+        container.addEventListener('click', () => {
+            if (contextMenu.visible) hideContextMenu();
+        });
+        // Also need to handle right click elsewhere closing it?
+        container.addEventListener('contextmenu', (e) => {
+            if (!e.target.closest('.tab-item')) {
+                if (contextMenu.visible) hideContextMenu();
+            }
+        });
 
         attachEvents();
     };
@@ -922,6 +1103,14 @@ export function QueryEditor() {
                     render();
                 }
             });
+
+            // Context Menu
+            item.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const id = item.dataset.id;
+                showContextMenu(e.clientX, e.clientY, id);
+            });
         });
 
         // Pin/Unpin Tab
@@ -945,21 +1134,7 @@ export function QueryEditor() {
                 e.stopPropagation();
                 const tabItem = btn.closest('.tab-item');
                 const id = tabItem.dataset.id;
-                const tab = tabs.find(t => t.id === id);
-                // Don't allow closing pinned tabs (they must be unpinned first)
-                if (tab && tab.pinned) {
-                    // Unpin and close
-                    tab.pinned = false;
-                }
-                if (tabs.length === 1) return;
-                const idx = tabs.findIndex(t => t.id === id);
-                tabs = tabs.filter(t => t.id !== id);
-                if (activeTabId === id) {
-                    const newIdx = Math.max(0, idx - 1);
-                    activeTabId = tabs[newIdx].id;
-                }
-                saveState(); // Save tab removal
-                render();
+                closeTab(id);
             });
         });
 
@@ -1020,15 +1195,7 @@ export function QueryEditor() {
                 e.stopPropagation();
                 const item = btn.closest('.overflow-tab-item');
                 const id = item.dataset.id;
-                if (tabs.length === 1) return;
-                const idx = tabs.findIndex(t => t.id === id);
-                tabs = tabs.filter(t => t.id !== id);
-                if (activeTabId === id) {
-                    const newIdx = Math.max(0, idx - 1);
-                    activeTabId = tabs[newIdx].id;
-                }
-                saveState(); // Save removal
-                render();
+                closeTab(id);
             });
         });
 
