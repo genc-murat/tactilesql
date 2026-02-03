@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { toastError, toastSuccess } from '../../utils/Toast.js';
 import { ThemeManager } from '../../utils/ThemeManager.js';
+import { AiService } from '../../utils/AiService.js';
 
 export class AskAiModal {
     static async show(onInsert) {
@@ -20,10 +21,24 @@ export class AskAiModal {
         // Load saved settings
         const provider = localStorage.getItem('ai_provider') || 'openai';
         const isGemini = provider === 'gemini';
+        const isAnthropic = provider === 'anthropic';
+        const isDeepSeek = provider === 'deepseek';
         const isLocal = provider === 'local';
 
-        const getSavedKey = (p) => localStorage.getItem(p === 'gemini' ? 'gemini_api_key' : (p === 'local' ? 'local_api_key' : 'openai_api_key')) || '';
-        const getSavedModel = (p) => localStorage.getItem(p === 'gemini' ? 'gemini_model' : (p === 'local' ? 'local_model' : 'openai_model')) || (p === 'gemini' ? 'gemini-3.0-flash' : (p === 'local' ? 'llama3' : 'gpt-4o'));
+        const getSavedKey = (p) => {
+            if (p === 'gemini') return localStorage.getItem('gemini_api_key') || '';
+            if (p === 'anthropic') return localStorage.getItem('anthropic_api_key') || '';
+            if (p === 'deepseek') return localStorage.getItem('deepseek_api_key') || '';
+            if (p === 'local') return localStorage.getItem('local_api_key') || '';
+            return localStorage.getItem('openai_api_key') || '';
+        };
+        const getSavedModel = (p) => {
+            if (p === 'gemini') return localStorage.getItem('gemini_model') || 'gemini-3.0-flash';
+            if (p === 'anthropic') return localStorage.getItem('anthropic_model') || 'claude-3-5-sonnet-20241022';
+            if (p === 'deepseek') return localStorage.getItem('deepseek_model') || 'deepseek-chat';
+            if (p === 'local') return localStorage.getItem('local_model') || 'llama3';
+            return localStorage.getItem('openai_model') || 'gpt-4o';
+        };
 
         const savedKey = getSavedKey(provider);
         const savedModel = getSavedModel(provider);
@@ -39,7 +54,7 @@ export class AskAiModal {
                     </div>
                     <div>
                         <h2 class="text-sm font-bold ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-white')} uppercase tracking-wider">Generate SQL With AI</h2>
-                        <div class="text-[10px] text-gray-500 font-mono">Powered by ${isGemini ? 'Google Gemini' : (isLocal ? 'Local AI' : 'OpenAI')}</div>
+                        <div class="text-[10px] text-gray-500 font-mono">Powered by ${isGemini ? 'Google Gemini' : (isAnthropic ? 'Anthropic' : (isDeepSeek ? 'DeepSeek' : (isLocal ? 'Local AI' : 'OpenAI')))}</div>
                     </div>
                 </div>
                 <button id="close-modal" class="w-8 h-8 flex items-center justify-center rounded-lg ${isLight ? 'hover:bg-gray-100 text-gray-500' : (isDawn ? 'hover:bg-[#f2e9e1] text-[#575279]' : 'hover:bg-white/10 text-gray-400')} transition-colors">
@@ -61,11 +76,18 @@ export class AskAiModal {
                                     <option value="gemini-2.0-flash-exp" ${savedModel === 'gemini-2.0-flash-exp' ? 'selected' : ''}>Gemini 2.0 Flash (Exp)</option>
                                     <option value="gemini-1.5-flash" ${savedModel === 'gemini-1.5-flash' ? 'selected' : ''}>Gemini 1.5 Flash (Stable)</option>
                                     <option value="gemini-1.5-pro" ${savedModel === 'gemini-1.5-pro' ? 'selected' : ''}>Gemini 1.5 Pro (Powerful)</option>
+                                ` : (isAnthropic ? `
+                                    <option value="claude-3-5-sonnet-20241022" ${savedModel === 'claude-3-5-sonnet-20241022' ? 'selected' : ''}>Claude 3.5 Sonnet</option>
+                                    <option value="claude-3-opus-20240229" ${savedModel === 'claude-3-opus-20240229' ? 'selected' : ''}>Claude 3 Opus</option>
+                                    <option value="claude-3-haiku-20240307" ${savedModel === 'claude-3-haiku-20240307' ? 'selected' : ''}>Claude 3 Haiku</option>
+                                ` : (isDeepSeek ? `
+                                    <option value="deepseek-chat" ${savedModel === 'deepseek-chat' ? 'selected' : ''}>DeepSeek Chat</option>
+                                    <option value="deepseek-reasoner" ${savedModel === 'deepseek-reasoner' ? 'selected' : ''}>DeepSeek Reasoner</option>
                                 ` : `
                                     <option value="gpt-4o" ${savedModel === 'gpt-4o' ? 'selected' : ''}>GPT-4o (Best)</option>
                                     <option value="gpt-4o-mini" ${savedModel === 'gpt-4o-mini' ? 'selected' : ''}>GPT-4o Mini (Fast)</option>
                                     <option value="gpt-3.5-turbo" ${savedModel === 'gpt-3.5-turbo' ? 'selected' : ''}>GPT-3.5 Turbo</option>
-                                `}
+                                `))}
                             </select>
                         `}
                     </div>
@@ -135,6 +157,10 @@ export class AskAiModal {
             // Save preferences
             if (isGemini) {
                 localStorage.setItem('gemini_model', model);
+            } else if (isAnthropic) {
+                localStorage.setItem('anthropic_model', model);
+            } else if (isDeepSeek) {
+                localStorage.setItem('deepseek_model', model);
             } else if (isLocal) {
                 localStorage.setItem('local_model', model);
             } else {
@@ -154,16 +180,8 @@ export class AskAiModal {
                 const context = await AskAiModal.gatherSchemaContext();
 
                 // 2. Call AI Provider
-                statusText.textContent = `Asking ${isGemini ? 'Gemini' : (isLocal ? 'Local AI' : 'OpenAI')}...`;
-                let sql = '';
-
-                if (isGemini) {
-                    sql = await AskAiModal.callGemini(apiKey, model, prompt, context);
-                } else if (isLocal) {
-                    sql = await AskAiModal.callLocalAI(apiKey, model, prompt, context);
-                } else {
-                    sql = await AskAiModal.callOpenAI(apiKey, model, prompt, context);
-                }
+                statusText.textContent = `Asking ${provider.charAt(0).toUpperCase() + provider.slice(1)}...`;
+                const sql = await AiService.generateSql(provider, apiKey, model, prompt, context);
 
                 // 3. Done
                 close();
@@ -247,156 +265,7 @@ ${schemaSummary.join('\n\n')}
         `.trim();
     }
 
-    static async callOpenAI(apiKey, model, prompt, context) {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
-            },
-            body: JSON.stringify({
-                model: model,
-                messages: [
-                    {
-                        role: "system",
-                        content: `You are an expert SQL assistant. 
-Your task is to generate valid SQL queries based on the user's natural language request and the provided database schema.
-
-STRICT EXECUTION RULES:
-1. Return ONLY the SQL query. No markdown, no explanations.
-2. NO HALLUCINATIONS: You MUST ONLY use table and column names explicitly listed in the "Schema Summary". 
-3. COLUMN SANITY CHECK: If a user asks to sort by "price" but no "price" column exists in that table, DO NOT use "price". Check for similar columns like "unit_price", "cost", or "amount". If no similar column exists, IGNORE that part of the request. NEVER guess a column name.
-4. DATA MATCHING: Look at "Sample Data". Match user concepts (e.g., 'icecek') to existing data values (e.g., 'Beverages').
-5. Dialect: Use the dialect for ${context.split('\n')[0]}.
-`
-                    },
-                    {
-                        role: "user",
-                        content: `
-Schema Context:
-${context}
-
-Request: ${prompt}
-`
-                    }
-                ],
-                temperature: 0.1
-            })
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error?.message || `API Error: ${response.status}`);
-        }
-
-        const data = await response.json();
-        let sql = data.choices[0]?.message?.content?.trim() || '';
-        return AskAiModal.cleanSQL(sql);
-    }
-
-    static async callLocalAI(apiKey, model, prompt, context) {
-        const baseUrl = localStorage.getItem('local_base_url') || 'http://localhost:11434/v1';
-        const url = baseUrl.endsWith('/') ? `${baseUrl}chat/completions` : `${baseUrl}/chat/completions`;
-
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {})
-            },
-            body: JSON.stringify({
-                model: model,
-                messages: [
-                    {
-                        role: "system",
-                        content: `You are an expert SQL assistant. 
-Your task is to generate valid SQL queries based on the user's natural language request and the provided database schema.
-
-STRICT EXECUTION RULES:
-1. Return ONLY the SQL query. No markdown, no explanations.
-2. NO HALLUCINATIONS: You MUST ONLY use table and column names explicitly listed in the "Schema Summary". 
-3. COLUMN SANITY CHECK: If a user asks to sort by "price" but no "price" column exists in that table, DO NOT use "price". Check for similar columns like "unit_price", "cost", or "amount". If no similar column exists, IGNORE that part of the request. NEVER guess a column name.
-4. DATA MATCHING: Look at "Sample Data". Match user concepts (e.g., 'icecek') to existing data values (e.g., 'Beverages').
-5. Dialect: Use the dialect for ${context.split('\n')[0]}.
-`
-                    },
-                    {
-                        role: "user",
-                        content: `
-Schema Context:
-${context}
-
-Request: ${prompt}
-`
-                    }
-                ],
-                temperature: 0.1
-            })
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error?.message || `Local AI Error: ${response.status}`);
-        }
-
-        const data = await response.json();
-        let sql = data.choices[0]?.message?.content?.trim() || '';
-        return AskAiModal.cleanSQL(sql);
-    }
-
-    static async callGemini(apiKey, model, prompt, context) {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
-        const systemPrompt = `You are an expert SQL assistant. 
-Your task is to generate valid SQL queries based on the user's natural language request and the provided database schema.
-
-STRICT EXECUTION RULES:
-1. Return ONLY the SQL query. No markdown formatting (like \`\`\`sql), no explanations, no chat.
-2. NO HALLUCINATIONS: You MUST ONLY use table and column names explicitly listed in the "Schema Summary".
-3. COLUMN SANITY CHECK: If a user asks for "price" but no "price" column is listed, DO NOT use "price". Use synonyms like "unit_price", "amount", or "total" ONLY if they are in the list. Otherwise, OMIT that column or filter. NEVER guess.
-4. DATA MATCHING: Review "Sample Data" for values. Match translated concepts (e.g., 'icecek' -> 'Beverages') based on the data you see.
-5. Dialect: Use the dialect for ${context.split('\n')[0]}.
-
-Schema Context:
-${context}
-`;
-
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                system_instruction: {
-                    parts: [{ text: systemPrompt }]
-                },
-                contents: [{
-                    parts: [{ text: `User Request: ${prompt}` }]
-                }],
-                generationConfig: {
-                    temperature: 0.1,
-                    topP: 0.95,
-                    topK: 40,
-                    maxOutputTokens: 1024,
-                }
-            })
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error?.message || `Gemini API Error: ${response.status}`);
-        }
-
-        const data = await response.json();
-        let sql = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-
-        return AskAiModal.cleanSQL(sql);
-    }
-
     static cleanSQL(sql) {
-        // Cleanup potential markdown
-        return sql
-            .replace(/^```sql\n/, '')
-            .replace(/^```/, '')
-            .replace(/```$/, '')
-            .trim();
+        return AiService.cleanSQL(sql);
     }
 }

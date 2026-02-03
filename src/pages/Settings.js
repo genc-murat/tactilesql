@@ -118,12 +118,23 @@ export function Settings() {
                         <div class="space-y-2">
                             <label class="text-xs font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">AI Provider</label>
                             <div class="grid grid-cols-2 gap-2">
-                                <button type="button" id="provider-openai" class="provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${localStorage.getItem('ai_provider') !== 'gemini' ? 'bg-mysql-teal/10 border-mysql-teal text-mysql-teal' : (isLight ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-white/5 border-white/10 text-gray-400')}">
+                                <button type="button" id="provider-openai" class="provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${!['gemini', 'anthropic', 'deepseek', 'groq', 'mistral', 'local'].includes(localStorage.getItem('ai_provider')) ? 'bg-mysql-teal/10 border-mysql-teal text-mysql-teal' : (isLight ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-white/5 border-white/10 text-gray-400')}">
                                     <span>OpenAI</span>
                                 </button>
                                  <button type="button" id="provider-gemini" class="provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${localStorage.getItem('ai_provider') === 'gemini' ? 'bg-mysql-teal/10 border-mysql-teal text-mysql-teal' : (isLight ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-white/5 border-white/10 text-gray-400')}">
-                                    <span>Google Gemini</span>
-                                    <span class="text-[9px] bg-green-500/20 text-green-500 px-1.5 rounded uppercase tracking-wider font-bold">Free</span>
+                                    <span>Gemini</span>
+                                </button>
+                                <button type="button" id="provider-anthropic" class="provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${localStorage.getItem('ai_provider') === 'anthropic' ? 'bg-mysql-teal/10 border-mysql-teal text-mysql-teal' : (isLight ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-white/5 border-white/10 text-gray-400')}">
+                                    <span>Anthropic</span>
+                                </button>
+                                <button type="button" id="provider-deepseek" class="provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${localStorage.getItem('ai_provider') === 'deepseek' ? 'bg-mysql-teal/10 border-mysql-teal text-mysql-teal' : (isLight ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-white/5 border-white/10 text-gray-400')}">
+                                    <span>DeepSeek</span>
+                                </button>
+                                <button type="button" id="provider-groq" class="provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${localStorage.getItem('ai_provider') === 'groq' ? 'bg-mysql-teal/10 border-mysql-teal text-mysql-teal' : (isLight ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-white/5 border-white/10 text-gray-400')}">
+                                    <span>Groq</span>
+                                </button>
+                                <button type="button" id="provider-mistral" class="provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${localStorage.getItem('ai_provider') === 'mistral' ? 'bg-mysql-teal/10 border-mysql-teal text-mysql-teal' : (isLight ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-white/5 border-white/10 text-gray-400')}">
+                                    <span>Mistral</span>
                                 </button>
                                 <button type="button" id="provider-local" class="provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${localStorage.getItem('ai_provider') === 'local' ? 'bg-mysql-teal/10 border-mysql-teal text-mysql-teal' : (isLight ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-white/5 border-white/10 text-gray-400')}">
                                     <span>Local AI</span>
@@ -141,14 +152,14 @@ export function Settings() {
                         <div class="space-y-2">
                              <div class="flex items-center justify-between">
                                 <label id="ai-key-label" class="text-xs font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">
-                                    ${localStorage.getItem('ai_provider') === 'gemini' ? 'Google AI Studio Key' : (localStorage.getItem('ai_provider') === 'local' ? 'API Key (Optional)' : 'OpenAI API Key')}
+                                    ${localStorage.getItem('ai_provider') === 'gemini' ? 'Gemini Key' : (localStorage.getItem('ai_provider') === 'anthropic' ? 'Anthropic Key' : (localStorage.getItem('ai_provider') === 'deepseek' ? 'DeepSeek Key' : (localStorage.getItem('ai_provider') === 'groq' ? 'Groq Key' : (localStorage.getItem('ai_provider') === 'mistral' ? 'Mistral Key' : (localStorage.getItem('ai_provider') === 'local' ? 'API Key' : 'OpenAI Key')))))}
                                 </label>
-                                <a id="ai-key-link" href="${localStorage.getItem('ai_provider') === 'gemini' ? 'https://aistudio.google.com/app/apikey' : 'https://platform.openai.com/api-keys'}" target="_blank" class="text-[10px] text-mysql-teal hover:underline flex items-center gap-1 ${localStorage.getItem('ai_provider') === 'local' ? 'hidden' : ''}">
+                                <a id="ai-key-link" href="#" target="_blank" class="text-[10px] text-mysql-teal hover:underline flex items-center gap-1 ${localStorage.getItem('ai_provider') === 'local' ? 'hidden' : ''}">
                                     Get API Key <span class="material-symbols-outlined text-[10px]">open_in_new</span>
                                 </a>
                              </div>
                             <div class="relative">
-                                <input type="password" id="setting-ai-key" class="w-full ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-300')} rounded px-3 py-2 text-sm font-mono outline-none focus:border-mysql-teal transition-colors pr-10" placeholder="${localStorage.getItem('ai_provider') === 'local' ? 'Local API Key' : 'sk-...'}" value="${localStorage.getItem('ai_provider') === 'gemini' ? (localStorage.getItem('gemini_api_key') || '') : (localStorage.getItem('ai_provider') === 'local' ? (localStorage.getItem('local_api_key') || '') : (localStorage.getItem('openai_api_key') || ''))}">
+                                <input type="password" id="setting-ai-key" class="w-full ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-300')} rounded px-3 py-2 text-sm font-mono outline-none focus:border-mysql-teal transition-colors pr-10" placeholder="API Key..." value="">
                                 <button id="toggle-ai-key-visibility" class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors">
                                     <span class="material-symbols-outlined text-lg">visibility</span>
                                 </button>
@@ -164,16 +175,24 @@ export function Settings() {
                                 ` : `
                                     <select id="setting-ai-model" class="w-full ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-300')} rounded px-3 py-2 text-sm outline-none focus:border-mysql-teal transition-colors appearance-none bg-no-repeat bg-[right_0.75rem_center]" style="background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGZpbGw9Im5vbmUiIHZpZXdCb3g9IjAgMCAyNCAyNCIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZT0iIzZCNTU2MyIgY2xhc3M9InNpemUtNiI+PHBhdGggc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBkPSJtMTkuNSA4LjI1LTcuNSA3LjUtNy41LTcuNSIgLz48L3N2Zz4='); background-size: 1.25em;">
                                         ${localStorage.getItem('ai_provider') === 'gemini' ? `
-                                            <option value="gemini-3.0-flash" ${localStorage.getItem('gemini_model') === 'gemini-3.0-flash' ? 'selected' : ''}>Gemini 3.0 Flash (Newest)</option>
-                                            <option value="gemini-2.5-flash" ${localStorage.getItem('gemini_model') === 'gemini-2.5-flash' ? 'selected' : ''}>Gemini 2.5 Flash</option>
-                                            <option value="gemini-2.0-flash-exp" ${localStorage.getItem('gemini_model') === 'gemini-2.0-flash-exp' ? 'selected' : ''}>Gemini 2.0 Flash (Exp)</option>
-                                            <option value="gemini-1.5-flash" ${localStorage.getItem('gemini_model') === 'gemini-1.5-flash' ? 'selected' : ''}>Gemini 1.5 Flash (Fast)</option>
-                                            <option value="gemini-1.5-pro" ${localStorage.getItem('gemini_model') === 'gemini-1.5-pro' ? 'selected' : ''}>Gemini 1.5 Pro</option>
+                                            <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                                            <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                                        ` : (localStorage.getItem('ai_provider') === 'anthropic' ? `
+                                            <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
+                                            <option value="claude-3-opus-20240229">Claude 3 Opus</option>
+                                        ` : (localStorage.getItem('ai_provider') === 'deepseek' ? `
+                                            <option value="deepseek-chat">DeepSeek Chat</option>
+                                            <option value="deepseek-reasoner">DeepSeek Reasoner</option>
+                                        ` : (localStorage.getItem('ai_provider') === 'groq' ? `
+                                            <option value="llama-3.3-70b-versatile">Llama 3.3 70B</option>
+                                            <option value="mixtral-8x7b-32768">Mixtral 8x7B</option>
+                                        ` : (localStorage.getItem('ai_provider') === 'mistral' ? `
+                                            <option value="mistral-large-latest">Mistral Large</option>
+                                            <option value="pixtral-large-latest">Pixtral Large</option>
                                         ` : `
-                                            <option value="gpt-4o" ${localStorage.getItem('openai_model') === 'gpt-4o' ? 'selected' : ''}>GPT-4o (Recommended)</option>
-                                            <option value="gpt-4o-mini" ${localStorage.getItem('openai_model') === 'gpt-4o-mini' ? 'selected' : ''}>GPT-4o Mini</option>
-                                            <option value="gpt-3.5-turbo" ${localStorage.getItem('openai_model') === 'gpt-3.5-turbo' ? 'selected' : ''}>GPT-3.5 Turbo</option>
-                                        `}
+                                            <option value="gpt-4o">GPT-4o</option>
+                                            <option value="gpt-4o-mini">GPT-4o Mini</option>
+                                        `))))}
                                     </select>
                                 `}
                             </div>
@@ -445,17 +464,37 @@ export function Settings() {
         const aiKeyLink = container.querySelector('#ai-key-link');
         const providerOpenAI = container.querySelector('#provider-openai');
         const providerGemini = container.querySelector('#provider-gemini');
+        const providerAnthropic = container.querySelector('#provider-anthropic');
+        const providerDeepSeek = container.querySelector('#provider-deepseek');
+        const providerGroq = container.querySelector('#provider-groq');
+        const providerMistral = container.querySelector('#provider-mistral');
         const providerLocal = container.querySelector('#provider-local');
         const aiLocalUrlContainer = container.querySelector('#ai-local-url-container');
         const aiLocalUrlInput = container.querySelector('#setting-ai-local-url');
 
-        if (aiKeyInput && aiModelSelect && aiSaveBtn && aiVisibilityBtn && aiKeyLabel && aiKeyLink && providerOpenAI && providerGemini && providerLocal) {
+        if (aiKeyInput && aiModelSelect && aiSaveBtn && aiVisibilityBtn && aiKeyLabel && aiKeyLink && providerOpenAI && providerGemini && providerAnthropic && providerDeepSeek && providerLocal) {
             let activeProvider = localStorage.getItem('ai_provider') || 'openai';
 
             // Initial Check/Values for change detection
             // We need to track what's currently in the fields vs what was saved
-            const getSavedKey = (p) => localStorage.getItem(p === 'gemini' ? 'gemini_api_key' : (p === 'local' ? 'local_api_key' : 'openai_api_key')) || '';
-            const getSavedModel = (p) => localStorage.getItem(p === 'gemini' ? 'gemini_model' : (p === 'local' ? 'local_model' : 'openai_model')) || (p === 'gemini' ? 'gemini-3.0-flash' : (p === 'local' ? 'llama3' : 'gpt-4o'));
+            const getSavedKey = (p) => {
+                if (p === 'gemini') return localStorage.getItem('gemini_api_key') || '';
+                if (p === 'anthropic') return localStorage.getItem('anthropic_api_key') || '';
+                if (p === 'deepseek') return localStorage.getItem('deepseek_api_key') || '';
+                if (p === 'groq') return localStorage.getItem('groq_api_key') || '';
+                if (p === 'mistral') return localStorage.getItem('mistral_api_key') || '';
+                if (p === 'local') return localStorage.getItem('local_api_key') || '';
+                return localStorage.getItem('openai_api_key') || '';
+            };
+            const getSavedModel = (p) => {
+                if (p === 'gemini') return localStorage.getItem('gemini_model') || 'gemini-1.5-flash';
+                if (p === 'anthropic') return localStorage.getItem('anthropic_model') || 'claude-3-5-sonnet-20241022';
+                if (p === 'deepseek') return localStorage.getItem('deepseek_model') || 'deepseek-chat';
+                if (p === 'groq') return localStorage.getItem('groq_model') || 'llama-3.3-70b-versatile';
+                if (p === 'mistral') return localStorage.getItem('mistral_model') || 'mistral-large-latest';
+                if (p === 'local') return localStorage.getItem('local_model') || 'llama3';
+                return localStorage.getItem('openai_model') || 'gpt-4o';
+            };
             const getSavedBaseUrl = () => localStorage.getItem('local_base_url') || 'http://localhost:11434/v1';
 
             // Change Detection defined early to be used by switchProvider
@@ -492,16 +531,26 @@ export function Settings() {
 
                 providerOpenAI.className = `provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${provider === 'openai' ? activeClass : inactiveClass}`;
                 providerGemini.className = `provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${provider === 'gemini' ? activeClass : inactiveClass}`;
+                providerAnthropic.className = `provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${provider === 'anthropic' ? activeClass : inactiveClass}`;
+                providerDeepSeek.className = `provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${provider === 'deepseek' ? activeClass : inactiveClass}`;
+                providerGroq.className = `provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${provider === 'groq' ? activeClass : inactiveClass}`;
+                providerMistral.className = `provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${provider === 'mistral' ? activeClass : inactiveClass}`;
                 providerLocal.className = `provider-btn flex items-center justify-center gap-2 py-2 rounded-lg border transition-all ${provider === 'local' ? activeClass : inactiveClass}`;
 
                 // 2. Update Label & Link
-                aiKeyLabel.textContent = isGemini ? 'Google AI Studio Key' : (isLocal ? 'API Key (Optional)' : 'OpenAI API Key');
-                aiKeyInput.placeholder = isLocal ? 'Local API Key' : 'sk-...';
-                aiLocalUrlContainer.classList.toggle('hidden', !isLocal);
-                aiKeyLink.classList.toggle('hidden', isLocal);
-                if (!isLocal) {
-                    aiKeyLink.href = isGemini ? 'https://aistudio.google.com/app/apikey' : 'https://platform.openai.com/api-keys';
-                }
+                const links = {
+                    openai: 'https://platform.openai.com/api-keys',
+                    gemini: 'https://aistudio.google.com/app/apikey',
+                    anthropic: 'https://console.anthropic.com/settings/keys',
+                    deepseek: 'https://platform.deepseek.com/api_keys',
+                    groq: 'https://console.groq.com/keys',
+                    mistral: 'https://console.mistral.ai/api-keys'
+                };
+                aiKeyLabel.textContent = `${provider.charAt(0).toUpperCase() + provider.slice(1)} Key`;
+                aiKeyInput.placeholder = provider === 'local' ? 'Local API Key' : 'Enter API Key...';
+                aiLocalUrlContainer.classList.toggle('hidden', provider !== 'local');
+                aiKeyLink.classList.toggle('hidden', provider === 'local');
+                if (provider !== 'local') aiKeyLink.href = links[provider] || '#';
 
                 // 3. Update Input Value
                 aiKeyInput.value = getSavedKey(provider); // Reset to saved value for that provider
@@ -514,17 +563,25 @@ export function Settings() {
                 } else {
                     modelWrapper.innerHTML = `
                         <select id="setting-ai-model" class="w-full ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (theme === 'dawn' ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-300')} rounded px-3 py-2 text-sm outline-none focus:border-mysql-teal transition-colors appearance-none bg-no-repeat bg-[right_0.75rem_center]" style="background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGZpbGw9Im5vbmUiIHZpZXdCb3g9IjAgMCAyNCAyNCIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZT0iIzZCNTU2MyIgY2xhc3M9InNpemUtNiI+PHBhdGggc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBkPSJtMTkuNSA4LjI1LTcuNSA3LjUtNy41LTcuNSIgLz48L3N2Zz4='); background-size: 1.25em;">
-                            ${isGemini ? `
-                                <option value="gemini-3.0-flash">Gemini 3.0 Flash (Newest)</option>
-                                <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-                                <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash (Exp)</option>
-                                <option value="gemini-1.5-flash">Gemini 1.5 Flash (Fast)</option>
+                            ${provider === 'gemini' ? `
+                                <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
                                 <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                            ` : (provider === 'anthropic' ? `
+                                <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
+                                <option value="claude-3-opus-20240229">Claude 3 Opus</option>
+                            ` : (provider === 'deepseek' ? `
+                                <option value="deepseek-chat">DeepSeek Chat</option>
+                                <option value="deepseek-reasoner">DeepSeek Reasoner</option>
+                            ` : (provider === 'groq' ? `
+                                <option value="llama-3.3-70b-versatile">Llama 3.3 70B</option>
+                                <option value="mixtral-8x7b-32768">Mixtral 8x7B</option>
+                            ` : (provider === 'mistral' ? `
+                                <option value="mistral-large-latest">Mistral Large</option>
+                                <option value="pixtral-large-latest">Pixtral Large</option>
                             ` : `
-                                <option value="gpt-4o">GPT-4o (Recommended)</option>
+                                <option value="gpt-4o">GPT-4o</option>
                                 <option value="gpt-4o-mini">GPT-4o Mini</option>
-                                <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
-                            `}
+                            `))))}
                         </select>
                     `;
                     const modelSelect = container.querySelector('#setting-ai-model');
@@ -535,7 +592,7 @@ export function Settings() {
                     if (Array.from(modelSelect.options).some(o => o.value === savedModel)) {
                         modelSelect.value = savedModel;
                     } else {
-                        modelSelect.value = isGemini ? 'gemini-3.0-flash' : 'gpt-4o';
+                        modelSelect.value = provider === 'gemini' ? 'gemini-1.5-flash' : (provider === 'anthropic' ? 'claude-3-5-sonnet-20241022' : (provider === 'deepseek' ? 'deepseek-chat' : (provider === 'groq' ? 'llama-3.3-70b-versatile' : (provider === 'mistral' ? 'mistral-large-latest' : 'gpt-4o'))));
                     }
                 }
 
@@ -547,6 +604,10 @@ export function Settings() {
 
             providerOpenAI.addEventListener('click', () => switchProvider('openai'));
             providerGemini.addEventListener('click', () => switchProvider('gemini'));
+            providerAnthropic.addEventListener('click', () => switchProvider('anthropic'));
+            providerDeepSeek.addEventListener('click', () => switchProvider('deepseek'));
+            providerGroq.addEventListener('click', () => switchProvider('groq'));
+            providerMistral.addEventListener('click', () => switchProvider('mistral'));
             providerLocal.addEventListener('click', () => switchProvider('local'));
             aiLocalUrlInput?.addEventListener('input', checkForChanges);
 
@@ -573,6 +634,18 @@ export function Settings() {
                 if (activeProvider === 'gemini') {
                     localStorage.setItem('gemini_api_key', newKey);
                     localStorage.setItem('gemini_model', newModel);
+                } else if (activeProvider === 'anthropic') {
+                    localStorage.setItem('anthropic_api_key', newKey);
+                    localStorage.setItem('anthropic_model', newModel);
+                } else if (activeProvider === 'deepseek') {
+                    localStorage.setItem('deepseek_api_key', newKey);
+                    localStorage.setItem('deepseek_model', newModel);
+                } else if (activeProvider === 'groq') {
+                    localStorage.setItem('groq_api_key', newKey);
+                    localStorage.setItem('groq_model', newModel);
+                } else if (activeProvider === 'mistral') {
+                    localStorage.setItem('mistral_api_key', newKey);
+                    localStorage.setItem('mistral_model', newModel);
                 } else if (activeProvider === 'local') {
                     localStorage.setItem('local_api_key', newKey);
                     localStorage.setItem('local_model', newModel);

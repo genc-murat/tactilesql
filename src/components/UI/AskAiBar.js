@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { toastError, toastSuccess } from '../../utils/Toast.js';
 import { ThemeManager } from '../../utils/ThemeManager.js';
 import { AskAiModal } from './AskAiModal.js';
+import { AiService } from '../../utils/AiService.js';
 
 export class AskAiBar {
     static async show(container, onInsert) {
@@ -16,10 +17,24 @@ export class AskAiBar {
         // Load saved settings
         const provider = localStorage.getItem('ai_provider') || 'openai';
         const isGemini = provider === 'gemini';
+        const isAnthropic = provider === 'anthropic';
+        const isDeepSeek = provider === 'deepseek';
         const isLocal = provider === 'local';
 
-        const getSavedKey = (p) => localStorage.getItem(p === 'gemini' ? 'gemini_api_key' : (p === 'local' ? 'local_api_key' : 'openai_api_key')) || '';
-        const getSavedModel = (p) => localStorage.getItem(p === 'gemini' ? 'gemini_model' : (p === 'local' ? 'local_model' : 'openai_model')) || (p === 'gemini' ? 'gemini-3.0-flash' : (p === 'local' ? 'llama3' : 'gpt-4o'));
+        const getSavedKey = (p) => {
+            if (p === 'gemini') return localStorage.getItem('gemini_api_key') || '';
+            if (p === 'anthropic') return localStorage.getItem('anthropic_api_key') || '';
+            if (p === 'deepseek') return localStorage.getItem('deepseek_api_key') || '';
+            if (p === 'local') return localStorage.getItem('local_api_key') || '';
+            return localStorage.getItem('openai_api_key') || '';
+        };
+        const getSavedModel = (p) => {
+            if (p === 'gemini') return localStorage.getItem('gemini_model') || 'gemini-3.0-flash';
+            if (p === 'anthropic') return localStorage.getItem('anthropic_model') || 'claude-3-5-sonnet-20241022';
+            if (p === 'deepseek') return localStorage.getItem('deepseek_model') || 'deepseek-chat';
+            if (p === 'local') return localStorage.getItem('local_model') || 'llama3';
+            return localStorage.getItem('openai_model') || 'gpt-4o';
+        };
 
         const savedKey = getSavedKey(provider);
         const savedModel = getSavedModel(provider);
@@ -54,12 +69,18 @@ export class AskAiBar {
                             ${isLocal ? `
                                 <option value="${savedModel}">${savedModel}</option>
                             ` : (isGemini ? `
-                                <option value="gemini-1.5-flash" ${savedModel === 'gemini-1.5-flash' ? 'selected' : ''}>Gemini Flash</option>
-                                <option value="gemini-1.5-pro" ${savedModel === 'gemini-1.5-pro' ? 'selected' : ''}>Gemini Pro</option>
+                                <option value="gemini-3.0-flash" ${savedModel === 'gemini-3.0-flash' ? 'selected' : ''}>Gemini Flash</option>
+                                <option value="gemini-1.5-flash" ${savedModel === 'gemini-1.5-flash' ? 'selected' : ''}>Gemini 1.5</option>
+                            ` : (isAnthropic ? `
+                                <option value="claude-3-5-sonnet-20241022" ${savedModel === 'claude-3-5-sonnet-20241022' ? 'selected' : ''}>Claude 3.5</option>
+                                <option value="claude-3-opus-20240229" ${savedModel === 'claude-3-opus-20240229' ? 'selected' : ''}>Claude 3 Opus</option>
+                            ` : (isDeepSeek ? `
+                                <option value="deepseek-chat" ${savedModel === 'deepseek-chat' ? 'selected' : ''}>DeepSeek Chat</option>
+                                <option value="deepseek-reasoner" ${savedModel === 'deepseek-reasoner' ? 'selected' : ''}>DS Reasoner</option>
                             ` : `
                                 <option value="gpt-4o" ${savedModel === 'gpt-4o' ? 'selected' : ''}>GPT-4o</option>
                                 <option value="gpt-4o-mini" ${savedModel === 'gpt-4o-mini' ? 'selected' : ''}>GPT-4o Mini</option>
-                            `)}
+                            `)))}
                         </select>
                         <span class="text-[9px] ${isLightVariant ? 'text-gray-400' : 'text-gray-600'} uppercase tracking-widest font-bold">Model</span>
                     </div>
@@ -118,15 +139,8 @@ export class AskAiBar {
                     statusText.textContent = "Analyzing database schema...";
                     const context = await AskAiModal.gatherSchemaContext();
 
-                    statusText.textContent = `Asking ${isGemini ? 'Gemini' : (isLocal ? 'Local AI' : 'OpenAI')}...`;
-                    let sql = '';
-                    if (isGemini) {
-                        sql = await AskAiModal.callGemini(apiKey, model, prompt, context);
-                    } else if (isLocal) {
-                        sql = await AskAiModal.callLocalAI(apiKey, model, prompt, context);
-                    } else {
-                        sql = await AskAiModal.callOpenAI(apiKey, model, prompt, context);
-                    }
+                    statusText.textContent = `Asking ${provider.charAt(0).toUpperCase() + provider.slice(1)}...`;
+                    const sql = await AiService.generateSql(provider, apiKey, model, prompt, context);
 
                     onInsert(sql);
                     toastSuccess('SQL Generated!');
