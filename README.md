@@ -15,6 +15,7 @@ TactileSQL is a modern, desktop-first MySQL workbench built with Tauri 2 and van
 - **Similarity & workload profiling** to group duplicate query patterns.
 - **SSH Tunnel Support** for secure database connections through SSH servers.
 - **Editable Results Grid** with virtual scrolling, column visibility, CSV export, and clipboard copy.
+- **Interactive Relational Data Exploration**: Navigate foreign keys directly from results with instant related data popups.
 - **Object Explorer** with databases, tables, views, triggers, procedures, functions, and events.
 - **Schema Designer** for columns, indexes, foreign keys, triggers, DDL, and stats.
 - **Schema Diff** for database or single-table comparison with generated sync SQL.
@@ -103,6 +104,7 @@ npx tauri build
 - What‑If Optimizer for variant comparisons
 - Query execution history and snippet library
 - Results grid with filtering, selection, and inline editing
+- **Results Explorer**: Ctrl+Click on foreign keys to view referenced related data in popup
 
 ### Audit Trail
 

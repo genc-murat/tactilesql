@@ -9,6 +9,7 @@ import { toastSuccess, toastError } from '../../utils/Toast.js';
 // Virtual scrolling threshold - use virtual scroll for datasets larger than this
 const VIRTUAL_SCROLL_THRESHOLD = 500;
 
+import { RelatedDataPopup } from './RelatedDataPopup.js';
 export function ResultsTable() {
     let theme = ThemeManager.getCurrentTheme();
     let isLight = theme === 'light';
@@ -183,6 +184,7 @@ export function ResultsTable() {
     };
     let isEditable = false;
     let primaryKeys = [];
+    let foreignKeys = []; // Array of {column_name, referenced_table, referenced_column}
     let tableName = '';
     let databaseName = '';
 
@@ -286,7 +288,16 @@ export function ResultsTable() {
         if (cell === null || cell === undefined) return `<span class="px-1.5 py-0.5 rounded text-[10px] font-mono ${isLight ? 'bg-gray-100 text-gray-400' : (isDawn ? 'bg-[#f2e9e1] text-[#797593]' : (isOceanic ? 'bg-ocean-border/30 text-ocean-text/50' : 'bg-white/5 text-gray-500'))} italic">NULL</span>`;
         if (typeof cell === 'boolean') return cell ? '<span class="text-green-400 font-bold">TRUE</span>' : '<span class="text-red-400 font-bold">FALSE</span>';
         if (typeof cell === 'number') return `<span class="text-mysql-teal">${cell}</span>`;
-        return String(cell).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return escapeHtml(String(cell));
+    };
+
+    const handleFkClick = (tableName, col, value) => {
+        const popup = RelatedDataPopup({
+            tableName: tableName,
+            matchedColumn: col,
+            matchedValue: value,
+            database: databaseName
+        });
     };
 
     const exportToCSV = (columns, rows) => {
@@ -383,45 +394,84 @@ export function ResultsTable() {
         updatePendingIndicator();
     };
 
-    // Parse SELECT query to extract table name (simple heuristic)
-    const extractTableName = (query) => {
-        const match = query.match(/FROM\s+`?(\w+)`?/i);
-        return match ? match[1] : null;
+    // Parse SELECT query to extract table info
+    const extractTableInfo = (query) => {
+        // Matches: FROM `table` or FROM "table" or FROM table or FROM "schema"."table"
+        const match = query.match(/FROM\s+["`]?(\w+)["`]?\.?["`]?(\w+)?["`]?/i);
+        if (match) {
+            if (match[2]) {
+                return { schema: match[1], table: match[2] };
+            }
+            return { schema: null, table: match[1] };
+        }
+        return null;
     };
 
     const checkIfEditable = async (query) => {
+        console.log('Debug: Checking if editable for query:', query);
         // Strip comments for check
         const cleanQuery = query.replace(/--.*$|\/\*[\s\S]*?\*\//gm, '').trim();
 
         // Only editable if it's a simple SELECT query (no JOIN, etc.)
         if (!cleanQuery || !/^\s*SELECT/i.test(cleanQuery)) {
+            console.log('Debug: Not a SELECT query');
             return false;
         }
         if (/JOIN/i.test(cleanQuery) || /UNION/i.test(cleanQuery) || /GROUP BY/i.test(cleanQuery)) {
+            console.log('Debug: Complex query detected');
             return false;
         }
 
-        tableName = extractTableName(cleanQuery);
-        if (!tableName) {
+        const tableInfo = extractTableInfo(cleanQuery);
+        console.log('Debug: Extracted table info:', tableInfo);
+
+        if (!tableInfo) {
             return false;
         }
+        tableName = tableInfo.table;
+        let schemaName = tableInfo.schema;
 
-        // Get active database
+        // Get active database and type
         const activeConn = JSON.parse(localStorage.getItem('activeConnection') || '{}');
-        databaseName = activeConn.database || '';
+        const dbType = activeConn.dbType || 'mysql';
+
+        // For Postgres, the 'database' arg in backend commands is actually the SCHEMA.
+        // For MySQL, it is the DATABASE.
+
+        if (dbType === 'postgresql') {
+            // Use extracted schema, or default to 'public'
+            databaseName = schemaName || 'public';
+        } else {
+            // MySQL
+            const connDb = activeConn.database;
+            // If schema is present in query (e.g. `db`.`table`), use it. Otherwise use connection DB.
+            databaseName = schemaName || connDb;
+        }
+
+        console.log('Debug: Resolved context - Table:', tableName, 'Context (DB/Schema):', databaseName);
+
         if (!databaseName) {
             return false;
         }
 
         try {
+            // Fetch Primary Keys
             primaryKeys = await invoke('get_table_primary_keys', {
                 database: databaseName,
                 table: tableName
             });
+
+            // Fetch Foreign Keys
+            foreignKeys = await invoke('get_table_foreign_keys', {
+                database: databaseName,
+                table: tableName
+            });
+            console.log('Debug: Fetched FKs:', foreignKeys);
+
             const editable = primaryKeys.length > 0;
             return editable;
         } catch (e) {
-            console.error('Failed to get primary keys:', e);
+            console.error('Failed to get keys:', e);
             return false;
         }
     };
@@ -693,11 +743,35 @@ export function ResultsTable() {
             const isModified = pendingChanges.updates.has(key);
             const displayValue = isModified ? pendingChanges.updates.get(key) : cell;
 
-            return `<td class="p-3 border-r ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5'))} ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text' : 'text-gray-300'))} whitespace-nowrap overflow-hidden text-ellipsis max-w-xs ${isModified ? 'bg-yellow-500/10 border border-yellow-500/30' : ''} ${isEditable && !isDeleted ? 'cursor-pointer hover:bg-cyan-500/5' : ''}" 
+            // Check if FK
+            const column = currentData.columns[colIdx];
+            const fk = foreignKeys.find(f => f.column_name === column);
+
+            if (fk) console.log('Action: Rendering FK cell', column, '->', fk.referenced_table);
+
+            let contentHtml = formatCell(displayValue);
+            let cellClasses = `p-3 border-r ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5'))} ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text' : 'text-gray-300'))} whitespace-nowrap overflow-hidden text-ellipsis max-w-xs ${isModified ? 'bg-yellow-500/10 border border-yellow-500/30' : ''} ${isEditable && !isDeleted ? 'cursor-pointer hover:bg-cyan-500/5' : ''}`;
+
+            if (fk && displayValue !== null) {
+                // Is a Foreign Key!
+                contentHtml = `
+                    <div class="flex items-center gap-1.5 group/fk">
+                        <span class="hover:underline cursor-pointer ${isDawn ? 'text-[#eb6f92] hover:text-[#ea9d34]' : 'text-blue-500 hover:text-blue-400'} font-medium fk-link" 
+                              title="Ctrl + Click to view related data (${fk.referenced_table})"
+                              data-fk-table="${fk.referenced_table}" 
+                              data-fk-col="${fk.referenced_column}"
+                              data-fk-val="${escapeHtml(String(displayValue))}"
+                        >${contentHtml}</span>
+                        <span class="material-symbols-outlined text-[10px] opacity-0 group-hover/fk:opacity-100 transition-opacity ${isDawn ? 'text-[#eb6f92]' : 'text-blue-400'}">open_in_new</span>
+                    </div>
+                `;
+            }
+
+            return `<td class="${cellClasses}" 
                 title="${formatCellForTitle(cell)}" 
                 data-row-idx="${idx}" 
                 data-col-idx="${colIdx}">
-                ${formatCell(displayValue)}
+                ${contentHtml}
             </td>`;
         }).join('');
 
@@ -716,6 +790,17 @@ export function ResultsTable() {
             ${cells}
         </tr>`;
     };
+
+    // --- Global Debug Listener (Temporary) ---
+    if (!window._tactile2DebugListener) {
+        window.addEventListener('click', (e) => {
+            console.log("Global Capture 2 Click:", e.target.tagName, e.target.className);
+            if (e.target.closest('.fk-link')) {
+                console.log("Global Capture 2: Found .fk-link!");
+            }
+        }, true);
+        window._tactile2DebugListener = true;
+    }
 
     const attachRowEvents = (tbody) => {
         // Cell edit events
@@ -738,6 +823,21 @@ export function ResultsTable() {
                 });
             });
         }
+
+        // Event Delegation for Table Body (Capture Phase to ensure we catch it)
+        tbody.addEventListener('click', (e) => {
+            const fkLink = e.target.closest('.fk-link');
+            // Check for Ctrl (Windows/Linux) or Meta (Mac) key
+            if (fkLink && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                e.stopPropagation();
+                const table = fkLink.dataset.fkTable;
+                const col = fkLink.dataset.fkCol;
+                const val = fkLink.dataset.fkVal;
+                handleFkClick(table, col, val);
+                return;
+            }
+        }, true); // Use capture phase
 
         // Checkboxes
         tbody.querySelectorAll('.row-checkbox').forEach(checkbox => {
@@ -880,11 +980,29 @@ export function ResultsTable() {
                         const isModified = pendingChanges.updates.has(key);
                         const displayValue = isModified ? pendingChanges.updates.get(key) : cell;
 
+                        const column = columns[colIdx];
+                        const fk = foreignKeys && foreignKeys.find(f => f.column_name === column);
+
+                        let contentHtml = formatCell(displayValue);
+
+                        if (fk && displayValue !== null) {
+                            contentHtml = `<div class="flex items-center gap-1.5 group/fk cursor-pointer fk-link"
+                                      title="Ctrl + Click to view related data (${fk.referenced_table})"
+                                      data-fk-table="${fk.referenced_table}" 
+                                      data-fk-col="${fk.referenced_column}"
+                                      data-fk-val="${escapeHtml(String(displayValue))}"
+                            >
+                                <span class="hover:underline ${isDawn ? 'text-[#eb6f92] hover:text-[#ea9d34]' : 'text-blue-500 hover:text-blue-400'} font-medium" 
+                                >${contentHtml}</span>
+                                <span class="material-symbols-outlined text-[10px] opacity-0 group-hover/fk:opacity-100 transition-opacity ${isDawn ? 'text-[#ea9d34]' : 'text-blue-400'}">open_in_new</span>
+                            </div>`;
+                        }
+
                         return `<td class="p-3 border-r ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5'))} ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text' : 'text-gray-300'))} whitespace-nowrap overflow-hidden text-ellipsis max-w-xs ${isModified ? (isDawn ? 'bg-[#f6c177]/10 border border-[#f6c177]/30' : 'bg-yellow-500/10 border border-yellow-500/30') : ''} ${isEditable && !isDeleted ? (isDawn ? 'cursor-pointer hover:bg-[#eb6f92]/5' : 'cursor-pointer hover:bg-cyan-500/5') : ''}" 
                             title="${formatCellForTitle(cell)}" 
                             data-row-idx="${idx}" 
                             data-col-idx="${colIdx}">
-                            ${formatCell(displayValue)}
+                            ${contentHtml}
                         </td>`;
                     }).join('');
 
@@ -1255,6 +1373,8 @@ export function ResultsTable() {
     });
 
     renderControls();
+
+    container.render = (data) => renderTable(data);
 
     return container;
 }
