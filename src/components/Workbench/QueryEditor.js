@@ -656,15 +656,22 @@ export function QueryEditor() {
                         <span class="material-symbols-outlined" style="font-size: 10px;">schedule</span>
                         ${lastExecutionTime}ms
                     </div>` : ''}
-                    <div class="flex items-center gap-1">
                         <button id="format-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-gray-700 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text' : 'bg-[#1a1d23] border-white/10 text-gray-300'))} border rounded hover:opacity-80 active:scale-95 transition-all" title="Format SQL (Ctrl+Shift+F)">
                             <span class="material-symbols-outlined text-sm">format_align_left</span>
                         </button>
-                         <button id="explain-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-gray-700 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text' : 'bg-[#1a1d23] border-white/10 text-gray-300'))} border rounded hover:opacity-80 active:scale-95 transition-all" title="Explain Query Plan (Shift+Click for AI Explanation)">
+                        <button id="explain-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-gray-700 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text' : 'bg-[#1a1d23] border-white/10 text-gray-300'))} border rounded hover:opacity-80 active:scale-95 transition-all" title="Explain Query Plan (Standard)">
                             <span class="material-symbols-outlined text-sm">analytics</span>
                         </button>
-                        <button id="analyze-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-amber-600 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#ea9d34]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-amber-400' : 'bg-[#1a1d23] border-white/10 text-amber-400'))} border rounded hover:opacity-80 active:scale-95 transition-all" title="Analyze & Optimize Query (Right-Click for AI Optimization)">
+                        <button id="ai-explain-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-blue-500 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#286983]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-blue-400' : 'bg-[#1a1d23] border-white/10 text-blue-400'))} border rounded hover:opacity-80 active:scale-95 transition-all group relative overflow-hidden" title="AI Explain Query">
+                            <span class="material-symbols-outlined text-sm relative z-10">psychology</span>
+                            <span class="absolute inset-0 bg-blue-500/10 opacity-0 group-hover:opacity-100 transition-opacity"></span>
+                        </button>
+                        <button id="analyze-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-amber-600 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#ea9d34]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-amber-400' : 'bg-[#1a1d23] border-white/10 text-amber-400'))} border rounded hover:opacity-80 active:scale-95 transition-all" title="Toggle Query Profiler">
                             <span class="material-symbols-outlined text-sm">speed</span>
+                        </button>
+                        <button id="ai-optimize-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-amber-500 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#ea9d34]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-amber-400' : 'bg-[#1a1d23] border-white/10 text-amber-400'))} border rounded hover:opacity-80 active:scale-95 transition-all group relative overflow-hidden" title="AI Optimize Query">
+                            <span class="material-symbols-outlined text-sm relative z-10">bolt</span>
+                            <span class="absolute inset-0 bg-amber-500/10 opacity-0 group-hover:opacity-100 transition-opacity"></span>
                         </button>
                         <button id="param-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-indigo-600 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#56949f]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-frost' : 'bg-[#1a1d23] border-white/10 text-indigo-400'))} border rounded hover:opacity-80 active:scale-95 transition-all" title="Parameter Suggestions">
                             <span class="material-symbols-outlined text-sm">filter_alt</span>
@@ -1843,25 +1850,26 @@ export function QueryEditor() {
                 window.dispatchEvent(new CustomEvent('tactilesql:toggle-profiler'));
             });
 
-            // Right click or Long press for AI Optimization
-            analyzeBtn.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
-                handleAiOptimize();
-            });
         }
 
-        // Explain Logic (Standard Explain + AI Explain)
+        // AI Optimization Logic
+        const aiOptimizeBtn = container.querySelector('#ai-optimize-btn');
+        if (aiOptimizeBtn) {
+            aiOptimizeBtn.addEventListener('click', handleAiOptimize);
+        }
+
+        // AI Explain Logic
+        const aiExplainBtn = container.querySelector('#ai-explain-btn');
+        if (aiExplainBtn) {
+            aiExplainBtn.addEventListener('click', handleAiExplain);
+        }
+
+        // Explain Logic (Standard Explain)
         const explainBtn = container.querySelector('#explain-btn');
         if (explainBtn) {
             let isExplaining = false;
             explainBtn.addEventListener('click', async (e) => {
                 if (isExplaining) return; // Prevent double-click
-
-                // If Shift is pressed, use AI Explain
-                if (e.shiftKey) {
-                    handleAiExplain();
-                    return;
-                }
 
                 isExplaining = true;
 
