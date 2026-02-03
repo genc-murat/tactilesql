@@ -231,6 +231,70 @@ export function DependencyExplorer() {
         buildBtn.onclick = fetchGraph;
         controls.appendChild(buildBtn);
 
+        // Export Mermaid Button
+        if (state.graphData && !state.isLoading) {
+            const exportBtn = document.createElement('button');
+            exportBtn.className = `px-4 py-2 rounded-lg border text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 self-end mb-[1px] ${theme === 'light'
+                    ? 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                    : 'bg-white/5 text-white border-white/10 hover:bg-white/10'
+                }`;
+            exportBtn.innerHTML = `
+                <span class="material-symbols-outlined text-base">download</span>
+                Export Mermaid
+            `;
+
+            exportBtn.onclick = () => {
+                const generateMermaid = (data) => {
+                    let mermaid = 'graph LR\n';
+
+                    // Add styles
+                    mermaid += '    %% Styles\n';
+                    mermaid += '    classDef table fill:#fff,stroke:#333,stroke-width:2px;\n';
+                    mermaid += '    classDef view fill:#f9f,stroke:#333,stroke-width:2px;\n';
+
+                    // Add nodes
+                    data.nodes.forEach(node => {
+                        let id = node.id.replace(/[^a-zA-Z0-9]/g, '_');
+                        let label = node.name;
+                        if (node.schema && node.schema !== 'public' && node.schema !== 'dbo') {
+                            label = `${node.schema}.${node.name}`;
+                        }
+
+                        // Escape quotes in label
+                        label = label.replace(/"/g, '#quot;');
+
+                        if (node.node_type === 'Table') {
+                            mermaid += `    ${id}["${label}"]:::table\n`;
+                        } else {
+                            mermaid += `    ${id}("${label}"):::view\n`;
+                        }
+                    });
+
+                    // Add edges
+                    data.edges.forEach(edge => {
+                        let sourceCtx = edge.source.replace(/[^a-zA-Z0-9]/g, '_');
+                        let targetCtx = edge.target.replace(/[^a-zA-Z0-9]/g, '_');
+                        mermaid += `    ${sourceCtx} --> ${targetCtx}\n`;
+                    });
+
+                    return mermaid;
+                };
+
+                const content = generateMermaid(state.graphData);
+                const blob = new Blob([content], { type: 'text/vnd.mermaid' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `dependency_graph_${state.selectedDatabase}.mmd`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            };
+
+            controls.appendChild(exportBtn);
+        }
+
         // Focus indicator & Clear button
         if (state.focusedTable) {
             const focusDiv = document.createElement('div');
