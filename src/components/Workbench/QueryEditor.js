@@ -1762,6 +1762,7 @@ export function QueryEditor() {
                     }));
 
                     // Log to Audit Trail
+                    // Log to Audit Trail
                     auditTrail.logQuery({
                         query: editorContent,
                         status: 'ERROR',
@@ -1781,6 +1782,14 @@ export function QueryEditor() {
             });
         }
 
+        // Analyze Logic (Toggles Profiler)
+        const analyzeBtn = container.querySelector('#analyze-btn');
+        if (analyzeBtn) {
+            analyzeBtn.addEventListener('click', () => {
+                window.dispatchEvent(new CustomEvent('tactilesql:toggle-profiler'));
+            });
+        }
+
         // Explain Logic
         const explainBtn = container.querySelector('#explain-btn');
         if (explainBtn) {
@@ -1790,7 +1799,6 @@ export function QueryEditor() {
                 isExplaining = true;
 
                 const textarea = container.querySelector('#query-input');
-                // Use selected text if available, otherwise use all content
                 const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
                 const queryToRun = selectedText.trim() ? selectedText : textarea.value;
 
@@ -1800,9 +1808,7 @@ export function QueryEditor() {
                     return;
                 }
 
-                // Get database type for correct EXPLAIN syntax
                 const activeDbType = localStorage.getItem('activeDbType') || 'mysql';
-                // PostgreSQL: EXPLAIN (FORMAT TEXT), MySQL: EXPLAIN FORMAT=TRADITIONAL
                 const explainQuery = activeDbType === 'postgresql'
                     ? `EXPLAIN (FORMAT TEXT) ${queryToRun}`
                     : `EXPLAIN FORMAT=TRADITIONAL ${queryToRun}`;
@@ -1811,18 +1817,11 @@ export function QueryEditor() {
                 try {
                     explainBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span> ANALYZING';
                     explainBtn.classList.add('opacity-70');
-
-                    // Notify results table to show loading skeleton
                     window.dispatchEvent(new CustomEvent('tactilesql:query-executing'));
 
                     const result = await invoke('execute_query', { query: explainQuery });
-
-                    // Show visual explain
                     showVisualExplainModal(result);
-
-                    // Also update table for reference
-                    const event = new CustomEvent('tactilesql:query-result', { detail: result });
-                    window.dispatchEvent(event);
+                    window.dispatchEvent(new CustomEvent('tactilesql:query-result', { detail: result }));
 
                 } catch (error) {
                     Dialog.alert(`Explain failed: ${String(error).replace(/\n/g, '<br>')}`, 'Query Analysis Error');
@@ -1830,45 +1829,6 @@ export function QueryEditor() {
                     explainBtn.innerHTML = originalHTML;
                     explainBtn.classList.remove('opacity-70');
                     isExplaining = false;
-                }
-            });
-        }
-
-        // Analyze Query Logic
-        const analyzeBtn = container.querySelector('#analyze-btn');
-        if (analyzeBtn) {
-            let isAnalyzing = false;
-            analyzeBtn.addEventListener('click', async () => {
-                if (isAnalyzing) return;
-                isAnalyzing = true;
-
-                const textarea = container.querySelector('#query-input');
-                const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
-                const queryToAnalyze = selectedText.trim() ? selectedText : textarea.value;
-
-                if (!queryToAnalyze.trim()) {
-                    isAnalyzing = false;
-                    Dialog.alert('Please enter a query to analyze.', 'Info');
-                    return;
-                }
-
-                const originalHTML = analyzeBtn.innerHTML;
-                try {
-                    analyzeBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span>';
-                    analyzeBtn.classList.add('opacity-70');
-
-                    const sqlString = queryToAnalyze.trim();
-
-                    // Show Query Analyzer Modal
-                    const { showQueryAnalyzerModal } = await import('../UI/QueryAnalyzerModal.js');
-                    showQueryAnalyzerModal(sqlString);
-
-                } catch (error) {
-                    Dialog.alert(`Query analysis failed: ${String(error).replace(/\n/g, '<br>')}`, 'Analysis Error');
-                } finally {
-                    analyzeBtn.innerHTML = originalHTML;
-                    analyzeBtn.classList.remove('opacity-70');
-                    isAnalyzing = false;
                 }
             });
         }

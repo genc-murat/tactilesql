@@ -2,6 +2,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { ThemeManager } from '../../utils/ThemeManager.js';
 import { Dialog } from '../UI/Dialog.js';
+import { AiService } from '../../utils/AiService.js';
 
 // Helper to escape HTML special characters for GTK markup compatibility
 const escapeHtml = (str) => {
@@ -208,6 +209,45 @@ export function QueryProfiler() {
         `;
     };
 
+    // AI Analysis handler
+    const handleAiAnalysis = async (metrics) => {
+        const analyzeBtn = container.querySelector('#analyze-ai-btn');
+        const analyzeIcon = analyzeBtn.querySelector('.material-symbols-outlined');
+        const resultContainer = container.querySelector('#ai-analysis-result');
+        const resultText = resultContainer.querySelector('#ai-analysis-text');
+
+        const provider = localStorage.getItem('ai_provider') || 'openai';
+        const apiKey = localStorage.getItem(`${provider}_api_key`) || '';
+        const model = localStorage.getItem(`${provider}_model`);
+
+        if (!apiKey && provider !== 'local') {
+            Dialog.alert(`Please configure your ${provider.toUpperCase()} API Key in Settings first.`);
+            return;
+        }
+
+        try {
+            analyzeBtn.disabled = true;
+            analyzeBtn.classList.add('opacity-50');
+            analyzeIcon.classList.add('animate-spin');
+            analyzeIcon.textContent = 'progress_activity';
+
+            resultContainer.classList.remove('hidden');
+            resultText.innerHTML = '<span class="italic opacity-50">AI is analyzing metrics...</span>';
+
+            const analysis = await AiService.analyzeQueryProfile(provider, apiKey, model, metrics);
+
+            resultText.innerHTML = analysis.split('\n').map(line => `<div>${line}</div>`).join('');
+
+        } catch (e) {
+            resultText.innerHTML = `<span class="text-red-400">Analysis failed: ${e.message}</span>`;
+        } finally {
+            analyzeBtn.disabled = false;
+            analyzeBtn.classList.remove('opacity-50');
+            analyzeIcon.classList.remove('animate-spin');
+            analyzeIcon.textContent = 'psychology';
+        }
+    };
+
     const renderProfileContent = () => {
         const contentDiv = container.querySelector('#profiler-content');
         if (!contentDiv) return;
@@ -225,16 +265,23 @@ export function QueryProfiler() {
         const { duration, rowsReturned, query } = profileData;
 
         // Calculate metrics
-        const rowsExamined = getStatusDiff('Handler_read_rnd_next') + getStatusDiff('Handler_read_next') + getStatusDiff('Handler_read_first') + getStatusDiff('Handler_read_key');
-        const bytesReceived = getStatusDiff('Bytes_received');
-        const bytesSent = getStatusDiff('Bytes_sent');
-        const tmpTables = getStatusDiff('Created_tmp_tables');
-        const tmpDiskTables = getStatusDiff('Created_tmp_disk_tables');
-        const sortMerge = getStatusDiff('Sort_merge_passes');
-        const sortRows = getStatusDiff('Sort_rows');
-        const selectScan = getStatusDiff('Select_scan');
-        const selectFullJoin = getStatusDiff('Select_full_join');
-        const lockTime = getStatusDiff('Table_locks_waited');
+        const metrics = {
+            query,
+            duration,
+            rowsReturned,
+            rowsExamined: getStatusDiff('Handler_read_rnd_next') + getStatusDiff('Handler_read_next') + getStatusDiff('Handler_read_first') + getStatusDiff('Handler_read_key'),
+            bytesReceived: getStatusDiff('Bytes_received'),
+            bytesSent: getStatusDiff('Bytes_sent'),
+            tmpTables: getStatusDiff('Created_tmp_tables'),
+            tmpDiskTables: getStatusDiff('Created_tmp_disk_tables'),
+            sortMerge: getStatusDiff('Sort_merge_passes'),
+            sortRows: getStatusDiff('Sort_rows'),
+            selectScan: getStatusDiff('Select_scan'),
+            selectFullJoin: getStatusDiff('Select_full_join'),
+            lockTime: getStatusDiff('Table_locks_waited'),
+        };
+
+        const { rowsExamined, bytesSent, bytesReceived, tmpDiskTables, tmpTables, sortMerge, sortRows, selectFullJoin, selectScan, lockTime } = metrics;
 
         // Performance score calculation
         let score = 100;
@@ -272,6 +319,21 @@ export function QueryProfiler() {
                     </div>
                     <div class="text-[10px] ${labelColor} truncate font-mono mt-0.5" title="${escapeHtml(query)}">${escapeHtml(query) || 'Unknown Query'}</div>
                 </div>
+
+                <!-- AI Analysis Button -->
+                <button id="analyze-ai-btn" class="shrink-0 p-2 rounded-lg bg-mysql-teal/10 hover:bg-mysql-teal/20 text-mysql-teal transition-all group flex flex-col items-center gap-0.5 border border-mysql-teal/20" title="AI Performance Analysis">
+                    <span class="material-symbols-outlined text-[18px]">psychology</span>
+                    <span class="text-[8px] font-black uppercase">Analyze</span>
+                </button>
+            </div>
+
+            <!-- AI Analysis Result Area -->
+            <div id="ai-analysis-result" class="hidden mb-3 p-2 rounded-lg border border-mysql-teal/20 bg-mysql-teal/5 text-[10px] ${valueColor} animate-slideDown">
+                <div class="flex items-center gap-1.5 mb-1.5 font-black uppercase tracking-widest text-mysql-teal">
+                    <span class="material-symbols-outlined text-[14px]">auto_awesome</span>
+                    AI Analysis
+                </div>
+                <div id="ai-analysis-text" class="space-y-1 leading-relaxed"></div>
             </div>
 
             <!-- Primary Metrics Grid (Compact 2x2) -->
@@ -352,6 +414,9 @@ export function QueryProfiler() {
                 </div>
             </details>
         `;
+
+        // Bind AI analysis button
+        container.querySelector('#analyze-ai-btn')?.addEventListener('click', () => handleAiAnalysis(metrics));
     };
 
     const renderMonitorContent = () => {
@@ -596,14 +661,18 @@ export function QueryProfiler() {
     });
 
     window.addEventListener('tactilesql:query-result', async (e) => {
-        if (e.detail) {
+        if (e.detail && e.detail.length > 0) {
             await captureStatusAfter();
+            const mainResult = e.detail[0];
             updateProfile({
-                query: e.detail.query || 'Query',
-                rowsReturned: e.detail.rows?.length || 0,
-                duration: e.detail.duration || 0
+                query: mainResult.query || 'Query',
+                rowsReturned: mainResult.rows?.length || 0,
+                duration: mainResult.duration || 0
             });
-            if (isVisible && activeTab === 'profile') render();
+
+            // Auto-show when result arrives if not already visible
+            if (!isVisible) show();
+            else if (activeTab === 'profile') render();
         }
     });
 

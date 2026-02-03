@@ -20,6 +20,46 @@ export class AiService {
         }
     }
 
+    static async analyzeQueryProfile(provider, apiKey, model, metrics) {
+        const prompt = `
+Please analyze these SQL execution metrics and explain the performance characteristics in a concise, developer-friendly way.
+If there are issues (like slow duration, high rows examined vs returned, or disk temp tables), explain WHY they happened and HOW to fix them.
+
+METRICS:
+Query: ${metrics.query}
+Duration: ${metrics.duration}ms
+Rows Returned: ${metrics.rowsReturned}
+Rows Examined: ${metrics.rowsExamined}
+Tmp Tables: ${metrics.tmpTables}
+Tmp Disk Tables: ${metrics.tmpDiskTables}
+Full Join Scans: ${metrics.selectFullJoin}
+Full Table Scans: ${metrics.selectScan}
+Lock Wait Time: ${metrics.lockTime}ms
+Network Sent/Received: ${metrics.bytesSent}/${metrics.bytesReceived} bytes
+
+Format your response as a short, bulleted technical analysis. Max 150 words.
+`;
+
+        switch (provider) {
+            case 'openai':
+                return await this.callOpenAI(apiKey, model, prompt, "Execution Analysis Context");
+            case 'gemini':
+                return await this.callGemini(apiKey, model, prompt, "Execution Analysis Context");
+            case 'anthropic':
+                return await this.callAnthropic(apiKey, model, prompt, "Execution Analysis Context");
+            case 'deepseek':
+                return await this.callDeepSeek(apiKey, model, prompt, "Execution Analysis Context");
+            case 'groq':
+                return await this.callGroq(apiKey, model, prompt, "Execution Analysis Context");
+            case 'mistral':
+                return await this.callMistral(apiKey, model, prompt, "Execution Analysis Context");
+            case 'local':
+                return await this.callLocalAI(apiKey, model, prompt, "Execution Analysis Context");
+            default:
+                throw new Error(`Unsupported AI provider: ${provider}`);
+        }
+    }
+
     static async callOpenAI(apiKey, model, prompt, context) {
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
