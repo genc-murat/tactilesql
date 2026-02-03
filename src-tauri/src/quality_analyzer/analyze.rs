@@ -208,6 +208,7 @@ pub async fn analyze_table_mysql(
         column_metrics,
         issues,
         schema_snapshot_id: None,
+        schema_name: Some(database.to_string()),
     })
 }
 
@@ -402,5 +403,6 @@ pub async fn analyze_table_postgres(
         column_metrics,
         issues,
         schema_snapshot_id: None,
+        schema_name: Some(schema.to_string()),
     })
 }

@@ -64,7 +64,7 @@ pub async fn run_quality_analysis(
          }
     };
     
-    // 3. Inject Snapshot ID into Report
+    // 3. Inject Snapshot ID and Schema Name into Report
     let mut report = report;
     report.schema_snapshot_id = schema_snapshot_id;
 

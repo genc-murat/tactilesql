@@ -141,8 +141,8 @@ export function QualityDashboard() {
         try {
             const reports = await QualityAnalyzerApi.getReports(state.selectedConnectionId);
             state.trends = reports
-                .filter(r => r.table_name === tableName)
-                .sort((a, b) => new Date(a.analyzed_at) - new Date(b.analyzed_at));
+                .filter(r => r.table_name === tableName && (!r.schema_name || r.schema_name === state.selectedDatabase))
+                .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
             if (state.trends.length > 0 && !state.currentReport) {
                 state.currentReport = state.trends[state.trends.length - 1];
@@ -356,7 +356,7 @@ export function QualityDashboard() {
                 </div>
             </div>
              <div class="text-[10px] ${classes.text.secondary} mt-4 text-center">
-                Analyzed ${new Date(report.analyzed_at).toLocaleString()}
+                Analyzed ${new Date(report.timestamp).toLocaleString()}
             </div>
         `;
         grid.appendChild(scoreCard);
@@ -490,7 +490,7 @@ export function QualityDashboard() {
         const padding = 40;
 
         const dataPoints = data.map(d => ({
-            date: new Date(d.analyzed_at),
+            date: new Date(d.timestamp),
             score: d.overall_score
         }));
 
