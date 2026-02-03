@@ -83,6 +83,13 @@ let tabs = savedState?.tabs || [
 ];
 let activeTabId = savedState?.activeTabId || (tabs[0]?.id || '1');
 
+// Repair Bar State
+let currentRepairSql = '';
+let currentRepairError = '';
+let isRepairing = false;
+let repairBarVisible = false;
+let repairPreviewVisible = false;
+
 // Ensure at least one tab exists if something went wrong
 if (tabs.length === 0) {
     tabs = [{ id: '1', title: 'Query 1', content: '', pinned: false, connectionName: '', connectionColor: '' }];
@@ -583,7 +590,7 @@ export function QueryEditor() {
     };
 
     // --- Render ---
-    const render = () => {
+    function render() {
         const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0];
         const sortedTabs = getSortedTabs();
         const visibleTabs = sortedTabs.slice(0, maxVisibleTabs);
@@ -686,6 +693,50 @@ export function QueryEditor() {
                     <textarea id="query-input" class="relative w-full h-full bg-transparent border-none ${isLight ? 'text-transparent' : (isOceanic ? 'text-transparent' : 'text-transparent')} ${isLight ? 'caret-gray-800' : (isOceanic ? 'caret-white' : 'caret-white')} font-mono text-[14px] leading-[22px] focus:ring-0 resize-none outline-none custom-scrollbar p-0 z-10 placeholder:text-gray-600/50" spellcheck="false" placeholder="Enter your SQL query here... (Ctrl+Space for suggestions)">${activeTab ? activeTab.content : ''}</textarea>
                 </div>
             </div>
+
+            <!-- Inline AI Repair Bar (Hidden by default) -->
+            <div id="repair-bar" class="${repairBarVisible ? 'h-16 opacity-100' : 'hidden h-0 opacity-0'} overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)]">
+                <div class="mx-4 mt-2 p-3 rounded-xl border flex items-center justify-between gap-4 ${isLight ? 'bg-rose-50 border-rose-100' : (isDawn ? 'bg-[#fff1f0] border-[#f2e9e1]' : (isOceanic ? 'bg-[#3b4252]/50 border-rose-500/20' : 'bg-rose-500/5 border-rose-500/20'))}">
+                    <div class="flex items-center gap-3 overflow-hidden">
+                        <div class="w-8 h-8 rounded-lg bg-rose-500/10 flex items-center justify-center shrink-0">
+                            <span class="material-symbols-outlined text-rose-500 text-lg">error</span>
+                        </div>
+                        <div class="overflow-hidden">
+                            <div class="text-[10px] font-black uppercase tracking-tighter text-rose-500">Execution Error</div>
+                            <div id="repair-error-msg" class="text-xs font-mono truncate ${isLight ? 'text-gray-700' : 'text-gray-300'}">${currentRepairError}</div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0">
+                        <button id="repair-cancel" class="px-3 py-1.5 rounded-lg text-xs font-bold ${isLight ? 'text-gray-500 hover:bg-black/5' : 'text-gray-400 hover:bg-white/5'} transition-colors">Dismiss</button>
+                        <button id="repair-ai-fix" class="px-4 py-1.5 bg-rose-500 text-white rounded-lg text-xs font-black uppercase tracking-wider hover:brightness-110 active:scale-95 transition-all flex items-center gap-2 shadow-lg shadow-rose-500/20">
+                            <span class="material-symbols-outlined text-sm">auto_fix_high</span>
+                            Fix with AI
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Fix Preview Bar (Hidden by default) -->
+            <div id="repair-preview-bar" class="${repairPreviewVisible ? 'h-16 opacity-100' : 'hidden h-0 opacity-0'} overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)]">
+                <div class="mx-4 mt-2 p-3 rounded-xl border flex items-center justify-between gap-4 ${isLight ? 'bg-emerald-50 border-emerald-100' : (isDawn ? 'bg-[#f0f9f4] border-[#f2e9e1]' : (isOceanic ? 'bg-[#3b4252]/50 border-emerald-500/20' : 'bg-emerald-500/5 border-emerald-500/20'))}">
+                    <div class="flex items-center gap-3 overflow-hidden">
+                        <div class="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
+                            <span class="material-symbols-outlined text-emerald-500 text-lg animate-pulse">check_circle</span>
+                        </div>
+                        <div>
+                            <div class="text-[10px] font-black uppercase tracking-tighter text-emerald-500">AI Fix Proposed</div>
+                            <div class="text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-400'}">Review the changes in the editor or click Apply</div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0">
+                        <button id="repair-preview-cancel" class="px-3 py-1.5 rounded-lg text-xs font-bold ${isLight ? 'text-gray-500 hover:bg-black/5' : 'text-gray-400 hover:bg-white/5'} transition-colors">Discard</button>
+                        <button id="repair-apply" class="px-4 py-1.5 bg-emerald-500 text-white rounded-lg text-xs font-black uppercase tracking-wider hover:brightness-110 active:scale-95 transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/20">
+                            <span class="material-symbols-outlined text-sm">magic_button</span>
+                            Apply Fix
+                        </button>
+                    </div>
+                </div>
+            </div>
         `;
 
 
@@ -721,7 +772,8 @@ export function QueryEditor() {
         });
 
         attachEvents();
-    };
+        attachRepairEvents();
+    }
 
     const pickBestColumns = (schema, max = 4) => {
         const cols = Array.isArray(schema) ? schema : [];
@@ -1098,7 +1150,7 @@ export function QueryEditor() {
         });
     };
 
-    const attachEvents = async () => {
+    async function attachEvents() {
         // Tab switching
         container.querySelectorAll('.tab-item').forEach(item => {
             item.addEventListener('click', (e) => {
@@ -1771,18 +1823,9 @@ export function QueryEditor() {
                         error: error.message || error.toString(),
                     });
 
-                    // Offering AI Fix
-                    const fixResult = await Dialog.confirm(
-                        `Query failed: ${error.message || error}\n\nWould you like AI to analyze and fix this?`,
-                        'Query Execution Error',
-                        'Fix with AI'
-                    );
-
-                    if (fixResult) {
-                        handleAiFix(editorContent, error.message || error.toString());
-                    } else {
-                        render(); // Show execution time even on error
-                    }
+                    // Offering Inline AI Fix instead of Modal
+                    showRepairBar(error.message || error.toString(), editorContent);
+                    render(); // Show execution time even on error
                 } finally {
                     executeBtn.innerHTML = originalHTML;
                     executeBtn.classList.remove('opacity-70', 'cursor-wait');
@@ -2061,7 +2104,7 @@ export function QueryEditor() {
             // Initial Load
             loadDatabases();
         }
-    };
+    }
 
     const createNewTabWithQuery = (query) => {
         const newId = Date.now().toString();
@@ -2254,6 +2297,233 @@ export function QueryEditor() {
             });
     };
 
+
+    // --- AI Assistance Handlers ---
+    const getAiConfig = () => {
+        const provider = localStorage.getItem('ai_provider') || 'openai';
+        const apiKey = localStorage.getItem(`${provider}_api_key`) || '';
+        const model = localStorage.getItem(`${provider}_model`) ||
+            (provider === 'gemini' ? 'gemini-3.0-flash' :
+                provider === 'anthropic' ? 'claude-3-5-sonnet-20241022' :
+                    provider === 'deepseek' ? 'deepseek-chat' : 'gpt-4o');
+        return { provider, apiKey, model };
+    };
+
+    const handleAiExplain = async () => {
+        try {
+            const textarea = container.querySelector('#query-input');
+            const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
+            const sql = selectedText.trim() ? selectedText : textarea.value;
+
+            if (!sql.trim()) return Dialog.alert('Please enter a query to explain.', 'Info');
+
+            const { provider, apiKey, model } = getAiConfig();
+            if (!apiKey && provider !== 'local') return Dialog.alert(`Please configure your ${provider} API key in Settings first.`, 'AI Config Missing');
+
+            // Show loading
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 bg-black/20 backdrop-blur-[1px] z-[10001] flex items-center justify-center';
+            overlay.innerHTML = '<div class="bg-mysql-teal/20 p-4 rounded-xl backdrop-blur-md border border-mysql-teal/30 flex items-center gap-3"><span class="material-symbols-outlined animate-spin text-mysql-teal">sync</span><span class="text-xs font-bold text-mysql-teal uppercase tracking-widest">AI is Thinking...</span></div>';
+            document.body.appendChild(overlay);
+
+            try {
+                const context = await AskAiModal.gatherSchemaContext();
+                const explanation = await AiService.explainQuery(provider, apiKey, model, sql, context);
+
+                // Remove loading BEFORE showing the result modal
+                overlay.remove();
+
+                await AiAssistanceModal.show("Query Explanation", explanation);
+            } finally {
+                if (overlay && overlay.parentNode) overlay.remove();
+            }
+        } catch (error) {
+            Dialog.alert(`AI Explain failed: ${error.message}`, 'AI Error');
+        }
+    };
+
+    const handleAiOptimize = async () => {
+        try {
+            const textarea = container.querySelector('#query-input');
+            const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
+            const sql = selectedText.trim() ? selectedText : textarea.value;
+
+            if (!sql.trim()) return Dialog.alert('Please enter a query to optimize.', 'Info');
+
+            const { provider, apiKey, model } = getAiConfig();
+            if (!apiKey && provider !== 'local') return Dialog.alert(`Please configure your ${provider} API key in Settings first.`, 'AI Config Missing');
+
+            // Show loading
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 bg-black/20 backdrop-blur-[1px] z-[10001] flex items-center justify-center';
+            overlay.innerHTML = '<div class="bg-mysql-teal/20 p-4 rounded-xl backdrop-blur-md border border-mysql-teal/30 flex items-center gap-3"><span class="material-symbols-outlined animate-spin text-mysql-teal">sync</span><span class="text-xs font-bold text-mysql-teal uppercase tracking-widest">AI Optimizing...</span></div>';
+            document.body.appendChild(overlay);
+
+            try {
+                const context = await AskAiModal.gatherSchemaContext();
+                const result = await AiService.optimizeQuery(provider, apiKey, model, sql, context);
+
+                // Remove loading BEFORE showing the result modal
+                overlay.remove();
+
+                const optimizedSql = await AiAssistanceModal.show("Optimization Suggestions", result, { showApply: true });
+                if (optimizedSql) {
+                    const activeTab = tabs.find(t => t.id === activeTabId);
+                    if (activeTab) {
+                        if (selectedText.trim()) {
+                            // Update content with part replacement
+                            const text = textarea.value;
+                            const newContent = text.substring(0, textarea.selectionStart) +
+                                optimizedSql +
+                                text.substring(textarea.selectionEnd);
+                            activeTab.content = newContent;
+                        } else {
+                            activeTab.content = optimizedSql;
+                        }
+                        saveState();
+                        render();
+
+                        // Scroll to sync
+                        const newTextarea = container.querySelector('#query-input');
+                        if (newTextarea) {
+                            newTextarea.dispatchEvent(new Event('input'));
+                        }
+                    }
+                }
+            } finally {
+                if (overlay && overlay.parentNode) overlay.remove();
+            }
+        } catch (error) {
+            Dialog.alert(`AI Optimization failed: ${error.message}`, 'AI Error');
+        }
+    };
+
+    const handleAiFix = async (sql, errorMsg) => {
+        if (isRepairing) return;
+        isRepairing = true;
+
+        try {
+            const { provider, apiKey, model } = getAiConfig();
+            if (!apiKey && provider !== 'local') return Dialog.alert(`Please configure your ${provider} API key in Settings first.`, 'AI Config Missing');
+
+            // Find the repair UI elements
+            const aiFixBtn = container.querySelector('#repair-ai-fix');
+            const originalBtnHTML = aiFixBtn.innerHTML;
+            aiFixBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span> REPAIRING...';
+            aiFixBtn.disabled = true;
+
+            try {
+                const context = await AskAiModal.gatherSchemaContext();
+                const result = await AiService.fixQueryError(provider, apiKey, model, sql, errorMsg, context);
+
+                // Extract SQL
+                const fixedSql = AiAssistanceModal.extractSqlFromMarkdown(result);
+                if (fixedSql) {
+                    currentRepairSql = fixedSql;
+
+                    // Hide repair bar, show preview bar
+                    hideRepairBar();
+                    showRepairPreviewBar();
+
+                    // Temporarily show the fixed SQL in editor (without saving yet)
+                    const textarea = container.querySelector('#query-input');
+                    if (textarea) {
+                        textarea.value = fixedSql;
+                        textarea.dispatchEvent(new Event('input'));
+                    }
+                } else {
+                    // If no SQL block, show modal as fallback
+                    await AiAssistanceModal.show("AI Query Repair", result, { showApply: true });
+                }
+            } finally {
+                aiFixBtn.innerHTML = originalBtnHTML;
+                aiFixBtn.disabled = false;
+            }
+        } catch (error) {
+            Dialog.alert(`AI Fix failed: ${error.message}`, 'AI Error');
+        } finally {
+            isRepairing = false;
+        }
+    };
+
+    // --- Repair Bar UI Helpers ---
+    const showRepairBar = (errorMsg, sql) => {
+        currentRepairError = errorMsg;
+        currentRepairSql = sql;
+        repairBarVisible = true;
+
+        const bar = container.querySelector('#repair-bar');
+        const msg = container.querySelector('#repair-error-msg');
+        if (bar && msg) {
+            msg.textContent = errorMsg;
+            bar.classList.remove('hidden');
+            setTimeout(() => {
+                bar.classList.remove('h-0', 'opacity-0');
+                bar.classList.add('h-16', 'opacity-100');
+            }, 10);
+        }
+    }
+
+    const hideRepairBar = () => {
+        repairBarVisible = false;
+        const bar = container.querySelector('#repair-bar');
+        if (bar) {
+            bar.classList.remove('h-16', 'opacity-100');
+            bar.classList.add('h-0', 'opacity-0');
+            setTimeout(() => bar.classList.add('hidden'), 300);
+        }
+    }
+
+    const showRepairPreviewBar = () => {
+        repairPreviewVisible = true;
+        const bar = container.querySelector('#repair-preview-bar');
+        if (bar) {
+            bar.classList.remove('hidden');
+            setTimeout(() => {
+                bar.classList.remove('h-0', 'opacity-0');
+                bar.classList.add('h-16', 'opacity-100');
+            }, 10);
+        }
+    }
+
+    const hideRepairPreviewBar = () => {
+        repairPreviewVisible = false;
+        const bar = container.querySelector('#repair-preview-bar');
+        if (bar) {
+            bar.classList.remove('h-16', 'opacity-100');
+            bar.classList.add('h-0', 'opacity-0');
+            setTimeout(() => bar.classList.add('hidden'), 300);
+        }
+    }
+
+    // --- Attach Repair Events ---
+    function attachRepairEvents() {
+        container.querySelector('#repair-cancel')?.addEventListener('click', hideRepairBar);
+        container.querySelector('#repair-ai-fix')?.addEventListener('click', () => {
+            handleAiFix(currentRepairSql, currentRepairError);
+        });
+
+        container.querySelector('#repair-preview-cancel')?.addEventListener('click', () => {
+            hideRepairPreviewBar();
+            // Restore original SQL if possible (re-switching tabs is the easiest way to restore)
+            render();
+        });
+
+        container.querySelector('#repair-apply')?.addEventListener('click', () => {
+            const activeTab = tabs.find(t => t.id === activeTabId);
+            if (activeTab && currentRepairSql) {
+                activeTab.content = currentRepairSql;
+                saveState();
+                hideRepairPreviewBar();
+                toastSuccess('AI Fix applied!');
+                render();
+            }
+        });
+    }
+
+    // Call it after render
+    // Removed standalone setTimeout, now handled inside attachEvents
+
     // Initial Render
     render();
     loadDatabasesForAutocomplete();
@@ -2362,146 +2632,6 @@ export function QueryEditor() {
             }
         }, 100);
     });
-
-    // --- AI Assistance Handlers ---
-    const getAiConfig = () => {
-        const provider = localStorage.getItem('ai_provider') || 'openai';
-        const apiKey = localStorage.getItem(`${provider}_api_key`) || '';
-        const model = localStorage.getItem(`${provider}_model`) ||
-            (provider === 'gemini' ? 'gemini-3.0-flash' :
-                provider === 'anthropic' ? 'claude-3-5-sonnet-20241022' :
-                    provider === 'deepseek' ? 'deepseek-chat' : 'gpt-4o');
-        return { provider, apiKey, model };
-    };
-
-    const handleAiExplain = async () => {
-        try {
-            const textarea = container.querySelector('#query-input');
-            const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
-            const sql = selectedText.trim() ? selectedText : textarea.value;
-
-            if (!sql.trim()) return Dialog.alert('Please enter a query to explain.', 'Info');
-
-            const { provider, apiKey, model } = getAiConfig();
-            if (!apiKey && provider !== 'local') return Dialog.alert(`Please configure your ${provider} API key in Settings first.`, 'AI Config Missing');
-
-            // Show loading
-            const overlay = document.createElement('div');
-            overlay.className = 'fixed inset-0 bg-black/20 backdrop-blur-[1px] z-[10001] flex items-center justify-center';
-            overlay.innerHTML = '<div class="bg-mysql-teal/20 p-4 rounded-xl backdrop-blur-md border border-mysql-teal/30 flex items-center gap-3"><span class="material-symbols-outlined animate-spin text-mysql-teal">sync</span><span class="text-xs font-bold text-mysql-teal uppercase tracking-widest">AI is Thinking...</span></div>';
-            document.body.appendChild(overlay);
-
-            try {
-                const context = await AskAiModal.gatherSchemaContext();
-                const explanation = await AiService.explainQuery(provider, apiKey, model, sql, context);
-
-                // Remove loading BEFORE showing the result modal
-                overlay.remove();
-
-                await AiAssistanceModal.show("Query Explanation", explanation);
-            } finally {
-                if (overlay && overlay.parentNode) overlay.remove();
-            }
-        } catch (error) {
-            Dialog.alert(`AI Explain failed: ${error.message}`, 'AI Error');
-        }
-    };
-
-    const handleAiOptimize = async () => {
-        try {
-            const textarea = container.querySelector('#query-input');
-            const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
-            const sql = selectedText.trim() ? selectedText : textarea.value;
-
-            if (!sql.trim()) return Dialog.alert('Please enter a query to optimize.', 'Info');
-
-            const { provider, apiKey, model } = getAiConfig();
-            if (!apiKey && provider !== 'local') return Dialog.alert(`Please configure your ${provider} API key in Settings first.`, 'AI Config Missing');
-
-            // Show loading
-            const overlay = document.createElement('div');
-            overlay.className = 'fixed inset-0 bg-black/20 backdrop-blur-[1px] z-[10001] flex items-center justify-center';
-            overlay.innerHTML = '<div class="bg-mysql-teal/20 p-4 rounded-xl backdrop-blur-md border border-mysql-teal/30 flex items-center gap-3"><span class="material-symbols-outlined animate-spin text-mysql-teal">sync</span><span class="text-xs font-bold text-mysql-teal uppercase tracking-widest">AI Optimizing...</span></div>';
-            document.body.appendChild(overlay);
-
-            try {
-                const context = await AskAiModal.gatherSchemaContext();
-                const result = await AiService.optimizeQuery(provider, apiKey, model, sql, context);
-
-                // Remove loading BEFORE showing the result modal
-                overlay.remove();
-
-                const optimizedSql = await AiAssistanceModal.show("Optimization Suggestions", result, { showApply: true });
-                if (optimizedSql) {
-                    const activeTab = tabs.find(t => t.id === activeTabId);
-                    if (activeTab) {
-                        if (selectedText.trim()) {
-                            // Update content with part replacement
-                            const text = textarea.value;
-                            const newContent = text.substring(0, textarea.selectionStart) +
-                                optimizedSql +
-                                text.substring(textarea.selectionEnd);
-                            activeTab.content = newContent;
-                        } else {
-                            activeTab.content = optimizedSql;
-                        }
-                        saveState();
-                        render();
-
-                        // Scroll to sync
-                        const newTextarea = container.querySelector('#query-input');
-                        if (newTextarea) {
-                            newTextarea.dispatchEvent(new Event('input'));
-                        }
-                    }
-                }
-            } finally {
-                if (overlay && overlay.parentNode) overlay.remove();
-            }
-        } catch (error) {
-            Dialog.alert(`AI Optimization failed: ${error.message}`, 'AI Error');
-        }
-    };
-
-    const handleAiFix = async (sql, errorMsg) => {
-        try {
-            const { provider, apiKey, model } = getAiConfig();
-            if (!apiKey && provider !== 'local') return Dialog.alert(`Please configure your ${provider} API key in Settings first.`, 'AI Config Missing');
-
-            // Show loading
-            const overlay = document.createElement('div');
-            overlay.className = 'fixed inset-0 bg-black/20 backdrop-blur-[1px] z-[10001] flex items-center justify-center';
-            overlay.innerHTML = '<div class="bg-mysql-teal/20 p-4 rounded-xl backdrop-blur-md border border-mysql-teal/30 flex items-center gap-3"><span class="material-symbols-outlined animate-spin text-mysql-teal">sync</span><span class="text-xs font-bold text-mysql-teal uppercase tracking-widest">AI Repairing Query...</span></div>';
-            document.body.appendChild(overlay);
-
-            try {
-                const context = await AskAiModal.gatherSchemaContext();
-                const result = await AiService.fixQueryError(provider, apiKey, model, sql, errorMsg, context);
-
-                // Remove loading BEFORE showing the result modal
-                overlay.remove();
-
-                const fixedSql = await AiAssistanceModal.show("AI Query Repair", result, { showApply: true });
-                if (fixedSql) {
-                    const activeTab = tabs.find(t => t.id === activeTabId);
-                    if (activeTab) {
-                        activeTab.content = fixedSql;
-                        saveState();
-                        render();
-
-                        const newTextarea = container.querySelector('#query-input');
-                        if (newTextarea) {
-                            newTextarea.dispatchEvent(new Event('input'));
-                        }
-                    }
-                }
-            } finally {
-                if (overlay && overlay.parentNode) overlay.remove();
-            }
-        } catch (error) {
-            Dialog.alert(`AI Fix failed: ${error.message}`, 'AI Error');
-        }
-    };
 
     return container;
 }
