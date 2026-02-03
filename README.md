@@ -183,6 +183,7 @@ npx tauri build
 - **Visual Graph**: Interactive node-link diagram of database dependencies.
 - **Impact Analysis**: Identify downstream objects affected by a proposed change.
 - **Quality Overlay**: Color-coded graph nodes based on data quality scores.
+- **Mermaid Export**: Export the dependency graph as a mermaid diagram for external documentation.
 
 ## Backend Commands (Tauri)
 
