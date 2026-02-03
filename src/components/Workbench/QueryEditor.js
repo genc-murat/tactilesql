@@ -117,7 +117,7 @@ export function QueryEditor() {
     // Local State
     let lastExecutionTime = null;
     let estimatedExecutionTime = null;
-    const maxVisibleTabs = 5; // Fixed: always show 5 tabs max
+    let maxVisibleTabs = 5; // Default start
 
     // Autocomplete state
     let suggestions = [];
@@ -2178,8 +2178,38 @@ export function QueryEditor() {
     // Register handlers on mount
     registerShortcutHandlers();
 
+    // --- Dynamic Tab Visibility ---
+    const updateVisibleTabs = () => {
+        if (!container.parentElement) return;
+
+        // Measure available width
+        const totalWidth = container.clientWidth;
+        if (totalWidth === 0) return;
+
+        // Constants for calculation
+        const avgTabWidth = 170; // Assumed average width (max is 180px + gap)
+        const reservedSpace = 100; // Space for new tab button + overflow button + margins
+
+        const availableForTabs = totalWidth - reservedSpace;
+        const calculatedMax = Math.max(1, Math.floor(availableForTabs / avgTabWidth));
+
+        if (calculatedMax !== maxVisibleTabs) {
+            maxVisibleTabs = calculatedMax;
+            render();
+        }
+    };
+
+    const resizeObserver = new ResizeObserver(() => {
+        // Debounce slightly to prevent thrashing
+        requestAnimationFrame(updateVisibleTabs);
+    });
+
+    // Start observing
+    resizeObserver.observe(container);
+
     // Patch for cleanup
     container.onUnmount = () => {
+        resizeObserver.disconnect();
         window.removeEventListener('themechange', onThemeChange);
         // Unregister handlers
         ['executeQuery', 'newTab', 'closeTab', 'nextTab', 'prevTab',
