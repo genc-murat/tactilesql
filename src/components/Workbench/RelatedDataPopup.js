@@ -2,7 +2,7 @@ import { ResultsTable } from './ResultsTable.js';
 import { Dialog } from '../UI/Dialog.js';
 import { ThemeManager } from '../../utils/ThemeManager.js';
 
-export function RelatedDataPopup({ tableName, matchedColumn, matchedValue, database }) {
+export function RelatedDataPopup({ tableName, matchedColumn, matchedValue, database, position }) {
     const theme = ThemeManager.getCurrentTheme();
     const isLight = theme === 'light';
     const isDawn = theme === 'dawn';
@@ -10,46 +10,141 @@ export function RelatedDataPopup({ tableName, matchedColumn, matchedValue, datab
 
     // Create container overlay
     const overlay = document.createElement('div');
-    overlay.className = "fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in";
+    overlay.className = "fixed inset-0 z-[60] flex items-center justify-center bg-transparent";
 
     // Modal Container
     const modal = document.createElement('div');
-    modal.className = `w-[800px] max-w-[90vw] h-[600px] max-h-[80vh] flex flex-col rounded-xl shadow-2xl overflow-hidden transform transition-all scale-95 opacity-0 animate-scale-in ${isLight ? 'bg-white' : (isDawn ? 'bg-[#faf4ed]' : (isOceanic ? 'bg-ocean-bg border border-ocean-border' : 'bg-[#16191e] border border-white/10'))
-        }`;
+    // Default classes
+    let modalClasses = `flex flex-col rounded-xl shadow-2xl overflow-hidden transform transition-all scale-95 opacity-0 animate-scale-in ${isLight ? 'bg-white' : (isDawn ? 'bg-[#faf4ed]' : (isOceanic ? 'bg-ocean-bg border border-ocean-border' : 'bg-[#16191e] border border-white/10'))}`;
 
-    // Header
+    // Size constants
+    const WIDTH = 900;
+    const MAX_HEIGHT = 200; // Minimal height requested ("tek satir olacagi icin") - reduced to 200
+
+    if (position) {
+        // Absolute positioning logic
+        modal.style.position = 'absolute';
+        modal.style.width = `${WIDTH}px`;
+        modal.style.height = 'auto';
+        modal.style.maxHeight = `${MAX_HEIGHT}px`;
+        modal.className = modalClasses;
+
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        const OFFSET = 20;
+
+        // Horizontal positioning
+        if (position.x + WIDTH + OFFSET > viewportWidth) {
+            // Align right edge to cursor - offset
+            const right = viewportWidth - position.x + OFFSET;
+            modal.style.right = `${right}px`;
+            modal.style.left = 'auto';
+        } else {
+            const left = position.x + OFFSET;
+            modal.style.left = `${left}px`;
+            modal.style.right = 'auto';
+        }
+
+        // Vertical positioning
+        const estimatedHeight = 150; // Approximated for 1 row
+        if (position.y + estimatedHeight + OFFSET > viewportHeight) {
+            // Place ABOVE cursor
+            const bottom = viewportHeight - position.y + OFFSET;
+            modal.style.bottom = `${bottom}px`;
+            modal.style.top = 'auto';
+        } else {
+            // Place BELOW cursor
+            const top = position.y + OFFSET;
+            modal.style.top = `${top}px`;
+            modal.style.bottom = 'auto';
+        }
+
+    } else {
+        // Fallback to centered
+        modalClasses += ` w-[800px] max-w-[90vw] h-auto max-h-[80vh]`;
+        modal.className = modalClasses;
+        overlay.classList.add('bg-black/50', 'backdrop-blur-sm');
+    }
+
+    // Header logic
     const header = document.createElement('div');
-    header.className = `flex items-center justify-between px-6 py-4 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5'))
-        }`;
+    header.className = `flex items-center justify-between px-2 py-1 border-b select-none cursor-move ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5'))}`;
 
     const titleColor = isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text' : 'text-white'));
     const subtitleColor = isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-400'));
 
     header.innerHTML = `
-        <div class="flex flex-col">
-            <h3 class="text-base font-bold ${titleColor}">Related Data</h3>
-            <div class="flex items-center gap-2 text-xs ${subtitleColor} font-mono mt-0.5">
+        <div class="flex items-center gap-2 pointer-events-none">
+            <h3 class="text-xs font-bold ${titleColor}">Related Data</h3>
+            <div class="flex items-center gap-1.5 text-[10px] ${subtitleColor} font-mono border-l pl-2 ${isLight ? 'border-gray-200' : 'border-white/10'}">
                 <span class="${isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal'}">${tableName}</span>
-                <span class="opacity-50">•</span>
-                <span>${matchedColumn} = ${matchedValue}</span>
+                <span class="opacity-50">:</span>
+                <span>${matchedColumn}=${matchedValue}</span>
             </div>
         </div>
-        <button class="close-btn p-1.5 rounded-lg transition-colors ${isLight ? 'hover:bg-gray-100 text-gray-500' : (isDawn ? 'hover:bg-[#fffaf3] text-[#9893a5] hover:text-[#ea9d34]' : 'hover:bg-white/10 text-gray-400 hover:text-white')
+        <button class="close-btn p-0.5 rounded transition-colors pointer-events-auto ${isLight ? 'hover:bg-gray-100 text-gray-500' : (isDawn ? 'hover:bg-[#fffaf3] text-[#9893a5] hover:text-[#ea9d34]' : 'hover:bg-white/10 text-gray-400 hover:text-white')
         }">
-            <span class="material-symbols-outlined text-xl">close</span>
+            <span class="material-symbols-outlined text-sm">close</span>
         </button>
     `;
+
+    // Drag Implementation
+    let isDragging = false;
+    let startX, startY;
+    let initialLeft, initialTop;
+
+    const onMouseDown = (e) => {
+        if (e.target.closest('.close-btn')) return; // Don't drag if closing
+
+        isDragging = true;
+        startX = e.clientX;
+        startY = e.clientY;
+
+        // Convert current position to fixed left/top to enable free dragging
+        const rect = modal.getBoundingClientRect();
+        initialLeft = rect.left;
+        initialTop = rect.top;
+
+        modal.style.left = `${initialLeft}px`;
+        modal.style.top = `${initialTop}px`;
+        modal.style.right = 'auto';
+        modal.style.bottom = 'auto';
+
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+
+        // Add active grabbing cursor
+        header.style.cursor = 'grabbing';
+    };
+
+    const onMouseMove = (e) => {
+        if (!isDragging) return;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+
+        modal.style.left = `${initialLeft + dx}px`;
+        modal.style.top = `${initialTop + dy}px`;
+    };
+
+    const onMouseUp = () => {
+        isDragging = false;
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+        header.style.cursor = 'move';
+    };
+
+    header.addEventListener('mousedown', onMouseDown);
 
     modal.appendChild(header);
 
     // Content Area
     const content = document.createElement('div');
-    content.className = "flex-1 flex flex-col overflow-hidden p-4 relative";
+    content.className = "flex flex-col overflow-auto p-4 relative";
 
     // Initialize ResultsTable specifically for this popup
-    const resultsTable = ResultsTable();
+    const resultsTable = ResultsTable({ headless: true });
     // Force specific styling overrides if needed via style attribute or class injection
-    resultsTable.classList.add('h-full', 'w-full');
+    resultsTable.classList.add('w-full');
     content.appendChild(resultsTable);
 
     modal.appendChild(content);
@@ -77,27 +172,13 @@ export function RelatedDataPopup({ tableName, matchedColumn, matchedValue, datab
     // Execute Query Logic
     const init = () => {
         // Construct query
-        const q = '`'; // Quote char - in a robust implementation we'd fetch from helper but default to backtick for MySQL/SQLite is usually safeish for display, 
-        // but for actual query execution we should use the proper quoting.
-        // Or better yet, just construct standard SQL strings.
-        // Assuming numeric or string value, we need to handle quoting for the value.
-
+        const q = '`';
         let valueStr = matchedValue;
         if (typeof matchedValue === 'string') {
             valueStr = `'${matchedValue.replace(/'/g, "''")}'`;
         }
 
         const query = `SELECT * FROM ${tableName} WHERE ${matchedColumn} = ${valueStr} LIMIT 100`;
-
-        // Dispatch event to run query but TARGETING this specific results table?
-        // Actually ResultsTable component listens to global events usually or methods?
-        // Looking at ResultsTable.js, it doesn't seem to expose a direct method to run query easily from outside without proper plumbing?
-        // Wait, typical pattern in this codebase seems to be `window.dispatchEvent` for running queries in the MAIN editor.
-        // But here we want to run it in THIS specific instance.
-
-        // ResultsTable usually is "dumb" and just renders data passed to `renderTable(data)`.
-        // So we need to execute the query ourselves and pass data to it.
-
         executeAndRender(query);
     };
 

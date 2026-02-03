@@ -10,13 +10,14 @@ import { toastSuccess, toastError } from '../../utils/Toast.js';
 const VIRTUAL_SCROLL_THRESHOLD = 500;
 
 import { RelatedDataPopup } from './RelatedDataPopup.js';
-export function ResultsTable() {
+export function ResultsTable(options = {}) {
+    const { headless = false } = options;
     let theme = ThemeManager.getCurrentTheme();
     let isLight = theme === 'light';
     let isDawn = theme === 'dawn';
     let isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
     const container = document.createElement('div');
-    container.className = "flex flex-col flex-1 min-h-[300px] max-h-full min-w-[600px]";
+    container.className = "flex flex-col flex-1 min-h-[300px] max-h-full min-w-[600px] bg-transparent"; // bg-transparent ensures no flicker? Controls set bg.
 
     const renderControls = () => {
         const headerBg = isLight ? 'bg-gradient-to-b from-gray-50 to-gray-100/50 border-gray-200' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1]' : (isOceanic ? 'bg-gradient-to-b from-[#3B4252] to-[#2E3440] border-ocean-border/30' : 'bg-gradient-to-b from-[#16191e] to-[#13161b] border-white/5'));
@@ -29,8 +30,10 @@ export function ResultsTable() {
         const buttonHover = isLight ? 'hover:bg-gray-50' : (isDawn ? 'hover:bg-[#fffaf3] text-[#575279]' : (isOceanic ? 'hover:bg-ocean-panel' : 'hover:bg-white/5'));
         const borderColor = isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/50' : 'border-white/10'));
 
-        container.innerHTML = `
+
+        const toolbarHtml = headless ? '' : `
             <div class="flex items-center justify-between px-4 h-14 ${headerBg} border-b shadow-sm">
+                <!-- Toolbar content skipped in headless mode -->
                 <div class="flex items-center gap-4 flex-1 min-w-0">
                     <div class="flex items-center gap-2.5 flex-shrink-0">
                         <div class="flex items-center justify-center w-8 h-8 rounded-lg ${iconBg} shadow-inner">
@@ -48,32 +51,6 @@ export function ResultsTable() {
                     </div>
                 </div>
                 <div class="flex items-center gap-3 flex-shrink-0">
-                    <!-- Pending Changes -->
-                    <div id="pending-indicator" class="flex items-center gap-2 px-3 py-1.5 ${isLight ? 'bg-yellow-50 border-yellow-200' : (isDawn ? 'bg-[#f6c177]/10 border-[#f6c177]/20' : 'bg-yellow-500/10 border-yellow-500/20')} border rounded-lg transition-all duration-200 overflow-hidden max-w-0 opacity-0 pointer-events-none">
-                        <span class="px-2 py-0.5 rounded-md ${isDawn ? 'bg-[#f6c177]/20 text-[#ea9d34]' : 'bg-yellow-500/20 text-yellow-700 dark:text-yellow-400'} text-[9px] font-bold whitespace-nowrap">
-                            <span id="pending-count">0</span> changes
-                        </span>
-                        <div class="flex items-center gap-1">
-                            <button id="commit-btn" class="flex items-center gap-1.5 px-2.5 py-1 ${isDawn ? 'bg-[#9ccfd8]/10 hover:bg-[#9ccfd8]/20 border border-[#9ccfd8]/30 text-[#56949f]' : 'bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 text-green-600 dark:text-green-400'} text-[10px] font-bold tracking-wider rounded-md transition-all whitespace-nowrap" title="Commit changes">
-                                <span class="material-symbols-outlined text-sm">check</span>
-                                <span>Commit</span>
-                            </button>
-                            <button id="discard-btn" class="flex items-center gap-1.5 px-2.5 py-1 ${isDawn ? 'bg-[#eb6f92]/10 hover:bg-[#eb6f92]/20 border border-[#eb6f92]/30 text-[#eb6f92]' : 'bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-600 dark:text-red-400'} text-[10px] font-bold tracking-wider rounded-md transition-all whitespace-nowrap" title="Discard changes">
-                                <span class="material-symbols-outlined text-sm">close</span>
-                                <span>Discard</span>
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <!-- Insert Row Button -->
-                    <button id="insert-row-btn" class="flex items-center gap-1.5 px-3 py-1.5 ${isDawn ? 'bg-[#9ccfd8]/10 hover:bg-[#9ccfd8]/20 border border-[#9ccfd8]/30 text-[#56949f]' : 'bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-600 dark:text-cyan-400'} border text-[10px] font-bold tracking-wider rounded-lg transition-all shadow-sm whitespace-nowrap max-w-0 overflow-hidden opacity-0 pointer-events-none" title="Insert new row">
-                        <span class="material-symbols-outlined text-sm">add</span>
-                        <span>Insert Row</span>
-                    </button>
-                    
-                    <!-- Divider -->
-                    <div class="h-8 w-px ${dividerColor}"></div>
-                    
                     <!-- Action Buttons Group -->
                     <div class="flex items-center ${searchBg} border rounded-lg overflow-hidden">
                         <!-- Columns Toggle -->
@@ -98,31 +75,26 @@ export function ResultsTable() {
                         </button>
                     </div>
                 </div>
-            </div>
-            ${resultTabs.length > 0 ? `
+            </div>`;
+
+        // Tabs logic also needs checking, maybe simpler in popup?
+        // For headless, we usually don't want tabs either as it's a single result view.
+        const tabsHtml = (headless) ? '' : (resultTabs.length > 0 ? `
             <div class="flex items-center gap-1 px-4 py-1.5 ${isLight ? 'bg-gray-100 border-gray-200' : (isDawn ? 'bg-[#f2e9e1] border-[#f2e9e1]' : (isOceanic ? 'bg-[#2E3440] border-ocean-border/20' : 'bg-[#13161b] border-white/5'))} border-b overflow-x-auto custom-scrollbar">
-                <span class="material-symbols-outlined text-xs ${isDawn ? 'text-[#9893a5]' : 'text-gray-500'} mr-1">tab</span>
                 ${resultTabs.map(tab => `
                     <div class="result-tab flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium cursor-pointer transition-all ${tab.id === activeTabId
                 ? (isLight ? 'bg-white border-gray-200 text-gray-700 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#ea9d34] shadow-sm' : (isOceanic ? 'bg-ocean-bg border-ocean-frost/30 text-ocean-text' : 'bg-[#1a1d23] border-mysql-teal/30 text-white')))
                 : (isLight ? 'bg-gray-50 border-transparent text-gray-500 hover:bg-gray-100' : (isDawn ? 'bg-[#fffaf3]/50 border-transparent text-[#797593] hover:bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg/50 border-transparent text-ocean-text/60 hover:bg-ocean-bg' : 'bg-white/5 border-transparent text-gray-400 hover:bg-white/10')))
             } border group" data-tab-id="${tab.id}" title="${escapeHtml(tab.query)}">
-                        ${tab.pinned ? `<span class="material-symbols-outlined text-[10px] ${isDawn ? 'text-[#ea9d34]' : 'text-yellow-500'}">push_pin</span>` : ''}
                         <span class="truncate max-w-[120px]">${escapeHtml(tab.title)}</span>
-                        <span class="px-1 py-0.5 rounded text-[8px] ${isLight ? 'bg-gray-100 text-gray-500' : (isDawn ? 'bg-[#f2e9e1] text-[#797593]' : 'bg-white/10 text-gray-400')}">${tab.data.rows?.length || 0}</span>
-                        <button class="tab-pin-btn opacity-0 group-hover:opacity-100 transition-opacity ${tab.pinned ? (isDawn ? 'text-[#ea9d34]' : 'text-yellow-500') : (isDawn ? 'text-[#9893a5] hover:text-[#ea9d34]' : 'text-gray-400 hover:text-yellow-500')}" data-tab-id="${tab.id}" title="${tab.pinned ? 'Unpin' : 'Pin'}">
-                            <span class="material-symbols-outlined text-[10px]">push_pin</span>
-                        </button>
-                        <button class="tab-close-btn opacity-0 group-hover:opacity-100 transition-opacity ${isDawn ? 'text-[#9893a5] hover:text-[#eb6f92]' : 'text-gray-400 hover:text-red-400'}" data-tab-id="${tab.id}" title="Close">
-                            <span class="material-symbols-outlined text-[10px]">close</span>
-                        </button>
                     </div>
                 `).join('')}
-                <button id="clear-all-tabs-btn" class="flex items-center gap-1 px-2 py-1 text-[9px] ${isDawn ? 'text-[#9893a5] hover:text-[#eb6f92]' : 'text-gray-500 hover:text-red-400'} transition-colors" title="Close All Tabs">
-                    <span class="material-symbols-outlined text-sm">close_all</span>
-                </button>
             </div>
-            ` : ''}
+            ` : '');
+
+        container.innerHTML = `
+            ${toolbarHtml}
+            ${tabsHtml}
             <div class="flex-1 overflow-auto custom-scrollbar ${isLight ? 'bg-white' : (isDawn ? 'bg-[#faf4ed]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0f1115]'))}">
                 <table id="results-table" class="w-full text-left font-mono text-[11px] border-collapse">
                     <thead class="sticky top-0 ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel' : 'bg-[#16191e]'))} z-10 transition-colors">
@@ -291,12 +263,13 @@ export function ResultsTable() {
         return escapeHtml(String(cell));
     };
 
-    const handleFkClick = (tableName, col, value) => {
+    const handleFkClick = (tableName, col, value, coords) => {
         const popup = RelatedDataPopup({
             tableName: tableName,
             matchedColumn: col,
             matchedValue: value,
-            database: databaseName
+            database: databaseName,
+            position: coords
         });
     };
 
@@ -329,7 +302,10 @@ export function ResultsTable() {
     };
 
     const updatePendingIndicator = () => {
+        if (headless) return;
         const indicator = container.querySelector('#pending-indicator');
+        if (!indicator) return;
+
         const count = pendingChanges.updates.size + pendingChanges.deletes.size + pendingChanges.inserts.length;
 
         if (count > 0) {
@@ -343,6 +319,7 @@ export function ResultsTable() {
     };
 
     const updateSelectionIndicator = () => {
+        if (headless) return;
         const actionBar = container.querySelector('#selection-action-bar');
         if (!actionBar) return;
 
@@ -831,10 +808,16 @@ export function ResultsTable() {
             if (fkLink && (e.ctrlKey || e.metaKey)) {
                 e.preventDefault();
                 e.stopPropagation();
+
                 const table = fkLink.dataset.fkTable;
                 const col = fkLink.dataset.fkCol;
                 const val = fkLink.dataset.fkVal;
-                handleFkClick(table, col, val);
+
+                // Get rect for precise positioning (optional, but cursor is easier)
+                const rect = fkLink.getBoundingClientRect();
+                const coords = { x: e.clientX, y: e.clientY, rect };
+
+                handleFkClick(table, col, val, coords);
                 return;
             }
         }, true); // Use capture phase
