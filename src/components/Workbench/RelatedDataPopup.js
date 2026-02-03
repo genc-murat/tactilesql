@@ -19,7 +19,7 @@ export function RelatedDataPopup({ tableName, matchedColumn, matchedValue, datab
 
     // Size constants
     const WIDTH = 900;
-    const MAX_HEIGHT = 200; // Minimal height requested ("tek satir olacagi icin") - reduced to 200
+    const MAX_HEIGHT = 150; // Further reduced to ~150px to fit single row tightly
 
     if (position) {
         // Absolute positioning logic
@@ -46,7 +46,7 @@ export function RelatedDataPopup({ tableName, matchedColumn, matchedValue, datab
         }
 
         // Vertical positioning
-        const estimatedHeight = 150; // Approximated for 1 row
+        const estimatedHeight = 120;
         if (position.y + estimatedHeight + OFFSET > viewportHeight) {
             // Place ABOVE cursor
             const bottom = viewportHeight - position.y + OFFSET;
@@ -66,9 +66,9 @@ export function RelatedDataPopup({ tableName, matchedColumn, matchedValue, datab
         overlay.classList.add('bg-black/50', 'backdrop-blur-sm');
     }
 
-    // Header logic
+    // Header logic (Drag removed, cursor-default)
     const header = document.createElement('div');
-    header.className = `flex items-center justify-between px-2 py-1 border-b select-none cursor-move ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5'))}`;
+    header.className = `flex items-center justify-between px-2 py-1 border-b select-none cursor-default ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5'))}`;
 
     const titleColor = isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text' : 'text-white'));
     const subtitleColor = isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-400'));
@@ -88,63 +88,23 @@ export function RelatedDataPopup({ tableName, matchedColumn, matchedValue, datab
         </button>
     `;
 
-    // Drag Implementation
-    let isDragging = false;
-    let startX, startY;
-    let initialLeft, initialTop;
-
-    const onMouseDown = (e) => {
-        if (e.target.closest('.close-btn')) return; // Don't drag if closing
-
-        isDragging = true;
-        startX = e.clientX;
-        startY = e.clientY;
-
-        // Convert current position to fixed left/top to enable free dragging
-        const rect = modal.getBoundingClientRect();
-        initialLeft = rect.left;
-        initialTop = rect.top;
-
-        modal.style.left = `${initialLeft}px`;
-        modal.style.top = `${initialTop}px`;
-        modal.style.right = 'auto';
-        modal.style.bottom = 'auto';
-
-        document.addEventListener('mousemove', onMouseMove);
-        document.addEventListener('mouseup', onMouseUp);
-
-        // Add active grabbing cursor
-        header.style.cursor = 'grabbing';
-    };
-
-    const onMouseMove = (e) => {
-        if (!isDragging) return;
-        const dx = e.clientX - startX;
-        const dy = e.clientY - startY;
-
-        modal.style.left = `${initialLeft + dx}px`;
-        modal.style.top = `${initialTop + dy}px`;
-    };
-
-    const onMouseUp = () => {
-        isDragging = false;
-        document.removeEventListener('mousemove', onMouseMove);
-        document.removeEventListener('mouseup', onMouseUp);
-        header.style.cursor = 'move';
-    };
-
-    header.addEventListener('mousedown', onMouseDown);
+    // Drag Logic Removed as requested
 
     modal.appendChild(header);
 
     // Content Area
     const content = document.createElement('div');
-    content.className = "flex flex-col overflow-auto p-4 relative";
+    content.className = "flex flex-col overflow-auto p-0 relative"; // Removed padding to maximize space for table
 
     // Initialize ResultsTable specifically for this popup
     const resultsTable = ResultsTable({ headless: true });
-    // Force specific styling overrides if needed via style attribute or class injection
-    resultsTable.classList.add('w-full');
+    // Force specific styling overrides
+    resultsTable.classList.add('w-full', 'min-h-0'); // Add min-h-0
+    resultsTable.classList.remove('min-h-[300px]'); // Remove min-h constraint
+
+    // Also remove min-w constraint potentially?
+    resultsTable.classList.remove('min-w-[600px]');
+
     content.appendChild(resultsTable);
 
     modal.appendChild(content);
