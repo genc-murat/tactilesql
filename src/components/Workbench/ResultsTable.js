@@ -758,12 +758,18 @@ export function ResultsTable(options = {}) {
                        data-row-idx="${idx}" 
                        ${isSelected ? 'checked' : ''}>
             </td>
-            <td class="p-2 border-r ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5'))} text-center text-[10px] ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]/70' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-500'))} font-mono">${idx + 1}</td>
-            ${isEditable ? `<td class="p-2 border-r ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5'))} text-center opacity-0 group-hover:opacity-100 transition-opacity">
-                <button class="delete-row-btn text-red-400 hover:text-red-300 p-1" data-row-idx="${idx}" ${isDeleted ? 'disabled' : ''}>
-                    <span class="material-symbols-outlined text-sm">delete</span>
-                </button>
-            </td>` : ''}
+            <td class="p-2 border-r ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5'))} text-center font-mono relative group/row">
+                <span class="text-[10px] ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]/70' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-500'))} ${isEditable ? 'group-hover/row:opacity-0 transition-opacity' : ''}">
+                    ${idx + 1}
+                </span>
+                ${isEditable ? `
+                <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover/row:opacity-100 transition-opacity">
+                    <button class="delete-row-btn text-red-400 hover:text-red-300 p-0.5 rounded hover:bg-red-500/10" data-row-idx="${idx}" ${isDeleted ? 'disabled' : ''}>
+                        <span class="material-symbols-outlined text-sm">delete</span>
+                    </button>
+                </div>
+                ` : ''}
+            </td>
             ${cells}
         </tr>`;
     };
@@ -893,14 +899,12 @@ export function ResultsTable(options = {}) {
             // Row number header
             const rowNumCol = `<th class="p-2 border-r ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5'))} border-b ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5'))} w-12 text-center text-[10px] ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-500'))}">#</th>`;
 
-            const actionCol = isEditable ? `<th class="p-3 font-bold border-r ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5'))} border-b ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5'))} w-20 text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/70' : 'text-gray-400'))}"></th>` : '';
-
             const columnHeaders = columns.map((col, colIdx) => {
                 if (hiddenColumns.has(colIdx)) return '';
                 return `<th class="p-3 font-bold border-r ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5'))} border-b ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5'))} whitespace-nowrap text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text/70' : 'text-gray-400'))} select-none">${col}</th>`;
             }).join('');
 
-            thead.innerHTML = selectAllCol + rowNumCol + actionCol + columnHeaders;
+            thead.innerHTML = selectAllCol + rowNumCol + columnHeaders;
         }
 
         // Update column menu
@@ -943,12 +947,16 @@ export function ResultsTable(options = {}) {
 
                     return `<tr class="${isDawn ? 'bg-[#9ccfd8]/10 border border-[#9ccfd8]/30' : 'bg-cyan-500/10 border border-cyan-500/30'}">
                         <td class="p-2 border-r ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5'))} text-center"></td>
-                        <td class="p-2 border-r ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5'))} text-center text-[10px] ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-500'))}">NEW</td>
-                        ${isEditable ? `<td class="p-2 border-r ${isLight ? 'border-gray-100' : 'border-white/5'} text-center">
-                            <button class="delete-insert-btn text-red-400 hover:text-red-300 p-1" data-insert-idx="${idx}">
-                                <span class="material-symbols-outlined text-sm">delete</span>
-                            </button>
-                        </td>` : ''}
+                        <td class="p-2 border-r ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5'))} text-center relative group/row">
+                            <span class="text-[10px] ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-500'))} ${isEditable ? 'group-hover/row:opacity-0 transition-opacity' : ''}">NEW</span>
+                            ${isEditable ? `
+                            <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover/row:opacity-100 transition-opacity">
+                                <button class="delete-insert-btn text-red-400 hover:text-red-300 p-0.5 rounded hover:bg-red-500/10" data-insert-idx="${idx}">
+                                    <span class="material-symbols-outlined text-sm">delete</span>
+                                </button>
+                            </div>
+                            ` : ''}
+                        </td>
                         ${cells}
                     </tr>`;
                 }).join('');
@@ -995,12 +1003,18 @@ export function ResultsTable(options = {}) {
                                    data-row-idx="${idx}" 
                                    ${isSelected ? 'checked' : ''}>
                         </td>
-                        <td class="p-2 border-r ${isLight ? 'border-gray-100' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5')} text-center text-[10px] ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-500')} font-mono">${idx + 1}</td>
-                        ${isEditable ? `<td class="p-2 border-r ${isLight ? 'border-gray-100' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5')} text-center opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button class="delete-row-btn text-red-400 hover:text-red-300 p-1" data-row-idx="${idx}" ${isDeleted ? 'disabled' : ''}>
-                                <span class="material-symbols-outlined text-sm">delete</span>
-                            </button>
-                        </td>` : ''}
+                        <td class="p-2 border-r ${isLight ? 'border-gray-100' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5')} text-center font-mono relative group/row">
+                            <span class="text-[10px] ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-500')} ${isEditable ? 'group-hover/row:opacity-0 transition-opacity' : ''}">
+                                ${idx + 1}
+                            </span>
+                            ${isEditable ? `
+                            <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover/row:opacity-100 transition-opacity">
+                                <button class="delete-row-btn text-red-400 hover:text-red-300 p-0.5 rounded hover:bg-red-500/10" data-row-idx="${idx}" ${isDeleted ? 'disabled' : ''}>
+                                    <span class="material-symbols-outlined text-sm">delete</span>
+                                </button>
+                            </div>
+                            ` : ''}
+                        </td>
                         ${cells}
                     </tr>`;
                 }).join('');
@@ -1037,7 +1051,7 @@ export function ResultsTable(options = {}) {
                     const input = document.createElement('input');
                     input.type = 'text';
                     input.value = insert.data[col] === null ? '' : insert.data[col];
-                    input.className = `${isLight ? 'bg-white border-mysql-teal text-gray-800' : (isDawn ? 'bg-white border-[#ea9d34] text-[#575279]' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text' : 'bg-gray-900 border-cyan-500 text-white'))} border rounded px-2 py-1 w-full outline-none`;
+                    input.className = `${isLight ? 'bg-white border-mysql-teal text-gray-800' : (isDawn ? 'bg-white border-[#ea9d34] text-[#575279]' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text' : 'bg-gray-900 border-cyan-500 text-white'))} border rounded px - 2 py - 1 w - full outline - none`;
 
                     const save = () => {
                         insert.data[col] = input.value === '' ? null : input.value;
@@ -1163,7 +1177,7 @@ export function ResultsTable(options = {}) {
                 if (selectedRows.size === 0) return;
 
                 const confirmed = await Dialog.confirm(
-                    `Mark ${selectedRows.size} row(s) for deletion?`,
+                    `Mark ${selectedRows.size} row(s) for deletion ? `,
                     'Bulk Delete'
                 );
 
@@ -1337,7 +1351,7 @@ export function ResultsTable(options = {}) {
                 // If multiple results, try to give distinct titles
                 let title = res.title;
                 if (!title && results.length > 1) {
-                    title = `Result ${idx + 1}`;
+                    title = `Result ${idx + 1} `;
                 }
 
                 addResultTab(query, res, title);
