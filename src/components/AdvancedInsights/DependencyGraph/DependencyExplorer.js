@@ -2,10 +2,12 @@ import { invoke } from '@tauri-apps/api/core';
 import { DependencyEngineApi } from '../../../api/dependencyEngine.js';
 import { ThemeManager } from '../../../utils/ThemeManager.js';
 import { GraphViewer } from './GraphViewer.js';
+import { toastSuccess } from '../../../utils/Toast.js';
 import './DependencyGraph.css';
 
 export function DependencyExplorer() {
     let theme = ThemeManager.getCurrentTheme();
+
 
     // Theme helpers
     const getClasses = (t) => {
@@ -290,6 +292,8 @@ export function DependencyExplorer() {
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
+
+                toastSuccess(`Graph exported to Downloads as dependency_graph_${state.selectedDatabase}.mmd`);
             };
 
             controls.appendChild(exportBtn);
@@ -442,6 +446,8 @@ export function DependencyExplorer() {
                     a.click();
                     document.body.removeChild(a);
                     URL.revokeObjectURL(url);
+
+                    toastSuccess(`Lineage exported to Downloads as lineage_${data.name.replace(/[^a-zA-Z0-9-_]/g, '')}.mmd`);
                 };
             }
 
