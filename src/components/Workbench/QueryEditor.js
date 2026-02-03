@@ -10,6 +10,7 @@ import { smartAutocomplete } from '../../utils/SmartAutocomplete.js';
 import { toastSuccess, toastError, toastWarning } from '../../utils/Toast.js';
 import { debounce, DatabaseCache, CacheTypes } from '../../utils/helpers.js';
 import { AskAiModal } from '../UI/AskAiModal.js';
+import { AskAiBar } from '../UI/AskAiBar.js';
 
 // SQL Keywords for autocomplete
 // Imported from SqlHighlighter.js
@@ -665,8 +666,9 @@ export function QueryEditor() {
                         <button id="sample-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-emerald-600 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#3e8fb0]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-mint' : 'bg-[#1a1d23] border-white/10 text-emerald-400'))} border rounded hover:opacity-80 active:scale-95 transition-all" title="Generate Sample Queries">
                             <span class="material-symbols-outlined text-sm">auto_awesome</span>
                         </button>
-                        <button id="ask-ai-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-rose-500 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#d7827e]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-rose-400' : 'bg-[#1a1d23] border-white/10 text-rose-500'))} border rounded hover:opacity-80 active:scale-95 transition-all group" title="Ask AI to Generate SQL">
-                            <span class="material-symbols-outlined text-sm group-hover:scale-110 transition-transform">sparkles</span>
+                        <button id="ask-ai-btn" class="flex items-center justify-center p-0.5 ${isLight ? 'bg-white border-gray-200 text-rose-500 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#d7827e]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-rose-400' : 'bg-[#1a1d23] border-white/10 text-rose-500'))} border rounded hover:opacity-80 active:scale-95 transition-all group overflow-hidden relative" title="Ask AI to Generate SQL (Ctrl+I)">
+                            <span class="material-symbols-outlined text-sm group-hover:scale-120 group-hover:rotate-12 transition-all duration-300 relative z-10">auto_awesome</span>
+                            <span class="absolute inset-0 bg-rose-500/10 opacity-0 group-hover:opacity-100 transition-opacity"></span>
                         </button>
                         <button id="execute-btn" class="relative flex items-center justify-center p-0.5 bg-mysql-teal text-black rounded shadow-[0_0_8px_rgba(0,200,255,0.15)] hover:shadow-[0_0_20px_rgba(0,200,255,0.4)] hover:brightness-110 active:scale-95 transition-all duration-300 overflow-hidden group" title="Execute Query (Ctrl+Enter)">
                             <span class="material-symbols-outlined text-sm relative z-10 group-hover:scale-110 transition-transform duration-200">play_arrow</span>
@@ -1398,6 +1400,26 @@ export function QueryEditor() {
                     }
                 }
 
+                // Ctrl+I to trigger AI Bar
+                if (e.ctrlKey && e.key === 'i') {
+                    e.preventDefault();
+                    AskAiBar.show(container, (sql) => {
+                        const start = textarea.selectionStart;
+                        const end = textarea.selectionEnd;
+                        const text = textarea.value;
+                        const newText = text.substring(0, start) + sql + text.substring(end);
+                        textarea.value = newText;
+
+                        const activeTab = tabs.find(t => t.id === activeTabId);
+                        if (activeTab) {
+                            activeTab.content = newText;
+                            saveState();
+                        }
+                        updateSyntaxHighlight();
+                        updateLineNumbers();
+                    });
+                }
+
                 // Ctrl+Space to trigger autocomplete
                 if (e.ctrlKey && e.code === 'Space') {
                     e.preventDefault();
@@ -1594,17 +1616,19 @@ export function QueryEditor() {
         if (askAiBtn) {
             askAiBtn.addEventListener('click', () => {
                 const textarea = container.querySelector('#query-input');
-                AskAiModal.show((sql) => {
+                AskAiBar.show(container, (sql) => {
                     if (textarea) {
-                        textarea.value = sql;
+                        const start = textarea.selectionStart;
+                        const end = textarea.selectionEnd;
+                        const text = textarea.value;
+                        const newText = text.substring(0, start) + sql + text.substring(end);
+                        textarea.value = newText;
+
                         const activeTab = tabs.find(t => t.id === activeTabId);
                         if (activeTab) {
-                            activeTab.content = sql;
+                            activeTab.content = newText;
                             saveState();
                         }
-                        // Need to expose updateSyntaxHighlight somehow or re-trigger input? 
-                        // Actually updateSyntaxHighlight is defined inside attachEvents scope, so we are good if we place this inside attachEvents.
-                        // wait, attachEvents accesses updateSyntaxHighlight which is defined inside attachEvents? Yes.
                         updateSyntaxHighlight();
                         updateLineNumbers();
                     }
