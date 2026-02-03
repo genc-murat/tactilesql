@@ -162,4 +162,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Manually trigger initial route since 'load' event already fired
     router.handleRoute();
+
+    // Global Footer
+    import('./components/Workbench/WorkbenchFooter.js').then(module => {
+        const footer = module.WorkbenchFooter();
+        root.appendChild(footer);
+    });
 });

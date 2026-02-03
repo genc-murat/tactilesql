@@ -2,7 +2,7 @@ import { QueryEditor } from '../components/Workbench/QueryEditor.js';
 import { ResultsTable } from '../components/Workbench/ResultsTable.js';
 import { ObjectExplorer } from '../components/Workbench/ObjectExplorer.js';
 import { SnippetLibrary } from '../components/Workbench/SnippetLibrary.js';
-import { WorkbenchFooter } from '../components/Workbench/WorkbenchFooter.js';
+
 import { QueryProfiler } from '../components/Workbench/QueryProfiler.js';
 import { ThemeManager } from '../utils/ThemeManager.js';
 
@@ -151,9 +151,7 @@ export function SqlWorkbench() {
     const profiler = QueryProfiler();
     container.appendChild(profiler.element);
 
-    // Footer
-    const footer = WorkbenchFooter();
-    container.appendChild(footer);
+
 
     // --- Theme Handling ---
     const onThemeChange = (e) => {
