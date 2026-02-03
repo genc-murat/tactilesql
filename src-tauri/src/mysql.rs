@@ -310,7 +310,8 @@ pub async fn get_table_foreign_keys(pool: &Pool<MySql>, database: &str, table: &
             CONSTRAINT_NAME,
             COLUMN_NAME,
             REFERENCED_TABLE_NAME,
-            REFERENCED_COLUMN_NAME
+            REFERENCED_COLUMN_NAME,
+            REFERENCED_TABLE_SCHEMA
         FROM information_schema.KEY_COLUMN_USAGE
         WHERE TABLE_SCHEMA = '{}'
             AND TABLE_NAME = '{}'
@@ -329,6 +330,7 @@ pub async fn get_table_foreign_keys(pool: &Pool<MySql>, database: &str, table: &
             column_name: row.try_get("COLUMN_NAME").unwrap_or_default(),
             referenced_table: row.try_get("REFERENCED_TABLE_NAME").unwrap_or_default(),
             referenced_column: row.try_get("REFERENCED_COLUMN_NAME").unwrap_or_default(),
+            referenced_schema: row.try_get("REFERENCED_TABLE_SCHEMA").ok(),
         });
     }
 

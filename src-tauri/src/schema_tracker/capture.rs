@@ -118,7 +118,8 @@ pub async fn capture_snapshot_mysql(
             CONSTRAINT_NAME,
             COLUMN_NAME,
             REFERENCED_TABLE_NAME,
-            REFERENCED_COLUMN_NAME
+            REFERENCED_COLUMN_NAME,
+            REFERENCED_TABLE_SCHEMA
         FROM information_schema.KEY_COLUMN_USAGE
         WHERE TABLE_SCHEMA = '{}'
             AND REFERENCED_TABLE_NAME IS NOT NULL
@@ -137,6 +138,7 @@ pub async fn capture_snapshot_mysql(
             column_name: row.try_get("COLUMN_NAME").unwrap_or_default(),
             referenced_table: row.try_get("REFERENCED_TABLE_NAME").unwrap_or_default(),
             referenced_column: row.try_get("REFERENCED_COLUMN_NAME").unwrap_or_default(),
+            referenced_schema: row.try_get("REFERENCED_TABLE_SCHEMA").ok(),
         });
     }
 
@@ -410,7 +412,8 @@ pub async fn capture_snapshot_postgres(
             tc.constraint_name,
             kcu.column_name,
             ccu.table_name AS referenced_table,
-            ccu.column_name AS referenced_column
+            ccu.column_name AS referenced_column,
+            ccu.table_schema AS referenced_schema
         FROM information_schema.table_constraints tc
         JOIN information_schema.key_column_usage kcu
             ON tc.constraint_name = kcu.constraint_name
@@ -435,6 +438,7 @@ pub async fn capture_snapshot_postgres(
             column_name: row.try_get("column_name").unwrap_or_default(),
             referenced_table: row.try_get("referenced_table").unwrap_or_default(),
             referenced_column: row.try_get("referenced_column").unwrap_or_default(),
+            referenced_schema: row.try_get("referenced_schema").ok(),
         });
     }
 

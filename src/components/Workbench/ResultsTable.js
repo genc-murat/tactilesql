@@ -263,12 +263,13 @@ export function ResultsTable(options = {}) {
         return escapeHtml(String(cell));
     };
 
-    const handleFkClick = (tableName, col, value, coords) => {
+    const handleFkClick = (tableName, col, value, coords, schema) => {
+        const targetTable = schema ? `${schema}.${tableName}` : tableName;
         const popup = RelatedDataPopup({
-            tableName: tableName,
+            tableName: targetTable,
             matchedColumn: col,
             matchedValue: value,
-            database: databaseName,
+            database: schema || databaseName,
             position: coords
         });
     };
@@ -738,6 +739,7 @@ export function ResultsTable(options = {}) {
                               data-fk-table="${fk.referenced_table}" 
                               data-fk-col="${fk.referenced_column}"
                               data-fk-val="${escapeHtml(String(displayValue))}"
+                              data-fk-schema="${fk.referenced_schema || ''}"
                         >${contentHtml}</span>
                         <span class="material-symbols-outlined text-[10px] opacity-0 group-hover/fk:opacity-100 transition-opacity ${isDawn ? 'text-[#eb6f92]' : 'text-blue-400'}">open_in_new</span>
                     </div>
@@ -818,12 +820,13 @@ export function ResultsTable(options = {}) {
                 const table = fkLink.dataset.fkTable;
                 const col = fkLink.dataset.fkCol;
                 const val = fkLink.dataset.fkVal;
+                const schema = fkLink.dataset.fkSchema || null;
 
                 // Get rect for precise positioning (optional, but cursor is easier)
                 const rect = fkLink.getBoundingClientRect();
                 const coords = { x: e.clientX, y: e.clientY, rect };
 
-                handleFkClick(table, col, val, coords);
+                handleFkClick(table, col, val, coords, schema);
                 return;
             }
         }, true); // Use capture phase
@@ -982,6 +985,7 @@ export function ResultsTable(options = {}) {
                                       data-fk-table="${fk.referenced_table}" 
                                       data-fk-col="${fk.referenced_column}"
                                       data-fk-val="${escapeHtml(String(displayValue))}"
+                                      data-fk-schema="${fk.referenced_schema || ''}"
                             >
                                 <span class="hover:underline ${isDawn ? 'text-[#eb6f92] hover:text-[#ea9d34]' : 'text-blue-500 hover:text-blue-400'} font-medium" 
                                 >${contentHtml}</span>

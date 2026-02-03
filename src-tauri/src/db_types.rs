@@ -131,6 +131,7 @@ pub struct ForeignKey {
     pub column_name: String,
     pub referenced_table: String,
     pub referenced_column: String,
+    pub referenced_schema: Option<String>,
 }
 
 // --- Primary Key ---
