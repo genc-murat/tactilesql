@@ -653,6 +653,14 @@ export function ResultsTable(options = {}) {
         if (overlay) {
             overlay.remove();
         }
+
+        // Reset badge status from currentData
+        const rowCountBadge = container.querySelector('#row-count-badge');
+        if (rowCountBadge && currentData) {
+            const rows = currentData.rows || [];
+            const vsIndicator = useVirtualScroll ? '<span class="ml-1 px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 text-[8px] font-bold">VIRTUAL</span>' : '';
+            rowCountBadge.innerHTML = `${rows.length.toLocaleString()} ROWS ${vsIndicator}<span class="${isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]/60' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'))} font-normal ml-1">• ${currentData.duration || '0ms'}</span>`;
+        }
     };
 
     // Virtual scroll render function

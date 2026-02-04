@@ -1939,6 +1939,10 @@ export function QueryEditor() {
 
                     // Offering Inline AI Fix instead of Modal
                     showRepairBar(error.message || error.toString(), editorContent);
+
+                    // Notify results table to hide loading skeleton
+                    window.dispatchEvent(new CustomEvent('tactilesql:query-result', { detail: [] }));
+
                     render(); // Show execution time even on error
                 } finally {
                     executeBtn.innerHTML = originalHTML;
@@ -2006,6 +2010,8 @@ export function QueryEditor() {
                     window.dispatchEvent(new CustomEvent('tactilesql:query-result', { detail: result }));
 
                 } catch (error) {
+                    // Notify results table to hide loading skeleton
+                    window.dispatchEvent(new CustomEvent('tactilesql:query-result', { detail: [] }));
                     Dialog.alert(`Explain failed: ${String(error).replace(/\n/g, '<br>')}`, 'Query Analysis Error');
                 } finally {
                     explainBtn.innerHTML = originalHTML;
