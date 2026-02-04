@@ -1,6 +1,7 @@
 // Query Profiler & Monitor & Locks Component
 import { invoke } from '@tauri-apps/api/core';
 import { ThemeManager } from '../../utils/ThemeManager.js';
+import { SettingsManager } from '../../utils/SettingsManager.js';
 import { Dialog } from '../UI/Dialog.js';
 import { AiService } from '../../utils/AiService.js';
 
@@ -24,6 +25,8 @@ let locksData = [];
 let monitorInterval = null;
 let statusBefore = {};
 let statusAfter = {};
+let profilerEnabled = SettingsManager.get('profiler.enabled', true);
+let statusSupported = true;
 
 export function QueryProfiler() {
     let theme = ThemeManager.getCurrentTheme();
@@ -71,7 +74,6 @@ export function QueryProfiler() {
         const stored = JSON.parse(localStorage.getItem('activeConnection') || '{}');
         return stored.db_type || stored.dbType || localStorage.getItem('activeDbType') || 'mysql';
     };
-    let statusSupported = true;
 
     const fetchMonitorData = async () => {
         if (getDbType() !== 'mysql' || !statusSupported) return;
@@ -566,6 +568,12 @@ export function QueryProfiler() {
     };
 
     const render = () => {
+        if (!profilerEnabled) {
+            container.classList.add('hidden');
+            container.style.display = 'none';
+            return;
+        }
+
         container.innerHTML = `
             ${renderHeader()}
             <div id="profiler-content" class="p-3 overflow-y-auto max-h-[500px] custom-scrollbar">
@@ -611,6 +619,7 @@ export function QueryProfiler() {
     };
 
     const show = () => {
+        if (!profilerEnabled) return;
         isVisible = true;
         container.classList.remove('hidden');
         container.style.display = 'block';
@@ -629,6 +638,7 @@ export function QueryProfiler() {
     };
 
     const toggle = () => {
+        if (!profilerEnabled) return;
         isVisible ? hide() : show();
     };
 
@@ -725,6 +735,13 @@ export function QueryProfiler() {
                     : 'bg-[#1a1d23]/95 border-white/10'))
             }`;
         render();
+    });
+    window.addEventListener('settingschange', (e) => {
+        if (e.detail?.key === 'profiler.enabled') {
+            profilerEnabled = !!e.detail.value;
+            if (!profilerEnabled) hide();
+            else render();
+        }
     });
 
     // Initial render

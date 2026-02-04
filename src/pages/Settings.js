@@ -42,6 +42,7 @@ export function Settings() {
     const render = () => {
         const currentTheme = ThemeManager.getCurrentTheme();
         const snippetSuggestionsEnabled = SettingsManager.get('autocomplete.snippets', true);
+        const profilerEnabled = SettingsManager.get('profiler.enabled', true);
 
         container.innerHTML = `
         <div class="h-full p-6 lg:p-8">
@@ -194,6 +195,9 @@ export function Settings() {
                         </div>
                     </div>
                 </div>
+
+                <!-- Editor Section -->
+                <div class="tactile-card ${isLight ? (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : 'bg-white border-gray-200') + ' shadow-sm' : ''} rounded-xl p-6">
                     <div class="flex items-center gap-3 mb-6">
                         <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500 to-cyan-600 flex items-center justify-center">
                             <span class="material-symbols-outlined text-white">code</span>
@@ -256,6 +260,16 @@ export function Settings() {
                             </div>
                             <button class="relative w-12 h-6 rounded-full bg-gradient-to-r from-mysql-teal to-mysql-cyan transition-all">
                                 <span class="absolute right-1 top-1 w-4 h-4 rounded-full bg-white shadow-md transition-transform"></span>
+                            </button>
+                        </div>
+
+                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                            <div>
+                                <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Query Profiler</h3>
+                                <p class="text-xs text-gray-500 mt-1">Show performance popup after queries</p>
+                            </div>
+                            <button id="profiler-enabled-toggle" class="relative w-12 h-6 rounded-full transition-all ${profilerEnabled ? 'bg-gradient-to-r from-mysql-teal to-mysql-cyan' : (isLight ? 'bg-gray-200' : (isOceanic ? 'bg-ocean-border/40' : 'bg-white/10'))}">
+                                <span class="absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow-md transition-transform transform ${profilerEnabled ? 'translate-x-6' : 'translate-x-0'}"></span>
                             </button>
                         </div>
 
@@ -362,6 +376,7 @@ export function Settings() {
         const auroraBtn = container.querySelector('#theme-aurora');
         const preview = container.querySelector('#theme-preview');
         const snippetToggle = container.querySelector('#autocomplete-snippets-toggle');
+        const profilerToggle = container.querySelector('#profiler-enabled-toggle');
 
         const isLight = theme === 'light' || theme === 'dawn';
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
@@ -374,11 +389,11 @@ export function Settings() {
             return { buttonClass, knobClass };
         };
 
-        const applyToggleState = (isOn) => {
-            if (!snippetToggle) return;
-            const knob = snippetToggle.querySelector('span');
+        const setToggleState = (btn, isOn) => {
+            if (!btn) return;
+            const knob = btn.querySelector('span');
             const classes = getToggleClasses(isOn);
-            snippetToggle.className = classes.buttonClass;
+            btn.className = classes.buttonClass;
             if (knob) knob.className = classes.knobClass;
         };
 
@@ -437,8 +452,19 @@ export function Settings() {
                 const current = SettingsManager.get('autocomplete.snippets', true);
                 const next = !current;
                 SettingsManager.set('autocomplete.snippets', next);
-                applyToggleState(next);
+                setToggleState(snippetToggle, next);
             });
+        }
+
+        if (profilerToggle) {
+            profilerToggle.addEventListener('click', () => {
+                const current = SettingsManager.get('profiler.enabled', true);
+                const next = !current;
+                SettingsManager.set('profiler.enabled', next);
+                setToggleState(profilerToggle, next);
+                window.dispatchEvent(new CustomEvent('settingschange', { detail: { key: 'profiler.enabled', value: next } }));
+            });
+            setToggleState(profilerToggle, SettingsManager.get('profiler.enabled', true));
         }
 
         const devToolsBtn = container.querySelector('#open-devtools-btn');
