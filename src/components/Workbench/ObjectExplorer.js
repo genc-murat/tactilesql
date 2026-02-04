@@ -31,6 +31,7 @@ export function ObjectExplorer() {
     let expandedTables = new Set();
     let dbObjects = {}; // cache for active connection
     let tableDetails = {}; // cache for active connection
+    let loadingTables = new Set(); // track in-flight table detail fetches
     let userDbsExpanded = true; // State for user databases fold
     let systemDbsExpanded = true; // State for system databases fold
 
@@ -39,6 +40,7 @@ export function ObjectExplorer() {
     let searchMatches = [];
     let currentMatchIndex = -1;
     let searchInputTimeout = null;
+    let searchContext = null; // normalized lookup maps for filtering & auto-expand
 
     // Drag and Drop state (persisted outside render)
     let draggedConnId = null;
@@ -56,11 +58,49 @@ export function ObjectExplorer() {
     // Get quote character based on active DB type (use database adapter)
     const getQuote = () => getQuoteChar();
 
+    // --- Search-aware helpers ---
+    const hasSearchMatch = (type, db, name = null) => {
+        if (!searchContext) return true;
+        switch (type) {
+            case 'database':
+                return searchContext.databases.has(db);
+            case 'table':
+                return searchContext.tables.get(db)?.has(name) ?? false;
+            case 'view':
+                return searchContext.views.get(db)?.has(name) ?? false;
+            case 'trigger':
+                return searchContext.triggers.get(db)?.has(name) ?? false;
+            case 'procedure':
+                return searchContext.procedures.get(db)?.has(name) ?? false;
+            case 'function':
+                return searchContext.functions.get(db)?.has(name) ?? false;
+            case 'event':
+                return searchContext.events.get(db)?.has(name) ?? false;
+            default:
+                return true;
+        }
+    };
+
+    const databaseHasAnyMatch = (db) => {
+        if (!searchContext) return true;
+        return hasSearchMatch('database', db) ||
+            (searchContext.tables.get(db)?.size ?? 0) > 0 ||
+            (searchContext.views.get(db)?.size ?? 0) > 0 ||
+            (searchContext.triggers.get(db)?.size ?? 0) > 0 ||
+            (searchContext.procedures.get(db)?.size ?? 0) > 0 ||
+            (searchContext.functions.get(db)?.size ?? 0) > 0 ||
+            (searchContext.events.get(db)?.size ?? 0) > 0;
+    };
+
     // --- Helper to render table details ---
     const renderTableDetails = (db, table) => {
         const key = `${db}.${table}`;
         const details = tableDetails[key];
-        if (!details) return `<div class="pl-4 py-1 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-700'))} italic text-[10px]">Loading...</div>`;
+        if (!details) {
+            // Lazy-load details when expanded via search or click
+            loadTableDetails(db, table);
+            return `<div class="pl-4 py-1 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-700'))} italic text-[10px]">Loading...</div>`;
+        }
 
         const { columns, indexes, fks, constraints } = details;
         return `
@@ -152,38 +192,55 @@ export function ObjectExplorer() {
         if (!objs) return `<div class="pl-2 py-1 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#cecacd]' : 'text-gray-700')} italic">Loading...</div>`;
 
         const { tables, views, triggers, procedures, functions, events } = objs;
+        const filteredTables = searchContext ? tables.filter(t => hasSearchMatch('table', db, t)) : tables;
+        const filteredViews = searchContext ? views.filter(v => hasSearchMatch('view', db, v)) : views;
+        const filteredTriggers = searchContext ? triggers.filter(t => hasSearchMatch('trigger', db, t.name)) : triggers;
+        const filteredProcedures = searchContext ? procedures.filter(p => hasSearchMatch('procedure', db, p.name)) : procedures;
+        const filteredFunctions = searchContext ? functions.filter(f => hasSearchMatch('function', db, f.name)) : functions;
+        const filteredEvents = searchContext ? events.filter(e => hasSearchMatch('event', db, e.name)) : events;
+
+        if (searchContext &&
+            filteredTables.length === 0 &&
+            filteredViews.length === 0 &&
+            filteredTriggers.length === 0 &&
+            filteredProcedures.length === 0 &&
+            filteredFunctions.length === 0 &&
+            filteredEvents.length === 0) {
+            return '';
+        }
+
         const mainText = isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text/70' : 'text-gray-500'));
         const subText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-700'));
 
         return `
             <div class="pl-6 space-y-1 border-l ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')} ml-2.5">
-                ${renderObjectCategory(db, 'tables', 'Tables', 'table_rows', isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal', tables,
+                ${renderObjectCategory(db, 'tables', 'Tables', 'table_rows', isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal', filteredTables,
             (db, t) => renderTable(db, t))}
-                ${renderObjectCategory(db, 'views', 'Views', 'visibility', isDawn ? 'text-[#3e8fb0]' : 'text-blue-400', views,
+                ${renderObjectCategory(db, 'views', 'Views', 'visibility', isDawn ? 'text-[#3e8fb0]' : 'text-blue-400', filteredViews,
                 (db, v) => `<div class="view-item flex items-center gap-2 text-[10px] ${mainText} ${isLight ? 'hover:text-mysql-teal' : (isDawn ? 'hover:text-[#ea9d34]' : (isOceanic ? 'hover:text-ocean-frost' : 'hover:text-white'))} py-0.5 cursor-pointer" data-view="${v}" data-db="${db}">
                         <span class="material-symbols-outlined text-[12px] ${isDawn ? 'text-[#3e8fb0]' : 'text-blue-400'}">visibility</span>
                         <span class="${highlightClass(`view-${db}-${v}`)}" data-search-id="view-${db}-${v}">${v}</span>
                     </div>`)}
-                ${renderObjectCategory(db, 'triggers', 'Triggers', 'bolt', isDawn ? 'text-[#f6c177]' : 'text-yellow-400', triggers,
+                ${renderObjectCategory(db, 'triggers', 'Triggers', 'bolt', isDawn ? 'text-[#f6c177]' : 'text-yellow-400', filteredTriggers,
                     (db, t) => `<div class="flex items-center gap-2 text-[10px] ${mainText} py-0.5">
                         <span class="material-symbols-outlined text-[12px] ${isDawn ? 'text-[#f6c177]' : 'text-yellow-400'}">bolt</span>
-                        <span>${t.name}</span>
+                        <span class="${highlightClass(`trigger-${db}-${t.name}`)}" data-search-id="trigger-${db}-${t.name}">${t.name}</span>
                         <span class="${subText} text-[9px]">${t.timing} ${t.event}</span>
                     </div>`)}
-                ${renderObjectCategory(db, 'procedures', 'Procedures', 'code_blocks', isDawn ? 'text-[#9ccfd8]' : 'text-green-400', procedures,
+                ${renderObjectCategory(db, 'procedures', 'Procedures', 'code_blocks', isDawn ? 'text-[#9ccfd8]' : 'text-green-400', filteredProcedures,
                         (db, p) => `<div class="flex items-center gap-2 text-[10px] ${mainText} py-0.5">
                         <span class="material-symbols-outlined text-[12px] ${isDawn ? 'text-[#9ccfd8]' : 'text-green-400'}">code_blocks</span>
-                        <span>${p.name}</span>
+                        <span class="${highlightClass(`procedure-${db}-${p.name}`)}" data-search-id="procedure-${db}-${p.name}">${p.name}</span>
                     </div>`)}
-                ${renderObjectCategory(db, 'functions', 'Functions', 'function', isDawn ? 'text-[#eb6f92]' : 'text-pink-400', functions,
+                ${renderObjectCategory(db, 'functions', 'Functions', 'function', isDawn ? 'text-[#eb6f92]' : 'text-pink-400', filteredFunctions,
                             (db, f) => `<div class="flex items-center gap-2 text-[10px] ${mainText} py-0.5">
                         <span class="material-symbols-outlined text-[12px] ${isDawn ? 'text-[#eb6f92]' : 'text-pink-400'}">function</span>
-                        <span>${f.name}</span>
+                        <span class="${highlightClass(`function-${db}-${f.name}`)}" data-search-id="function-${db}-${f.name}">${f.name}</span>
                     </div>`)}
-                ${renderObjectCategory(db, 'events', 'Events', 'schedule', isDawn ? 'text-[#ea9d34]' : 'text-orange-400', events,
+                ${renderObjectCategory(db, 'events', 'Events', 'schedule', isDawn ? 'text-[#ea9d34]' : 'text-orange-400', filteredEvents,
                                 (db, e) => `<div class="flex items-center gap-2 text-[10px] ${mainText} py-0.5">
                         <span class="material-symbols-outlined text-[12px] ${isDawn ? 'text-[#ea9d34]' : 'text-orange-400'}">schedule</span>
-                        <span>${e.name}</span>
+                        <span class="${highlightClass(`event-${db}-${e.name}`)}" data-search-id="event-${db}-${e.name}">${e.name}</span>
                         <span class="${subText} text-[9px]">${e.status}</span>
                     </div>`)}
             </div>
@@ -213,11 +270,15 @@ export function ObjectExplorer() {
     // --- Render all databases for active connection ---
     const renderActiveConnectionData = () => {
         const sysDbs = getSystemDatabases();
-        const userDbs = databases.filter(db => !sysDbs.includes(db.toLowerCase()));
-        const systemDbs = databases.filter(db => sysDbs.includes(db.toLowerCase()));
+        const visibleDbs = searchContext ? databases.filter(db => databaseHasAnyMatch(db)) : databases;
+        const userDbs = visibleDbs.filter(db => !sysDbs.includes(db.toLowerCase()));
+        const systemDbs = visibleDbs.filter(db => sysDbs.includes(db.toLowerCase()));
 
-        if (databases.length === 0) {
-            return `<div class="pl-6 py-1 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-600')} italic text-[10px]">No ${isPostgreSQL() ? 'schemas' : 'databases'} found</div>`;
+        if (visibleDbs.length === 0) {
+            const noDataText = searchContext
+                ? `No matches for "${escapeHtml(searchQuery)}"`
+                : `No ${isPostgreSQL() ? 'schemas' : 'databases'} found`;
+            return `<div class="pl-6 py-1 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-600')} italic text-[10px]">${noDataText}</div>`;
         }
 
         const borderClass = isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5');
@@ -325,6 +386,50 @@ export function ObjectExplorer() {
         const wasSearchFocused = document.activeElement && document.activeElement.id === 'explorer-search';
         const selectionStart = wasSearchFocused ? document.activeElement.selectionStart : 0;
 
+        const renderTypeBadge = (type) => {
+            const base = 'px-1.5 py-0.5 rounded text-[8px] font-bold';
+            switch (type) {
+                case 'database': return `<span class="${base} ${isDawn ? 'bg-[#f6c177]/20 text-[#c48c2b]' : 'bg-amber-500/20 text-amber-400'}">DB</span>`;
+                case 'table': return `<span class="${base} ${isDawn ? 'bg-[#ea9d34]/20 text-[#c77b22]' : 'bg-mysql-teal/20 text-mysql-teal'}">TABLE</span>`;
+                case 'column': return `<span class="${base} ${isDawn ? 'bg-[#c6a0f6]/20 text-[#7c6f9b]' : 'bg-purple-500/20 text-purple-300'}">COLUMN</span>`;
+                case 'view': return `<span class="${base} ${isDawn ? 'bg-[#3e8fb0]/20 text-[#2c6d8a]' : 'bg-blue-500/20 text-blue-300'}">VIEW</span>`;
+                case 'trigger': return `<span class="${base} ${isDawn ? 'bg-[#f6c177]/20 text-[#c48c2b]' : 'bg-yellow-500/20 text-yellow-300'}">TRIGGER</span>`;
+                case 'procedure': return `<span class="${base} ${isDawn ? 'bg-[#9ccfd8]/20 text-[#5f97a3]' : 'bg-green-500/20 text-green-300'}">PROC</span>`;
+                case 'function': return `<span class="${base} ${isDawn ? 'bg-[#eb6f92]/20 text-[#b45573]' : 'bg-pink-500/20 text-pink-300'}">FUNC</span>`;
+                case 'event': return `<span class="${base} ${isDawn ? 'bg-[#ea9d34]/20 text-[#c77b22]' : 'bg-orange-500/20 text-orange-300'}">EVENT</span>`;
+                default: return '';
+            }
+        };
+
+        const searchSummary = (() => {
+            if (!searchQuery.trim()) return '';
+            const summaryText = searchMatches.length > 0
+                ? `${searchMatches.length} result${searchMatches.length > 1 ? 's' : ''}`
+                : 'No matches';
+
+            const items = searchMatches.slice(0, 10).map((m, idx) => {
+                const path = [m.db, m.table, m.column].filter(Boolean).join(' • ');
+                return `
+                    <button class="search-result-item w-full text-left px-2 py-1 rounded ${isLight ? 'hover:bg-gray-100' : (isDawn ? 'hover:bg-[#f2e9e1]' : 'hover:bg-white/5')} flex items-center gap-2" data-index="${idx}">
+                        ${renderTypeBadge(m.type)}
+                        <span class="text-[10px] ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-gray-300')} truncate">${escapeHtml(path || m.id)}</span>
+                    </button>
+                `;
+            }).join('');
+
+            return `
+                <div class="px-2 mt-2">
+                    <div class="flex items-center justify-between text-[9px] ${headerText} mb-1">
+                        <span>${summaryText}</span>
+                        <span class="${headerText}">Enter / ↑↓ to jump</span>
+                    </div>
+                    <div class="flex flex-col gap-1" id="search-results">
+                        ${items || `<div class="text-[10px] ${headerText} italic px-1 py-1">No matching objects</div>`}
+                    </div>
+                </div>
+            `;
+        })();
+
         explorer.innerHTML = `
             <div class="flex items-center justify-between px-2">
                 <h2 class="text-[10px] font-bold tracking-[0.15em] ${headerText}">Explorer</h2>
@@ -350,6 +455,7 @@ export function ObjectExplorer() {
                     ` : ''}
                 </div>
             </div>
+            ${searchSummary}
             
             <div id="explorer-tree" class="flex-1 overflow-y-auto custom-scrollbar font-mono text-[11px] space-y-2 mt-2">
                 ${connections.length === 0 ?
@@ -629,30 +735,52 @@ export function ObjectExplorer() {
                 }, 300);
             });
 
-            searchInput.addEventListener('keydown', (e) => {
+            searchInput.addEventListener('keydown', async (e) => {
                 if (e.key === 'Enter') {
-                    if (e.shiftKey) gotoMatch(currentMatchIndex - 1);
-                    else gotoMatch(currentMatchIndex + 1);
+                    if (e.shiftKey) await gotoMatch(currentMatchIndex - 1);
+                    else await gotoMatch(currentMatchIndex + 1);
+                } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    await gotoMatch(currentMatchIndex + 1);
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    await gotoMatch(currentMatchIndex - 1);
                 }
             });
         }
 
         const btnPrev = explorer.querySelector('#search-prev');
-        if (btnPrev) btnPrev.onclick = () => gotoMatch(currentMatchIndex - 1);
+        if (btnPrev) btnPrev.onclick = async () => { await gotoMatch(currentMatchIndex - 1); };
 
         const btnNext = explorer.querySelector('#search-next');
-        if (btnNext) btnNext.onclick = () => gotoMatch(currentMatchIndex + 1);
+        if (btnNext) btnNext.onclick = async () => { await gotoMatch(currentMatchIndex + 1); };
 
         const btnClear = explorer.querySelector('#search-clear');
         if (btnClear) btnClear.onclick = () => {
             searchQuery = '';
             searchMatches = [];
             currentMatchIndex = -1;
+            searchContext = null;
             render();
         };
+
+        explorer.querySelectorAll('.search-result-item').forEach(item => {
+            item.addEventListener('click', async (e) => {
+                e.preventDefault();
+                const idx = Number(item.dataset.index);
+                await gotoMatch(idx);
+            });
+        });
     };
 
     // --- Search Helper Logic ---
+    const normalize = (value = '') => value.toString().toLowerCase().trim();
+    const tokenize = (query = '') => normalize(query).split(/[\s._-]+/).filter(Boolean);
+    const ensureMapSet = (map, key) => {
+        if (!map.has(key)) map.set(key, new Set());
+        return map.get(key);
+    };
+
     const highlightClass = (id) => {
         if (currentMatchIndex === -1 || !searchMatches[currentMatchIndex]) return '';
         const isCurrent = searchMatches[currentMatchIndex].id === id;
@@ -668,49 +796,149 @@ export function ObjectExplorer() {
     };
 
     const performSearch = () => {
-        if (!searchQuery.trim()) {
+        const tokens = tokenize(searchQuery);
+        if (tokens.length === 0) {
             searchMatches = [];
+            searchContext = null;
             currentMatchIndex = -1;
             render();
             return;
         }
 
-        const query = searchQuery.toLowerCase();
         const matches = [];
+        const matchesTokens = (text) => {
+            const norm = normalize(text);
+            return tokens.every(t => norm.includes(t));
+        };
 
-        // Search in databases
+        // Search in databases and nested objects
         databases.forEach(db => {
-            if (db.toLowerCase().includes(query)) {
+            if (matchesTokens(db)) {
                 matches.push({ type: 'database', db, id: `db-${db}` });
             }
 
             const objs = dbObjects[db];
-            if (objs) {
-                objs.tables.forEach(t => {
-                    if (t.toLowerCase().includes(query)) {
-                        matches.push({ type: 'table', db, table: t, id: `table-${db}-${t}` });
-                    }
+            if (!objs) return;
 
-                    const details = tableDetails[`${db}.${t}`];
-                    if (details && details.columns) {
-                        details.columns.forEach(col => {
-                            if (col.name.toLowerCase().includes(query)) {
-                                matches.push({ type: 'column', db, table: t, column: col.name, id: `col-${db}-${t}-${col.name}` });
-                            }
-                        });
-                    }
-                });
+            objs.tables.forEach(t => {
+                const fullName = `${db}.${t}`;
+                if (matchesTokens(t) || matchesTokens(fullName)) {
+                    matches.push({ type: 'table', db, table: t, id: `table-${db}-${t}` });
+                }
 
-                objs.views.forEach(v => {
-                    if (v.toLowerCase().includes(query)) {
-                        matches.push({ type: 'view', db, id: `view-${db}-${v}` });
-                    }
-                });
-            }
+                const details = tableDetails[`${db}.${t}`];
+                if (details?.columns) {
+                    details.columns.forEach(col => {
+                        if (matchesTokens(col.name)) {
+                            matches.push({ type: 'column', db, table: t, column: col.name, id: `col-${db}-${t}-${col.name}` });
+                        }
+                    });
+                }
+            });
+
+            objs.views.forEach(v => {
+                if (matchesTokens(v) || matchesTokens(`${db}.${v}`)) {
+                    matches.push({ type: 'view', db, view: v, id: `view-${db}-${v}` });
+                }
+            });
+
+            objs.triggers?.forEach(t => {
+                if (matchesTokens(t.name)) {
+                    matches.push({ type: 'trigger', db, trigger: t.name, id: `trigger-${db}-${t.name}` });
+                }
+            });
+
+            objs.procedures?.forEach(p => {
+                if (matchesTokens(p.name)) {
+                    matches.push({ type: 'procedure', db, procedure: p.name, id: `procedure-${db}-${p.name}` });
+                }
+            });
+
+            objs.functions?.forEach(f => {
+                if (matchesTokens(f.name)) {
+                    matches.push({ type: 'function', db, function: f.name, id: `function-${db}-${f.name}` });
+                }
+            });
+
+            objs.events?.forEach(e => {
+                if (matchesTokens(e.name)) {
+                    matches.push({ type: 'event', db, event: e.name, id: `event-${db}-${e.name}` });
+                }
+            });
         });
 
+        const buildSearchContext = (list) => {
+            const ctx = {
+                matchIds: new Set(),
+                databases: new Set(),
+                tables: new Map(),
+                views: new Map(),
+                triggers: new Map(),
+                procedures: new Map(),
+                functions: new Map(),
+                events: new Map()
+            };
+
+            list.forEach(m => {
+                ctx.matchIds.add(m.id);
+                switch (m.type) {
+                    case 'database':
+                        ctx.databases.add(m.db);
+                        break;
+                    case 'table':
+                    case 'column':
+                        ensureMapSet(ctx.tables, m.db).add(m.table);
+                        break;
+                    case 'view':
+                        ensureMapSet(ctx.views, m.db).add(m.view || m.name);
+                        break;
+                    case 'trigger':
+                        ensureMapSet(ctx.triggers, m.db).add(m.trigger || m.name);
+                        break;
+                    case 'procedure':
+                        ensureMapSet(ctx.procedures, m.db).add(m.procedure || m.name);
+                        break;
+                    case 'function':
+                        ensureMapSet(ctx.functions, m.db).add(m.function || m.name);
+                        break;
+                    case 'event':
+                        ensureMapSet(ctx.events, m.db).add(m.event || m.name);
+                        break;
+                    default:
+                        break;
+                }
+            });
+            return ctx;
+        };
+
         searchMatches = matches;
+        searchContext = matches.length > 0 ? buildSearchContext(matches) : null;
         currentMatchIndex = matches.length > 0 ? 0 : -1;
+
+        // Immediately load first match details (prevents "Loading..." stuck on auto-expand)
+        if (searchMatches.length > 0) {
+            const first = searchMatches[0];
+            // We intentionally don't await here to keep input snappy; rendering will update when fetch finishes.
+            if (first.db && !dbObjects[first.db]) {
+                loadDatabaseObjects(first.db);
+            }
+            if (first.table && !tableDetails[`${first.db}.${first.table}`]) {
+                loadTableDetails(first.db, first.table);
+            }
+        }
+
+        // Expand all parents containing matches so results are visible
+        if (searchContext) {
+            searchContext.databases.forEach(db => expandedDbs.add(db));
+            searchContext.tables.forEach((tables, db) => {
+                expandedDbs.add(db);
+                tables.forEach(t => expandedTables.add(`${db}.${t}`));
+            });
+            [searchContext.views, searchContext.triggers, searchContext.procedures, searchContext.functions, searchContext.events].forEach(map => {
+                map.forEach((_, db) => expandedDbs.add(db));
+            });
+        }
+
         render();
 
         if (searchMatches.length > 0) {
@@ -718,7 +946,7 @@ export function ObjectExplorer() {
         }
     };
 
-    const gotoMatch = (index) => {
+    const gotoMatch = async (index) => {
         if (searchMatches.length === 0) return;
 
         let newIndex = index;
@@ -727,6 +955,14 @@ export function ObjectExplorer() {
 
         currentMatchIndex = newIndex;
         const match = searchMatches[currentMatchIndex];
+
+        // Ensure data is loaded for match path
+        if (match.db && !dbObjects[match.db]) {
+            await loadDatabaseObjects(match.db);
+        }
+        if (match.table && !tableDetails[`${match.db}.${match.table}`]) {
+            await loadTableDetails(match.db, match.table);
+        }
 
         // Ensure path is expanded
         if (match.db) expandedDbs.add(match.db);
@@ -1399,6 +1635,10 @@ export function ObjectExplorer() {
     const loadTableDetails = async (dbName, tableName) => {
         const key = `${dbName}.${tableName}`;
 
+        // Prevent duplicate fetches
+        if (loadingTables.has(key)) return;
+        loadingTables.add(key);
+
         // Check cache
         const cachedCols = DatabaseCache.get(CacheTypes.COLUMNS, key);
         const cachedIdx = DatabaseCache.get(CacheTypes.INDEXES, key);
@@ -1430,6 +1670,8 @@ export function ObjectExplorer() {
             console.error(`Failed to load details for ${key}:`, error);
             tableDetails[key] = { columns: [], indexes: [], fks: [], constraints: [] };
             render();
+        } finally {
+            loadingTables.delete(key);
         }
     };
 
