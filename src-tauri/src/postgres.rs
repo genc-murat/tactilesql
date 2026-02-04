@@ -7,6 +7,8 @@ use sqlx::postgres::PgConnectOptions;
 use sqlx::ConnectOptions;
 use crate::db_types::*;
 use futures::StreamExt;
+use std::collections::HashMap;
+use serde_json::Value;
 
 // --- Connection ---
 
@@ -1272,4 +1274,179 @@ pub async fn get_execution_plan(pool: &Pool<Postgres>, query: &str) -> Result<St
         },
         None => Err("No execution plan returned".to_string())
     }
+}
+
+#[derive(Default)]
+struct PgExplainMetrics {
+    shared_hit_blocks: i64,
+    shared_read_blocks: i64,
+    shared_dirtied_blocks: i64,
+    shared_written_blocks: i64,
+    local_hit_blocks: i64,
+    local_read_blocks: i64,
+    local_dirtied_blocks: i64,
+    local_written_blocks: i64,
+    temp_read_blocks: i64,
+    temp_written_blocks: i64,
+    seq_scans: i64,
+    index_scans: i64,
+    index_only_scans: i64,
+    bitmap_scans: i64,
+    sort_nodes: i64,
+    hash_joins: i64,
+    merge_joins: i64,
+    nested_loops: i64,
+    rows: i64,
+    rows_removed: i64,
+    loops: i64,
+    plan_nodes: i64,
+    planning_time_ms: i64,
+    execution_time_ms: i64,
+}
+
+fn value_to_i64(val: &Value) -> i64 {
+    if let Some(v) = val.as_i64() {
+        v
+    } else if let Some(v) = val.as_f64() {
+        v.round() as i64
+    } else {
+        0
+    }
+}
+
+fn add_buffer(metrics: &mut PgExplainMetrics, buffers: &Value) {
+    if let Some(obj) = buffers.as_object() {
+        for (key, val) in obj {
+            let v = value_to_i64(val);
+            match key.as_str() {
+                "Shared Hit Blocks" => metrics.shared_hit_blocks += v,
+                "Shared Read Blocks" => metrics.shared_read_blocks += v,
+                "Shared Dirtied Blocks" => metrics.shared_dirtied_blocks += v,
+                "Shared Written Blocks" => metrics.shared_written_blocks += v,
+                "Local Hit Blocks" => metrics.local_hit_blocks += v,
+                "Local Read Blocks" => metrics.local_read_blocks += v,
+                "Local Dirtied Blocks" => metrics.local_dirtied_blocks += v,
+                "Local Written Blocks" => metrics.local_written_blocks += v,
+                "Temp Read Blocks" => metrics.temp_read_blocks += v,
+                "Temp Written Blocks" => metrics.temp_written_blocks += v,
+                _ => {}
+            }
+        }
+    }
+}
+
+fn visit_plan(node: &Value, metrics: &mut PgExplainMetrics) {
+    if !node.is_object() {
+        return;
+    }
+
+    metrics.plan_nodes += 1;
+
+    if let Some(node_type) = node.get("Node Type").and_then(|v| v.as_str()) {
+        if node_type.contains("Seq Scan") {
+            metrics.seq_scans += 1;
+        }
+        if node_type.contains("Index Only Scan") {
+            metrics.index_only_scans += 1;
+        } else if node_type.contains("Index Scan") {
+            metrics.index_scans += 1;
+        }
+        if node_type.contains("Bitmap") {
+            metrics.bitmap_scans += 1;
+        }
+        if node_type.contains("Sort") {
+            metrics.sort_nodes += 1;
+        }
+        if node_type == "Hash Join" {
+            metrics.hash_joins += 1;
+        } else if node_type == "Merge Join" {
+            metrics.merge_joins += 1;
+        } else if node_type == "Nested Loop" {
+            metrics.nested_loops += 1;
+        }
+    }
+
+    let loops = node.get("Actual Loops").map(value_to_i64).unwrap_or(1).max(1);
+    metrics.loops += loops;
+
+    let actual_rows = node.get("Actual Rows").map(value_to_i64).unwrap_or(0);
+    metrics.rows += actual_rows.saturating_mul(loops);
+
+    let removed_rows = node.get("Rows Removed by Filter").map(value_to_i64).unwrap_or(0);
+    metrics.rows_removed += removed_rows.saturating_mul(loops);
+
+    if let Some(buffers) = node.get("Buffers") {
+        add_buffer(metrics, buffers);
+    }
+
+    if let Some(plans) = node.get("Plans").and_then(|v| v.as_array()) {
+        for child in plans {
+            visit_plan(child, metrics);
+        }
+    }
+}
+
+pub async fn get_explain_analyze_metrics(pool: &Pool<Postgres>, query: &str) -> Result<HashMap<String, i64>, String> {
+    let explain_query = format!("EXPLAIN (FORMAT JSON, ANALYZE true, BUFFERS true) {}", query);
+    let row = sqlx::query(&explain_query)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| format!("Failed to run EXPLAIN ANALYZE: {}", e))?;
+
+    let plan_value = match row {
+        Some(r) => {
+            if let Ok(val) = r.try_get::<serde_json::Value, _>(0) {
+                val
+            } else if let Ok(text) = r.try_get::<String, _>(0) {
+                serde_json::from_str::<serde_json::Value>(&text)
+                    .map_err(|e| format!("Failed to parse EXPLAIN JSON: {}", e))?
+            } else {
+                return Err("Failed to read EXPLAIN JSON".to_string());
+            }
+        },
+        None => return Err("No EXPLAIN output returned".to_string()),
+    };
+
+    let mut metrics = PgExplainMetrics::default();
+
+    // EXPLAIN FORMAT JSON returns an array with a single object
+    if let Some(root_obj) = plan_value.as_array().and_then(|arr| arr.first()).and_then(|v| v.as_object()) {
+        if let Some(plan) = root_obj.get("Plan") {
+            visit_plan(plan, &mut metrics);
+        }
+
+        if let Some(planning) = root_obj.get("Planning Time") {
+            metrics.planning_time_ms = value_to_i64(planning);
+        }
+        if let Some(execution) = root_obj.get("Execution Time") {
+            metrics.execution_time_ms = value_to_i64(execution);
+        }
+    }
+
+    let mut map = HashMap::new();
+    map.insert("pg_shared_hit_blocks".to_string(), metrics.shared_hit_blocks);
+    map.insert("pg_shared_read_blocks".to_string(), metrics.shared_read_blocks);
+    map.insert("pg_shared_dirtied_blocks".to_string(), metrics.shared_dirtied_blocks);
+    map.insert("pg_shared_written_blocks".to_string(), metrics.shared_written_blocks);
+    map.insert("pg_local_hit_blocks".to_string(), metrics.local_hit_blocks);
+    map.insert("pg_local_read_blocks".to_string(), metrics.local_read_blocks);
+    map.insert("pg_local_dirtied_blocks".to_string(), metrics.local_dirtied_blocks);
+    map.insert("pg_local_written_blocks".to_string(), metrics.local_written_blocks);
+    map.insert("pg_temp_read_blocks".to_string(), metrics.temp_read_blocks);
+    map.insert("pg_temp_written_blocks".to_string(), metrics.temp_written_blocks);
+    map.insert("pg_seq_scans".to_string(), metrics.seq_scans);
+    map.insert("pg_index_scans".to_string(), metrics.index_scans);
+    map.insert("pg_index_only_scans".to_string(), metrics.index_only_scans);
+    map.insert("pg_bitmap_scans".to_string(), metrics.bitmap_scans);
+    map.insert("pg_sort_nodes".to_string(), metrics.sort_nodes);
+    map.insert("pg_hash_joins".to_string(), metrics.hash_joins);
+    map.insert("pg_merge_joins".to_string(), metrics.merge_joins);
+    map.insert("pg_nested_loops".to_string(), metrics.nested_loops);
+    map.insert("pg_rows".to_string(), metrics.rows);
+    map.insert("pg_rows_removed".to_string(), metrics.rows_removed);
+    map.insert("pg_loops".to_string(), metrics.loops);
+    map.insert("pg_plan_nodes".to_string(), metrics.plan_nodes);
+    map.insert("pg_planning_time_ms".to_string(), metrics.planning_time_ms);
+    map.insert("pg_execution_time_ms".to_string(), metrics.execution_time_ms);
+    Ok(map)
 }

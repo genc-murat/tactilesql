@@ -269,6 +269,192 @@ export function QueryProfiler() {
         }
 
         const { duration, rowsReturned, query } = profileData;
+        const dbType = getDbType();
+
+        if (dbType === 'postgresql' || dbType === 'postgres') {
+            const pgSharedHitBlocks = getStatusDiff('pg_shared_hit_blocks');
+            const pgSharedReadBlocks = getStatusDiff('pg_shared_read_blocks');
+            const pgTempReadBlocks = getStatusDiff('pg_temp_read_blocks');
+            const pgTempWrittenBlocks = getStatusDiff('pg_temp_written_blocks');
+            const pgSeqScans = getStatusDiff('pg_seq_scans');
+            const pgIndexScans = getStatusDiff('pg_index_scans');
+            const pgIndexOnlyScans = getStatusDiff('pg_index_only_scans');
+            const pgBitmapScans = getStatusDiff('pg_bitmap_scans');
+            const pgSortNodes = getStatusDiff('pg_sort_nodes');
+            const pgHashJoins = getStatusDiff('pg_hash_joins');
+            const pgMergeJoins = getStatusDiff('pg_merge_joins');
+            const pgNestedLoops = getStatusDiff('pg_nested_loops');
+            const pgRows = getStatusDiff('pg_rows');
+            const pgRowsRemoved = getStatusDiff('pg_rows_removed');
+            const pgPlanningTime = getStatusDiff('pg_planning_time_ms');
+            const pgExecutionTime = getStatusDiff('pg_execution_time_ms');
+
+            const rowsExamined = pgRows + pgRowsRemoved;
+            const indexScansTotal = pgIndexScans + pgIndexOnlyScans + pgBitmapScans;
+            const sharedReadBytes = pgSharedReadBlocks * 8192;
+            const sharedHitBytes = pgSharedHitBlocks * 8192;
+            const hasExplain = !!profileData.statusDiff;
+
+            // Heuristic score for PG
+            let score = 100;
+            if (pgSeqScans > 0 && rowsExamined > rowsReturned * 10) score -= 20;
+            if (pgTempWrittenBlocks > 0) score -= 15;
+            if (pgSortNodes > 0 && rowsExamined > 1000) score -= 10;
+            if ((pgHashJoins + pgMergeJoins + pgNestedLoops) > 0 && pgSeqScans > 0) score -= 5;
+            score = Math.max(0, score);
+
+            const metrics = {
+                query,
+                duration,
+                rowsReturned,
+                rowsExamined,
+                // Populate MySQL-oriented fields for AI prompt compatibility
+                tmpTables: pgTempReadBlocks,
+                tmpDiskTables: pgTempWrittenBlocks,
+                selectFullJoin: pgHashJoins + pgMergeJoins + pgNestedLoops,
+                selectScan: pgSeqScans,
+                lockTime: 0,
+                bytesSent: sharedHitBytes,
+                bytesReceived: sharedReadBytes,
+                sharedReadBlocks: pgSharedReadBlocks,
+                sharedHitBlocks: pgSharedHitBlocks,
+                tempReadBlocks: pgTempReadBlocks,
+                tempWrittenBlocks: pgTempWrittenBlocks,
+                seqScans: pgSeqScans,
+                indexScans: indexScansTotal,
+                sortNodes: pgSortNodes,
+                hashJoins: pgHashJoins,
+                mergeJoins: pgMergeJoins,
+                nestedLoops: pgNestedLoops,
+                planningTimeMs: pgPlanningTime,
+                executionTimeMs: pgExecutionTime,
+            };
+
+            const scoreColor = score >= 80 ? 'text-green-400' : (score >= 50 ? 'text-yellow-400' : 'text-red-400');
+            const scoreBg = score >= 80 ? 'bg-green-500/10' : (score >= 50 ? 'bg-yellow-500/10' : 'bg-red-500/10');
+            const scoreBorder = score >= 80 ? 'border-green-500/20' : (score >= 50 ? 'border-yellow-500/20' : 'border-red-500/20');
+
+            const labelColor = (isLight || isDawn) ? 'text-gray-500' : 'text-gray-400';
+            const valueColor = isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-200');
+            const gridBg = isLight ? 'bg-gray-50/80' : (isDawn ? 'bg-[#fffaf3]/80' : 'bg-white/5');
+
+            contentDiv.innerHTML = `
+                <div class="flex items-start gap-3 mb-3">
+                    <div class="w-12 h-12 rounded-full flex items-center justify-center border-2 ${scoreBorder} ${scoreBg} shrink-0">
+                        <span class="text-sm font-black ${scoreColor}">${score}</span>
+                    </div>
+                    
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-baseline justify-between">
+                            <span class="text-xs font-bold ${valueColor} truncate" title="Duration">Duration</span>
+                            <span class="text-lg font-black bg-clip-text text-transparent bg-gradient-to-r from-mysql-teal to-cyan-400">${formatDuration(duration)}</span>
+                        </div>
+                        <div class="text-[10px] ${labelColor} truncate font-mono mt-0.5" title="${escapeHtml(query)}">${escapeHtml(query) || 'Unknown Query'}</div>
+                    </div>
+
+                    <button id="analyze-ai-btn" class="shrink-0 p-2 rounded-lg bg-mysql-teal/10 hover:bg-mysql-teal/20 text-mysql-teal transition-all group flex flex-col items-center gap-0.5 border border-mysql-teal/20" title="AI Performance Analysis">
+                        <span class="material-symbols-outlined text-[18px]">psychology</span>
+                        <span class="text-[8px] font-black uppercase">Analyze</span>
+                    </button>
+                </div>
+
+                <div id="ai-analysis-result" class="hidden mb-3 p-2 rounded-lg border border-mysql-teal/20 bg-mysql-teal/5 text-[10px] ${valueColor} animate-slideDown">
+                    <div class="flex items-center gap-1.5 mb-1.5 font-black uppercase tracking-widest text-mysql-teal">
+                        <span class="material-symbols-outlined text-[14px]">auto_awesome</span>
+                        AI Analysis
+                    </div>
+                    <div id="ai-analysis-text" class="space-y-1 leading-relaxed"></div>
+                </div>
+
+                ${hasExplain ? '' : `
+                    <div class="mb-2 px-2 py-1 rounded border ${isLight ? 'border-gray-200 text-gray-500' : 'border-white/10 text-gray-400'} text-[9px]">
+                        EXPLAIN ANALYZE metrics unavailable for this query type.
+                    </div>
+                `}
+
+                <div class="grid grid-cols-2 gap-2 mb-3">
+                    <div class="p-2 rounded-lg ${gridBg} border ${isLight ? 'border-transparent' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
+                        <div class="text-[9px] uppercase tracking-wider ${labelColor} mb-0.5">Rows</div>
+                        <div class="flex items-baseline justify-between">
+                            <span class="text-xs font-bold ${valueColor}">${formatNumber(rowsReturned)}</span>
+                            <span class="text-[9px] opacity-60">ret</span>
+                        </div>
+                    </div>
+                    <div class="p-2 rounded-lg ${gridBg} border ${isLight ? 'border-transparent' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
+                        <div class="text-[9px] uppercase tracking-wider ${labelColor} mb-0.5">Examined</div>
+                        <div class="flex items-baseline justify-between">
+                            <span class="text-xs font-bold ${rowsExamined > rowsReturned * 10 ? 'text-yellow-500' : valueColor}">${formatNumber(rowsExamined)}</span>
+                            <span class="text-[9px] opacity-60">scan</span>
+                        </div>
+                    </div>
+                    <div class="p-2 rounded-lg ${gridBg} border ${isLight ? 'border-transparent' : 'border-white/5'}">
+                        <div class="text-[9px] uppercase tracking-wider ${labelColor} mb-0.5">Shared Read</div>
+                        <div class="flex items-baseline justify-between">
+                            <span class="text-[10px] font-bold ${valueColor}">${formatBytes(sharedReadBytes)}</span>
+                            <span class="text-[9px] opacity-60">blk</span>
+                        </div>
+                    </div>
+                    <div class="p-2 rounded-lg ${gridBg} border ${isLight ? 'border-transparent' : 'border-white/5'}">
+                        <div class="text-[9px] uppercase tracking-wider ${labelColor} mb-0.5">Cache Hit</div>
+                        <div class="flex items-baseline justify-between">
+                            <span class="text-[10px] font-bold ${valueColor}">${formatBytes(sharedHitBytes)}</span>
+                            <span class="text-[9px] opacity-60">blk</span>
+                        </div>
+                    </div>
+                </div>
+
+                <details class="group" ${pgTempWrittenBlocks > 0 || pgSeqScans > 0 || pgSortNodes > 0 ? 'open' : ''}>
+                    <summary class="flex items-center justify-between cursor-pointer p-1.5 rounded hover:bg-black/5 dark:hover:bg-white/5 transition-colors select-none">
+                        <span class="text-[10px] font-bold uppercase tracking-wider ${labelColor}">Deep Dive Metrics</span>
+                        <span class="material-symbols-outlined text-sm ${labelColor} transform group-open:rotate-180 transition-transform">expand_more</span>
+                    </summary>
+                    
+                    <div class="mt-2 space-y-1 text-[10px] pl-1">
+                        <div class="grid grid-cols-2 gap-x-4 gap-y-1">
+                            <div class="flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
+                                <span class="${labelColor}">Temp Read</span>
+                                <span class="font-mono ${valueColor}">${pgTempReadBlocks}</span>
+                            </div>
+                            <div class="flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
+                                <span class="${labelColor}">Temp Write</span>
+                                <span class="font-mono ${pgTempWrittenBlocks > 0 ? 'text-red-400 font-bold' : valueColor}">${pgTempWrittenBlocks}</span>
+                            </div>
+                            <div class="flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
+                                <span class="${labelColor}">Seq Scans</span>
+                                <span class="font-mono ${pgSeqScans > 0 ? 'text-yellow-400' : valueColor}">${pgSeqScans}</span>
+                            </div>
+                            <div class="flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
+                                <span class="${labelColor}">Index Scans</span>
+                                <span class="font-mono ${valueColor}">${indexScansTotal}</span>
+                            </div>
+                            <div class="flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
+                                <span class="${labelColor}">Sort Nodes</span>
+                                <span class="font-mono ${pgSortNodes > 0 ? 'text-yellow-400' : valueColor}">${pgSortNodes}</span>
+                            </div>
+                            <div class="flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
+                                <span class="${labelColor}">Plan Nodes</span>
+                                <span class="font-mono ${valueColor}">${getStatusDiff('pg_plan_nodes')}</span>
+                            </div>
+                            <div class="col-span-2 flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
+                                <span class="${labelColor}">Joins (H/M/N)</span>
+                                <span class="font-mono ${valueColor}">${pgHashJoins}/${pgMergeJoins}/${pgNestedLoops}</span>
+                            </div>
+                            <div class="col-span-2 flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
+                                <span class="${labelColor}">Planning Time</span>
+                                <span class="font-mono ${valueColor}">${formatDuration(pgPlanningTime)}</span>
+                            </div>
+                            <div class="col-span-2 flex justify-between py-0.5 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
+                                <span class="${labelColor}">EXPLAIN Time</span>
+                                <span class="font-mono ${valueColor}">${formatDuration(pgExecutionTime)}</span>
+                            </div>
+                        </div>
+                    </div>
+                </details>
+            `;
+
+            container.querySelector('#analyze-ai-btn')?.addEventListener('click', () => handleAiAnalysis(metrics));
+            return;
+        }
 
         // Calculate metrics
         const metrics = {

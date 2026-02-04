@@ -506,6 +506,51 @@ fn spawn_awareness_log(
     });
 }
 
+fn strip_leading_sql_comments(input: &str) -> &str {
+    let mut s = input;
+    loop {
+        let trimmed = s.trim_start();
+        if trimmed.starts_with("--") {
+            if let Some(pos) = trimmed.find('\n') {
+                s = &trimmed[pos + 1..];
+                continue;
+            }
+            return "";
+        }
+        if trimmed.starts_with("/*") {
+            if let Some(pos) = trimmed.find("*/") {
+                s = &trimmed[pos + 2..];
+                continue;
+            }
+            return "";
+        }
+        return trimmed;
+    }
+}
+
+fn is_safe_for_explain(query: &str) -> bool {
+    let trimmed = query.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    // Avoid multi-statement queries
+    let single = trimmed.trim_end_matches(';');
+    if single.contains(';') {
+        return false;
+    }
+
+    let head = strip_leading_sql_comments(single).trim_start().to_uppercase();
+    if !(head.starts_with("SELECT") || head.starts_with("WITH")) {
+        return false;
+    }
+    // Avoid data-changing statements inside CTEs or mixed statements
+    let forbidden = [
+        "INSERT", "UPDATE", "DELETE", "MERGE", "ALTER", "CREATE", "DROP", "TRUNCATE",
+        "VACUUM", "GRANT", "REVOKE", "CALL", "DO",
+    ];
+    !forbidden.iter().any(|kw| head.contains(kw))
+}
+
 #[tauri::command]
 pub async fn execute_query(
     app_state: State<'_, AppState>,
@@ -570,7 +615,12 @@ pub async fn execute_query_profiled(
             let pool = guard.as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             let res = postgres::execute_query(pool, query.clone()).await?;
-            (res, None)
+            let explain_metrics = if is_safe_for_explain(&query) {
+                postgres::get_explain_analyze_metrics(pool, &query).await.ok()
+            } else {
+                None
+            };
+            (res, explain_metrics)
         },
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
