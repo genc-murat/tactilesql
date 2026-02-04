@@ -9,6 +9,10 @@ const DEFAULT_SETTINGS = {
         enabled: true,
         explainAnalyze: true,
     },
+    workbench: {
+        snippets: true,
+        history: true,
+    },
 };
 
 const deepGet = (obj, path) => {
@@ -38,7 +42,8 @@ const loadSettings = () => {
             ...DEFAULT_SETTINGS,
             ...parsed,
             autocomplete: { ...DEFAULT_SETTINGS.autocomplete, ...(parsed.autocomplete || {}) },
-            profiler: { ...DEFAULT_SETTINGS.profiler, ...(parsed.profiler || {}) }
+            profiler: { ...DEFAULT_SETTINGS.profiler, ...(parsed.profiler || {}) },
+            workbench: { ...DEFAULT_SETTINGS.workbench, ...(parsed.workbench || {}) }
         };
     } catch {
         return { ...DEFAULT_SETTINGS };

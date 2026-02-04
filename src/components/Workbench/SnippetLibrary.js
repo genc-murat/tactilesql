@@ -1,5 +1,6 @@
 import { Dialog } from '../UI/Dialog.js';
 import { ThemeManager } from '../../utils/ThemeManager.js';
+import { SettingsManager } from '../../utils/SettingsManager.js';
 import { escapeHtml } from '../../utils/helpers.js';
 
 export function SnippetLibrary() {
@@ -130,10 +131,30 @@ export function SnippetLibrary() {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const showSnippets = SettingsManager.get('workbench.snippets', true);
+        const showHistory = SettingsManager.get('workbench.history', true);
+        const dividerClass = isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border' : 'border-white/5'));
         const filteredSnippets = getFilteredSnippets();
+        const snippetSectionClass = showHistory ? 'flex flex-col gap-3' : 'flex-1 flex flex-col gap-3 min-h-0';
+        const snippetListClass = showHistory
+            ? 'space-y-2 max-h-[200px] overflow-y-auto custom-scrollbar pr-1'
+            : 'flex-1 space-y-2 overflow-y-auto custom-scrollbar pr-1 min-h-0';
+        const historySectionClass = showSnippets
+            ? `flex-1 flex flex-col gap-3 min-h-0 pt-3 border-t ${dividerClass}`
+            : 'flex-1 flex flex-col gap-3 min-h-0';
+
+        if (!showSnippets && !showHistory) {
+            aside.innerHTML = `
+                <div class="flex-1 flex items-center justify-center text-[11px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-500'))}">
+                    Snippets and history are hidden in Settings.
+                </div>
+            `;
+            return;
+        }
 
         aside.innerHTML = `
-            <div class="flex flex-col gap-3">
+            ${showSnippets ? `
+            <div class="${snippetSectionClass}">
                 <!-- Header with actions -->
                 <div class="flex items-center justify-between px-1">
                     <h2 class="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-500">Snippets</h2>
@@ -164,7 +185,7 @@ export function SnippetLibrary() {
                 </div>
                 
                 <!-- Snippets List -->
-                <div class="space-y-2 max-h-[200px] overflow-y-auto custom-scrollbar pr-1">
+                <div class="${snippetListClass}">
                     ${filteredSnippets.map(snippet => `
                         <div class="neu-card ${isLight ? 'bg-gray-50 border-gray-100 hover:border-mysql-teal/30' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] hover:border-mysql-teal/30' : (isOceanic ? 'bg-ocean-bg border-ocean-border hover:border-ocean-frost' : 'hover:border-mysql-teal/40 border-transparent'))} rounded-lg p-2.5 cursor-pointer transition-all border group snippet-item" data-id="${snippet.id}">
                             <div class="flex justify-between items-center mb-1">
@@ -180,10 +201,11 @@ export function SnippetLibrary() {
                     `).join('')}
                     ${filteredSnippets.length === 0 ? `<div class="text-[11px] ${(isLight || isDawn) ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-600')} italic text-center py-4">No snippets found</div>` : ''}
                 </div>
-            </div>
+            </div>` : ''}
             
             <!-- History Section -->
-            <div class="flex-1 flex flex-col gap-3 min-h-0 pt-3 border-t ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border' : 'border-white/5'))}">
+            ${showHistory ? `
+            <div class="${historySectionClass}">
                 <div class="flex items-center justify-between px-1">
                     <h2 class="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-500">History</h2>
                     <span id="clear-history-btn" class="material-symbols-outlined text-sm text-gray-500 cursor-pointer hover:text-red-400 transition-colors" title="Clear History">delete_sweep</span>
@@ -200,7 +222,7 @@ export function SnippetLibrary() {
                     `).join('')}
                     ${history.length === 0 ? `<div class="text-[11px] ${(isLight || isDawn) ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-600')} italic text-center py-4">No query history</div>` : ''}
                 </div>
-            </div>
+            </div>` : ''}
         `;
         attachEvents();
     };
@@ -386,6 +408,13 @@ export function SnippetLibrary() {
     };
     window.addEventListener('tactilesql:history-update', onHistoryUpdate);
 
+    const onSettingsChange = (e) => {
+        if (e.detail?.path?.startsWith('workbench.')) {
+            render();
+        }
+    };
+    window.addEventListener('tactilesql:settings-changed', onSettingsChange);
+
     // --- Theme Change Handling ---
     const onThemeChange = (e) => {
         theme = e.detail.theme;
@@ -414,6 +443,7 @@ export function SnippetLibrary() {
     // Patch for cleanup
     aside.onUnmount = () => {
         window.removeEventListener('tactilesql:history-update', onHistoryUpdate);
+        window.removeEventListener('tactilesql:settings-changed', onSettingsChange);
         window.removeEventListener('themechange', onThemeChange);
         window.removeEventListener('tactilesql:save-snippet', onSaveSnippet);
     };

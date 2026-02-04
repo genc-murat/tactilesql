@@ -5,6 +5,7 @@ import { SnippetLibrary } from '../components/Workbench/SnippetLibrary.js';
 
 import { QueryProfiler } from '../components/Workbench/QueryProfiler.js';
 import { ThemeManager } from '../utils/ThemeManager.js';
+import { SettingsManager } from '../utils/SettingsManager.js';
 
 export function SqlWorkbench() {
     const theme = ThemeManager.getCurrentTheme();
@@ -145,6 +146,22 @@ export function SqlWorkbench() {
         e.preventDefault();
     });
 
+    const applySnippetPanelVisibility = () => {
+        const showSnippets = SettingsManager.get('workbench.snippets', true);
+        const showHistory = SettingsManager.get('workbench.history', true);
+        const shouldShowPanel = showSnippets || showHistory;
+
+        snippets.style.display = shouldShowPanel ? '' : 'none';
+        snippetResizer.style.display = shouldShowPanel ? '' : 'none';
+
+        if (!shouldShowPanel) {
+            isSnippetResizing = false;
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        }
+    };
+    applySnippetPanelVisibility();
+
     container.appendChild(mainContent);
 
     // Query Profiler (floating panel)
@@ -181,13 +198,20 @@ export function SqlWorkbench() {
     };
     window.addEventListener('themechange', onThemeChange);
 
+    const onSettingsChange = (e) => {
+        if (e.detail?.path?.startsWith('workbench.')) {
+            applySnippetPanelVisibility();
+        }
+    };
+    window.addEventListener('tactilesql:settings-changed', onSettingsChange);
+
     // Cleanup logic
     container.onUnmount = () => {
         document.removeEventListener('mousemove', onMouseMove);
         document.removeEventListener('mouseup', onMouseUp);
         window.removeEventListener('themechange', onThemeChange);
+        window.removeEventListener('tactilesql:settings-changed', onSettingsChange);
     };
 
     return container;
 }
-

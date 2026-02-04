@@ -44,6 +44,8 @@ export function Settings() {
         const snippetSuggestionsEnabled = SettingsManager.get('autocomplete.snippets', true);
         const profilerEnabled = SettingsManager.get('profiler.enabled', true);
         const profilerExplainEnabled = SettingsManager.get('profiler.explainAnalyze', true);
+        const workbenchSnippetsEnabled = SettingsManager.get('workbench.snippets', true);
+        const workbenchHistoryEnabled = SettingsManager.get('workbench.history', true);
 
         container.innerHTML = `
         <div class="h-full p-6 lg:p-8">
@@ -256,6 +258,26 @@ export function Settings() {
 
                         <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
                             <div>
+                                <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Workbench Snippets</h3>
+                                <p class="text-xs text-gray-500 mt-1">Show the snippets panel in the workbench sidebar</p>
+                            </div>
+                            <button id="workbench-snippets-toggle" class="relative w-12 h-6 rounded-full transition-all ${workbenchSnippetsEnabled ? 'bg-gradient-to-r from-mysql-teal to-mysql-cyan' : (isLight ? 'bg-gray-200' : (isOceanic ? 'bg-ocean-border/40' : 'bg-white/10'))}">
+                                <span class="absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow-md transition-transform transform ${workbenchSnippetsEnabled ? 'translate-x-6' : 'translate-x-0'}"></span>
+                            </button>
+                        </div>
+
+                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                            <div>
+                                <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Workbench History</h3>
+                                <p class="text-xs text-gray-500 mt-1">Show query history in the workbench sidebar</p>
+                            </div>
+                            <button id="workbench-history-toggle" class="relative w-12 h-6 rounded-full transition-all ${workbenchHistoryEnabled ? 'bg-gradient-to-r from-mysql-teal to-mysql-cyan' : (isLight ? 'bg-gray-200' : (isOceanic ? 'bg-ocean-border/40' : 'bg-white/10'))}">
+                                <span class="absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow-md transition-transform transform ${workbenchHistoryEnabled ? 'translate-x-6' : 'translate-x-0'}"></span>
+                            </button>
+                        </div>
+
+                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                            <div>
                                 <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Line Numbers</h3>
                                 <p class="text-xs text-gray-500 mt-1">Show line numbers in the editor</p>
                             </div>
@@ -387,6 +409,8 @@ export function Settings() {
         const auroraBtn = container.querySelector('#theme-aurora');
         const preview = container.querySelector('#theme-preview');
         const snippetToggle = container.querySelector('#autocomplete-snippets-toggle');
+        const workbenchSnippetsToggle = container.querySelector('#workbench-snippets-toggle');
+        const workbenchHistoryToggle = container.querySelector('#workbench-history-toggle');
         const profilerToggle = container.querySelector('#profiler-enabled-toggle');
         const profilerExplainToggle = container.querySelector('#profiler-explain-toggle');
 
@@ -466,6 +490,26 @@ export function Settings() {
                 SettingsManager.set('autocomplete.snippets', next);
                 setToggleState(snippetToggle, next);
             });
+        }
+
+        if (workbenchSnippetsToggle) {
+            workbenchSnippetsToggle.addEventListener('click', () => {
+                const current = SettingsManager.get('workbench.snippets', true);
+                const next = !current;
+                SettingsManager.set('workbench.snippets', next);
+                setToggleState(workbenchSnippetsToggle, next);
+            });
+            setToggleState(workbenchSnippetsToggle, SettingsManager.get('workbench.snippets', true));
+        }
+
+        if (workbenchHistoryToggle) {
+            workbenchHistoryToggle.addEventListener('click', () => {
+                const current = SettingsManager.get('workbench.history', true);
+                const next = !current;
+                SettingsManager.set('workbench.history', next);
+                setToggleState(workbenchHistoryToggle, next);
+            });
+            setToggleState(workbenchHistoryToggle, SettingsManager.get('workbench.history', true));
         }
 
         if (profilerToggle) {
