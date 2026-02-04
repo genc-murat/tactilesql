@@ -7,7 +7,7 @@ use sqlx::mysql::MySqlConnectOptions;
 use sqlx::ConnectOptions;
 use crate::db_types::*;
 use futures::StreamExt;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 // --- Connection ---
 
@@ -987,10 +987,67 @@ pub async fn analyze_query(pool: &Pool<MySql>, query: &str) -> Result<QueryAnaly
 }
 
 pub async fn get_index_suggestions(pool: &Pool<MySql>, database: &str, table: &str) -> Result<Vec<IndexSuggestion>, String> {
+    let mut suggestions = Vec::new();
+    let mut flagged_indexes: HashSet<String> = HashSet::new();
+
+    // 1) Real unused index detection via sys.schema_unused_indexes (if available)
+    let sys_query = format!(r#"
+        SELECT index_name
+        FROM sys.schema_unused_indexes
+        WHERE object_schema = '{}'
+          AND object_name = '{}'
+    "#, database, table);
+
+    if let Ok(rows) = sqlx::query(&sys_query).fetch_all(pool).await {
+        for row in rows {
+            let index_name: String = row.try_get("index_name").unwrap_or_default();
+            if index_name.is_empty() { continue; }
+            if flagged_indexes.insert(index_name.clone()) {
+                suggestions.push(IndexSuggestion {
+                    table_name: table.to_string(),
+                    column_name: index_name.clone(),
+                    index_name: Some(index_name.clone()),
+                    suggestion: "Consider removing unused index".to_string(),
+                    reason: "No usage detected (sys.schema_unused_indexes)".to_string(),
+                });
+            }
+        }
+    }
+
+    // 2) Real usage metrics via performance_schema (if enabled)
+    let perf_query = format!(r#"
+        SELECT 
+            INDEX_NAME,
+            COUNT_STAR as total_ops
+        FROM performance_schema.table_io_waits_summary_by_index_usage
+        WHERE OBJECT_SCHEMA = '{}'
+          AND OBJECT_NAME = '{}'
+          AND INDEX_NAME IS NOT NULL
+    "#, database, table);
+
+    if let Ok(rows) = sqlx::query(&perf_query).fetch_all(pool).await {
+        for row in rows {
+            let index_name: String = row.try_get("INDEX_NAME").unwrap_or_default();
+            let total_ops: i64 = row.try_get::<i64, _>("total_ops").unwrap_or(0);
+            if index_name.is_empty() { continue; }
+            if total_ops == 0 && flagged_indexes.insert(index_name.clone()) {
+                suggestions.push(IndexSuggestion {
+                    table_name: table.to_string(),
+                    column_name: index_name.clone(),
+                    index_name: Some(index_name.clone()),
+                    suggestion: "Consider removing unused index".to_string(),
+                    reason: "No usage detected (performance_schema)".to_string(),
+                });
+            }
+        }
+    }
+
+    // 3) Low cardinality fallback (less reliable)
     let query = format!(r#"
         SELECT 
             TABLE_NAME,
             COLUMN_NAME,
+            INDEX_NAME,
             CARDINALITY
         FROM information_schema.STATISTICS
         WHERE TABLE_SCHEMA = '{}'
@@ -1002,15 +1059,16 @@ pub async fn get_index_suggestions(pool: &Pool<MySql>, database: &str, table: &s
         .await
         .map_err(|e| format!("Failed to analyze indexes: {}", e))?;
 
-    let mut suggestions = Vec::new();
     for row in rows {
         let cardinality: i64 = row.try_get::<i64, _>("CARDINALITY").unwrap_or(0);
         let column_name: String = row.try_get("COLUMN_NAME").unwrap_or_default();
-        
-        if cardinality < 10 {
+        let index_name: String = row.try_get("INDEX_NAME").unwrap_or_default();
+
+        if cardinality < 10 && (index_name.is_empty() || !flagged_indexes.contains(&index_name)) {
             suggestions.push(IndexSuggestion {
                 table_name: table.to_string(),
                 column_name: column_name.clone(),
+                index_name: if index_name.is_empty() { None } else { Some(index_name.clone()) },
                 suggestion: "Consider removing this index".to_string(),
                 reason: format!("Low cardinality ({}), index may not be effective", cardinality),
             });
@@ -1018,6 +1076,84 @@ pub async fn get_index_suggestions(pool: &Pool<MySql>, database: &str, table: &s
     }
 
     Ok(suggestions)
+}
+
+// --- Index Usage (MySQL) ---
+
+pub async fn get_index_usage(pool: &Pool<MySql>, database: &str, table: &str) -> Result<Vec<IndexUsage>, String> {
+    let query = format!(r#"
+        SELECT 
+            INDEX_NAME,
+            COUNT_STAR as total_ops
+        FROM performance_schema.table_io_waits_summary_by_index_usage
+        WHERE OBJECT_SCHEMA = '{}'
+          AND OBJECT_NAME = '{}'
+          AND INDEX_NAME IS NOT NULL
+    "#, database, table);
+
+    match sqlx::query(&query).fetch_all(pool).await {
+        Ok(rows) => {
+            let mut usage = Vec::new();
+            for row in rows {
+                let index_name: String = row.try_get("INDEX_NAME").unwrap_or_default();
+                let total_ops: i64 = row.try_get::<i64, _>("total_ops").unwrap_or(0);
+                if index_name.is_empty() { continue; }
+                usage.push(IndexUsage {
+                    index_name,
+                    total_ops,
+                    reads: total_ops,
+                    writes: 0,
+                });
+            }
+            Ok(usage)
+        },
+        Err(e) => {
+            eprintln!("Performance schema index usage unavailable: {}", e);
+            Ok(vec![])
+        }
+    }
+}
+
+// --- Index Sizes (MySQL) ---
+
+pub async fn get_index_sizes(pool: &Pool<MySql>, database: &str, table: &str) -> Result<Vec<IndexSize>, String> {
+    let page_size = match sqlx::query("SELECT @@innodb_page_size as page_size")
+        .fetch_one(pool)
+        .await
+    {
+        Ok(row) => row.try_get::<i64, _>("page_size").unwrap_or(16384),
+        Err(_) => 16384,
+    };
+
+    let query = format!(r#"
+        SELECT 
+            index_name,
+            stat_value
+        FROM information_schema.INNODB_INDEX_STATS
+        WHERE database_name = '{}'
+          AND table_name = '{}'
+          AND stat_name = 'size'
+    "#, database, table);
+
+    match sqlx::query(&query).fetch_all(pool).await {
+        Ok(rows) => {
+            let mut sizes = Vec::new();
+            for row in rows {
+                let index_name: String = row.try_get("index_name").unwrap_or_default();
+                let stat_value: i64 = row.try_get::<i64, _>("stat_value").unwrap_or(0);
+                if index_name.is_empty() { continue; }
+                sizes.push(IndexSize {
+                    index_name,
+                    size_bytes: stat_value.saturating_mul(page_size),
+                });
+            }
+            Ok(sizes)
+        },
+        Err(e) => {
+            eprintln!("InnoDB index stats unavailable: {}", e);
+            Ok(vec![])
+        }
+    }
 }
 
 // --- Slow Queries ---

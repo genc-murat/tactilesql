@@ -284,6 +284,23 @@ pub struct QueryAnalysis {
 pub struct IndexSuggestion {
     pub table_name: String,
     pub column_name: String,
+    pub index_name: Option<String>,
     pub suggestion: String,
     pub reason: String,
+}
+
+// --- Index Usage ---
+#[derive(Serialize, Debug)]
+pub struct IndexUsage {
+    pub index_name: String,
+    pub total_ops: i64,
+    pub reads: i64,
+    pub writes: i64,
+}
+
+// --- Index Size ---
+#[derive(Serialize, Debug)]
+pub struct IndexSize {
+    pub index_name: String,
+    pub size_bytes: i64,
 }

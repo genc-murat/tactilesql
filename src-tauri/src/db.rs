@@ -1462,6 +1462,60 @@ pub async fn get_index_suggestions(
     }
 }
 
+#[tauri::command]
+pub async fn get_index_usage(
+    app_state: State<'_, AppState>,
+    database: String,
+    table: String
+) -> Result<Vec<IndexUsage>, String> {
+    let db_type = {
+        let guard = app_state.active_db_type.lock().await;
+        guard.clone()
+    };
+
+    match db_type {
+        DatabaseType::PostgreSQL => {
+            let guard = app_state.postgres_pool.lock().await;
+            let pool = guard.as_ref()
+                .ok_or("No PostgreSQL connection established")?;
+            postgres::get_index_usage(pool, &database, &table).await
+        },
+        DatabaseType::MySQL => {
+            let guard = app_state.mysql_pool.lock().await;
+            let pool = guard.as_ref()
+                .ok_or("No MySQL connection established")?;
+            mysql::get_index_usage(pool, &database, &table).await
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn get_index_sizes(
+    app_state: State<'_, AppState>,
+    database: String,
+    table: String
+) -> Result<Vec<IndexSize>, String> {
+    let db_type = {
+        let guard = app_state.active_db_type.lock().await;
+        guard.clone()
+    };
+
+    match db_type {
+        DatabaseType::PostgreSQL => {
+            let guard = app_state.postgres_pool.lock().await;
+            let pool = guard.as_ref()
+                .ok_or("No PostgreSQL connection established")?;
+            postgres::get_index_sizes(pool, &database, &table).await
+        },
+        DatabaseType::MySQL => {
+            let guard = app_state.mysql_pool.lock().await;
+            let pool = guard.as_ref()
+                .ok_or("No MySQL connection established")?;
+            mysql::get_index_sizes(pool, &database, &table).await
+        }
+    }
+}
+
 // =====================================================
 // TAURI COMMANDS - POSTGRESQL SPECIFIC
 // =====================================================

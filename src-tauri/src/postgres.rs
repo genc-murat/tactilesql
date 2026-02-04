@@ -999,6 +999,7 @@ pub async fn get_index_suggestions(pool: &Pool<Postgres>, schema: &str, table: &
             suggestions.push(IndexSuggestion {
                 table_name: table.to_string(),
                 column_name: index_name.clone(),
+                index_name: Some(index_name.clone()),
                 suggestion: "Consider removing unused index".to_string(),
                 reason: format!("Index '{}' has never been used (0 scans)", index_name),
             });
@@ -1006,6 +1007,72 @@ pub async fn get_index_suggestions(pool: &Pool<Postgres>, schema: &str, table: &
     }
 
     Ok(suggestions)
+}
+
+// --- Index Usage (PostgreSQL) ---
+
+pub async fn get_index_usage(pool: &Pool<Postgres>, schema: &str, table: &str) -> Result<Vec<IndexUsage>, String> {
+    let query = format!(r#"
+        SELECT 
+            s.indexrelname as index_name,
+            s.idx_scan,
+            s.idx_tup_read
+        FROM pg_stat_user_indexes s
+        JOIN pg_class c ON s.relid = c.oid
+        JOIN pg_namespace n ON c.relnamespace = n.oid
+        WHERE n.nspname = '{}' AND c.relname = '{}'
+    "#, schema, table);
+
+    let rows = sqlx::query(&query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch index usage: {}", e))?;
+
+    let mut usage = Vec::new();
+    for row in rows {
+        let index_name: String = row.try_get("index_name").unwrap_or_default();
+        let idx_scan: i64 = row.try_get::<i64, _>("idx_scan").unwrap_or(0);
+        let idx_tup_read: i64 = row.try_get::<i64, _>("idx_tup_read").unwrap_or(0);
+        if index_name.is_empty() { continue; }
+        usage.push(IndexUsage {
+            index_name,
+            total_ops: idx_scan,
+            reads: idx_tup_read,
+            writes: 0,
+        });
+    }
+
+    Ok(usage)
+}
+
+// --- Index Sizes (PostgreSQL) ---
+
+pub async fn get_index_sizes(pool: &Pool<Postgres>, schema: &str, table: &str) -> Result<Vec<IndexSize>, String> {
+    let query = format!(r#"
+        SELECT 
+            i.relname as index_name,
+            pg_relation_size(i.oid) as size_bytes
+        FROM pg_class t
+        JOIN pg_index ix ON t.oid = ix.indrelid
+        JOIN pg_class i ON i.oid = ix.indexrelid
+        JOIN pg_namespace n ON t.relnamespace = n.oid
+        WHERE n.nspname = '{}' AND t.relname = '{}'
+    "#, schema, table);
+
+    let rows = sqlx::query(&query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch index sizes: {}", e))?;
+
+    let mut sizes = Vec::new();
+    for row in rows {
+        let index_name: String = row.try_get("index_name").unwrap_or_default();
+        let size_bytes: i64 = row.try_get::<i64, _>("size_bytes").unwrap_or(0);
+        if index_name.is_empty() { continue; }
+        sizes.push(IndexSize { index_name, size_bytes });
+    }
+
+    Ok(sizes)
 }
 
 // --- Extensions (PostgreSQL specific) ---

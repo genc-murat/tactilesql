@@ -186,6 +186,8 @@ pub fn run() {
             // Query Analysis
             db::analyze_query,
             db::get_index_suggestions,
+            db::get_index_usage,
+            db::get_index_sizes,
             db::get_execution_plan,
             db::compare_queries,
             db::get_anomaly_history,

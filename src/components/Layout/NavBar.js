@@ -21,6 +21,7 @@ export function NavBar() {
                     { path: '/schema-tracker', label: 'SCHEMA', icon: 'history' },
                     { path: '/diff', label: 'DIFF', icon: 'compare_arrows' },
                     { path: '/quality-analyzer', label: 'QUALITY', icon: 'fact_check' },
+                    { path: '/index-lifecycle', label: 'INDEXES', icon: 'timeline' },
                     { path: '/dependencies', label: 'GRAPH', icon: 'account_tree' },
                 ]
             },

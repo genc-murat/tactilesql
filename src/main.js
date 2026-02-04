@@ -143,6 +143,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         '/schema-tracker': { component: lazyLoad(() => import('./components/AdvancedInsights/SchemaTracker/SchemaTracker.js'), 'SchemaTracker') },
         '/dependencies': { component: lazyLoad(() => import('./components/AdvancedInsights/DependencyGraph/DependencyExplorer.js'), 'DependencyExplorer') },
         '/quality-analyzer': { component: lazyLoad(() => import('./components/AdvancedInsights/QualityAnalyzer/QualityDashboard.js'), 'QualityDashboard') },
+        '/index-lifecycle': { component: lazyLoad(() => import('./pages/IndexLifecycle.js'), 'IndexLifecycle') },
         '/audit': { component: lazyLoad(() => import('./pages/AuditTrail.js'), 'AuditTrail') },
         '/help': { component: lazyLoad(() => import('./pages/Help.js'), 'Help') },
     };
