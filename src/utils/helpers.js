@@ -26,30 +26,30 @@ export const escapeHtml = (str) => {
  */
 export const formatTimeAgo = (date) => {
     if (!date) return 'Never';
-    
+
     const dateObj = date instanceof Date ? date : new Date(date);
     if (isNaN(dateObj.getTime())) return 'Invalid date';
-    
+
     const seconds = Math.floor((Date.now() - dateObj.getTime()) / 1000);
-    
+
     if (seconds < 0) return 'Just now';
     if (seconds < 60) return 'Just now';
-    
+
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) return `${minutes}m ago`;
-    
+
     const hours = Math.floor(minutes / 60);
     if (hours < 24) return `${hours}h ago`;
-    
+
     const days = Math.floor(hours / 24);
     if (days < 7) return `${days}d ago`;
-    
+
     const weeks = Math.floor(days / 7);
     if (weeks < 4) return `${weeks}w ago`;
-    
+
     const months = Math.floor(days / 30);
     if (months < 12) return `${months}mo ago`;
-    
+
     return dateObj.toLocaleDateString();
 };
 
@@ -62,11 +62,11 @@ export const formatTimeAgo = (date) => {
 export const formatBytes = (bytes, decimals = 2) => {
     if (bytes === 0) return '0 Bytes';
     if (!bytes || isNaN(bytes)) return '-';
-    
+
     const k = 1024;
     const dm = decimals < 0 ? 0 : decimals;
     const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB'];
-    
+
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 };
@@ -254,7 +254,9 @@ class DatabaseCacheManager {
     #defaultTTL = 5 * 60 * 1000; // 5 minutes default TTL
     #listeners = new Set();
     #connectionId = null;
-    
+    #isPersisted = true;
+    #storageKeyPrefix = 'tactilesql_cache_';
+
     // Cache types
     static TYPES = {
         DATABASES: 'databases',
@@ -272,8 +274,17 @@ class DatabaseCacheManager {
         });
 
         // Listen for connection changes
-        window.addEventListener('connection:changed', () => this.invalidateAll());
-        window.addEventListener('schema:changed', (e) => this.invalidateByDatabase(e.detail?.database));
+        window.addEventListener('connection:changed', (e) => {
+            if (e.detail?.id) this.setConnectionId(e.detail.id);
+            else this.invalidateAll();
+        });
+        window.addEventListener('schema:changed', (e) => {
+            this.invalidateByDatabase(e.detail?.database);
+            this.#saveToStorage();
+        });
+
+        // Initialize from storage if possible
+        this.#loadFromStorage();
     }
 
     /**
@@ -283,8 +294,9 @@ class DatabaseCacheManager {
     setConnectionId(connectionId) {
         if (this.#connectionId !== connectionId) {
             this.#connectionId = connectionId;
-            this.invalidateAll();
-            console.log('🗄️ Cache invalidated due to connection change');
+            // When connection changes, reload cache for this specific connection
+            this.#loadFromStorage();
+            console.log(`🗄️ Cache context switched to connection: ${connectionId}`);
         }
     }
 
@@ -326,6 +338,7 @@ class DatabaseCacheManager {
             timestamp: Date.now(),
             ttl: ttl || this.#defaultTTL
         });
+        this.#saveToStorage();
     }
 
     /**
@@ -398,6 +411,7 @@ class DatabaseCacheManager {
         const cache = this.#caches.get(type);
         if (cache) {
             cache.delete(key);
+            this.#saveToStorage();
             this.#notifyListeners({ type: 'invalidate', cacheType: type, key });
         }
     }
@@ -410,6 +424,7 @@ class DatabaseCacheManager {
         const cache = this.#caches.get(type);
         if (cache) {
             cache.clear();
+            this.#saveToStorage();
             this.#notifyListeners({ type: 'invalidateType', cacheType: type });
         }
     }
@@ -454,6 +469,7 @@ class DatabaseCacheManager {
             }
         }
 
+        this.#saveToStorage();
         this.#notifyListeners({ type: 'invalidateDatabase', database });
         console.log(`🗄️ Cache invalidated for database: ${database}`);
     }
@@ -465,6 +481,7 @@ class DatabaseCacheManager {
         for (const cache of this.#caches.values()) {
             cache.clear();
         }
+        this.#saveToStorage();
         this.#notifyListeners({ type: 'invalidateAll' });
         console.log('🗄️ All caches invalidated');
     }
@@ -523,6 +540,88 @@ class DatabaseCacheManager {
     // Private methods
     #isExpired(entry) {
         return Date.now() - entry.timestamp > entry.ttl;
+    }
+
+    #saveToStorage() {
+        if (!this.#isPersisted || !this.#connectionId) return;
+
+        try {
+            const dataToPersist = {};
+            for (const [type, cache] of this.#caches.entries()) {
+                // Filter out expired entries before saving
+                const activeEntries = {};
+                for (const [key, entry] of cache.entries()) {
+                    if (!this.#isExpired(entry)) {
+                        activeEntries[key] = entry;
+                    }
+                }
+                if (Object.keys(activeEntries).length > 0) {
+                    dataToPersist[type] = activeEntries;
+                }
+            }
+
+            if (Object.keys(dataToPersist).length > 0) {
+                localStorage.setItem(`${this.#storageKeyPrefix}${this.#connectionId}`, JSON.stringify(dataToPersist));
+            } else {
+                localStorage.removeItem(`${this.#storageKeyPrefix}${this.#connectionId}`);
+            }
+        } catch (e) {
+            console.warn('Failed to persist cache to storage:', e);
+            // Storage quota might be full
+            if (e.name === 'QuotaExceededError') {
+                console.error('Local storage quota exceeded, clearing old caches...');
+                this.#cleanupOldCaches();
+            }
+        }
+    }
+
+    #loadFromStorage() {
+        if (!this.#isPersisted || !this.#connectionId) {
+            this.invalidateAll(); // Clear in-memory if no connection
+            return;
+        }
+
+        try {
+            const stored = localStorage.getItem(`${this.#storageKeyPrefix}${this.#connectionId}`);
+            if (!stored) {
+                this.invalidateAll();
+                return;
+            }
+
+            const parsed = JSON.parse(stored);
+
+            // Clear current in-memory cache first
+            for (const cache of this.#caches.values()) {
+                cache.clear();
+            }
+
+            // Populate caches
+            for (const [type, entries] of Object.entries(parsed)) {
+                const cache = this.#caches.get(type);
+                if (cache) {
+                    for (const [key, entry] of Object.entries(entries)) {
+                        if (!this.#isExpired(entry)) {
+                            cache.set(key, entry);
+                        }
+                    }
+                }
+            }
+            console.log(`🗄️ Loaded cache from storage for connection: ${this.#connectionId}`);
+        } catch (e) {
+            console.error('Failed to load cache from storage:', e);
+            this.invalidateAll();
+        }
+    }
+
+    #cleanupOldCaches() {
+        // Simple cleanup: remove all tactileSQL caches except current one
+        // More sophisticated would be LRU
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key.startsWith(this.#storageKeyPrefix) && key !== `${this.#storageKeyPrefix}${this.#connectionId}`) {
+                localStorage.removeItem(key);
+            }
+        }
     }
 
     #notifyListeners(event) {

@@ -999,11 +999,14 @@ export function ObjectExplorer() {
         };
 
         menu.querySelector('#ctx-db-refresh').onclick = async () => {
-            delete dbObjects[dbName];
             // Invalidate centralized cache for this database
             DatabaseCache.invalidateByDatabase(dbName);
+            delete dbObjects[dbName];
+
             window.dispatchEvent(new CustomEvent('schema:changed', { detail: { database: dbName } }));
             if (expandedDbs.has(dbName)) await loadDatabaseObjects(dbName);
+            else await loadDatabaseObjects(dbName, true); // Still refresh in background even if closed
+
             toastSuccess(`Cache refreshed for ${dbName}`);
             menu.remove();
         };
@@ -1242,6 +1245,10 @@ export function ObjectExplorer() {
         // --- Standard Actions ---
         menu.querySelector('#ctx-refresh').onclick = async () => {
             const key = `${dbName}.${tableName}`;
+            DatabaseCache.invalidate(CacheTypes.COLUMNS, key);
+            DatabaseCache.invalidate(CacheTypes.INDEXES, key);
+            DatabaseCache.invalidate(CacheTypes.FOREIGN_KEYS, key);
+
             delete tableDetails[key];
             if (expandedTables.has(key)) await loadTableDetails(dbName, tableName);
             menu.remove();
@@ -1303,6 +1310,7 @@ export function ObjectExplorer() {
                 activeConnectionId = stored.id;
                 activeDbType = stored.dbType || 'mysql';
                 localStorage.setItem('activeDbType', activeDbType);
+                DatabaseCache.setConnectionId(activeConnectionId);
             } else {
                 activeConnectionId = null;
                 activeDbType = 'mysql';
@@ -1324,6 +1332,23 @@ export function ObjectExplorer() {
         try {
             databases = await invoke('get_databases');
             render();
+
+            // Trigger background pre-fetching for all databases
+            if (databases.length > 0) {
+                const sysDbs = getSystemDatabases().map(d => d.toLowerCase());
+                const userDbs = databases.filter(db => !sysDbs.includes(db.toLowerCase()));
+
+                // Fetch user databases sequentially in background to avoid overwhelming the connection
+                (async () => {
+                    for (const db of userDbs) {
+                        try {
+                            await loadDatabaseObjects(db, true);
+                        } catch (err) {
+                            console.warn(`Background fetch failed for ${db}:`, err);
+                        }
+                    }
+                })();
+            }
         } catch (error) {
             console.error('Failed to load databases:', error);
             // It's possible the connection is dead, we could handle that by unsetting active status
@@ -1331,7 +1356,17 @@ export function ObjectExplorer() {
         }
     };
 
-    const loadDatabaseObjects = async (dbName) => {
+    const loadDatabaseObjects = async (dbName, isBackground = false) => {
+        // Try Cache first
+        const cacheKey = dbName;
+        const cached = DatabaseCache.get(CacheTypes.SCHEMAS, cacheKey);
+
+        if (cached && !isBackground) {
+            dbObjects[dbName] = cached;
+            render();
+            return;
+        }
+
         try {
             const [tables, views, triggers, procedures, functions, events] = await Promise.all([
                 invoke('get_tables', { database: dbName }),
@@ -1341,17 +1376,40 @@ export function ObjectExplorer() {
                 invoke('get_functions', { database: dbName }),
                 invoke('get_events', { database: dbName })
             ]);
-            dbObjects[dbName] = { tables, views, triggers, procedures, functions, events };
-            render();
+
+            const results = { tables, views, triggers, procedures, functions, events };
+            dbObjects[dbName] = results;
+            DatabaseCache.set(CacheTypes.SCHEMAS, cacheKey, results);
+
+            if (!isBackground) {
+                render();
+            } else {
+                // If it's background and the DB is currently expanded, we should re-render
+                if (expandedDbs.has(dbName)) render();
+            }
         } catch (error) {
             console.error(`Failed to load objects for ${dbName}:`, error);
-            dbObjects[dbName] = { tables: [], views: [], triggers: [], procedures: [], functions: [], events: [] };
-            render();
+            if (!isBackground) {
+                dbObjects[dbName] = { tables: [], views: [], triggers: [], procedures: [], functions: [], events: [] };
+                render();
+            }
         }
     };
 
     const loadTableDetails = async (dbName, tableName) => {
         const key = `${dbName}.${tableName}`;
+
+        // Check cache
+        const cachedCols = DatabaseCache.get(CacheTypes.COLUMNS, key);
+        const cachedIdx = DatabaseCache.get(CacheTypes.INDEXES, key);
+        const cachedFks = DatabaseCache.get(CacheTypes.FOREIGN_KEYS, key);
+
+        if (cachedCols && cachedIdx && cachedFks) {
+            tableDetails[key] = { columns: cachedCols, indexes: cachedIdx, fks: cachedFks, constraints: [] };
+            render();
+            return;
+        }
+
         try {
             const [columns, indexes, fks, constraints] = await Promise.all([
                 invoke('get_table_schema', { database: dbName, table: tableName }),
@@ -1359,7 +1417,14 @@ export function ObjectExplorer() {
                 invoke('get_table_foreign_keys', { database: dbName, table: tableName }),
                 invoke('get_table_constraints', { database: dbName, table: tableName })
             ]);
-            tableDetails[key] = { columns, indexes, fks, constraints };
+
+            const results = { columns, indexes, fks, constraints };
+            tableDetails[key] = results;
+
+            DatabaseCache.set(CacheTypes.COLUMNS, key, columns);
+            DatabaseCache.set(CacheTypes.INDEXES, key, indexes);
+            DatabaseCache.set(CacheTypes.FOREIGN_KEYS, key, fks);
+
             render();
         } catch (error) {
             console.error(`Failed to load details for ${key}:`, error);
@@ -1380,7 +1445,10 @@ export function ObjectExplorer() {
     window.addEventListener('themechange', onThemeChange);
 
     // Listen for connection changes
-    const onConnectionChanged = async () => {
+    const onConnectionChanged = async (e) => {
+        if (e.detail?.id) {
+            DatabaseCache.setConnectionId(e.detail.id);
+        }
         await loadConnections();
     };
     window.addEventListener('tactilesql:connection-changed', onConnectionChanged);
