@@ -24,6 +24,7 @@ export function ObjectExplorer() {
     // --- State ---
     let connections = [];
     let activeConnectionId = null; // ID of the currently active connection
+    let activeStateKey = null; // key for per-connection UI state
     let activeDbType = 'mysql'; // 'mysql' or 'postgresql'
     let connectionExpanded = true; // Whether active connection tree is expanded
     let databases = []; // Databases for the ACTIVE connection only
@@ -34,6 +35,77 @@ export function ObjectExplorer() {
     let loadingTables = new Set(); // track in-flight table detail fetches
     let userDbsExpanded = true; // State for user databases fold
     let systemDbsExpanded = true; // State for system databases fold
+
+    // Per-connection UI/cache state
+    const connectionStates = new Map();
+    const connectionKeyById = new Map();
+    const deriveStateKey = (conn) => {
+        if (!conn) return null;
+        return conn.id || `${conn.name || conn.host || 'conn'}::${conn.host || ''}::${conn.port || ''}::${conn.username || ''}`;
+    };
+    const createState = () => ({
+        databases: [],
+        expandedDbs: new Set(),
+        expandedTables: new Set(),
+        dbObjects: {},
+        tableDetails: {},
+        loadingTables: new Set(),
+        userDbsExpanded: true,
+        systemDbsExpanded: true,
+        connectionExpanded: true
+    });
+    const STATE_STORAGE_KEY = 'tactilesql_conn_states';
+    const persistStates = () => {
+        const plain = {};
+        connectionStates.forEach((st, key) => {
+            plain[key] = {
+                databases: st.databases,
+                expandedDbs: Array.from(st.expandedDbs),
+                expandedTables: Array.from(st.expandedTables),
+                userDbsExpanded: st.userDbsExpanded,
+                systemDbsExpanded: st.systemDbsExpanded,
+                connectionExpanded: st.connectionExpanded
+            };
+        });
+        localStorage.setItem(STATE_STORAGE_KEY, JSON.stringify(plain));
+    };
+    const loadPersistedStates = () => {
+        try {
+            const raw = localStorage.getItem(STATE_STORAGE_KEY);
+            if (!raw) return;
+            const parsed = JSON.parse(raw);
+            Object.entries(parsed).forEach(([id, st]) => {
+                const state = createState();
+                state.databases = st.databases || [];
+                state.expandedDbs = new Set(st.expandedDbs || []);
+                state.expandedTables = new Set(st.expandedTables || []);
+                state.userDbsExpanded = st.userDbsExpanded ?? true;
+                state.systemDbsExpanded = st.systemDbsExpanded ?? true;
+                state.connectionExpanded = st.connectionExpanded ?? true;
+                connectionStates.set(id, state);
+            });
+        } catch (e) {
+            console.warn('Failed to load persisted explorer state', e);
+        }
+    };
+    loadPersistedStates();
+    const getConnectionState = (stateKey) => {
+        if (!stateKey) return createState();
+        if (!connectionStates.has(stateKey)) connectionStates.set(stateKey, createState());
+        return connectionStates.get(stateKey);
+    };
+    const loadStateForConnection = (stateKey) => {
+        const state = getConnectionState(stateKey);
+        databases = state.databases;
+        expandedDbs = state.expandedDbs;
+        expandedTables = state.expandedTables;
+        dbObjects = state.dbObjects;
+        tableDetails = state.tableDetails;
+        loadingTables = state.loadingTables;
+        userDbsExpanded = state.userDbsExpanded;
+        systemDbsExpanded = state.systemDbsExpanded;
+        connectionExpanded = state.connectionExpanded;
+    };
 
     // --- Search State ---
     let searchQuery = '';
@@ -97,12 +169,35 @@ export function ObjectExplorer() {
         const key = `${db}.${table}`;
         const details = tableDetails[key];
         if (!details) {
-            // Lazy-load details when expanded via search or click
-            loadTableDetails(db, table);
-            return `<div class="pl-4 py-1 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-700'))} italic text-[10px]">Loading...</div>`;
+            const cachedCols = DatabaseCache.get(CacheTypes.COLUMNS, key);
+            const cachedIdx = DatabaseCache.get(CacheTypes.INDEXES, key);
+            const cachedFks = DatabaseCache.get(CacheTypes.FOREIGN_KEYS, key);
+            if (cachedCols || cachedIdx || cachedFks) {
+                const restored = {
+                    columns: cachedCols || [],
+                    indexes: cachedIdx || [],
+                    fks: cachedFks || [],
+                    constraints: []
+                };
+                tableDetails[key] = restored;
+                const state = getConnectionState(renderingConnectionId || activeStateKey);
+                state.tableDetails[key] = restored;
+            } else if (renderingConnectionId === activeConnectionId) {
+                // Only auto-load for active connection; otherwise show placeholder
+                loadTableDetails(db, table);
+                const loadingColor = isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-700'));
+                return `<div class="pl-4 py-1 ${loadingColor} italic text-[10px]">Loading...</div>`;
+            } else {
+                return `<div class="pl-4 py-1 ${isLight ? 'text-gray-300' : (isDawn ? 'text-[#cecacd]' : 'text-gray-700')} italic text-[10px]">Switch to this connection to load details</div>`;
+            }
         }
 
-        const { columns, indexes, fks, constraints } = details;
+        const {
+            columns = [],
+            indexes = [],
+            fks = [],
+            constraints = []
+        } = details || {};
         return `
             <div class="pl-4 space-y-1 border-l ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/30' : 'border-white/10'))} ml-2">
                 <div class="py-0.5">
@@ -158,7 +253,7 @@ export function ObjectExplorer() {
 
         return `
             <div>
-                <div class="table-item flex items-center gap-2 ${baseText} ${hoverText} cursor-grab py-1 group" data-table="${table}" data-db="${db}" draggable="true">
+                <div class="table-item flex items-center gap-2 ${baseText} ${hoverText} cursor-grab py-1 group" data-table="${table}" data-db="${db}" data-conn-id="${renderingConnectionId || activeConnectionId}" draggable="true">
                     <span class="material-symbols-outlined text-[10px] transition-transform ${isExpanded ? 'rotate-90' : ''} ${isDawn ? 'text-[#ea9d34]' : iconColor}">arrow_right</span>
                     <span class="material-symbols-outlined text-[14px] ${iconColor} ${iconHover}">table_rows</span>
                     <span class="${highlightClass(`table-${db}-${table}`)}" data-search-id="table-${db}-${table}">${table}</span>
@@ -188,8 +283,21 @@ export function ObjectExplorer() {
 
     // --- Render database contents ---
     const renderDatabaseContents = (db) => {
-        const objs = dbObjects[db];
-        if (!objs) return `<div class="pl-2 py-1 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#cecacd]' : 'text-gray-700')} italic">Loading...</div>`;
+        let objs = dbObjects[db];
+        if (!objs) {
+            const cached = DatabaseCache.get(CacheTypes.SCHEMAS, db);
+            if (cached) {
+                dbObjects[db] = cached;
+                const state = getConnectionState(renderingConnectionId || activeStateKey);
+                state.dbObjects[db] = cached;
+                objs = cached;
+            } else {
+                const placeholder = renderingConnectionId === activeConnectionId
+                    ? 'Loading...'
+                    : 'Switch to this connection to load objects';
+                return `<div class="pl-2 py-1 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#cecacd]' : 'text-gray-700')} italic text-[10px]">${placeholder}</div>`;
+            }
+        }
 
         const { tables, views, triggers, procedures, functions, events } = objs;
         const filteredTables = searchContext ? tables.filter(t => hasSearchMatch('table', db, t)) : tables;
@@ -257,7 +365,7 @@ export function ObjectExplorer() {
 
         return `
             <div>
-                <div data-db="${db}" class="db-item flex items-center gap-2 ${baseColor} ${hoverColor} group cursor-pointer p-1">
+                <div data-db="${db}" data-conn-id="${renderingConnectionId || activeConnectionId}" class="db-item flex items-center gap-2 ${baseColor} ${hoverColor} group cursor-pointer p-1">
                     <span class="material-symbols-outlined text-xs transition-transform ${isExpanded ? 'rotate-90' : ''}">arrow_right</span>
                     <div class="w-1.5 h-1.5 rounded-full ${dotColor}"></div>
                     <span class="font-bold tracking-tight ${activeText} ${highlightClass(`db-${db}`)}" data-search-id="db-${db}">${db}</span>
@@ -287,16 +395,18 @@ export function ObjectExplorer() {
         const iconColor = isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal';
         const sysIconColor = isDawn ? 'text-[#f6c177]' : 'text-amber-500';
 
-        // Labels based on database type
-        const userLabel = isPostgreSQL() ? 'User Schemas' : 'User Databases';
-        const systemLabel = isPostgreSQL() ? 'System Schemas' : 'System Databases';
-        const schemaIcon = isPostgreSQL() ? 'schema' : 'database';
+        const currentConnId = renderingConnectionId || activeConnectionId;
+        // Labels based on database type (fallback to active db type)
+        const isPgConn = activeDbType === 'postgresql'; // approximation for inactive; acceptable for UI labels
+        const userLabel = isPgConn ? 'User Schemas' : 'User Databases';
+        const systemLabel = isPgConn ? 'System Schemas' : 'System Databases';
+        const schemaIcon = isPgConn ? 'schema' : 'database';
 
         return `
             <div class="pl-3 border-l ${borderClass} ml-3 space-y-1 mt-1">
                  ${userDbs.length > 0 ? `
                     <div class="mb-2">
-                         <div class="px-2 py-1 text-[9px] font-bold tracking-[0.2em] ${headerText} flex items-center gap-2 cursor-pointer ${isDawn ? 'hover:text-[#575279]' : 'hover:text-mysql-teal'} transition-colors" id="user-dbs-toggle">
+                         <div class="user-dbs-toggle px-2 py-1 text-[9px] font-bold tracking-[0.2em] ${headerText} flex items-center gap-2 cursor-pointer ${isDawn ? 'hover:text-[#575279]' : 'hover:text-mysql-teal'} transition-colors" data-conn-id="${currentConnId || ''}">
                             <span class="material-symbols-outlined text-[10px] transition-transform ${userDbsExpanded ? 'rotate-90' : ''}">arrow_right</span>
                             <span class="material-symbols-outlined text-[12px] ${iconColor}">${schemaIcon}</span>
                             ${userLabel}
@@ -307,7 +417,7 @@ export function ObjectExplorer() {
                 ` : ''}
                 ${systemDbs.length > 0 ? `
                     <div class="mt-2 pt-2 border-t ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
-                        <div class="px-2 py-1 text-[9px] font-bold tracking-[0.2em] ${headerText} flex items-center gap-2 cursor-pointer ${isDawn ? 'hover:text-[#575279]' : 'hover:text-amber-500'} transition-colors" id="system-dbs-toggle">
+                        <div class="system-dbs-toggle px-2 py-1 text-[9px] font-bold tracking-[0.2em] ${headerText} flex items-center gap-2 cursor-pointer ${isDawn ? 'hover:text-[#575279]' : 'hover:text-amber-500'} transition-colors" data-conn-id="${currentConnId || ''}">
                              <span class="material-symbols-outlined text-[10px] transition-transform ${systemDbsExpanded ? 'rotate-90' : ''}">arrow_right</span>
                              <span class="material-symbols-outlined text-[12px] ${sysIconColor}">settings</span>
                              ${systemLabel}
@@ -320,10 +430,82 @@ export function ObjectExplorer() {
         `;
     };
 
+    let renderingConnectionId = null;
+    let currentBackendId = null;
+    let cancelPreload = false;
+    const withCacheConnection = (connId, fn) => {
+        const prevId = activeConnectionId;
+        if (connId) DatabaseCache.setConnectionId(connId);
+        const res = fn();
+        if (prevId) DatabaseCache.setConnectionId(prevId);
+        return res;
+    };
+    const ensureActiveBackend = async () => {
+        if (!activeConnectionId) return;
+        if (currentBackendId === activeConnectionId) return;
+        const stored = JSON.parse(localStorage.getItem('activeConnection') || 'null');
+        if (!stored) return;
+        try {
+            await invoke('establish_connection', { config: stored });
+            DatabaseCache.setConnectionId(activeConnectionId);
+            currentBackendId = activeConnectionId;
+        } catch (err) {
+            console.error('Failed to ensure active backend connection:', err);
+        }
+    };
+    let isPreloadingConnections = false;
+    const renderWithState = (connId, state, fn) => {
+        // Save globals
+        const prev = {
+            databases,
+            expandedDbs,
+            expandedTables,
+            dbObjects,
+            tableDetails,
+            loadingTables,
+            userDbsExpanded,
+            systemDbsExpanded,
+            connectionExpanded
+        };
+        // Swap in state
+        databases = state.databases;
+        expandedDbs = state.expandedDbs;
+        expandedTables = state.expandedTables;
+        dbObjects = state.dbObjects;
+        tableDetails = state.tableDetails;
+        loadingTables = state.loadingTables;
+        userDbsExpanded = state.userDbsExpanded;
+        systemDbsExpanded = state.systemDbsExpanded;
+        connectionExpanded = state.connectionExpanded;
+        const prevRendering = renderingConnectionId;
+        const prevCacheConn = activeConnectionId;
+        if (connId) DatabaseCache.setConnectionId(connId);
+        renderingConnectionId = connId;
+
+        const result = fn();
+
+        // Restore
+        databases = prev.databases;
+        expandedDbs = prev.expandedDbs;
+        expandedTables = prev.expandedTables;
+        dbObjects = prev.dbObjects;
+        tableDetails = prev.tableDetails;
+        loadingTables = prev.loadingTables;
+        userDbsExpanded = prev.userDbsExpanded;
+        systemDbsExpanded = prev.systemDbsExpanded;
+        connectionExpanded = prev.connectionExpanded;
+        renderingConnectionId = prevRendering;
+        if (prevCacheConn) DatabaseCache.setConnectionId(prevCacheConn);
+        return result;
+    };
+
     // --- Render Connection Node ---
     const renderConnectionNode = (conn) => {
         const isActive = conn.id === activeConnectionId;
         const connColor = conn.color || '';
+        const stateKey = connectionKeyById.get(conn.id) || deriveStateKey(conn);
+        const state = getConnectionState(stateKey);
+        const isExpandedCached = state.connectionExpanded;
 
         let bgClass = isActive
             ? (connColor ? '' : (isLight ? 'bg-blue-50' : (isDawn ? 'bg-[#ea9d34]/10' : 'bg-white/5')))
@@ -344,11 +526,15 @@ export function ObjectExplorer() {
             }
         }
 
+        const connectionTree = (isActive || isExpandedCached) && state.databases?.length
+            ? renderWithState(conn.id, state, renderActiveConnectionData)
+            : '';
+
         return `
             <div class="connection-node cursor-move select-none" data-conn-id="${conn.id}" draggable="true">
                 <div class="conn-item flex items-center gap-2 py-1.5 px-2 rounded-md ${bgClass} transition-colors group" data-id="${conn.id}" style="${customStyle}">
                     <span class="drag-handle material-symbols-outlined text-xs ${arrowColor} cursor-grab">drag_indicator</span>
-                    <span class="conn-arrow material-symbols-outlined text-xs transition-transform ${isActive && connectionExpanded ? 'rotate-90' : ''} ${arrowColor}">arrow_right</span>
+                    <span class="conn-arrow material-symbols-outlined text-xs transition-transform ${(isActive ? connectionExpanded : isExpandedCached) ? 'rotate-90' : ''} ${arrowColor}">arrow_right</span>
                     
                     <div class="relative">
                         <span class="material-symbols-outlined ${iconColor} text-base">dns</span>
@@ -372,16 +558,16 @@ export function ObjectExplorer() {
                         </button>
                     ` : ''}
                 </div>
-                ${isActive && connectionExpanded ? renderActiveConnectionData() : ''}
+                ${connectionTree}
             </div>
         `;
     };
 
     // --- Render ---
-    const render = () => {
-        const headerText = isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'));
-        const iconColor = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-600'));
-        const hoverIcon = isDawn ? 'hover:text-[#ea9d34]' : 'hover:text-mysql-teal';
+        const render = () => {
+            const headerText = isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'));
+            const iconColor = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-600'));
+            const hoverIcon = isDawn ? 'hover:text-[#ea9d34]' : 'hover:text-mysql-teal';
 
         const wasSearchFocused = document.activeElement && document.activeElement.id === 'explorer-search';
         const selectionStart = wasSearchFocused ? document.activeElement.selectionStart : 0;
@@ -483,6 +669,8 @@ export function ObjectExplorer() {
                 if (id === activeConnectionId) {
                     // Toggle fold/unfold for active connection
                     connectionExpanded = !connectionExpanded;
+                    getConnectionState(activeConnectionId).connectionExpanded = connectionExpanded;
+                    persistStates();
                     render();
                 } else {
                     // Connect to new connection
@@ -623,15 +811,38 @@ export function ObjectExplorer() {
         // Database expand/collapse
         explorer.querySelectorAll('.db-item').forEach(item => {
             item.addEventListener('click', async () => {
+                const connId = item.dataset.connId;
+                const stateKey = connectionKeyById.get(connId) || deriveStateKey(connections.find(c => c.id === connId));
+                const state = getConnectionState(stateKey);
+                const isActiveConn = connId === activeConnectionId;
                 const db = item.dataset.db;
-                if (expandedDbs.has(db)) {
-                    expandedDbs.delete(db);
+                const targetExpanded = state.expandedDbs;
+                if (targetExpanded.has(db)) {
+                    targetExpanded.delete(db);
                 } else {
-                    expandedDbs.add(db);
-                    if (!dbObjects[db]) {
-                        await loadDatabaseObjects(db);
+                    targetExpanded.add(db);
+                    if (!state.dbObjects[db]) {
+                        // try cache
+                        const hydrated = withCacheConnection(connId, () => {
+                            const cached = DatabaseCache.get(CacheTypes.SCHEMAS, db);
+                            if (cached) {
+                                state.dbObjects[db] = cached;
+                                return true;
+                            }
+                            return false;
+                        });
+                        if (!hydrated && isActiveConn) {
+                            await loadDatabaseObjects(db);
+                            state.dbObjects[db] = dbObjects[db];
+                        }
                     }
                 }
+                // sync globals if active
+                if (isActiveConn) {
+                    expandedDbs = state.expandedDbs;
+                    dbObjects = state.dbObjects;
+                }
+                persistStates();
                 render();
             });
 
@@ -645,17 +856,48 @@ export function ObjectExplorer() {
         // Table expand/collapse
         explorer.querySelectorAll('.table-item').forEach(item => {
             item.addEventListener('click', async (e) => {
+                const connNode = item.closest('.connection-node');
+                const connId = connNode?.dataset.connId;
+                const isActiveConn = connId === activeConnectionId;
                 e.stopPropagation();
                 const db = item.dataset.db;
                 const table = item.dataset.table;
                 const key = `${db}.${table}`;
-                if (expandedTables.has(key)) {
-                    expandedTables.delete(key);
+                const stateKey = connectionKeyById.get(connId) || deriveStateKey(connections.find(c => c.id === connId));
+                const state = getConnectionState(stateKey);
+                const targetExpanded = state.expandedTables;
+                const targetDetails = state.tableDetails;
+                if (targetExpanded.has(key)) {
+                    targetExpanded.delete(key);
                 } else {
-                    expandedTables.add(key);
-                    if (!tableDetails[key]) {
-                        await loadTableDetails(db, table);
+                    targetExpanded.add(key);
+                    if (!targetDetails[key]) {
+                        // try cache
+                        const hydrated = withCacheConnection(connId, () => {
+                            const cachedCols = DatabaseCache.get(CacheTypes.COLUMNS, key);
+                            const cachedIdx = DatabaseCache.get(CacheTypes.INDEXES, key);
+                            const cachedFks = DatabaseCache.get(CacheTypes.FOREIGN_KEYS, key);
+                            if (cachedCols || cachedIdx || cachedFks) {
+                                targetDetails[key] = {
+                                    columns: cachedCols || [],
+                                    indexes: cachedIdx || [],
+                                    fks: cachedFks || [],
+                                    constraints: []
+                                };
+                                return true;
+                            }
+                            return false;
+                        });
+                        if (!hydrated && isActiveConn) {
+                            await loadTableDetails(db, table);
+                            targetDetails[key] = tableDetails[key];
+                        }
                     }
+                }
+                persistStates();
+                if (isActiveConn) {
+                    expandedTables = targetExpanded;
+                    tableDetails = targetDetails;
                 }
                 render();
             });
@@ -682,6 +924,8 @@ export function ObjectExplorer() {
         // View context menu
         explorer.querySelectorAll('.view-item').forEach(item => {
             item.addEventListener('contextmenu', (e) => {
+                const connNode = item.closest('.connection-node');
+                if (!connNode || connNode.dataset.connId !== activeConnectionId) return;
                 e.preventDefault();
                 e.stopPropagation();
                 showViewContextMenu(e.clientX, e.clientY, item.dataset.view, item.dataset.db);
@@ -699,24 +943,36 @@ export function ObjectExplorer() {
         }
 
         // User Databases fold toggle
-        const userDbsToggle = explorer.querySelector('#user-dbs-toggle');
-        if (userDbsToggle) {
-            userDbsToggle.addEventListener('click', (e) => {
+        explorer.querySelectorAll('.user-dbs-toggle').forEach(toggle => {
+            toggle.addEventListener('click', (e) => {
                 e.stopPropagation();
-                userDbsExpanded = !userDbsExpanded;
+                const connId = toggle.dataset.connId;
+                const stateKey = connectionKeyById.get(connId) || deriveStateKey(connections.find(c => c.id === connId));
+                const state = getConnectionState(stateKey);
+                state.userDbsExpanded = !state.userDbsExpanded;
+                if (connId === activeConnectionId) {
+                    userDbsExpanded = state.userDbsExpanded;
+                }
+                persistStates();
                 render();
             });
-        }
+        });
 
         // System Databases fold toggle
-        const systemDbsToggle = explorer.querySelector('#system-dbs-toggle');
-        if (systemDbsToggle) {
-            systemDbsToggle.addEventListener('click', (e) => {
+        explorer.querySelectorAll('.system-dbs-toggle').forEach(toggle => {
+            toggle.addEventListener('click', (e) => {
                 e.stopPropagation();
-                systemDbsExpanded = !systemDbsExpanded;
+                const connId = toggle.dataset.connId;
+                const stateKey = connectionKeyById.get(connId) || deriveStateKey(connections.find(c => c.id === connId));
+                const state = getConnectionState(stateKey);
+                state.systemDbsExpanded = !state.systemDbsExpanded;
+                if (connId === activeConnectionId) {
+                    systemDbsExpanded = state.systemDbsExpanded;
+                }
+                persistStates();
                 render();
             });
-        }
+        });
 
         // Search Interaction
         const searchInput = explorer.querySelector('#explorer-search');
@@ -817,7 +1073,8 @@ export function ObjectExplorer() {
                 matches.push({ type: 'database', db, id: `db-${db}` });
             }
 
-            const objs = dbObjects[db];
+            const cachedSchema = DatabaseCache.get(CacheTypes.SCHEMAS, db);
+            const objs = dbObjects[db] || cachedSchema;
             if (!objs) return;
 
             objs.tables.forEach(t => {
@@ -826,7 +1083,8 @@ export function ObjectExplorer() {
                     matches.push({ type: 'table', db, table: t, id: `table-${db}-${t}` });
                 }
 
-                const details = tableDetails[`${db}.${t}`];
+                const cachedCols = DatabaseCache.get(CacheTypes.COLUMNS, `${db}.${t}`);
+                const details = tableDetails[`${db}.${t}`] || (cachedCols ? { columns: cachedCols } : null);
                 if (details?.columns) {
                     details.columns.forEach(col => {
                         if (matchesTokens(col.name)) {
@@ -920,10 +1178,12 @@ export function ObjectExplorer() {
             const first = searchMatches[0];
             // We intentionally don't await here to keep input snappy; rendering will update when fetch finishes.
             if (first.db && !dbObjects[first.db]) {
-                loadDatabaseObjects(first.db);
+                const cachedSchema = DatabaseCache.get(CacheTypes.SCHEMAS, first.db);
+                if (!cachedSchema) loadDatabaseObjects(first.db);
             }
             if (first.table && !tableDetails[`${first.db}.${first.table}`]) {
-                loadTableDetails(first.db, first.table);
+                const cachedCols = DatabaseCache.get(CacheTypes.COLUMNS, `${first.db}.${first.table}`);
+                if (!cachedCols) loadTableDetails(first.db, first.table);
             }
         }
 
@@ -958,10 +1218,14 @@ export function ObjectExplorer() {
 
         // Ensure data is loaded for match path
         if (match.db && !dbObjects[match.db]) {
-            await loadDatabaseObjects(match.db);
+            const cachedSchema = DatabaseCache.get(CacheTypes.SCHEMAS, match.db);
+            if (!cachedSchema) await loadDatabaseObjects(match.db);
+            else dbObjects[match.db] = cachedSchema;
         }
         if (match.table && !tableDetails[`${match.db}.${match.table}`]) {
-            await loadTableDetails(match.db, match.table);
+            const cachedCols = DatabaseCache.get(CacheTypes.COLUMNS, `${match.db}.${match.table}`);
+            if (!cachedCols) await loadTableDetails(match.db, match.table);
+            else tableDetails[`${match.db}.${match.table}`] = { columns: cachedCols, indexes: [], fks: [], constraints: [] };
         }
 
         // Ensure path is expanded
@@ -987,30 +1251,45 @@ export function ObjectExplorer() {
     const switchConnection = async (id) => {
         const connConfig = connections.find(c => c.id === id);
         if (!connConfig) return;
+        const nextStateKey = deriveStateKey(connConfig);
 
         try {
+            // Save current state before switching
+            if (activeConnectionId) {
+                const prev = getConnectionState(activeStateKey);
+                prev.databases = databases;
+                prev.expandedDbs = expandedDbs;
+                prev.expandedTables = expandedTables;
+                prev.dbObjects = dbObjects;
+                prev.tableDetails = tableDetails;
+                prev.loadingTables = loadingTables;
+                prev.userDbsExpanded = userDbsExpanded;
+                prev.systemDbsExpanded = systemDbsExpanded;
+                prev.connectionExpanded = connectionExpanded;
+                persistStates();
+            }
+
             // Visual feedback could be added here (spinner etc)
             await invoke('establish_connection', {
                 config: connConfig
             });
-
+            currentBackendId = connConfig.id;
             // Persist as active
             localStorage.setItem('activeConnection', JSON.stringify(connConfig));
             localStorage.setItem('activeDbType', connConfig.dbType || 'mysql');
             activeConnectionId = id;
+            activeStateKey = nextStateKey;
             activeDbType = connConfig.dbType || 'mysql';
+            DatabaseCache.setConnectionId(activeConnectionId);
 
-            // Reset state for new connection
-            databases = [];
-            expandedDbs.clear();
-            expandedTables.clear();
-            dbObjects = {};
-            tableDetails = {};
+            // Load per-connection state (or create new)
+            loadStateForConnection(activeStateKey);
 
-            render(); // Re-render to show active state immediately
+            render(); // Re-render to show active state immediately with restored tree
 
             // Load databases for the new connection (lazy-load objects on expand)
             await loadDatabases();
+            await ensureExpandedDataLoaded();
 
             // Notify other components about connection change
             window.dispatchEvent(new CustomEvent('tactilesql:connection-changed'));
@@ -1540,23 +1819,34 @@ export function ObjectExplorer() {
     const loadConnections = async () => {
         try {
             connections = await invoke('load_connections');
+            connectionKeyById.clear();
+            connections.forEach(c => {
+                const key = deriveStateKey(c);
+                connectionKeyById.set(c.id, key);
+            });
             // Try to resolve active connection ID
             const stored = JSON.parse(localStorage.getItem('activeConnection') || 'null');
             if (stored && stored.id) {
                 activeConnectionId = stored.id;
+                activeStateKey = connectionKeyById.get(activeConnectionId) || deriveStateKey(stored);
                 activeDbType = stored.dbType || 'mysql';
                 localStorage.setItem('activeDbType', activeDbType);
                 DatabaseCache.setConnectionId(activeConnectionId);
+                loadStateForConnection(activeStateKey);
             } else {
                 activeConnectionId = null;
+                activeStateKey = null;
                 activeDbType = 'mysql';
                 localStorage.setItem('activeDbType', 'mysql');
+                loadStateForConnection(null);
             }
             render();
-            // If we have an active connection, load its dbs (lazy-load objects on expand)
             if (activeConnectionId) {
+                await ensureActiveBackend();
                 await loadDatabases();
+                await ensureExpandedDataLoaded();
             }
+            preloadConnectionsInBackground();
         } catch (error) {
             console.error('Failed to load connections:', error);
             // Fallback render
@@ -1566,7 +1856,11 @@ export function ObjectExplorer() {
 
     const loadDatabases = async () => {
         try {
-            databases = await invoke('get_databases');
+            const fetched = await invoke('get_databases');
+            databases = fetched;
+            const state = getConnectionState(activeStateKey);
+            state.databases = databases;
+            persistStates();
             render();
 
             // Trigger background pre-fetching for all databases
@@ -1592,11 +1886,128 @@ export function ObjectExplorer() {
         }
     };
 
+    // Background preload of all connections (databases + schema lists)
+    const preloadConnectionsInBackground = () => {
+        if (isPreloadingConnections) return;
+        isPreloadingConnections = true;
+
+        const currentActiveId = activeConnectionId;
+        const currentActiveConfig = connections.find(c => c.id === currentActiveId) || null;
+
+        (async () => {
+            for (const conn of connections) {
+                const stateKey = deriveStateKey(conn);
+                const state = getConnectionState(stateKey);
+                try {
+                    if (cancelPreload) break;
+                    await invoke('establish_connection', { config: conn });
+                    DatabaseCache.setConnectionId(conn.id);
+                    currentBackendId = conn.id;
+
+                    // Databases
+                    const dbs = await invoke('get_databases');
+                    state.databases = dbs;
+
+                    // Prefetch schema lists for each database
+                    for (const db of dbs) {
+                        if (!DatabaseCache.get(CacheTypes.SCHEMAS, db)) {
+                            try {
+                                const schema = await fetchDatabaseObjects(db);
+                                DatabaseCache.set(CacheTypes.SCHEMAS, db, schema, 24 * 60 * 60 * 1000);
+                                state.dbObjects[db] = schema;
+                                const tableDetails = await fetchTableDetailsAll(db, schema.tables || []);
+                                Object.entries(tableDetails).forEach(([table, details]) => {
+                                    const key = `${db}.${table}`;
+                                    state.tableDetails[key] = details;
+                                });
+                            } catch (err) {
+                                console.warn(`Background fetch failed for ${conn.name || conn.id} / ${db}:`, err);
+                            }
+                        } else {
+                            state.dbObjects[db] = DatabaseCache.get(CacheTypes.SCHEMAS, db);
+                            const tables = state.dbObjects[db]?.tables || [];
+                            tables.forEach(table => {
+                                const key = `${db}.${table}`;
+                                const cols = DatabaseCache.get(CacheTypes.COLUMNS, key);
+                                const idx = DatabaseCache.get(CacheTypes.INDEXES, key);
+                                const fks = DatabaseCache.get(CacheTypes.FOREIGN_KEYS, key);
+                                if (cols || idx || fks) {
+                                    state.tableDetails[key] = {
+                                        columns: cols || [],
+                                        indexes: idx || [],
+                                        fks: fks || [],
+                                        constraints: []
+                                    };
+                                }
+                            });
+                        }
+                    }
+
+                    persistStates();
+                    render();
+                } catch (error) {
+                    console.warn(`Preload failed for connection ${conn.name || conn.id}:`, error);
+                }
+            }
+
+            // Restore original active connection
+            if (currentActiveConfig) {
+                try {
+                    await invoke('establish_connection', { config: currentActiveConfig });
+                    DatabaseCache.setConnectionId(currentActiveId);
+                    currentBackendId = currentActiveId;
+                    loadStateForConnection(activeStateKey);
+                    await loadDatabases();
+                } catch (err) {
+                    console.error('Failed to restore active connection after preload:', err);
+                }
+            }
+
+            isPreloadingConnections = false;
+            cancelPreload = false;
+        })();
+    };
+
+    const fetchDatabaseObjects = async (dbName) => {
+        const [tables, views, triggers, procedures, functions, events] = await Promise.all([
+            invoke('get_tables', { database: dbName }),
+            invoke('get_views', { database: dbName }),
+            invoke('get_triggers', { database: dbName }),
+            invoke('get_procedures', { database: dbName }),
+            invoke('get_functions', { database: dbName }),
+            invoke('get_events', { database: dbName })
+        ]);
+        return { tables, views, triggers, procedures, functions, events };
+    };
+
+    const fetchTableDetailsAll = async (dbName, tables) => {
+        const details = {};
+        for (const table of tables) {
+            try {
+                const [columns, indexes, fks] = await Promise.all([
+                    invoke('get_table_schema', { database: dbName, table }),
+                    invoke('get_table_indexes', { database: dbName, table }),
+                    invoke('get_table_foreign_keys', { database: dbName, table })
+                ]);
+                details[table] = { columns, indexes, fks, constraints: [] };
+                const key = `${dbName}.${table}`;
+                DatabaseCache.set(CacheTypes.COLUMNS, key, columns, 24 * 60 * 60 * 1000);
+                DatabaseCache.set(CacheTypes.INDEXES, key, indexes, 24 * 60 * 60 * 1000);
+                DatabaseCache.set(CacheTypes.FOREIGN_KEYS, key, fks, 24 * 60 * 60 * 1000);
+            } catch (err) {
+                console.warn(`Background table detail fetch failed for ${dbName}.${table}:`, err);
+            }
+        }
+        return details;
+    };
+
     const loadDatabaseObjects = async (dbName, isBackground = false) => {
-        // Try Cache first
+        if (!isBackground) {
+            cancelPreload = true;
+            await ensureActiveBackend();
+        }
         const cacheKey = dbName;
         const cached = DatabaseCache.get(CacheTypes.SCHEMAS, cacheKey);
-
         if (cached && !isBackground) {
             dbObjects[dbName] = cached;
             render();
@@ -1604,23 +2015,13 @@ export function ObjectExplorer() {
         }
 
         try {
-            const [tables, views, triggers, procedures, functions, events] = await Promise.all([
-                invoke('get_tables', { database: dbName }),
-                invoke('get_views', { database: dbName }),
-                invoke('get_triggers', { database: dbName }),
-                invoke('get_procedures', { database: dbName }),
-                invoke('get_functions', { database: dbName }),
-                invoke('get_events', { database: dbName })
-            ]);
-
-            const results = { tables, views, triggers, procedures, functions, events };
+            const results = cached || await fetchDatabaseObjects(dbName);
             dbObjects[dbName] = results;
-            DatabaseCache.set(CacheTypes.SCHEMAS, cacheKey, results);
+            DatabaseCache.set(CacheTypes.SCHEMAS, cacheKey, results, 24 * 60 * 60 * 1000);
 
             if (!isBackground) {
                 render();
             } else {
-                // If it's background and the DB is currently expanded, we should re-render
                 if (expandedDbs.has(dbName)) render();
             }
         } catch (error) {
@@ -1632,8 +2033,26 @@ export function ObjectExplorer() {
         }
     };
 
+    const ensureExpandedDataLoaded = async () => {
+        const dbPromises = Array.from(expandedDbs).map(db => {
+            if (!dbObjects[db]) return loadDatabaseObjects(db, true);
+            return Promise.resolve();
+        });
+        const tablePromises = Array.from(expandedTables).map(key => {
+            if (!tableDetails[key]) {
+                const [db, table] = key.split('.');
+                return loadTableDetails(db, table);
+            }
+            return Promise.resolve();
+        });
+        await Promise.all([...dbPromises, ...tablePromises]);
+    };
+
     const loadTableDetails = async (dbName, tableName) => {
         const key = `${dbName}.${tableName}`;
+
+        cancelPreload = true;
+        await ensureActiveBackend();
 
         // Prevent duplicate fetches
         if (loadingTables.has(key)) return;
