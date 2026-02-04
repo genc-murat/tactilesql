@@ -3,6 +3,7 @@ import { Dialog } from '../components/UI/Dialog.js';
 import { ThemeManager } from '../utils/ThemeManager.js';
 import { escapeHtml } from '../utils/helpers.js';
 import { toastSuccess, toastError } from '../utils/Toast.js';
+import { CustomDropdown } from '../components/UI/CustomDropdown.js';
 
 export function SchemaDesigner() {
     // Parse URL params
@@ -63,6 +64,18 @@ export function SchemaDesigner() {
         newColumn: { name: '', type: 'INT', length: '', defaultVal: '', nullable: true, primaryKey: false, autoIncrement: false, unique: false }
     };
 
+    // Dropdown Instances
+    let dropdowns = {
+        sidebarType: null,
+        idxType: null,
+        fkLocal: null,
+        fkRefTable: null,
+        fkRefCol: null,
+        trigTiming: null,
+        trigEvent: null,
+        colType: null
+    };
+
     let theme = ThemeManager.getCurrentTheme();
     let isLight = theme === 'light';
     let isDawn = theme === 'dawn';
@@ -75,6 +88,21 @@ export function SchemaDesigner() {
         return `flex-1 flex flex-col h-full overflow-hidden ${_isLight ? 'bg-gray-50' : (_isDawn ? 'bg-[#fffaf3]' : (_isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]'))} selection:bg-mysql-teal/40 relative transition-all duration-300`;
     };
     container.className = getContainerClass(theme);
+
+    // --- Helper for Type Options ---
+    const getDataTypeOptions = () => {
+        const groups = [
+            { label: 'Numeric', items: ['TINYINT', 'SMALLINT', 'MEDIUMINT', 'INT', 'BIGINT', 'DECIMAL', 'NUMERIC', 'FLOAT', 'DOUBLE', 'BIT'] },
+            { label: 'String', items: ['CHAR', 'VARCHAR', 'TINYTEXT', 'TEXT', 'MEDIUMTEXT', 'LONGTEXT', 'BINARY', 'VARBINARY', 'ENUM', 'SET'] },
+            { label: 'Binary', items: ['TINYBLOB', 'BLOB', 'MEDIUMBLOB', 'LONGBLOB'] },
+            { label: 'Date & Time', items: ['DATE', 'TIME', 'DATETIME', 'TIMESTAMP', 'YEAR'] },
+            { label: 'Other', items: ['JSON', 'BOOLEAN', 'GEOMETRY', 'POINT', 'LINESTRING', 'POLYGON'] }
+        ];
+        return groups.flatMap(g => [
+            { isHeader: true, label: g.label },
+            ...g.items.map(t => ({ value: t, label: t, icon: 'database' }))
+        ]);
+    };
 
     // --- Template ---
     const renderMainTemplate = () => {
@@ -196,11 +224,7 @@ export function SchemaDesigner() {
                             </div>
                             <div class="space-y-2">
                                 <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Type</label>
-                                <select id="sel-idx-type" class="tactile-select w-full outline-none">
-                                    <option value="INDEX">INDEX (Non-Unique)</option>
-                                    <option value="UNIQUE">UNIQUE</option>
-                                    <option value="FULLTEXT">FULLTEXT</option>
-                                </select>
+                                <div id="idx-type-container"></div>
                             </div>
                         </div>
                          <div class="space-y-2">
@@ -230,18 +254,16 @@ export function SchemaDesigner() {
                         <div class="grid grid-cols-2 gap-4">
                              <div class="space-y-2">
                                 <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Local Column</label>
-                                <select id="sel-fk-local-col" class="tactile-select w-full outline-none">
+                                <div id="fk-local-container"></div>
                             </div>
                             <div class="space-y-2">
                                 <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Referenced Table</label>
-                                <select id="sel-fk-ref-table" class="tactile-select w-full outline-none">
+                                <div id="fk-reftable-container"></div>
                             </div>
                         </div>
                         <div class="space-y-2">
                             <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Referenced Column</label>
-                            <select id="sel-fk-ref-col" class="tactile-select w-full outline-none" disabled>
-                                <option>Select Table First</option>
-                            </select>
+                            <div id="fk-refcol-container"></div>
                         </div>
                     </div>
                     <div class="p-6 border-t ${isLight ? 'border-gray-100 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : 'border-white/5 bg-[#121418]')} flex justify-end gap-3 rounded-b-2xl">
@@ -266,18 +288,11 @@ export function SchemaDesigner() {
                         <div class="grid grid-cols-2 gap-4">
                              <div class="space-y-2">
                                 <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Timing</label>
-                                <select id="sel-trigger-timing" class="tactile-select w-full outline-none">
-                                    <option value="BEFORE">BEFORE</option>
-                                    <option value="AFTER">AFTER</option>
-                                </select>
+                                <div id="trig-timing-container"></div>
                             </div>
                             <div class="space-y-2">
                                 <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Event</label>
-                                <select id="sel-trigger-event" class="tactile-select w-full outline-none">
-                                    <option value="INSERT">INSERT</option>
-                                    <option value="UPDATE">UPDATE</option>
-                                    <option value="DELETE">DELETE</option>
-                                </select>
+                                <div id="trig-event-container"></div>
                             </div>
                         </div>
                         <div class="space-y-2">
@@ -309,49 +324,7 @@ END"></textarea>
                         <div class="grid grid-cols-2 gap-4">
                             <div class="space-y-2">
                                 <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Data Type</label>
-                                <select id="sel-column-type" class="tactile-select w-full outline-none">
-                                    <optgroup label="Numeric">
-                                        <option value="TINYINT">TINYINT</option>
-                                        <option value="SMALLINT">SMALLINT</option>
-                                        <option value="MEDIUMINT">MEDIUMINT</option>
-                                        <option value="INT" selected>INT</option>
-                                        <option value="BIGINT">BIGINT</option>
-                                        <option value="DECIMAL">DECIMAL</option>
-                                        <option value="NUMERIC">NUMERIC</option>
-                                        <option value="FLOAT">FLOAT</option>
-                                        <option value="DOUBLE">DOUBLE</option>
-                                        <option value="BIT">BIT</option>
-                                    </optgroup>
-                                    <optgroup label="String">
-                                        <option value="CHAR">CHAR</option>
-                                        <option value="VARCHAR">VARCHAR</option>
-                                        <option value="TINYTEXT">TINYTEXT</option>
-                                        <option value="TEXT">TEXT</option>
-                                        <option value="MEDIUMTEXT">MEDIUMTEXT</option>
-                                        <option value="LONGTEXT">LONGTEXT</option>
-                                        <option value="BINARY">BINARY</option>
-                                        <option value="VARBINARY">VARBINARY</option>
-                                        <option value="ENUM">ENUM</option>
-                                        <option value="SET">SET</option>
-                                    </optgroup>
-                                    <optgroup label="Binary">
-                                        <option value="TINYBLOB">TINYBLOB</option>
-                                        <option value="BLOB">BLOB</option>
-                                        <option value="MEDIUMBLOB">MEDIUMBLOB</option>
-                                        <option value="LONGBLOB">LONGBLOB</option>
-                                    </optgroup>
-                                    <optgroup label="Date &amp; Time">
-                                        <option value="DATE">DATE</option>
-                                        <option value="TIME">TIME</option>
-                                        <option value="DATETIME">DATETIME</option>
-                                        <option value="TIMESTAMP">TIMESTAMP</option>
-                                        <option value="YEAR">YEAR</option>
-                                    </optgroup>
-                                    <optgroup label="Other">
-                                        <option value="JSON">JSON</option>
-                                        <option value="BOOLEAN">BOOLEAN</option>
-                                    </optgroup>
-                                </select>
+                                <div id="col-type-container"></div>
                             </div>
                             <div class="space-y-2">
                                 <label class="text-[10px] uppercase font-black tracking-widest text-gray-500">Length</label>
@@ -572,13 +545,12 @@ END"></textarea>
 
         state.columns.forEach((col, idx) => {
             const tr = document.createElement('tr');
-            tr.className = `cursor-pointer transition-all border-l-2 ${
-                col.id === state.selectedColumnId 
-                    ? (isDawn ? 'border-[#ea9d34] bg-[#ea9d34]/5' : 'border-mysql-teal bg-mysql-teal/5') 
-                    : 'border-transparent hover:bg-white/[0.02]'
-            }`;
+            tr.className = `cursor-pointer transition-all border-l-2 ${col.id === state.selectedColumnId
+                ? (isDawn ? 'border-[#ea9d34] bg-[#ea9d34]/5' : 'border-mysql-teal bg-mysql-teal/5')
+                : 'border-transparent hover:bg-white/[0.02]'
+                }`;
             tr.onclick = () => { state.selectedColumnId = col.id; updateAll(); };
-            
+
             const constraints = [];
             if (col.primaryKey) constraints.push(`<span class="px-1.5 py-0.5 rounded text-[9px] font-bold ${isDawn ? 'bg-[#ea9d34]/20 text-[#ea9d34]' : 'bg-yellow-500/20 text-yellow-400'}">PK</span>`);
             if (col.autoIncrement) constraints.push(`<span class="px-1.5 py-0.5 rounded text-[9px] font-bold ${isDawn ? 'bg-[#286983]/20 text-[#286983]' : 'bg-blue-500/20 text-blue-400'}">AI</span>`);
@@ -637,9 +609,9 @@ END"></textarea>
                 <td class="p-4 ${isDawn ? 'text-[#56949f]' : 'text-mysql-cyan'} font-mono text-[11px]">${(idx.columns || []).join(', ')}</td>
                 <td class="p-4 ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">${idx.type || 'INDEX'}</td>
                 <td class="p-4">
-                    ${idx.unique 
-                        ? `<span class="px-2 py-0.5 rounded text-[9px] font-bold ${isDawn ? 'bg-[#907aa9]/20 text-[#907aa9]' : 'bg-purple-500/20 text-purple-400'}">UNIQUE</span>` 
-                        : `<span class="text-gray-500">-</span>`}
+                    ${idx.unique
+                    ? `<span class="px-2 py-0.5 rounded text-[9px] font-bold ${isDawn ? 'bg-[#907aa9]/20 text-[#907aa9]' : 'bg-purple-500/20 text-purple-400'}">UNIQUE</span>`
+                    : `<span class="text-gray-500">-</span>`}
                 </td>
                 <td class="p-4">
                     <button class="btn-delete-idx p-1 rounded hover:bg-red-500/20 text-gray-500 hover:text-red-400 transition-all" data-name="${escapeHtml(idx.name)}">
@@ -713,7 +685,7 @@ END"></textarea>
         state.constraints.forEach((c, i) => {
             const tr = document.createElement('tr');
             tr.className = `transition-all hover:bg-white/[0.02]`;
-            
+
             let typeColor = isDawn ? 'text-[#797593]' : 'text-gray-400';
             let typeBg = 'bg-gray-500/10';
             if (c.type === 'PRIMARY KEY') { typeColor = isDawn ? 'text-[#ea9d34]' : 'text-yellow-400'; typeBg = isDawn ? 'bg-[#ea9d34]/10' : 'bg-yellow-500/10'; }
@@ -975,23 +947,7 @@ END"></textarea>
                 <div class="grid grid-cols-2 gap-2">
                     <div class="space-y-1">
                         <label class="text-[9px] uppercase font-black tracking-widest text-gray-500">Data Type</label>
-                        <select id="sel-type" class="tactile-select w-full outline-none text-[11px] !py-1 !px-2">
-                            <optgroup label="Numeric">
-                                ${['TINYINT', 'SMALLINT', 'MEDIUMINT', 'INT', 'BIGINT', 'DECIMAL', 'NUMERIC', 'FLOAT', 'DOUBLE', 'BIT'].map(t => `<option ${t === col.type ? 'selected' : ''}>${t}</option>`).join('')}
-                            </optgroup>
-                            <optgroup label="String">
-                                ${['CHAR', 'VARCHAR', 'TINYTEXT', 'TEXT', 'MEDIUMTEXT', 'LONGTEXT', 'BINARY', 'VARBINARY', 'ENUM', 'SET'].map(t => `<option ${t === col.type ? 'selected' : ''}>${t}</option>`).join('')}
-                            </optgroup>
-                            <optgroup label="Binary">
-                                ${['TINYBLOB', 'BLOB', 'MEDIUMBLOB', 'LONGBLOB'].map(t => `<option ${t === col.type ? 'selected' : ''}>${t}</option>`).join('')}
-                            </optgroup>
-                            <optgroup label="Date &amp; Time">
-                                ${['DATE', 'TIME', 'DATETIME', 'TIMESTAMP', 'YEAR'].map(t => `<option ${t === col.type ? 'selected' : ''}>${t}</option>`).join('')}
-                            </optgroup>
-                            <optgroup label="Other">
-                                ${['JSON', 'BOOLEAN', 'GEOMETRY', 'POINT', 'LINESTRING', 'POLYGON'].map(t => `<option ${t === col.type ? 'selected' : ''}>${t}</option>`).join('')}
-                            </optgroup>
-                        </select>
+                        <div id="sidebar-type-container"></div>
                     </div>
                     <div class="space-y-1">
                         <label class="text-[9px] uppercase font-black tracking-widest text-gray-500">Length</label>
@@ -1040,7 +996,25 @@ END"></textarea>
         };
 
         attachListener('inp-name', 'name');
-        attachListener('sel-type', 'type');
+
+        // Initialize Sidebar Type Dropdown
+        const typeContainer = sidebar.querySelector('#sidebar-type-container');
+        if (typeContainer) {
+            dropdowns.sidebarType = new CustomDropdown({
+                items: getDataTypeOptions(),
+                value: col.type,
+                className: 'sidebar-type-dropdown',
+                onSelect: (val) => {
+                    const colRef = state.columns.find(c => c.id === state.selectedColumnId);
+                    if (colRef) {
+                        colRef.type = val;
+                        updateAll();
+                    }
+                }
+            });
+            typeContainer.appendChild(dropdowns.sidebarType.getElement());
+        }
+
         attachListener('inp-length', 'length');
         attachListener('inp-default', 'defaultVal');
         attachListener('chk-primaryKey', 'primaryKey', true);
@@ -1076,11 +1050,28 @@ END"></textarea>
         const content = container.querySelector('#modal-idx-content');
         const colsList = container.querySelector('#modal-idx-cols-list');
         const nameInput = container.querySelector('#inp-idx-name');
-        const typeSelect = container.querySelector('#sel-idx-type');
+        const typeContainer = container.querySelector('#idx-type-container');
 
         if (state.showIndexModal) {
             modal.classList.remove('hidden');
             modal.classList.add('flex');
+
+            // Initialize Index Type Dropdown
+            if (!dropdowns.idxType) {
+                dropdowns.idxType = new CustomDropdown({
+                    items: [
+                        { value: 'INDEX', label: 'INDEX (Non-Unique)', icon: 'list' },
+                        { value: 'UNIQUE', label: 'UNIQUE', icon: 'key' },
+                        { value: 'FULLTEXT', label: 'FULLTEXT', icon: 'search' }
+                    ],
+                    value: state.newIndex.type,
+                    onSelect: (val) => { state.newIndex.type = val; }
+                });
+                typeContainer.appendChild(dropdowns.idxType.getElement());
+            } else {
+                dropdowns.idxType.setValue(state.newIndex.type);
+            }
+
             setTimeout(() => {
                 modal.classList.remove('opacity-0');
                 content.classList.remove('scale-95');
@@ -1088,7 +1079,6 @@ END"></textarea>
             }, 10);
 
             nameInput.value = state.newIndex.name;
-            typeSelect.value = state.newIndex.type;
 
             colsList.innerHTML = '';
             state.columns.forEach(col => {
@@ -1101,11 +1091,11 @@ END"></textarea>
                     renderIndexModal();
                 };
                 row.innerHTML = `
-        <div class="w-4 h-4 rounded border flex items-center justify-center ${isChecked ? 'bg-mysql-teal border-mysql-teal' : 'border-gray-600 bg-transparent'}">
-            ${isChecked ? '<span class="material-symbols-outlined text-[10px] text-white">check</span>' : ''}
+                    <div class="w-4 h-4 rounded border flex items-center justify-center ${isChecked ? 'bg-mysql-teal border-mysql-teal' : 'border-gray-600 bg-transparent'}">
+                        ${isChecked ? '<span class="material-symbols-outlined text-[10px] text-white">check</span>' : ''}
                     </div>
-        <span class="text-xs font-mono ${isChecked ? 'text-white font-bold' : 'text-gray-400'}">${col.name}</span>
-    `;
+                    <span class="text-xs font-mono ${isChecked ? 'text-white font-bold' : 'text-gray-400'}">${col.name}</span>
+                `;
                 colsList.appendChild(row);
             });
 
@@ -1114,6 +1104,8 @@ END"></textarea>
             modal.classList.add('opacity-0');
             content.classList.remove('scale-100');
             content.classList.add('scale-95');
+            dropdowns.idxType = null;
+            if (typeContainer) typeContainer.innerHTML = '';
             setTimeout(() => {
                 modal.classList.add('hidden');
                 modal.classList.remove('flex');
@@ -1126,13 +1118,67 @@ END"></textarea>
         const content = container.querySelector('#modal-fk-content');
 
         const inpName = container.querySelector('#inp-fk-name');
-        const selLocal = container.querySelector('#sel-fk-local-col');
-        const selRefTable = container.querySelector('#sel-fk-ref-table');
-        const selRefCol = container.querySelector('#sel-fk-ref-col');
+        const localContainer = container.querySelector('#fk-local-container');
+        const refTableContainer = container.querySelector('#fk-reftable-container');
+        const refColContainer = container.querySelector('#fk-refcol-container');
 
         if (state.showFKModal) {
             modal.classList.remove('hidden');
             modal.classList.add('flex');
+
+            // Initialize/Update Local Col Dropdown
+            if (!dropdowns.fkLocal) {
+                dropdowns.fkLocal = new CustomDropdown({
+                    items: state.columns.map(c => ({ value: c.name, label: c.name, icon: 'column_line' })),
+                    value: state.newFK.column,
+                    onSelect: (val) => { state.newFK.column = val; }
+                });
+                localContainer.appendChild(dropdowns.fkLocal.getElement());
+            }
+
+            // Initialize/Update Ref Table Dropdown
+            if (!dropdowns.fkRefTable) {
+                dropdowns.fkRefTable = new CustomDropdown({
+                    items: state.tablesList.map(t => ({ value: t, label: t, icon: 'table' })),
+                    value: state.newFK.refTable,
+                    placeholder: 'Select Table',
+                    onSelect: async (val) => {
+                        state.newFK.refTable = val;
+                        state.newFK.refColumn = '';
+                        if (state.newFK.refTable) {
+                            try {
+                                const schema = await invoke('get_table_schema', { database: state.database, table: state.newFK.refTable });
+                                state.refTableColumns = schema;
+                                state.newFK.refColumn = schema.length > 0 ? schema[0].name : '';
+                            } catch (e) { console.error(e); }
+                        } else {
+                            state.refTableColumns = [];
+                        }
+                        dropdowns.fkRefCol = null;
+                        if (refColContainer) refColContainer.innerHTML = '';
+                        renderFKModal();
+                    }
+                });
+                refTableContainer.appendChild(dropdowns.fkRefTable.getElement());
+            }
+
+            // Initialize/Update Ref Col Dropdown
+            if (state.newFK.refTable && state.refTableColumns.length > 0) {
+                if (!dropdowns.fkRefCol) {
+                    dropdowns.fkRefCol = new CustomDropdown({
+                        items: state.refTableColumns.map(c => ({ value: c.name, label: c.name, icon: 'column_line' })),
+                        value: state.newFK.refColumn,
+                        onSelect: (val) => { state.newFK.refColumn = val; }
+                    });
+                    refColContainer.appendChild(dropdowns.fkRefCol.getElement());
+                } else {
+                    dropdowns.fkRefCol.setValue(state.newFK.refColumn);
+                }
+            } else {
+                refColContainer.innerHTML = '<div class="text-[10px] text-gray-500 italic p-2 border border-dashed border-gray-300 rounded">Select table first</div>';
+                dropdowns.fkRefCol = null;
+            }
+
             setTimeout(() => {
                 modal.classList.remove('opacity-0');
                 content.classList.remove('scale-95');
@@ -1141,45 +1187,19 @@ END"></textarea>
 
             inpName.value = state.newFK.name;
 
-            // Populate Local Cols
-            selLocal.innerHTML = state.columns.map(c => `<option value="${c.name}" ${state.newFK.column === c.name ? 'selected' : ''}> ${c.name}</option>`).join('');
-
-            // Populate Tables
-            selRefTable.innerHTML = `<option value="">Select Table</option>` + state.tablesList.map(t => ` <option value="${t}" ${state.newFK.refTable === t ? 'selected' : ''}> ${t}</option>`).join('');
-
-            // Populate Ref Columns (if table selected)
-            if (state.newFK.refTable && state.refTableColumns.length > 0) {
-                selRefCol.innerHTML = state.refTableColumns.map(c => `<option value="${c.name}" ${state.newFK.refColumn === c.name ? 'selected' : ''}> ${c.name}</option>`).join('');
-                selRefCol.disabled = false;
-            } else {
-                selRefCol.innerHTML = '<option>Select Table First</option>';
-                selRefCol.disabled = true;
-            }
-
             // Bind Events
             inpName.oninput = (e) => state.newFK.name = e.target.value;
-            selLocal.onchange = (e) => state.newFK.column = e.target.value;
-            selRefTable.onchange = async (e) => {
-                state.newFK.refTable = e.target.value;
-                state.newFK.refColumn = '';
-                if (state.newFK.refTable) {
-                    // Fetch columns
-                    try {
-                        const schema = await invoke('get_table_schema', { database: state.database, table: state.newFK.refTable });
-                        state.refTableColumns = schema;
-                        state.newFK.refColumn = schema.length > 0 ? schema[0].name : '';
-                    } catch (e) { console.error(e); }
-                } else {
-                    state.refTableColumns = [];
-                }
-                renderFKModal();
-            };
-            selRefCol.onchange = (e) => state.newFK.refColumn = e.target.value;
 
         } else {
             modal.classList.add('opacity-0');
             content.classList.remove('scale-100');
             content.classList.add('scale-95');
+            dropdowns.fkLocal = null;
+            dropdowns.fkRefTable = null;
+            dropdowns.fkRefCol = null;
+            if (localContainer) localContainer.innerHTML = '';
+            if (refTableContainer) refTableContainer.innerHTML = '';
+            if (refColContainer) refColContainer.innerHTML = '';
             setTimeout(() => {
                 modal.classList.add('hidden');
                 modal.classList.remove('flex');
@@ -1192,30 +1212,58 @@ END"></textarea>
         const content = container.querySelector('#modal-trigger-content');
 
         const inpName = container.querySelector('#inp-trigger-name');
-        const selTiming = container.querySelector('#sel-trigger-timing');
-        const selEvent = container.querySelector('#sel-trigger-event');
+        const timingContainer = container.querySelector('#trig-timing-container');
+        const eventContainer = container.querySelector('#trig-event-container');
         const txtBody = container.querySelector('#txt-trigger-body');
 
         if (state.showTriggerModal) {
             modal.classList.remove('hidden');
             modal.classList.add('flex');
+
+            // Initialize Timing Dropdown
+            if (!dropdowns.trigTiming) {
+                dropdowns.trigTiming = new CustomDropdown({
+                    items: [
+                        { value: 'BEFORE', label: 'BEFORE', icon: 'schedule' },
+                        { value: 'AFTER', label: 'AFTER', icon: 'history' }
+                    ],
+                    value: state.newTrigger.timing,
+                    onSelect: (val) => { state.newTrigger.timing = val; }
+                });
+                timingContainer.appendChild(dropdowns.trigTiming.getElement());
+            }
+
+            // Initialize Event Dropdown
+            if (!dropdowns.trigEvent) {
+                dropdowns.trigEvent = new CustomDropdown({
+                    items: [
+                        { value: 'INSERT', label: 'INSERT', icon: 'add_box' },
+                        { value: 'UPDATE', label: 'UPDATE', icon: 'edit' },
+                        { value: 'DELETE', label: 'DELETE', icon: 'delete' }
+                    ],
+                    value: state.newTrigger.event,
+                    onSelect: (val) => { state.newTrigger.event = val; }
+                });
+                eventContainer.appendChild(dropdowns.trigEvent.getElement());
+            }
+
             setTimeout(() => { modal.classList.remove('opacity-0'); content.classList.remove('scale-95'); content.classList.add('scale-100'); }, 10);
 
             inpName.value = state.newTrigger.name;
-            selTiming.value = state.newTrigger.timing;
-            selEvent.value = state.newTrigger.event;
             txtBody.value = state.newTrigger.body;
 
             if (!state.newTrigger.name) inpName.focus();
 
             // Bind Events
             inpName.oninput = (e) => state.newTrigger.name = e.target.value;
-            selTiming.onchange = (e) => state.newTrigger.timing = e.target.value;
-            selEvent.onchange = (e) => state.newTrigger.event = e.target.value;
             txtBody.oninput = (e) => state.newTrigger.body = e.target.value;
 
         } else {
             modal.classList.add('opacity-0'); content.classList.remove('scale-100'); content.classList.add('scale-95');
+            dropdowns.trigTiming = null;
+            dropdowns.trigEvent = null;
+            if (timingContainer) timingContainer.innerHTML = '';
+            if (eventContainer) eventContainer.innerHTML = '';
             setTimeout(() => { modal.classList.add('hidden'); modal.classList.remove('flex'); }, 200);
         }
     }
@@ -1225,7 +1273,7 @@ END"></textarea>
         const content = container.querySelector('#modal-column-content');
 
         const inpName = container.querySelector('#inp-column-name');
-        const selType = container.querySelector('#sel-column-type');
+        const typeContainer = container.querySelector('#col-type-container');
         const inpLength = container.querySelector('#inp-column-length');
         const inpDefault = container.querySelector('#inp-column-default');
         const chkPK = container.querySelector('#chk-column-pk');
@@ -1236,10 +1284,20 @@ END"></textarea>
         if (state.showColumnModal) {
             modal.classList.remove('hidden');
             modal.classList.add('flex');
+
+            // Initialize Type Dropdown
+            if (!dropdowns.colType) {
+                dropdowns.colType = new CustomDropdown({
+                    items: getDataTypeOptions(),
+                    value: state.newColumn.type,
+                    onSelect: (val) => { state.newColumn.type = val; }
+                });
+                typeContainer.appendChild(dropdowns.colType.getElement());
+            }
+
             setTimeout(() => { modal.classList.remove('opacity-0'); content.classList.remove('scale-95'); content.classList.add('scale-100'); }, 10);
 
             inpName.value = state.newColumn.name;
-            selType.value = state.newColumn.type;
             inpLength.value = state.newColumn.length;
             inpDefault.value = state.newColumn.defaultVal;
             chkPK.checked = state.newColumn.primaryKey;
@@ -1251,7 +1309,6 @@ END"></textarea>
 
             // Bind Events
             inpName.oninput = (e) => state.newColumn.name = e.target.value;
-            selType.onchange = (e) => state.newColumn.type = e.target.value;
             inpLength.oninput = (e) => state.newColumn.length = e.target.value;
             inpDefault.oninput = (e) => state.newColumn.defaultVal = e.target.value;
             chkPK.onchange = (e) => state.newColumn.primaryKey = e.target.checked;
@@ -1261,6 +1318,8 @@ END"></textarea>
 
         } else {
             modal.classList.add('opacity-0'); content.classList.remove('scale-100'); content.classList.add('scale-95');
+            dropdowns.colType = null;
+            if (typeContainer) typeContainer.innerHTML = '';
             setTimeout(() => { modal.classList.add('hidden'); modal.classList.remove('flex'); }, 200);
         }
     }

@@ -24,12 +24,22 @@ export function Settings() {
     };
     container.className = `h-full overflow-auto ${getBgClass(theme)} transition-colors duration-300`;
 
+    let isLight = theme === 'light' || theme === 'dawn';
+    let isDawn = theme === 'dawn';
+    let isOceanic = theme === 'oceanic';
+    let isEmber = theme === 'ember';
+    let isAurora = theme === 'aurora';
+
+    const updateThemeState = (newTheme) => {
+        theme = newTheme;
+        isLight = theme === 'light' || theme === 'dawn';
+        isDawn = theme === 'dawn';
+        isOceanic = theme === 'oceanic';
+        isEmber = theme === 'ember';
+        isAurora = theme === 'aurora';
+    };
+
     const render = () => {
-        const isLight = theme === 'light' || theme === 'dawn';
-        const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
-        const isEmber = theme === 'ember';
-        const isAurora = theme === 'aurora';
         const currentTheme = ThemeManager.getCurrentTheme();
         const snippetSuggestionsEnabled = SettingsManager.get('autocomplete.snippets', true);
 
@@ -115,18 +125,22 @@ export function Settings() {
                     <div class="space-y-4">
                     <div class="space-y-4">
                         <!-- Provider Selection -->
-                        <div class="space-y-2">
+                        <div class="space-y-2 relative" id="ai-provider-dropdown-container">
                             <label class="text-xs font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">AI Provider</label>
-                            <div class="relative">
-                                <select id="setting-ai-provider" class="w-full ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-300')} rounded px-3 py-2 text-sm outline-none focus:border-mysql-teal transition-colors appearance-none bg-no-repeat bg-[right_0.75rem_center]" style="background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGZpbGw9Im5vbmUiIHZpZXdCb3g9IjAgMCAyNCAyNCIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZT0iIzZCNTU2MyIgY2xhc3M9InNpemUtNiI+PHBhdGggc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBkPSJtMTkuNSA4LjI1LTcuNSA3LjUtNy41LTcuNSIgLz48L3N2Zz4='); background-size: 1.25em;">
-                                    <option value="openai">OpenAI</option>
-                                    <option value="gemini">Google Gemini</option>
-                                    <option value="anthropic">Anthropic Claude</option>
-                                    <option value="deepseek">DeepSeek</option>
-                                    <option value="groq">Groq</option>
-                                    <option value="mistral">Mistral AI</option>
-                                    <option value="local">Local AI (Ollama/Custom)</option>
-                                </select>
+                            <button id="ai-provider-trigger" class="w-full flex items-center justify-between px-3 py-2 text-sm ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800 hover:bg-gray-100' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] hover:bg-[#faf4ed]' : 'bg-black/20 border-white/10 text-gray-300 hover:bg-white/5')} rounded-lg border transition-all outline-none focus:border-mysql-teal shadow-sm group">
+                                <span id="current-ai-provider">${localStorage.getItem('ai_provider') ? localStorage.getItem('ai_provider').charAt(0).toUpperCase() + localStorage.getItem('ai_provider').slice(1) : 'OpenAI'}</span>
+                                <span class="material-symbols-outlined text-gray-500 group-hover:text-mysql-teal transition-transform duration-200" id="ai-provider-arrow">expand_more</span>
+                            </button>
+                            
+                            <div id="ai-provider-options" class="hidden absolute top-full left-0 right-0 mt-2 ${isLight ? 'bg-white border-gray-100 shadow-2xl' : 'bg-[#1a1d23] border-white/10 shadow-2xl'} rounded-xl overflow-hidden z-[100] animate-in fade-in slide-in-from-top-2 duration-200 backdrop-blur-xl">
+                                <div class="p-1">
+                                    ${['openai', 'gemini', 'anthropic', 'deepseek', 'groq', 'mistral', 'local'].map(p => `
+                                        <div class="provider-option px-3 py-2 flex items-center gap-2 cursor-pointer rounded-lg transition-colors ${localStorage.getItem('ai_provider') === p ? (isLight ? 'bg-mysql-teal/10 text-mysql-teal font-bold' : 'bg-mysql-teal/20 text-mysql-teal font-bold') : (isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5')}" data-value="${p}">
+                                            <span class="text-sm font-medium flex-1">${p === 'local' ? 'Local AI (Ollama/Custom)' : p.charAt(0).toUpperCase() + p.slice(1)}</span>
+                                            ${localStorage.getItem('ai_provider') === p ? '<span class="material-symbols-outlined text-mysql-teal text-sm">check_circle</span>' : ''}
+                                        </div>
+                                    `).join('')}
+                                </div>
                             </div>
                         </div>
 
@@ -155,33 +169,20 @@ export function Settings() {
                             <p class="text-[10px] text-gray-500">Your key is stored locally on your device and never sent to our servers.</p>
                         </div>
 
-                        <div id="ai-model-container" class="space-y-2 pt-2">
+                        <div id="ai-model-container" class="space-y-2 pt-2 relative">
                             <label class="text-xs font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">Default Model</label>
                             <div id="ai-model-select-wrapper">
                                 ${localStorage.getItem('ai_provider') === 'local' ? `
                                     <input type="text" id="setting-ai-model" class="w-full ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-300')} rounded px-3 py-2 text-sm font-mono outline-none focus:border-mysql-teal transition-colors" placeholder="e.g. llama3" value="${localStorage.getItem('local_model') || 'llama3'}">
                                 ` : `
-                                    <select id="setting-ai-model" class="w-full ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-300')} rounded px-3 py-2 text-sm outline-none focus:border-mysql-teal transition-colors appearance-none bg-no-repeat bg-[right_0.75rem_center]" style="background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGZpbGw9Im5vbmUiIHZpZXdCb3g9IjAgMCAyNCAyNCIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZT0iIzZCNTU2MyIgY2xhc3M9InNpemUtNiI+PHBhdGggc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBkPSJtMTkuNSA4LjI1LTcuNSA3LjUtNy41LTcuNSIgLz48L3N2Zz4='); background-size: 1.25em;">
-                                        ${localStorage.getItem('ai_provider') === 'gemini' ? `
-                                            <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
-                                            <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
-                                        ` : (localStorage.getItem('ai_provider') === 'anthropic' ? `
-                                            <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
-                                            <option value="claude-3-opus-20240229">Claude 3 Opus</option>
-                                        ` : (localStorage.getItem('ai_provider') === 'deepseek' ? `
-                                            <option value="deepseek-chat">DeepSeek Chat</option>
-                                            <option value="deepseek-reasoner">DeepSeek Reasoner</option>
-                                        ` : (localStorage.getItem('ai_provider') === 'groq' ? `
-                                            <option value="llama-3.3-70b-versatile">Llama 3.3 70B</option>
-                                            <option value="mixtral-8x7b-32768">Mixtral 8x7B</option>
-                                        ` : (localStorage.getItem('ai_provider') === 'mistral' ? `
-                                            <option value="mistral-large-latest">Mistral Large</option>
-                                            <option value="pixtral-large-latest">Pixtral Large</option>
-                                        ` : `
-                                            <option value="gpt-4o">GPT-4o</option>
-                                            <option value="gpt-4o-mini">GPT-4o Mini</option>
-                                        `))))}
-                                    </select>
+                                    <button id="ai-model-trigger" class="w-full flex items-center justify-between px-3 py-2 text-sm ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800 hover:bg-gray-100' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] hover:bg-[#faf4ed]' : 'bg-black/20 border-white/10 text-gray-300 hover:bg-white/5')} rounded-lg border transition-all outline-none focus:border-mysql-teal shadow-sm group">
+                                        <span id="current-ai-model">Loading...</span>
+                                        <span class="material-symbols-outlined text-gray-500 group-hover:text-mysql-teal transition-transform duration-200" id="ai-model-arrow">expand_more</span>
+                                    </button>
+                                    
+                                    <div id="ai-model-options" class="hidden absolute top-full left-0 right-0 mt-2 ${isLight ? 'bg-white border-gray-100 shadow-2xl' : 'bg-[#1a1d23] border-white/10 shadow-2xl'} rounded-xl overflow-hidden z-[100] animate-in fade-in slide-in-from-top-2 duration-200 backdrop-blur-xl">
+                                        <!-- Options will be populated by logic -->
+                                    </div>
                                 `}
                             </div>
                          </div>
@@ -209,12 +210,23 @@ export function Settings() {
                                 <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Font Size</h3>
                                 <p class="text-xs text-gray-500 mt-1">Adjust the editor font size</p>
                             </div>
-                            <select class="tactile-select w-24 !text-center">
-                                <option value="12">12px</option>
-                                <option value="14" selected>14px</option>
-                                <option value="16">16px</option>
-                                <option value="18">18px</option>
-                            </select>
+                            <div class="relative" id="font-size-dropdown-container">
+                                <button id="font-size-trigger" class="flex items-center gap-2 px-3 py-1.5 text-sm ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800 hover:bg-gray-100' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] hover:bg-[#faf4ed]' : 'bg-black/20 border-white/10 text-gray-300 hover:bg-white/5')} rounded-lg border transition-all outline-none focus:border-mysql-teal shadow-sm min-w-[100px] justify-between group">
+                                    <span id="current-font-size">${localStorage.getItem('editorFontSize') || '14'}px</span>
+                                    <span class="material-symbols-outlined text-gray-500 group-hover:text-mysql-teal transition-transform duration-200" id="font-size-arrow">expand_more</span>
+                                </button>
+                                
+                                <div id="font-size-options" class="hidden absolute top-full right-0 mt-2 w-32 ${isLight ? 'bg-white border-gray-100 shadow-2xl' : 'bg-[#1a1d23] border-white/10 shadow-2xl'} rounded-xl overflow-hidden z-[100] animate-in fade-in slide-in-from-top-2 duration-200 backdrop-blur-xl">
+                                    <div class="p-1">
+                                        ${['12', '14', '16', '18', '20', '22', '24'].map(size => `
+                                            <div class="font-size-option px-3 py-2 flex items-center justify-between cursor-pointer rounded-lg transition-colors ${(localStorage.getItem('editorFontSize') || '14') === size ? (isLight ? 'bg-mysql-teal/10 text-mysql-teal font-bold' : 'bg-mysql-teal/20 text-mysql-teal font-bold') : (isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5')}" data-value="${size}">
+                                                <span class="text-sm">${size}px</span>
+                                                ${(localStorage.getItem('editorFontSize') || '14') === size ? '<span class="material-symbols-outlined text-mysql-teal text-sm">check_circle</span>' : ''}
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
@@ -443,46 +455,89 @@ export function Settings() {
             window.location.reload();
         });
 
+        // Helper to attach events to model options (needed because they are re-rendered)
+        const attachModelEvents = () => {
+            const modelTrigger = container.querySelector('#ai-model-trigger');
+            const modelDropdown = container.querySelector('#ai-model-options');
+            const modelArrow = container.querySelector('#ai-model-arrow');
+            const currentModelSpan = container.querySelector('#current-ai-model');
+
+            if (modelTrigger && modelDropdown) {
+                modelTrigger.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const isHidden = modelDropdown.classList.contains('hidden');
+                    container.querySelectorAll('#ai-provider-options, #font-size-options').forEach(d => d.classList.add('hidden'));
+                    container.querySelectorAll('#ai-provider-arrow, #font-size-arrow').forEach(a => a.style.transform = '');
+
+                    if (isHidden) {
+                        modelDropdown.classList.remove('hidden');
+                        if (modelArrow) modelArrow.style.transform = 'rotate(180deg)';
+                    } else {
+                        modelDropdown.classList.add('hidden');
+                        if (modelArrow) modelArrow.style.transform = '';
+                    }
+                });
+
+                modelDropdown.querySelectorAll('.model-option').forEach(option => {
+                    option.addEventListener('click', () => {
+                        const val = option.dataset.value;
+                        if (currentModelSpan) currentModelSpan.textContent = val;
+                        modelDropdown.classList.add('hidden');
+                        if (modelArrow) modelArrow.style.transform = '';
+
+                        modelDropdown.querySelectorAll('.model-option').forEach(opt => {
+                            const isSelected = opt.dataset.value === val;
+                            opt.className = `model-option px-3 py-2 flex items-center justify-between cursor-pointer rounded-lg transition-colors ${isSelected ? (isLight ? 'bg-mysql-teal/10 text-mysql-teal font-bold' : 'bg-mysql-teal/20 text-mysql-teal font-bold') : (isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5')}`;
+                            const check = opt.querySelector('.material-symbols-outlined');
+                            if (check) check.style.display = isSelected ? 'block' : 'none';
+                        });
+                        checkForChanges();
+                    });
+                });
+            }
+        };
+
         // AI Settings Logic
         const aiKeyInput = container.querySelector('#setting-ai-key');
-        const aiModelSelect = container.querySelector('#setting-ai-model');
         const aiSaveBtn = container.querySelector('#save-ai-settings-btn');
         const aiVisibilityBtn = container.querySelector('#toggle-ai-key-visibility');
         const aiKeyLabel = container.querySelector('#ai-key-label');
         const aiKeyLink = container.querySelector('#ai-key-link');
-        const providerSelect = container.querySelector('#setting-ai-provider');
         const aiLocalUrlContainer = container.querySelector('#ai-local-url-container');
         const aiLocalUrlInput = container.querySelector('#setting-ai-local-url');
 
-        if (aiKeyInput && aiModelSelect && aiSaveBtn && aiVisibilityBtn && aiKeyLabel && aiKeyLink && providerSelect) {
+        const providerTrigger = container.querySelector('#ai-provider-trigger');
+        const providerDropdown = container.querySelector('#ai-provider-options');
+        const providerArrow = container.querySelector('#ai-provider-arrow');
+
+        const fontSizeTrigger = container.querySelector('#font-size-trigger');
+        const fontSizeDropdown = container.querySelector('#font-size-options');
+        const fontSizeArrow = container.querySelector('#font-size-arrow');
+        const currentFontSizeSpan = container.querySelector('#current-font-size');
+
+        if (aiKeyInput && aiSaveBtn && aiVisibilityBtn && aiKeyLabel && aiKeyLink) {
             let activeProvider = localStorage.getItem('ai_provider') || 'openai';
 
-            // Initial Check/Values for change detection
-            // We need to track what's currently in the fields vs what was saved
             const getSavedKey = (p) => {
-                if (p === 'gemini') return localStorage.getItem('gemini_api_key') || '';
-                if (p === 'anthropic') return localStorage.getItem('anthropic_api_key') || '';
-                if (p === 'deepseek') return localStorage.getItem('deepseek_api_key') || '';
-                if (p === 'groq') return localStorage.getItem('groq_api_key') || '';
-                if (p === 'mistral') return localStorage.getItem('mistral_api_key') || '';
-                if (p === 'local') return localStorage.getItem('local_api_key') || '';
-                return localStorage.getItem('openai_api_key') || '';
+                const keys = {
+                    openai: 'openai_api_key', gemini: 'gemini_api_key', anthropic: 'anthropic_api_key',
+                    deepseek: 'deepseek_api_key', groq: 'groq_api_key', mistral: 'mistral_api_key', local: 'local_api_key'
+                };
+                return localStorage.getItem(keys[p]) || '';
             };
             const getSavedModel = (p) => {
-                if (p === 'gemini') return localStorage.getItem('gemini_model') || 'gemini-1.5-flash';
-                if (p === 'anthropic') return localStorage.getItem('anthropic_model') || 'claude-3-5-sonnet-20241022';
-                if (p === 'deepseek') return localStorage.getItem('deepseek_model') || 'deepseek-chat';
-                if (p === 'groq') return localStorage.getItem('groq_model') || 'llama-3.3-70b-versatile';
-                if (p === 'mistral') return localStorage.getItem('mistral_model') || 'mistral-large-latest';
-                if (p === 'local') return localStorage.getItem('local_model') || 'llama3';
-                return localStorage.getItem('openai_model') || 'gpt-4o';
+                const models = {
+                    openai: 'gpt-4o', gemini: 'gemini-1.5-flash', anthropic: 'claude-3-5-sonnet-20241022',
+                    deepseek: 'deepseek-chat', groq: 'llama-3.3-70b-versatile', mistral: 'mistral-large-latest', local: 'llama3'
+                };
+                return localStorage.getItem(`${p}_model`) || models[p];
             };
             const getSavedBaseUrl = () => localStorage.getItem('local_base_url') || 'http://localhost:11434/v1';
 
-            // Change Detection defined early to be used by switchProvider
             const checkForChanges = () => {
                 const currentKey = aiKeyInput.value.trim();
-                const currentModel = container.querySelector('#setting-ai-model').value;
+                const modelEl = container.querySelector('#setting-ai-model') || container.querySelector('#current-ai-model');
+                const currentModel = modelEl ? (modelEl.value || modelEl.textContent) : '';
                 const currentUrl = aiLocalUrlInput?.value.trim() || '';
                 const savedKey = getSavedKey(activeProvider);
                 const savedModel = getSavedModel(activeProvider);
@@ -500,85 +555,125 @@ export function Settings() {
                 }
             };
 
-            // Helper to update UI based on provider
             const switchProvider = (provider) => {
                 activeProvider = provider;
-                const isGemini = provider === 'gemini';
                 const isLocal = provider === 'local';
-                const isLight = theme === 'light' || theme === 'dawn';
 
-                // 1. Update Buttons
-                providerSelect.value = provider;
+                const currentProviderSpan = container.querySelector('#current-ai-provider');
+                if (currentProviderSpan) currentProviderSpan.textContent = provider === 'local' ? 'Local AI' : provider.charAt(0).toUpperCase() + provider.slice(1);
 
-                // 2. Update Label & Link
-                const links = {
-                    openai: 'https://platform.openai.com/api-keys',
-                    gemini: 'https://aistudio.google.com/app/apikey',
-                    anthropic: 'https://console.anthropic.com/settings/keys',
-                    deepseek: 'https://platform.deepseek.com/api_keys',
-                    groq: 'https://console.groq.com/keys',
-                    mistral: 'https://console.mistral.ai/api-keys'
-                };
+                const links = { openai: 'https://platform.openai.com/api-keys', gemini: 'https://aistudio.google.com/app/apikey', anthropic: 'https://console.anthropic.com/settings/keys', deepseek: 'https://platform.deepseek.com/api_keys', groq: 'https://console.groq.com/keys', mistral: 'https://console.mistral.ai/api-keys' };
                 aiKeyLabel.textContent = `${provider.charAt(0).toUpperCase() + provider.slice(1)} Key`;
                 aiKeyInput.placeholder = provider === 'local' ? 'Local API Key' : 'Enter API Key...';
                 aiLocalUrlContainer.classList.toggle('hidden', provider !== 'local');
                 aiKeyLink.classList.toggle('hidden', provider === 'local');
                 if (provider !== 'local') aiKeyLink.href = links[provider] || '#';
 
-                // 3. Update Input Value
-                aiKeyInput.value = getSavedKey(provider); // Reset to saved value for that provider
+                aiKeyInput.value = getSavedKey(provider);
 
-                // 4. Update Model Select Options
                 const modelWrapper = container.querySelector('#ai-model-select-wrapper');
                 if (isLocal) {
-                    modelWrapper.innerHTML = `<input type="text" id="setting-ai-model" class="w-full ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (theme === 'dawn' ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-300')} rounded px-3 py-2 text-sm font-mono outline-none focus:border-mysql-teal transition-colors" placeholder="e.g. llama3" value="${getSavedModel('local')}">`;
+                    modelWrapper.innerHTML = `<input type="text" id="setting-ai-model" class="w-full ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (theme === 'dawn' ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-300')} rounded-lg px-3 py-2 text-sm font-mono outline-none focus:border-mysql-teal transition-colors" placeholder="e.g. llama3" value="${getSavedModel('local')}">`;
                     container.querySelector('#setting-ai-model').addEventListener('input', checkForChanges);
                 } else {
-                    modelWrapper.innerHTML = `
-                        <select id="setting-ai-model" class="w-full ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (theme === 'dawn' ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-300')} rounded px-3 py-2 text-sm outline-none focus:border-mysql-teal transition-colors appearance-none bg-no-repeat bg-[right_0.75rem_center]" style="background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGZpbGw9Im5vbmUiIHZpZXdCb3g9IjAgMCAyNCAyNCIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZT0iIzZCNTU2MyIgY2xhc3M9InNpemUtNiI+PHBhdGggc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBkPSJtMTkuNSA4LjI1LTcuNSA3LjUtNy41LTcuNSIgLz48L3N2Zz4='); background-size: 1.25em;">
-                            ${provider === 'gemini' ? `
-                                <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
-                                <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
-                            ` : (provider === 'anthropic' ? `
-                                <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
-                                <option value="claude-3-opus-20240229">Claude 3 Opus</option>
-                            ` : (provider === 'deepseek' ? `
-                                <option value="deepseek-chat">DeepSeek Chat</option>
-                                <option value="deepseek-reasoner">DeepSeek Reasoner</option>
-                            ` : (provider === 'groq' ? `
-                                <option value="llama-3.3-70b-versatile">Llama 3.3 70B</option>
-                                <option value="mixtral-8x7b-32768">Mixtral 8x7B</option>
-                            ` : (provider === 'mistral' ? `
-                                <option value="mistral-large-latest">Mistral Large</option>
-                                <option value="pixtral-large-latest">Pixtral Large</option>
-                            ` : `
-                                <option value="gpt-4o">GPT-4o</option>
-                                <option value="gpt-4o-mini">GPT-4o Mini</option>
-                            `))))}
-                        </select>
-                    `;
-                    const modelSelect = container.querySelector('#setting-ai-model');
-                    modelSelect.addEventListener('change', checkForChanges);
-
-                    // Set selected model
                     const savedModel = getSavedModel(provider);
-                    if (Array.from(modelSelect.options).some(o => o.value === savedModel)) {
-                        modelSelect.value = savedModel;
-                    } else {
-                        modelSelect.value = provider === 'gemini' ? 'gemini-1.5-flash' : (provider === 'anthropic' ? 'claude-3-5-sonnet-20241022' : (provider === 'deepseek' ? 'deepseek-chat' : (provider === 'groq' ? 'llama-3.3-70b-versatile' : (provider === 'mistral' ? 'mistral-large-latest' : 'gpt-4o'))));
-                    }
-                }
+                    const models = provider === 'gemini' ? ['gemini-1.5-flash', 'gemini-1.5-pro'] :
+                        (provider === 'anthropic' ? ['claude-3-5-sonnet-20241022', 'claude-3-opus-20240229'] :
+                            (provider === 'deepseek' ? ['deepseek-chat', 'deepseek-reasoner'] :
+                                (provider === 'groq' ? ['llama-3.3-70b-versatile', 'mixtral-8x7b-32768'] :
+                                    (provider === 'mistral' ? ['mistral-large-latest', 'pixtral-large-latest'] :
+                                        ['gpt-4o', 'gpt-4o-mini']))));
 
+                    modelWrapper.innerHTML = `
+                        <button id="ai-model-trigger" class="w-full flex items-center justify-between px-3 py-2 text-sm ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800 hover:bg-gray-100' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] hover:bg-[#faf4ed]' : 'bg-black/20 border-white/10 text-gray-300 hover:bg-white/5')} rounded-lg border transition-all outline-none focus:border-mysql-teal shadow-sm group">
+                            <span id="current-ai-model">${savedModel}</span>
+                            <span class="material-symbols-outlined text-gray-500 group-hover:text-mysql-teal transition-transform duration-200" id="ai-model-arrow">expand_more</span>
+                        </button>
+                        <div id="ai-model-options" class="hidden absolute top-full left-0 right-0 mt-2 ${isLight ? 'bg-white border-gray-100 shadow-2xl' : 'bg-[#1a1d23] border-white/10 shadow-2xl'} rounded-xl overflow-hidden z-[100] animate-in fade-in slide-in-from-top-2 duration-200 backdrop-blur-xl">
+                            <div class="p-1">
+                                ${models.map(m => `
+                                    <div class="model-option px-3 py-2 flex items-center justify-between cursor-pointer rounded-lg transition-colors ${savedModel === m ? (isLight ? 'bg-mysql-teal/10 text-mysql-teal font-bold' : 'bg-mysql-teal/20 text-mysql-teal font-bold') : (isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5')}" data-value="${m}">
+                                        <span class="text-sm">${m}</span>
+                                        ${savedModel === m ? '<span class="material-symbols-outlined text-mysql-teal text-sm">check_circle</span>' : ''}
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                    attachModelEvents();
+                }
                 checkForChanges();
             };
 
-            // Initial setup based on saved provider
-            switchProvider(activeProvider);
+            if (providerTrigger && providerDropdown) {
+                providerTrigger.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const isHidden = providerDropdown.classList.contains('hidden');
+                    container.querySelectorAll('#ai-model-options, #font-size-options').forEach(d => d.classList.add('hidden'));
+                    container.querySelectorAll('#ai-model-arrow, #font-size-arrow').forEach(a => a.style.transform = '');
+                    if (isHidden) {
+                        providerDropdown.classList.remove('hidden');
+                        if (providerArrow) providerArrow.style.transform = 'rotate(180deg)';
+                    } else {
+                        providerDropdown.classList.add('hidden');
+                        if (providerArrow) providerArrow.style.transform = '';
+                    }
+                });
 
-            providerSelect.addEventListener('change', (e) => switchProvider(e.target.value));
-            aiLocalUrlInput?.addEventListener('input', checkForChanges);
+                providerDropdown.querySelectorAll('.provider-option').forEach(option => {
+                    option.addEventListener('click', () => {
+                        const val = option.dataset.value;
+                        providerDropdown.classList.add('hidden');
+                        if (providerArrow) providerArrow.style.transform = '';
+                        switchProvider(val);
+                        providerDropdown.querySelectorAll('.provider-option').forEach(opt => {
+                            const isSelected = opt.dataset.value === val;
+                            opt.className = `provider-option px-3 py-2 flex items-center gap-2 cursor-pointer rounded-lg transition-colors ${isSelected ? (isLight ? 'bg-mysql-teal/10 text-mysql-teal font-bold' : 'bg-mysql-teal/20 text-mysql-teal font-bold') : (isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5')}`;
+                        });
+                    });
+                });
+            }
 
-            // Visibility Toggle
+            if (fontSizeTrigger && fontSizeDropdown) {
+                fontSizeTrigger.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const isHidden = fontSizeDropdown.classList.contains('hidden');
+                    container.querySelectorAll('#ai-provider-options, #ai-model-options').forEach(d => d.classList.add('hidden'));
+                    container.querySelectorAll('#ai-provider-arrow, #ai-model-arrow').forEach(a => a.style.transform = '');
+                    if (isHidden) {
+                        fontSizeDropdown.classList.remove('hidden');
+                        if (fontSizeArrow) fontSizeArrow.style.transform = 'rotate(180deg)';
+                    } else {
+                        fontSizeDropdown.classList.add('hidden');
+                        if (fontSizeArrow) fontSizeArrow.style.transform = '';
+                    }
+                });
+
+                fontSizeDropdown.querySelectorAll('.font-size-option').forEach(option => {
+                    option.addEventListener('click', () => {
+                        const val = option.dataset.value;
+                        if (currentFontSizeSpan) currentFontSizeSpan.textContent = `${val}px`;
+                        fontSizeDropdown.classList.add('hidden');
+                        if (fontSizeArrow) fontSizeArrow.style.transform = '';
+                        localStorage.setItem('editorFontSize', val);
+                        window.dispatchEvent(new CustomEvent('settingschange', { detail: { key: 'editorFontSize', value: val } }));
+                        fontSizeDropdown.querySelectorAll('.font-size-option').forEach(opt => {
+                            const isSelected = opt.dataset.value === val;
+                            opt.className = `font-size-option px-3 py-2 flex items-center justify-between cursor-pointer rounded-lg transition-colors ${isSelected ? (isLight ? 'bg-mysql-teal/10 text-mysql-teal font-bold' : 'bg-mysql-teal/20 text-mysql-teal font-bold') : (isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5')}`;
+                        });
+                    });
+                });
+            }
+
+            document.addEventListener('click', (e) => {
+                if (!container.contains(e.target)) return;
+                const matchesTrigger = e.target.closest('#ai-provider-trigger, #ai-model-trigger, #font-size-trigger');
+                if (!matchesTrigger) {
+                    container.querySelectorAll('#ai-provider-options, #ai-model-options, #font-size-options').forEach(d => d.classList.add('hidden'));
+                    container.querySelectorAll('#ai-provider-arrow, #ai-model-arrow, #font-size-arrow').forEach(a => a.style.transform = '');
+                }
+            });
+
             aiVisibilityBtn.addEventListener('click', () => {
                 const type = aiKeyInput.getAttribute('type') === 'password' ? 'text' : 'password';
                 aiKeyInput.setAttribute('type', type);
@@ -587,58 +682,33 @@ export function Settings() {
             });
 
             aiKeyInput.addEventListener('input', checkForChanges);
-            aiModelSelect.addEventListener('change', checkForChanges);
+            aiLocalUrlInput?.addEventListener('input', checkForChanges);
 
-            // Save Action
             aiSaveBtn.addEventListener('click', async () => {
                 const newKey = aiKeyInput.value.trim();
-                const newModel = aiModelSelect.value;
-
-                // Save Provider
+                const modelEl = container.querySelector('#setting-ai-model') || container.querySelector('#current-ai-model');
+                const newModel = modelEl ? (modelEl.value || modelEl.textContent) : '';
                 localStorage.setItem('ai_provider', activeProvider);
-
-                // Save Key & Model to specific slots
-                if (activeProvider === 'gemini') {
-                    localStorage.setItem('gemini_api_key', newKey);
-                    localStorage.setItem('gemini_model', newModel);
-                } else if (activeProvider === 'anthropic') {
-                    localStorage.setItem('anthropic_api_key', newKey);
-                    localStorage.setItem('anthropic_model', newModel);
-                } else if (activeProvider === 'deepseek') {
-                    localStorage.setItem('deepseek_api_key', newKey);
-                    localStorage.setItem('deepseek_model', newModel);
-                } else if (activeProvider === 'groq') {
-                    localStorage.setItem('groq_api_key', newKey);
-                    localStorage.setItem('groq_model', newModel);
-                } else if (activeProvider === 'mistral') {
-                    localStorage.setItem('mistral_api_key', newKey);
-                    localStorage.setItem('mistral_model', newModel);
-                } else if (activeProvider === 'local') {
+                if (activeProvider === 'local') {
                     localStorage.setItem('local_api_key', newKey);
                     localStorage.setItem('local_model', newModel);
                     localStorage.setItem('local_base_url', aiLocalUrlInput.value.trim());
                 } else {
-                    localStorage.setItem('openai_api_key', newKey);
-                    localStorage.setItem('openai_model', newModel);
+                    localStorage.setItem(`${activeProvider}_api_key`, newKey);
+                    localStorage.setItem(`${activeProvider}_model`, newModel);
                 }
-
-                // Import Toast dynamically to avoid circular dependencies if simple import fails, 
-                // but usually standard import works. Assuming Toast is available or we use a simple alert/fallback.
-                // We'll try to use the imported Dialog if available or just update button state.
-
                 aiSaveBtn.innerHTML = `<span class="material-symbols-outlined text-sm">check</span> Saved!`;
                 aiSaveBtn.disabled = true;
                 aiSaveBtn.classList.add('opacity-50', 'cursor-not-allowed');
-
-                setTimeout(() => {
-                    aiSaveBtn.innerHTML = `<span class="material-symbols-outlined text-sm">save</span> Save Changes`;
-                }, 2000);
+                setTimeout(() => { aiSaveBtn.innerHTML = `<span class="material-symbols-outlined text-sm">save</span> Save Changes`; }, 2000);
             });
+
+            switchProvider(activeProvider);
         }
     };
 
     const onThemeChange = (e) => {
-        theme = e.detail.theme;
+        updateThemeState(e.detail.theme);
         container.className = `h-full overflow-auto ${getBgClass(theme)} transition-colors duration-300`;
         render();
         attachEvents();

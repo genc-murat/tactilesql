@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { ThemeManager } from '../utils/ThemeManager.js';
 import { Dialog } from '../components/UI/Dialog.js';
 import { highlightSQL, formatSQL } from '../utils/SqlHighlighter.js';
+import { CustomDropdown } from '../components/UI/CustomDropdown.js';
 
 export function SchemaDiff() {
     let theme = ThemeManager.getCurrentTheme();
@@ -31,6 +32,14 @@ export function SchemaDiff() {
     let diffResults = null;
     let generatedSql = '';
     let counts = { create: 0, alter: 0, drop: 0, total: 0 };
+
+    // Dropdown Instances
+    let dropdowns = {
+        sourceDb: null,
+        targetDb: null,
+        sourceTable: null,
+        targetTable: null
+    };
 
 
     // --- Logic ---
@@ -331,20 +340,10 @@ export function SchemaDiff() {
                      <!-- Source Group -->
                     <div class="flex items-center gap-2">
                         <span class="text-[10px] ${isDawn ? 'bg-[#eb6f92]/10 text-[#eb6f92]' : 'bg-red-500/10 text-red-500'} px-1.5 py-0.5 rounded font-bold uppercase">Source</span>
-                        <div class="relative">
-                            <select id="source-db-select" class="tactile-select !rounded !py-1 !pl-2 !pr-8 text-xs w-36 !outline-none transition-colors">
-                                <option value="" disabled ${!sourceDb ? 'selected' : ''}>Select Source</option>
-                                ${databases.map(db => `<option value="${db}" ${sourceDb === db ? 'selected' : ''}>${db}</option>`).join('')}
-                            </select>
-                        </div>
+                        <div class="relative" id="source-db-container"></div>
                         ${comparisonMode === 'table' ? `
                            <span class="text-slate-400 text-xs">/</span>
-                            <div class="relative">
-                                 <select id="source-table-select" class="tactile-select !rounded !py-1 !pl-2 !pr-8 text-xs w-36 !outline-none transition-colors">
-                                    <option value="" disabled ${!selectedSourceTable ? 'selected' : ''}>Table</option>
-                                    ${sourceTablesList.map(t => `<option value="${t}" ${selectedSourceTable === t ? 'selected' : ''}>${t}</option>`).join('')}
-                                </select>
-                            </div>
+                            <div class="relative" id="source-table-container"></div>
                         ` : ''}
                     </div>
                     
@@ -353,20 +352,10 @@ export function SchemaDiff() {
                     <!-- Target Group -->
                     <div class="flex items-center gap-2">
                         <span class="text-[10px] ${isDawn ? 'bg-[#286983]/10 text-[#286983]' : 'bg-emerald-500/10 text-emerald-500'} px-1.5 py-0.5 rounded font-bold uppercase">Target</span>
-                        <div class="relative">
-                            <select id="target-db-select" class="tactile-select !rounded !py-1 !pl-2 !pr-8 text-xs w-36 !outline-none transition-colors">
-                                <option value="" disabled ${!targetDb ? 'selected' : ''}>Select Target</option>
-                                ${databases.map(db => `<option value="${db}" ${targetDb === db ? 'selected' : ''}>${db}</option>`).join('')}
-                            </select>
-                        </div>
+                        <div class="relative" id="target-db-select-container"></div>
                          ${comparisonMode === 'table' ? `
                            <span class="text-slate-400 text-xs">/</span>
-                            <div class="relative">
-                                 <select id="target-table-select" class="tactile-select !rounded !py-1 !pl-2 !pr-8 text-xs w-36 !outline-none transition-colors">
-                                    <option value="" disabled ${!selectedTargetTable ? 'selected' : ''}>Table</option>
-                                    ${targetTablesList.map(t => `<option value="${t}" ${selectedTargetTable === t ? 'selected' : ''}>${t}</option>`).join('')}
-                                </select>
-                            </div>
+                            <div class="relative" id="target-table-select-container"></div>
                         ` : ''}
                     </div>
                 </div>
@@ -477,7 +466,75 @@ export function SchemaDiff() {
             </main>
         `;
 
-        // Event Listeners (Same as before)
+        // Initialize Dropdowns
+        const sourceDbContainer = container.querySelector('#source-db-container');
+        const sourceTableContainer = container.querySelector('#source-table-container');
+        const targetDbContainer = container.querySelector('#target-db-select-container');
+        const targetTableContainer = container.querySelector('#target-table-select-container');
+
+        if (sourceDbContainer) {
+            dropdowns.sourceDb = new CustomDropdown({
+                items: databases.map(db => ({ value: db, label: db, icon: 'database' })),
+                value: sourceDb,
+                placeholder: 'Select Source',
+                className: 'w-36',
+                onSelect: (val) => {
+                    sourceDb = val;
+                    selectedSourceTable = '';
+                    if (comparisonMode === 'table') loadTables('source', sourceDb);
+                    else render();
+                }
+            });
+            sourceDbContainer.appendChild(dropdowns.sourceDb.getElement());
+        }
+
+        if (sourceTableContainer && comparisonMode === 'table') {
+            dropdowns.sourceTable = new CustomDropdown({
+                items: sourceTablesList.map(t => ({ value: t, label: t, icon: 'table' })),
+                value: selectedSourceTable,
+                placeholder: 'Table',
+                className: 'w-36',
+                onSelect: (val) => {
+                    selectedSourceTable = val;
+                    if (targetTablesList.includes(selectedSourceTable)) {
+                        selectedTargetTable = selectedSourceTable;
+                        render();
+                    }
+                }
+            });
+            sourceTableContainer.appendChild(dropdowns.sourceTable.getElement());
+        }
+
+        if (targetDbContainer) {
+            dropdowns.targetDb = new CustomDropdown({
+                items: databases.map(db => ({ value: db, label: db, icon: 'database' })),
+                value: targetDb,
+                placeholder: 'Select Target',
+                className: 'w-36',
+                onSelect: (val) => {
+                    targetDb = val;
+                    selectedTargetTable = '';
+                    if (comparisonMode === 'table') loadTables('target', targetDb);
+                    else render();
+                }
+            });
+            targetDbContainer.appendChild(dropdowns.targetDb.getElement());
+        }
+
+        if (targetTableContainer && comparisonMode === 'table') {
+            dropdowns.targetTable = new CustomDropdown({
+                items: targetTablesList.map(t => ({ value: t, label: t, icon: 'table' })),
+                value: selectedTargetTable,
+                placeholder: 'Table',
+                className: 'w-36',
+                onSelect: (val) => {
+                    selectedTargetTable = val;
+                }
+            });
+            targetTableContainer.appendChild(dropdowns.targetTable.getElement());
+        }
+
+        // Event Listeners
         container.querySelector('#mode-full')?.addEventListener('click', () => {
             comparisonMode = 'full';
             render();
@@ -488,28 +545,6 @@ export function SchemaDiff() {
             if (targetDb && targetTablesList.length === 0) loadTables('target', targetDb);
             render();
         });
-        container.querySelector('#source-db-select')?.addEventListener('change', (e) => {
-            sourceDb = e.target.value;
-            selectedSourceTable = '';
-            if (comparisonMode === 'table') loadTables('source', sourceDb);
-        });
-        container.querySelector('#target-db-select')?.addEventListener('change', (e) => {
-            targetDb = e.target.value;
-            selectedTargetTable = '';
-            if (comparisonMode === 'table') loadTables('target', targetDb);
-        });
-        if (comparisonMode === 'table') {
-            container.querySelector('#source-table-select')?.addEventListener('change', (e) => {
-                selectedSourceTable = e.target.value;
-                if (targetTablesList.includes(selectedSourceTable)) {
-                    selectedTargetTable = selectedSourceTable;
-                    render();
-                }
-            });
-            container.querySelector('#target-table-select')?.addEventListener('change', (e) => {
-                selectedTargetTable = e.target.value;
-            });
-        }
         container.querySelector('#compare-btn')?.addEventListener('click', runComparison);
         container.querySelector('#copy-sql-btn')?.addEventListener('click', () => {
             if (!generatedSql) return;

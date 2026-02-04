@@ -4,6 +4,7 @@ import { ThemeManager } from '../utils/ThemeManager.js';
 import { escapeHtml, formatTimeAgo } from '../utils/helpers.js';
 import { toastSuccess, toastError, toastWarning } from '../utils/Toast.js';
 import { LoadingManager } from '../components/UI/LoadingStates.js';
+import { CustomDropdown } from '../components/UI/CustomDropdown.js';
 
 export function ConnectionManager() {
     let theme = ThemeManager.getCurrentTheme();
@@ -49,6 +50,9 @@ export function ConnectionManager() {
     let config = { ...DEFAULT_CONFIG };
     let connections = [];
     let viewMode = 'grid'; // 'grid' | 'edit'
+
+    // Dropdown Instances
+    let sslDropdown = null;
 
     // --- RENDERERS ---
 
@@ -143,7 +147,7 @@ export function ConnectionManager() {
         // Helper function to render a database type section
         const renderDbSection = (title, icon, color, conns, dbType) => {
             if (conns.length === 0) return '';
-            
+
             return `
                 <div class="mb-6">
                     <div class="flex items-center gap-2 mb-3">
@@ -326,11 +330,7 @@ export function ConnectionManager() {
                             <div class="grid grid-cols-2 gap-3">
                                 <div class="space-y-1">
                                     <label class="text-[9px] font-black text-gray-500 uppercase tracking-wider">SSL Mode</label>
-                                    <select name="sslMode" class="tactile-input w-full text-xs py-1.5">
-                                        <option value="disable" ${config.sslMode === 'disable' ? 'selected' : ''}>Disable</option>
-                                        <option value="prefer" ${config.sslMode === 'prefer' || !config.sslMode ? 'selected' : ''}>Prefer</option>
-                                        <option value="require" ${config.sslMode === 'require' ? 'selected' : ''}>Require</option>
-                                    </select>
+                                    <div id="ssl-dropdown-container"></div>
                                 </div>
                                 <div class="space-y-1">
                                     <label class="text-[9px] font-black text-gray-500 uppercase tracking-wider">Default Schema</label>
@@ -399,6 +399,23 @@ export function ConnectionManager() {
         `;
 
         // Bind Edit Events
+        if (viewMode === 'edit' && isPostgres) {
+            const sslContainer = container.querySelector('#ssl-dropdown-container');
+            if (sslContainer && !sslDropdown) {
+                sslDropdown = new CustomDropdown({
+                    placeholder: 'Select SSL Mode',
+                    items: [
+                        { value: 'disable', label: 'Disable', icon: 'shield_off' },
+                        { value: 'prefer', label: 'Prefer', icon: 'shield' },
+                        { value: 'require', label: 'Require', icon: 'verified_user' }
+                    ],
+                    value: config.sslMode || 'prefer',
+                    onSelect: (val) => { config.sslMode = val; }
+                });
+                sslContainer.appendChild(sslDropdown.getElement());
+            }
+        }
+
         container.querySelectorAll('input, select').forEach(input => {
             input.addEventListener('input', (e) => {
                 const { name, value, type, checked } = e.target;
@@ -503,6 +520,7 @@ export function ConnectionManager() {
 
         container.querySelector('#back-btn').onclick = () => {
             viewMode = 'grid';
+            sslDropdown = null;
             render();
         };
 
@@ -674,6 +692,7 @@ export function ConnectionManager() {
     const onThemeChange = (e) => {
         theme = e.detail.theme;
         container.className = getContainerClass(theme);
+        sslDropdown = null;
         render();
     };
     window.addEventListener('themechange', onThemeChange);

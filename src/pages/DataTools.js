@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { Dialog } from '../components/UI/Dialog.js';
 import { ThemeManager } from '../utils/ThemeManager.js';
+import { CustomDropdown } from '../components/UI/CustomDropdown.js';
 
 export function DataTools() {
     let theme = ThemeManager.getCurrentTheme();
@@ -14,12 +15,18 @@ export function DataTools() {
     container.className = getContainerClass(theme);
 
     // State
+    let activeTab = 'export'; // 'export' | 'import' | 'backup'
     let databases = [];
     let tables = [];
     let selectedDb = '';
     let selectedTable = '';
-    let activeTab = 'export'; // 'export' | 'import' | 'backup'
     let isProcessing = false;
+
+    // Dropdown Instances
+    let dropdowns = {
+        db: null,
+        table: null
+    };
 
     // Load databases
     const loadDatabases = async () => {
@@ -270,18 +277,12 @@ export function DataTools() {
                 <div class="grid grid-cols-2 gap-4 mb-6">
                     <div class="space-y-2">
                         <label class="text-[10px] font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Database</label>
-                        <select id="db-select" class="tactile-select w-full">
-                            <option value="">Select database...</option>
-                            ${databases.map(db => `<option value="${db}" ${db === selectedDb ? 'selected' : ''}>${db}</option>`).join('')}
-                        </select>
+                        <div id="db-select-container"></div>
                     </div>
                     ${activeTab !== 'backup' ? `
                     <div class="space-y-2">
                         <label class="text-[10px] font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Table</label>
-                        <select id="table-select" class="tactile-select w-full" ${!selectedDb ? 'disabled' : ''}>
-                            <option value="">Select table...</option>
-                            ${tables.map(t => `<option value="${t}" ${t === selectedTable ? 'selected' : ''}>${t}</option>`).join('')}
-                        </select>
+                        <div id="table-select-container"></div>
                     </div>
                     ` : '<div></div>'}
                 </div>
@@ -294,6 +295,45 @@ export function DataTools() {
         `;
 
         attachEvents();
+
+        // Initialize Dropdowns
+        const dbContainer = container.querySelector('#db-select-container');
+        const tableContainer = container.querySelector('#table-select-container');
+
+        if (dbContainer) {
+            dropdowns.db = new CustomDropdown({
+                items: databases.map(db => ({ value: db, label: db, icon: 'database' })),
+                value: selectedDb,
+                placeholder: 'Select database...',
+                onSelect: (val) => {
+                    selectedDb = val;
+                    selectedTable = '';
+                    loadTables(selectedDb);
+                }
+            });
+            dbContainer.appendChild(dropdowns.db.getElement());
+        }
+
+        if (tableContainer) {
+            if (!selectedDb) {
+                tableContainer.innerHTML = `
+                    <div class="h-[38px] px-3 flex items-center text-sm ${isLight ? 'bg-gray-100/50 text-gray-400' : 'bg-white/5 text-gray-500'} rounded-lg border ${isLight ? 'border-gray-200' : 'border-white/10'} cursor-not-allowed italic">
+                        Select database first
+                    </div>
+                `;
+            } else {
+                dropdowns.table = new CustomDropdown({
+                    items: tables.map(t => ({ value: t, label: t, icon: 'table' })),
+                    value: selectedTable,
+                    placeholder: 'Select table...',
+                    onSelect: (val) => {
+                        selectedTable = val;
+                        render();
+                    }
+                });
+                tableContainer.appendChild(dropdowns.table.getElement());
+            }
+        }
     };
 
     const renderProcessing = () => {
@@ -498,20 +538,7 @@ export function DataTools() {
             render();
         });
 
-        // Database selection
-        container.querySelector('#db-select')?.addEventListener('change', (e) => {
-            selectedDb = e.target.value;
-            selectedTable = '';
-            loadTables(selectedDb);
-        });
-
-        // Table selection
-        container.querySelector('#table-select')?.addEventListener('change', (e) => {
-            selectedTable = e.target.value;
-            render();
-        });
-
-        // Export buttons
+        // Backup/Restore buttons
         container.querySelector('#export-csv')?.addEventListener('click', handleExportCSV);
         container.querySelector('#export-json')?.addEventListener('click', handleExportJSON);
         container.querySelector('#export-sql')?.addEventListener('click', handleExportSQL);

@@ -2,6 +2,7 @@ import { ThemeManager } from '../utils/ThemeManager.js';
 import { auditTrail } from '../utils/QueryAuditTrail.js';
 import { Dialog } from '../components/UI/Dialog.js';
 import { highlightSQL } from '../utils/SqlHighlighter.js';
+import { CustomDropdown } from '../components/UI/CustomDropdown.js';
 
 // Helper to escape HTML special characters for GTK markup compatibility
 const escapeHtml = (str) => {
@@ -46,6 +47,11 @@ export function AuditTrail() {
     let activeTab = 'log'; // 'log' | 'stats'
     let selectedEntry = null;
     let isLoading = false;
+
+    // Dropdown Instances
+    let statusDropdown = null;
+    let typeDropdown = null;
+    let dbDropdown = null;
 
     const loadData = () => {
         isLoading = true;
@@ -330,39 +336,21 @@ export function AuditTrail() {
                     <label class="text-[9px] font-bold uppercase tracking-[0.1em] ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500')} ml-1 flex items-center gap-1.5">
                         <span class="material-symbols-outlined text-[14px]">filter_alt</span>Status
                     </label>
-                    <div class="relative">
-                        <select id="filter-status" class="w-full pl-3 pr-8 py-1.5 rounded-lg text-[13px] ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-bg/50 border-ocean-border text-ocean-text' : 'bg-white/5 border-white/10 text-white'))} border outline-none focus:ring-1 focus:ring-mysql-teal/30 focus:border-mysql-teal transition-all appearance-none cursor-pointer">
-                            <option value="">All Statuses</option>
-                            ${filterOptions.statuses.map(s => `<option value="${s}" ${filters.status === s ? 'selected' : ''}>${s}</option>`).join('')}
-                        </select>
-                        <span class="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-sm pointer-events-none ${isLight ? 'text-gray-400' : 'text-gray-500'}">expand_more</span>
-                    </div>
+                    <div id="status-dropdown-container"></div>
                 </div>
 
                 <div class="space-y-1.5">
                     <label class="text-[9px] font-bold uppercase tracking-[0.1em] ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500')} ml-1 flex items-center gap-1.5">
                         <span class="material-symbols-outlined text-[14px]">code</span>Query Type
                     </label>
-                    <div class="relative">
-                        <select id="filter-type" class="w-full pl-3 pr-8 py-1.5 rounded-lg text-[13px] ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-bg/50 border-ocean-border text-ocean-text' : 'bg-white/5 border-white/10 text-white'))} border outline-none focus:ring-1 focus:ring-mysql-teal/30 focus:border-mysql-teal transition-all appearance-none cursor-pointer">
-                            <option value="">All Types</option>
-                            ${filterOptions.queryTypes.map(t => `<option value="${t}" ${filters.queryType === t ? 'selected' : ''}>${t}</option>`).join('')}
-                        </select>
-                        <span class="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-sm pointer-events-none ${isLight ? 'text-gray-400' : 'text-gray-500'}">expand_more</span>
-                    </div>
+                    <div id="type-dropdown-container"></div>
                 </div>
 
                 <div class="space-y-1.5">
                     <label class="text-[9px] font-bold uppercase tracking-[0.1em] ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500')} ml-1 flex items-center gap-1.5">
                         <span class="material-symbols-outlined text-[14px]">database</span>Database
                     </label>
-                    <div class="relative">
-                        <select id="filter-db" class="w-full pl-3 pr-8 py-1.5 rounded-lg text-[13px] ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-bg/50 border-ocean-border text-ocean-text' : 'bg-white/5 border-white/10 text-white'))} border outline-none focus:ring-1 focus:ring-mysql-teal/30 focus:border-mysql-teal transition-all appearance-none cursor-pointer">
-                            <option value="">All Databases</option>
-                            ${filterOptions.databases.map(d => `<option value="${d}" ${filters.database === d ? 'selected' : ''}>${d}</option>`).join('')}
-                        </select>
-                        <span class="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-sm pointer-events-none ${isLight ? 'text-gray-400' : 'text-gray-500'}">expand_more</span>
-                    </div>
+                    <div id="db-dropdown-container"></div>
                 </div>
 
                 <div class="space-y-1.5">
@@ -773,6 +761,9 @@ export function AuditTrail() {
         container.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 activeTab = btn.dataset.tab;
+                statusDropdown = null;
+                typeDropdown = null;
+                dbDropdown = null;
                 render();
             });
         });
@@ -782,12 +773,55 @@ export function AuditTrail() {
         container.querySelector('#export-json')?.addEventListener('click', () => handleExport('json'));
         container.querySelector('#clear-audit')?.addEventListener('click', handleClearAudit);
 
+        // Initialize Dropdowns
+        if (activeTab === 'log') {
+            const statusContainer = container.querySelector('#status-dropdown-container');
+            if (statusContainer && !statusDropdown) {
+                statusDropdown = new CustomDropdown({
+                    placeholder: 'All Statuses',
+                    items: [
+                        { value: '', label: 'All Statuses', icon: 'filter_alt' },
+                        ...filterOptions.statuses.map(s => ({ value: s, label: s, icon: s === 'SUCCESS' ? 'check_circle' : (s === 'ERROR' ? 'error' : 'cancel') }))
+                    ],
+                    value: filters.status,
+                    onSelect: (val) => { filters.status = val; }
+                });
+                statusContainer.appendChild(statusDropdown.getElement());
+            }
+
+            const typeContainer = container.querySelector('#type-dropdown-container');
+            if (typeContainer && !typeDropdown) {
+                typeDropdown = new CustomDropdown({
+                    placeholder: 'All Types',
+                    items: [
+                        { value: '', label: 'All Types', icon: 'code' },
+                        ...filterOptions.queryTypes.map(t => ({ value: t, label: t, icon: 'terminal' }))
+                    ],
+                    value: filters.queryType,
+                    onSelect: (val) => { filters.queryType = val; }
+                });
+                typeContainer.appendChild(typeDropdown.getElement());
+            }
+
+            const dbContainer = container.querySelector('#db-dropdown-container');
+            if (dbContainer && !dbDropdown) {
+                dbDropdown = new CustomDropdown({
+                    placeholder: 'All Databases',
+                    items: [
+                        { value: '', label: 'All Databases', icon: 'database' },
+                        ...filterOptions.databases.map(d => ({ value: d, label: d, icon: 'database' }))
+                    ],
+                    value: filters.database,
+                    onSelect: (val) => { filters.database = val; }
+                });
+                dbContainer.appendChild(dbDropdown.getElement());
+            }
+        }
+
         // Filter inputs
         container.querySelector('#apply-filters')?.addEventListener('click', () => {
             filters.searchTerm = container.querySelector('#filter-search')?.value || '';
-            filters.status = container.querySelector('#filter-status')?.value || '';
-            filters.queryType = container.querySelector('#filter-type')?.value || '';
-            filters.database = container.querySelector('#filter-db')?.value || '';
+            // filters for segments are updated via dropdown onSelect
             filters.startDate = container.querySelector('#filter-start')?.value || '';
             filters.endDate = container.querySelector('#filter-end')?.value || '';
             filters.offset = 0;
@@ -816,6 +850,9 @@ export function AuditTrail() {
 
         container.querySelector('#reset-filters')?.addEventListener('click', () => {
             filters = { searchTerm: '', status: '', queryType: '', database: '', startDate: '', endDate: '', limit: 100, offset: 0 };
+            if (statusDropdown) statusDropdown.setValue('');
+            if (typeDropdown) typeDropdown.setValue('');
+            if (dbDropdown) dbDropdown.setValue('');
             loadData();
         });
 

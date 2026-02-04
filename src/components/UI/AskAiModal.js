@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { toastError, toastSuccess } from '../../utils/Toast.js';
 import { ThemeManager } from '../../utils/ThemeManager.js';
 import { AiService } from '../../utils/AiService.js';
+import { CustomDropdown } from './CustomDropdown.js';
 
 export class AskAiModal {
     static async show(onInsert) {
@@ -65,31 +66,7 @@ export class AskAiModal {
             <div class="p-6 space-y-4">
                 <div class="space-y-2">
                     <label class="text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">Model</label>
-                    <div id="ai-model-container">
-                        ${isLocal ? `
-                            <input type="text" id="ai-model" class="w-full ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-300')} rounded px-3 py-2 text-xs font-mono outline-none focus:border-mysql-teal transition-colors" placeholder="e.g. llama3" value="${savedModel}">
-                        ` : `
-                            <select id="ai-model" class="w-full ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-300')} rounded px-3 py-2 text-xs outline-none focus:border-mysql-teal transition-colors">
-                                ${isGemini ? `
-                                    <option value="gemini-2.5-flash" ${savedModel === 'gemini-2.5-flash' ? 'selected' : ''}>Gemini 2.5 Flash</option>
-                                    <option value="gemini-2.0-flash-exp" ${savedModel === 'gemini-2.0-flash-exp' ? 'selected' : ''}>Gemini 2.0 Flash (Exp)</option>
-                                    <option value="gemini-1.5-flash" ${savedModel === 'gemini-1.5-flash' ? 'selected' : ''}>Gemini 1.5 Flash (Stable)</option>
-                                    <option value="gemini-1.5-pro" ${savedModel === 'gemini-1.5-pro' ? 'selected' : ''}>Gemini 1.5 Pro (Powerful)</option>
-                                ` : (isAnthropic ? `
-                                    <option value="claude-3-5-sonnet-20241022" ${savedModel === 'claude-3-5-sonnet-20241022' ? 'selected' : ''}>Claude 3.5 Sonnet</option>
-                                    <option value="claude-3-opus-20240229" ${savedModel === 'claude-3-opus-20240229' ? 'selected' : ''}>Claude 3 Opus</option>
-                                    <option value="claude-3-haiku-20240307" ${savedModel === 'claude-3-haiku-20240307' ? 'selected' : ''}>Claude 3 Haiku</option>
-                                ` : (isDeepSeek ? `
-                                    <option value="deepseek-chat" ${savedModel === 'deepseek-chat' ? 'selected' : ''}>DeepSeek Chat</option>
-                                    <option value="deepseek-reasoner" ${savedModel === 'deepseek-reasoner' ? 'selected' : ''}>DeepSeek Reasoner</option>
-                                ` : `
-                                    <option value="gpt-4o" ${savedModel === 'gpt-4o' ? 'selected' : ''}>GPT-4o (Best)</option>
-                                    <option value="gpt-4o-mini" ${savedModel === 'gpt-4o-mini' ? 'selected' : ''}>GPT-4o Mini (Fast)</option>
-                                    <option value="gpt-3.5-turbo" ${savedModel === 'gpt-3.5-turbo' ? 'selected' : ''}>GPT-3.5 Turbo</option>
-                                `))}
-                            </select>
-                        `}
-                    </div>
+                    <div id="ai-model-container"></div>
                 </div>
 
                 <div class="space-y-2">
@@ -113,6 +90,50 @@ export class AskAiModal {
 
         overlay.appendChild(modal);
         document.body.appendChild(overlay);
+
+        // Initialize Model Selector
+        let currentModel = savedModel;
+        const modelContainer = modal.querySelector('#ai-model-container');
+
+        if (isLocal) {
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = `w-full ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-300')} rounded px-3 py-2 text-xs font-mono outline-none focus:border-mysql-teal transition-colors`;
+            input.placeholder = 'e.g. llama3';
+            input.value = savedModel;
+            input.oninput = (e) => { currentModel = e.target.value.trim(); };
+            modelContainer.appendChild(input);
+        } else {
+            const getModelItems = () => {
+                if (isGemini) return [
+                    { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', icon: 'auto_awesome' },
+                    { value: 'gemini-2.0-flash-exp', label: 'Gemini 2.0 Flash (Exp)', icon: 'auto_awesome' },
+                    { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash (Stable)', icon: 'auto_awesome' },
+                    { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro (Powerful)', icon: 'auto_awesome' }
+                ];
+                if (isAnthropic) return [
+                    { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet', icon: 'auto_awesome' },
+                    { value: 'claude-3-opus-20240229', label: 'Claude 3 Opus', icon: 'auto_awesome' },
+                    { value: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku', icon: 'auto_awesome' }
+                ];
+                if (isDeepSeek) return [
+                    { value: 'deepseek-chat', label: 'DeepSeek Chat', icon: 'auto_awesome' },
+                    { value: 'deepseek-reasoner', label: 'DeepSeek Reasoner', icon: 'auto_awesome' }
+                ];
+                return [
+                    { value: 'gpt-4o', label: 'GPT-4o (Best)', icon: 'auto_awesome' },
+                    { value: 'gpt-4o-mini', label: 'GPT-4o Mini (Fast)', icon: 'auto_awesome' },
+                    { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo', icon: 'auto_awesome' }
+                ];
+            };
+
+            const modelDropdown = new CustomDropdown({
+                items: getModelItems(),
+                value: savedModel,
+                onSelect: (val) => { currentModel = val; }
+            });
+            modelContainer.appendChild(modelDropdown.getElement());
+        }
 
         // Animation
         requestAnimationFrame(() => {
@@ -141,7 +162,7 @@ export class AskAiModal {
         const generateBtn = overlay.querySelector('#generate-btn');
         generateBtn.onclick = async () => {
             const apiKey = getSavedKey(provider);
-            const model = overlay.querySelector('#ai-model').value.trim();
+            const model = currentModel;
             const prompt = overlay.querySelector('#ai-prompt').value.trim();
 
             if (!isLocal && !apiKey) {

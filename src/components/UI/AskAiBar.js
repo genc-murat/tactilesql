@@ -3,6 +3,7 @@ import { toastError, toastSuccess } from '../../utils/Toast.js';
 import { ThemeManager } from '../../utils/ThemeManager.js';
 import { AskAiModal } from './AskAiModal.js';
 import { AiService } from '../../utils/AiService.js';
+import { CustomDropdown } from './CustomDropdown.js';
 
 export class AskAiBar {
     static async show(container, onInsert) {
@@ -65,24 +66,8 @@ export class AskAiBar {
                 <div class="flex items-center gap-2">
                     <div class="h-6 w-[1px] ${isLightVariant ? 'bg-gray-200' : 'bg-white/10'} mx-2"></div>
                     <div class="flex flex-col items-end">
-                        <select id="ai-bar-model" class="bg-transparent border-none outline-none text-[11px] font-mono ${isLightVariant ? 'text-gray-500' : 'text-gray-400'} cursor-pointer appearance-none hover:${isLightVariant ? 'text-gray-800' : 'text-white'} transition-colors">
-                            ${isLocal ? `
-                                <option value="${savedModel}">${savedModel}</option>
-                            ` : (isGemini ? `
-                                <option value="gemini-2.5-flash" ${savedModel === 'gemini-2.5-flash' ? 'selected' : ''}>Gemini Flash</option>
-                                <option value="gemini-1.5-flash" ${savedModel === 'gemini-1.5-flash' ? 'selected' : ''}>Gemini 1.5</option>
-                            ` : (isAnthropic ? `
-                                <option value="claude-3-5-sonnet-20241022" ${savedModel === 'claude-3-5-sonnet-20241022' ? 'selected' : ''}>Claude 3.5</option>
-                                <option value="claude-3-opus-20240229" ${savedModel === 'claude-3-opus-20240229' ? 'selected' : ''}>Claude 3 Opus</option>
-                            ` : (isDeepSeek ? `
-                                <option value="deepseek-chat" ${savedModel === 'deepseek-chat' ? 'selected' : ''}>DeepSeek Chat</option>
-                                <option value="deepseek-reasoner" ${savedModel === 'deepseek-reasoner' ? 'selected' : ''}>DS Reasoner</option>
-                            ` : `
-                                <option value="gpt-4o" ${savedModel === 'gpt-4o' ? 'selected' : ''}>GPT-4o</option>
-                                <option value="gpt-4o-mini" ${savedModel === 'gpt-4o-mini' ? 'selected' : ''}>GPT-4o Mini</option>
-                            `)))}
-                        </select>
-                        <span class="text-[9px] ${isLightVariant ? 'text-gray-400' : 'text-gray-600'} uppercase tracking-widest font-bold">Model</span>
+                        <div id="ai-bar-model-container" class="min-w-[120px]"></div>
+                        <span class="text-[9px] ${isLightVariant ? 'text-gray-400' : 'text-gray-600'} uppercase tracking-widest font-bold mt-1">Model</span>
                     </div>
                 </div>
             </div>
@@ -97,6 +82,39 @@ export class AskAiBar {
 
         bar.appendChild(inner);
         container.appendChild(bar);
+
+        // Initialize Model Dropdown
+        let currentModel = savedModel;
+        const modelContainer = inner.querySelector('#ai-bar-model-container');
+
+        const getModelItems = () => {
+            if (isLocal) return [{ value: savedModel, label: savedModel, icon: 'bolt' }];
+            if (isGemini) return [
+                { value: 'gemini-2.5-flash', label: 'Gemini Flash', icon: 'auto_awesome' },
+                { value: 'gemini-1.5-flash', label: 'Gemini 1.5', icon: 'auto_awesome' }
+            ];
+            if (isAnthropic) return [
+                { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5', icon: 'auto_awesome' },
+                { value: 'claude-3-opus-20240229', label: 'Claude 3 Opus', icon: 'auto_awesome' }
+            ];
+            if (isDeepSeek) return [
+                { value: 'deepseek-chat', label: 'DeepSeek Chat', icon: 'auto_awesome' },
+                { value: 'deepseek-reasoner', label: 'DS Reasoner', icon: 'auto_awesome' }
+            ];
+            return [
+                { value: 'gpt-4o', label: 'GPT-4o', icon: 'auto_awesome' },
+                { value: 'gpt-4o-mini', label: 'GPT-4o Mini', icon: 'auto_awesome' }
+            ];
+        };
+
+        const modelDropdown = new CustomDropdown({
+            items: getModelItems(),
+            value: savedModel,
+            className: 'ai-bar-model-dropdown',
+            searchable: false,
+            onSelect: (val) => { currentModel = val; }
+        });
+        modelContainer.appendChild(modelDropdown.getElement());
 
         // Slide down animation with a slight bounce
         requestAnimationFrame(() => {
@@ -118,7 +136,7 @@ export class AskAiBar {
                 close();
             } else if (e.key === 'Enter') {
                 const prompt = input.value.trim();
-                const model = inner.querySelector('#ai-bar-model').value;
+                const model = currentModel;
                 const apiKey = getSavedKey(provider);
 
                 if (!prompt) return;
