@@ -23,10 +23,7 @@ let profileData = null;
 let monitorData = [];
 let locksData = [];
 let monitorInterval = null;
-let statusBefore = {};
-let statusAfter = {};
 let profilerEnabled = SettingsManager.get('profiler.enabled', true);
-let statusSupported = true;
 
 export function QueryProfiler() {
     let theme = ThemeManager.getCurrentTheme();
@@ -65,9 +62,9 @@ export function QueryProfiler() {
     };
 
     const getStatusDiff = (key) => {
-        const before = parseInt(statusBefore[key] || 0);
-        const after = parseInt(statusAfter[key] || 0);
-        return after - before;
+        const diff = profileData?.statusDiff?.[key];
+        if (typeof diff === 'number' && !Number.isNaN(diff)) return diff;
+        return 0;
     };
 
     const getDbType = () => {
@@ -76,7 +73,7 @@ export function QueryProfiler() {
     };
 
     const fetchMonitorData = async () => {
-        if (getDbType() !== 'mysql' || !statusSupported) return;
+        if (getDbType() !== 'mysql') return;
         try {
             const result = await invoke('execute_query', { query: 'SHOW FULL PROCESSLIST' });
             if (result && result.rows) {
@@ -103,7 +100,7 @@ export function QueryProfiler() {
     };
 
     const fetchLocksData = async () => {
-        if (getDbType() !== 'mysql' || !statusSupported) return;
+        if (getDbType() !== 'mysql') return;
         const query = `
             SELECT
               r.trx_id AS 'BekleyenIslemID',
@@ -642,36 +639,6 @@ export function QueryProfiler() {
         isVisible ? hide() : show();
     };
 
-    // Capture status before query
-    const captureStatusBefore = async () => {
-        if (getDbType() !== 'mysql' || !statusSupported) return;
-        try {
-            const result = await invoke('execute_query', { query: 'SHOW SESSION STATUS' });
-            statusBefore = {};
-            result.rows.forEach(row => {
-                statusBefore[row[0]] = row[1];
-            });
-        } catch (e) {
-            statusSupported = false;
-            console.warn('Could not capture pre-query status, disabling status metrics for this session:', e);
-        }
-    };
-
-    // Capture status after query and calculate diff
-    const captureStatusAfter = async () => {
-        if (getDbType() !== 'mysql' || !statusSupported) return;
-        try {
-            const result = await invoke('execute_query', { query: 'SHOW SESSION STATUS' });
-            statusAfter = {};
-            result.rows.forEach(row => {
-                statusAfter[row[0]] = row[1];
-            });
-        } catch (e) {
-            statusSupported = false;
-            console.warn('Could not capture post-query status, disabling status metrics for this session:', e);
-        }
-    };
-
     // Update profile with new data
     const updateProfile = (data) => {
         profileData = data;
@@ -679,21 +646,16 @@ export function QueryProfiler() {
     };
 
     // Listen for query execution events
-    window.addEventListener('tactilesql:query-executing', () => {
-        captureStatusBefore();
-    });
-
-    window.addEventListener('tactilesql:query-result', async (e) => {
+    window.addEventListener('tactilesql:query-result', (e) => {
         const detail = e.detail;
         const resultsArray = Array.isArray(detail) ? detail : (detail ? [detail] : []);
         if (resultsArray.length === 0) return;
-
-        await captureStatusAfter();
         const mainResult = resultsArray[0];
         updateProfile({
             query: mainResult.query || 'Query',
             rowsReturned: mainResult.rows?.length || 0,
-            duration: mainResult.duration || 0
+            duration: mainResult.duration || 0,
+            statusDiff: mainResult.statusDiff || null
         });
 
         // Auto-show when result arrives if not already visible

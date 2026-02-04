@@ -147,6 +147,7 @@ pub fn run() {
             db::delete_connection,
             // Query Execution
             db::execute_query,
+            db::execute_query_profiled,
             // Database/Table Operations
             db::get_databases,
             db::get_schemas,

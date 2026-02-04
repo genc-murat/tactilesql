@@ -19,6 +19,14 @@ export function ResultsTable(options = {}) {
     const container = document.createElement('div');
     container.className = "flex flex-col flex-1 min-h-[300px] max-h-full min-w-[600px] bg-transparent"; // bg-transparent ensures no flicker? Controls set bg.
 
+    const formatDurationValue = (value) => {
+        if (value === null || value === undefined || value === '') return '0ms';
+        if (typeof value === 'string') return value;
+        if (typeof value !== 'number' || Number.isNaN(value)) return '0ms';
+        if (value < 1000) return `${Math.round(value)}ms`;
+        return `${(value / 1000).toFixed(2)}s`;
+    };
+
     const renderControls = () => {
         const headerBg = isLight ? 'bg-gradient-to-b from-gray-50 to-gray-100/50 border-gray-200' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1]' : (isOceanic ? 'bg-gradient-to-b from-[#3B4252] to-[#2E3440] border-ocean-border/30' : 'bg-gradient-to-b from-[#16191e] to-[#13161b] border-white/5'));
         const iconBg = isLight ? 'bg-mysql-teal/10' : (isDawn ? 'bg-[#ea9d34]/20' : 'bg-mysql-teal/20');
@@ -659,7 +667,7 @@ export function ResultsTable(options = {}) {
         if (rowCountBadge && currentData) {
             const rows = currentData.rows || [];
             const vsIndicator = useVirtualScroll ? '<span class="ml-1 px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 text-[8px] font-bold">VIRTUAL</span>' : '';
-            rowCountBadge.innerHTML = `${rows.length.toLocaleString()} ROWS ${vsIndicator}<span class="${isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]/60' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'))} font-normal ml-1">• ${currentData.duration || '0ms'}</span>`;
+            rowCountBadge.innerHTML = `${rows.length.toLocaleString()} ROWS ${vsIndicator}<span class="${isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]/60' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'))} font-normal ml-1">• ${formatDurationValue(currentData.duration)}</span>`;
         }
     };
 
@@ -891,7 +899,7 @@ export function ResultsTable(options = {}) {
         const rowCountBadge = container.querySelector('#row-count-badge');
         if (rowCountBadge) {
             const vsIndicator = useVirtualScroll ? '<span class="ml-1 px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 text-[8px] font-bold">VIRTUAL</span>' : '';
-            rowCountBadge.innerHTML = `${rows.length.toLocaleString()} ROWS ${vsIndicator}<span class="${isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]/60' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'))} font-normal ml-1">• ${data.duration || '0ms'}</span>`;
+            rowCountBadge.innerHTML = `${rows.length.toLocaleString()} ROWS ${vsIndicator}<span class="${isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]/60' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'))} font-normal ml-1">• ${formatDurationValue(data.duration)}</span>`;
         }
 
         const table = container.querySelector('table');
@@ -1387,4 +1395,3 @@ export function ResultsTable(options = {}) {
 
     return container;
 }
-

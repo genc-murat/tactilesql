@@ -1864,17 +1864,26 @@ export function QueryEditor() {
                     // Notify results table to show loading skeleton
                     window.dispatchEvent(new CustomEvent('tactilesql:query-executing'));
 
-                    // Execute query - UI stays responsive due to async/await
-                    const results = await invoke('execute_query', { query: editorContent });
+                    // Execute query (profiled) - UI stays responsive due to async/await
+                    const response = await invoke('execute_query_profiled', { query: editorContent });
                     const endTime = performance.now();
-                    lastExecutionTime = Math.round(endTime - startTime);
+                    const safeResponse = Array.isArray(response) ? { results: response } : (response || {});
+                    const durationMs = (typeof safeResponse.durationMs === 'number' && !Number.isNaN(safeResponse.durationMs))
+                        ? safeResponse.durationMs
+                        : Math.round(endTime - startTime);
+                    lastExecutionTime = Math.round(durationMs);
 
                     // Ensure results is always an array
-                    const resultsArray = Array.isArray(results) ? results : [results];
+                    const resultsArray = Array.isArray(safeResponse.results) ? safeResponse.results : (safeResponse.results ? [safeResponse.results] : []);
+                    const statusDiff = safeResponse.statusDiff || null;
 
                     // Add query to each result for context
                     resultsArray.forEach((res, idx) => {
                         res.query = editorContent;
+                        res.duration = lastExecutionTime;
+                        if (statusDiff) {
+                            res.statusDiff = statusDiff;
+                        }
                         if (resultsArray.length > 1) {
                             res.title = `Result ${idx + 1}`;
                         }
@@ -2806,4 +2815,3 @@ export function QueryEditor() {
 
     return container;
 }
-

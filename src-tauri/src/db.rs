@@ -3,8 +3,10 @@
 // Routes database operations to MySQL or PostgreSQL modules
 // =====================================================
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 use aes_gcm::{
     aead::{Aead, KeyInit},
@@ -21,6 +23,18 @@ use crate::mysql;
 use crate::postgres;
 use regex::Regex;
 use std::sync::LazyLock;
+
+static SYSTEM_QUERY_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    // Matches:
+    // 1. System schemas (information_schema, etc.)
+    // 2. Common keep-alive/metadata queries (SELECT VERSION(), SELECT 1, etc.)
+    //    Allows for comments (/*...*/ or --) at start, case insensitivity, and aliases.
+    Regex::new(r"(?ix)
+        \b(information_schema|performance_schema|mysql|pg_catalog|pg_toast|sqlite_|sys)\b
+        |
+        ^\s* (/\*.*?\*/)? \s* select \s+ (version\(\)|1|current_database\(\)|current_schema\(\)|@@\w+)
+    ").unwrap()
+});
 
 // Encryption constants
 const SERVICE_NAME: &str = "tactilesql";
@@ -411,6 +425,87 @@ pub fn delete_connection(app_handle: AppHandle, id: String) -> Result<(), String
 // TAURI COMMANDS - QUERY EXECUTION
 // =====================================================
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfiledQueryResponse {
+    pub results: Vec<QueryResult>,
+    pub duration_ms: f64,
+    pub status_diff: Option<HashMap<String, i64>>,
+}
+
+fn spawn_awareness_log(
+    app_state: &AppState,
+    query: String,
+    duration_ms: f64,
+    rows_affected: u64,
+    db_type: DatabaseType,
+    timestamp: chrono::DateTime<chrono::Utc>,
+) {
+    if query.trim().is_empty() {
+        return;
+    }
+    if SYSTEM_QUERY_REGEX.is_match(&query) {
+        return;
+    }
+
+    let store_arc = app_state.awareness_store.clone();
+    let query_clone = query.clone();
+    let db_type_clone = db_type.clone();
+    let mysql_pool_arc = app_state.mysql_pool.clone();
+    let postgres_pool_arc = app_state.postgres_pool.clone();
+
+    tauri::async_runtime::spawn(async move {
+        let guard = store_arc.lock().await;
+        if let Some(store) = guard.as_ref() {
+            let normalized = crate::awareness::profiler::normalize_query(&query_clone);
+            let execution = crate::awareness::profiler::QueryExecution {
+                query_hash: crate::awareness::profiler::calculate_query_hash(&normalized),
+                exact_query: query_clone.clone(),
+                timestamp,
+                resources: crate::awareness::profiler::ResourceUsage {
+                    execution_time_ms: duration_ms,
+                    rows_affected,
+                }
+            };
+
+            match store.log_query_execution(&execution).await {
+                Ok(Some(anomaly)) => {
+                    // Anomaly detected! Perform cause analysis
+                    let plan_result = match db_type_clone {
+                        DatabaseType::MySQL => {
+                            let g = mysql_pool_arc.lock().await;
+                            if let Some(pool) = g.as_ref() {
+                                crate::mysql::get_execution_plan(pool, &query_clone).await
+                            } else {
+                                Err("MySQL pool not available".to_string())
+                            }
+                        },
+                        DatabaseType::PostgreSQL => {
+                            let g = postgres_pool_arc.lock().await;
+                            if let Some(pool) = g.as_ref() {
+                                crate::postgres::get_execution_plan(pool, &query_clone).await
+                            } else {
+                                Err("Postgres pool not available".to_string())
+                            }
+                        }
+                    };
+
+                    // Analyze Cause and Update Log
+                    if let Ok(plan) = plan_result {
+                        if let Some(cause) = crate::awareness::anomaly::AnomalyDetector::analyze_cause(&plan) {
+                            if let Err(e) = store.update_anomaly_cause(&anomaly.query_hash, anomaly.detected_at, &cause).await {
+                                eprintln!("Failed to update anomaly cause: {}", e);
+                            }
+                        }
+                    }
+                },
+                Ok(None) => {}, // No anomaly
+                Err(e) => eprintln!("Failed to log query execution: {}", e),
+            }
+        }
+    });
+}
+
 #[tauri::command]
 pub async fn execute_query(
     app_state: State<'_, AppState>,
@@ -443,90 +538,66 @@ pub async fn execute_query(
     if let Ok(ref res) = result {
         // Calculate total rows
         let rows_affected = res.iter().map(|r| r.rows.len()).sum::<usize>() as u64;
-        
-        // Asynchronously log to Awareness Store
-        let store_arc = app_state.awareness_store.clone();
-        let query_clone = query.clone();
-        let timestamp = start_time;
-        
-        // Capture dependencies for background analysis
-        let db_type_clone = db_type.clone();
-        let mysql_pool_arc = app_state.mysql_pool.clone();
-        let postgres_pool_arc = app_state.postgres_pool.clone();
-        
-        tauri::async_runtime::spawn(async move {
-            // Filter out system queries
-            // Filter out system queries
-            static SYSTEM_QUERY_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-                // Matches:
-                // 1. System schemas (information_schema, etc.)
-                // 2. Common keep-alive/metadata queries (SELECT VERSION(), SELECT 1, etc.)
-                //    Allows for comments (/*...*/ or --) at start, case insensitivity, and aliases.
-                Regex::new(r"(?ix)
-                    \b(information_schema|performance_schema|mysql|pg_catalog|pg_toast|sqlite_|sys)\b
-                    |
-                    ^\s* (/\*.*?\*/)? \s* select \s+ (version\(\)|1|current_database\(\)|current_schema\(\)|@@\w+)
-                ").unwrap()
-            });
 
-            if SYSTEM_QUERY_REGEX.is_match(&query_clone) {
-                return;
-            }
-
-            let guard = store_arc.lock().await;
-            if let Some(store) = guard.as_ref() {
-                let normalized = crate::awareness::profiler::normalize_query(&query_clone);
-                let execution = crate::awareness::profiler::QueryExecution {
-                    query_hash: crate::awareness::profiler::calculate_query_hash(&normalized),
-                    exact_query: query_clone.clone(),
-                    timestamp,
-                    resources: crate::awareness::profiler::ResourceUsage {
-                        execution_time_ms: duration_ms,
-                        rows_affected,
-                    }
-                };
-                
-                match store.log_query_execution(&execution).await {
-                    Ok(Some(anomaly)) => {
-                        // Anomaly detected! Perform cause analysis
-                        
-                        // 1. Fetch Execution Plan
-                        let plan_result = match db_type_clone {
-                            DatabaseType::MySQL => {
-                                let g = mysql_pool_arc.lock().await;
-                                if let Some(pool) = g.as_ref() {
-                                    crate::mysql::get_execution_plan(pool, &query_clone).await
-                                } else {
-                                    Err("MySQL pool not available".to_string())
-                                }
-                            },
-                             DatabaseType::PostgreSQL => {
-                                let g = postgres_pool_arc.lock().await;
-                                if let Some(pool) = g.as_ref() {
-                                    crate::postgres::get_execution_plan(pool, &query_clone).await
-                                } else {
-                                    Err("Postgres pool not available".to_string())
-                                }
-                            }
-                        };
-                        
-                        // 2. Analyze Cause and Update Log
-                        if let Ok(plan) = plan_result {
-                            if let Some(cause) = crate::awareness::anomaly::AnomalyDetector::analyze_cause(&plan) {
-                                if let Err(e) = store.update_anomaly_cause(&anomaly.query_hash, anomaly.detected_at, &cause).await {
-                                     eprintln!("Failed to update anomaly cause: {}", e);
-                                }
-                            }
-                        }
-                    },
-                    Ok(None) => {}, // No anomaly
-                    Err(e) => eprintln!("Failed to log query execution: {}", e),
-                }
-            }
-        });
+        spawn_awareness_log(
+            &app_state,
+            query.clone(),
+            duration_ms,
+            rows_affected,
+            db_type.clone(),
+            start_time,
+        );
     }
 
     result
+}
+
+#[tauri::command]
+pub async fn execute_query_profiled(
+    app_state: State<'_, AppState>,
+    query: String
+) -> Result<ProfiledQueryResponse, String> {
+    let start_time = chrono::Utc::now();
+
+    let db_type = {
+        let guard = app_state.active_db_type.lock().await;
+        guard.clone()
+    };
+
+    let (results, status_diff) = match db_type {
+        DatabaseType::PostgreSQL => {
+            let guard = app_state.postgres_pool.lock().await;
+            let pool = guard.as_ref()
+                .ok_or("No PostgreSQL connection established")?;
+            let res = postgres::execute_query(pool, query.clone()).await?;
+            (res, None)
+        },
+        DatabaseType::MySQL => {
+            let guard = app_state.mysql_pool.lock().await;
+            let pool = guard.as_ref()
+                .ok_or("No MySQL connection established")?;
+            mysql::execute_query_with_status(pool, query.clone()).await?
+        }
+    };
+
+    let duration_ms = (chrono::Utc::now() - start_time).num_milliseconds() as f64;
+
+    // Calculate total rows for logging
+    let rows_affected = results.iter().map(|r| r.rows.len()).sum::<usize>() as u64;
+    spawn_awareness_log(
+        &app_state,
+        query.clone(),
+        duration_ms,
+        rows_affected,
+        db_type.clone(),
+        start_time,
+    );
+
+    Ok(ProfiledQueryResponse {
+        results,
+        duration_ms,
+        status_diff,
+    })
 }
 
 // =====================================================

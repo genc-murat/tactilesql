@@ -2,11 +2,12 @@
 // MySQL SPECIFIC DATABASE OPERATIONS
 // =====================================================
 
-use sqlx::{Pool, MySql, Row, Column};
+use sqlx::{Pool, MySql, Row, Column, Executor, MySqlConnection};
 use sqlx::mysql::MySqlConnectOptions;
 use sqlx::ConnectOptions;
 use crate::db_types::*;
 use futures::StreamExt;
+use std::collections::HashMap;
 
 // --- Connection ---
 
@@ -82,20 +83,23 @@ pub async fn create_pool(config: &ConnectionConfig) -> Result<Pool<MySql>, Strin
 
 // --- Query Execution ---
 
-pub async fn execute_query(pool: &Pool<MySql>, query: String) -> Result<Vec<QueryResult>, String> {
-    let query = query.trim().to_string();
+async fn execute_query_with_executor<'a, E>(executor: E, query: &'a str) -> Result<Vec<QueryResult>, String>
+where
+    E: Executor<'a, Database = MySql>,
+{
+    let query = query.trim();
     if query.is_empty() {
         return Ok(vec![QueryResult { columns: vec![], rows: vec![] }]);
     }
-    
+
     let mut results = Vec::new();
-    
+
     let stream_future = async {
-        let mut stream = sqlx::raw_sql(&query).fetch_many(pool);
-        
+        let mut stream = sqlx::raw_sql(query).fetch_many(executor);
+
         let mut current_rows = Vec::new();
         let mut current_columns = Vec::new();
-        
+
         while let Some(result) = stream.next().await {
             match result {
                 Ok(either) => {
@@ -115,7 +119,7 @@ pub async fn execute_query(pool: &Pool<MySql>, query: String) -> Result<Vec<Quer
                             if current_columns.is_empty() {
                                 current_columns = row.columns().iter().map(|c| c.name().to_string()).collect();
                             }
-                             
+
                             let mut row_data = Vec::new();
                             for (i, _) in current_columns.iter().enumerate() {
                                 let val: serde_json::Value = row.try_get_unchecked::<i64, _>(i)
@@ -145,14 +149,14 @@ pub async fn execute_query(pool: &Pool<MySql>, query: String) -> Result<Vec<Quer
                 Err(e) => return Err(format!("Query error: {}", e)),
             }
         }
-        
+
         if !current_rows.is_empty() {
             results.push(QueryResult {
                 columns: current_columns,
                 rows: current_rows,
             });
         }
-        
+
         Ok::<_, String>(())
     };
 
@@ -168,6 +172,71 @@ pub async fn execute_query(pool: &Pool<MySql>, query: String) -> Result<Vec<Quer
     }
 
     Ok(results)
+}
+
+async fn fetch_session_status(conn: &mut MySqlConnection) -> Result<HashMap<String, i64>, String> {
+    let rows = sqlx::query("SHOW SESSION STATUS")
+        .fetch_all(conn)
+        .await
+        .map_err(|e| format!("Failed to fetch session status: {}", e))?;
+
+    let mut status_map = HashMap::new();
+    for row in rows {
+        let name: String = row.try_get::<String, _>(0)
+            .unwrap_or_else(|_| {
+                let bytes: Vec<u8> = row.get(0);
+                String::from_utf8_lossy(&bytes).to_string()
+            });
+        let value_str: String = row.try_get::<String, _>(1)
+            .unwrap_or_else(|_| {
+                let bytes: Vec<u8> = row.get(1);
+                String::from_utf8_lossy(&bytes).to_string()
+            });
+
+        if let Ok(value) = value_str.parse::<i64>() {
+            status_map.insert(name, value);
+        }
+    }
+
+    Ok(status_map)
+}
+
+fn compute_status_diff(before: &HashMap<String, i64>, after: &HashMap<String, i64>) -> HashMap<String, i64> {
+    let mut diff = HashMap::new();
+    for (key, after_val) in after {
+        let before_val = before.get(key).copied().unwrap_or(0);
+        diff.insert(key.clone(), after_val - before_val);
+    }
+    diff
+}
+
+pub async fn execute_query_with_status(pool: &Pool<MySql>, query: String) -> Result<(Vec<QueryResult>, Option<HashMap<String, i64>>), String> {
+    let query = query.trim().to_string();
+    if query.is_empty() {
+        return Ok((vec![QueryResult { columns: vec![], rows: vec![] }], None));
+    }
+
+    let mut conn = pool.acquire()
+        .await
+        .map_err(|e| format!("Failed to acquire connection: {}", e))?;
+
+    let before_status = fetch_session_status(conn.as_mut()).await.ok();
+    let results = execute_query_with_executor(conn.as_mut(), &query).await?;
+
+    let status_diff = if let Some(before) = before_status {
+        match fetch_session_status(conn.as_mut()).await {
+            Ok(after) => Some(compute_status_diff(&before, &after)),
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
+
+    Ok((results, status_diff))
+}
+
+pub async fn execute_query(pool: &Pool<MySql>, query: String) -> Result<Vec<QueryResult>, String> {
+    execute_query_with_executor(pool, &query).await
 }
 
 // --- Database/Table Operations ---
