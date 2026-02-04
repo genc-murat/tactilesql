@@ -34,6 +34,12 @@ export function ObjectExplorer() {
     let userDbsExpanded = true; // State for user databases fold
     let systemDbsExpanded = true; // State for system databases fold
 
+    // --- Search State ---
+    let searchQuery = '';
+    let searchMatches = [];
+    let currentMatchIndex = -1;
+    let searchInputTimeout = null;
+
     // Drag and Drop state (persisted outside render)
     let draggedConnId = null;
     let draggedNode = null;
@@ -72,7 +78,7 @@ export function ObjectExplorer() {
                 col.column_key === 'UNI' ? `<span class="material-symbols-outlined text-[10px] ${isDawn ? 'text-[#3e8fb0]' : 'text-blue-400'}">fingerprint</span>` :
                     col.column_key === 'MUL' ? '<span class="material-symbols-outlined text-[10px] text-gray-500">link</span>' :
                         '<span class="w-[10px]"></span>'}
-                                <span class="${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279] font-medium' : (isOceanic ? 'text-ocean-text' : 'text-gray-400'))}">${col.name}</span>
+                                <span class="${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279] font-medium' : (isOceanic ? 'text-ocean-text' : 'text-gray-400'))} ${highlightClass(`col-${db}-${table}-${col.name}`)}" data-search-id="col-${db}-${table}-${col.name}">${col.name}</span>
                                 <span class="${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-700'))} text-[9px]">${col.data_type}</span>
                             </div>
                         `).join('')}
@@ -115,7 +121,7 @@ export function ObjectExplorer() {
                 <div class="table-item flex items-center gap-2 ${baseText} ${hoverText} cursor-grab py-1 group" data-table="${table}" data-db="${db}" draggable="true">
                     <span class="material-symbols-outlined text-[10px] transition-transform ${isExpanded ? 'rotate-90' : ''} ${isDawn ? 'text-[#ea9d34]' : iconColor}">arrow_right</span>
                     <span class="material-symbols-outlined text-[14px] ${iconColor} ${iconHover}">table_rows</span>
-                    <span>${table}</span>
+                    <span class="${highlightClass(`table-${db}-${table}`)}" data-search-id="table-${db}-${table}">${table}</span>
                 </div>
                 ${isExpanded ? renderTableDetails(db, table) : ''}
             </div>
@@ -156,7 +162,7 @@ export function ObjectExplorer() {
                 ${renderObjectCategory(db, 'views', 'Views', 'visibility', isDawn ? 'text-[#3e8fb0]' : 'text-blue-400', views,
                 (db, v) => `<div class="view-item flex items-center gap-2 text-[10px] ${mainText} ${isLight ? 'hover:text-mysql-teal' : (isDawn ? 'hover:text-[#ea9d34]' : (isOceanic ? 'hover:text-ocean-frost' : 'hover:text-white'))} py-0.5 cursor-pointer" data-view="${v}" data-db="${db}">
                         <span class="material-symbols-outlined text-[12px] ${isDawn ? 'text-[#3e8fb0]' : 'text-blue-400'}">visibility</span>
-                        <span>${v}</span>
+                        <span class="${highlightClass(`view-${db}-${v}`)}" data-search-id="view-${db}-${v}">${v}</span>
                     </div>`)}
                 ${renderObjectCategory(db, 'triggers', 'Triggers', 'bolt', isDawn ? 'text-[#f6c177]' : 'text-yellow-400', triggers,
                     (db, t) => `<div class="flex items-center gap-2 text-[10px] ${mainText} py-0.5">
@@ -197,7 +203,7 @@ export function ObjectExplorer() {
                 <div data-db="${db}" class="db-item flex items-center gap-2 ${baseColor} ${hoverColor} group cursor-pointer p-1">
                     <span class="material-symbols-outlined text-xs transition-transform ${isExpanded ? 'rotate-90' : ''}">arrow_right</span>
                     <div class="w-1.5 h-1.5 rounded-full ${dotColor}"></div>
-                    <span class="font-bold tracking-tight ${activeText}">${db}</span>
+                    <span class="font-bold tracking-tight ${activeText} ${highlightClass(`db-${db}`)}" data-search-id="db-${db}">${db}</span>
                 </div>
                 ${isExpanded ? renderDatabaseContents(db) : ''}
             </div>
@@ -316,12 +322,32 @@ export function ObjectExplorer() {
         const iconColor = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-600'));
         const hoverIcon = isDawn ? 'hover:text-[#ea9d34]' : 'hover:text-mysql-teal';
 
+        const wasSearchFocused = document.activeElement && document.activeElement.id === 'explorer-search';
+        const selectionStart = wasSearchFocused ? document.activeElement.selectionStart : 0;
+
         explorer.innerHTML = `
             <div class="flex items-center justify-between px-2">
                 <h2 class="text-[10px] font-bold tracking-[0.15em] ${headerText}">Explorer</h2>
                 <div class="flex gap-2">
                     <span id="refresh-btn" class="material-symbols-outlined text-[16px] ${iconColor} cursor-pointer ${hoverIcon}" title="Reload Connections">sync</span>
                     <a href="#/connections" class="material-symbols-outlined text-[16px] ${iconColor} cursor-pointer ${hoverIcon}" title="Manage Connections">settings</a>
+                </div>
+            </div>
+
+            <div class="px-2 mt-2">
+                <div class="relative group">
+                    <input type="text" id="explorer-search" placeholder="Search objects..." 
+                        class="w-full ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#fcf9f2] border-[#f2e9e1]' : 'bg-white/5 border-white/10')} border rounded px-7 py-1.5 text-[10px] focus:outline-none ${isDawn ? 'focus:border-[#ea9d34]/50' : 'focus:border-mysql-teal/50'} transition-colors"
+                        value="${escapeHtml(searchQuery)}">
+                    <span class="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-[14px] ${iconColor}">search</span>
+                    ${searchQuery ? `
+                        <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                            <span class="text-[9px] ${headerText} mr-1 whitespace-nowrap">${searchMatches.length > 0 ? `${currentMatchIndex + 1}/${searchMatches.length}` : '0/0'}</span>
+                            <button id="search-prev" class="material-symbols-outlined text-[14px] ${iconColor} hover:text-white cursor-pointer" title="Previous match">keyboard_arrow_up</button>
+                            <button id="search-next" class="material-symbols-outlined text-[14px] ${iconColor} hover:text-white cursor-pointer" title="Next match">keyboard_arrow_down</button>
+                            <button id="search-clear" class="material-symbols-outlined text-[14px] ${iconColor} hover:text-white cursor-pointer" title="Clear search">close</button>
+                        </div>
+                    ` : ''}
                 </div>
             </div>
             
@@ -585,6 +611,140 @@ export function ObjectExplorer() {
                 render();
             });
         }
+
+        // Search Interaction
+        const searchInput = explorer.querySelector('#explorer-search');
+        if (searchInput) {
+            if (wasSearchFocused) {
+                searchInput.focus();
+                searchInput.setSelectionRange(selectionStart, selectionStart);
+            }
+            // Actually, focusing every render is bad. Let's see.
+
+            searchInput.addEventListener('input', (e) => {
+                searchQuery = e.target.value;
+                if (searchInputTimeout) clearTimeout(searchInputTimeout);
+                searchInputTimeout = setTimeout(() => {
+                    performSearch();
+                }, 300);
+            });
+
+            searchInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    if (e.shiftKey) gotoMatch(currentMatchIndex - 1);
+                    else gotoMatch(currentMatchIndex + 1);
+                }
+            });
+        }
+
+        const btnPrev = explorer.querySelector('#search-prev');
+        if (btnPrev) btnPrev.onclick = () => gotoMatch(currentMatchIndex - 1);
+
+        const btnNext = explorer.querySelector('#search-next');
+        if (btnNext) btnNext.onclick = () => gotoMatch(currentMatchIndex + 1);
+
+        const btnClear = explorer.querySelector('#search-clear');
+        if (btnClear) btnClear.onclick = () => {
+            searchQuery = '';
+            searchMatches = [];
+            currentMatchIndex = -1;
+            render();
+        };
+    };
+
+    // --- Search Helper Logic ---
+    const highlightClass = (id) => {
+        if (currentMatchIndex === -1 || !searchMatches[currentMatchIndex]) return '';
+        const isCurrent = searchMatches[currentMatchIndex].id === id;
+        if (isCurrent) {
+            return isDawn ? 'bg-[#ea9d34]/30 ring-1 ring-[#ea9d34]/50 rounded px-1' : 'bg-mysql-teal/30 ring-1 ring-mysql-teal/50 rounded px-1';
+        }
+        // Could also highlight other matches differently
+        const isMatch = searchMatches.some(m => m.id === id);
+        if (isMatch) {
+            return isDawn ? 'bg-[#ea9d34]/10 rounded px-1' : 'bg-mysql-teal/10 rounded px-1';
+        }
+        return '';
+    };
+
+    const performSearch = () => {
+        if (!searchQuery.trim()) {
+            searchMatches = [];
+            currentMatchIndex = -1;
+            render();
+            return;
+        }
+
+        const query = searchQuery.toLowerCase();
+        const matches = [];
+
+        // Search in databases
+        databases.forEach(db => {
+            if (db.toLowerCase().includes(query)) {
+                matches.push({ type: 'database', db, id: `db-${db}` });
+            }
+
+            const objs = dbObjects[db];
+            if (objs) {
+                objs.tables.forEach(t => {
+                    if (t.toLowerCase().includes(query)) {
+                        matches.push({ type: 'table', db, table: t, id: `table-${db}-${t}` });
+                    }
+
+                    const details = tableDetails[`${db}.${t}`];
+                    if (details && details.columns) {
+                        details.columns.forEach(col => {
+                            if (col.name.toLowerCase().includes(query)) {
+                                matches.push({ type: 'column', db, table: t, column: col.name, id: `col-${db}-${t}-${col.name}` });
+                            }
+                        });
+                    }
+                });
+
+                objs.views.forEach(v => {
+                    if (v.toLowerCase().includes(query)) {
+                        matches.push({ type: 'view', db, id: `view-${db}-${v}` });
+                    }
+                });
+            }
+        });
+
+        searchMatches = matches;
+        currentMatchIndex = matches.length > 0 ? 0 : -1;
+        render();
+
+        if (searchMatches.length > 0) {
+            scrollToMatch(searchMatches[currentMatchIndex].id);
+        }
+    };
+
+    const gotoMatch = (index) => {
+        if (searchMatches.length === 0) return;
+
+        let newIndex = index;
+        if (newIndex < 0) newIndex = searchMatches.length - 1;
+        if (newIndex >= searchMatches.length) newIndex = 0;
+
+        currentMatchIndex = newIndex;
+        const match = searchMatches[currentMatchIndex];
+
+        // Ensure path is expanded
+        if (match.db) expandedDbs.add(match.db);
+        if (match.table) expandedTables.add(`${match.db}.${match.table}`);
+
+        render();
+
+        // Wait for render to finish and elements to be in DOM
+        setTimeout(() => scrollToMatch(match.id), 100);
+    };
+
+    const scrollToMatch = (id) => {
+        setTimeout(() => {
+            const el = explorer.querySelector(`[data-search-id="${id}"]`);
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }, 50);
     };
 
     // --- Switch Connection ---
