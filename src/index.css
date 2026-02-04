@@ -86,6 +86,102 @@
         --border-color: #1b2e33;
         --accent-color: #22d3ee;
     }
+
+    /* AI Side Drawer Animations */
+    @keyframes slide-in-right {
+        from {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
+    }
+
+    @keyframes slide-out-right {
+        from {
+            transform: translateX(0);
+            opacity: 1;
+        }
+
+        to {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+    }
+
+    @keyframes stagger-fade-in {
+        from {
+            transform: translateY(10px);
+            opacity: 0;
+        }
+
+        to {
+            transform: translateY(0);
+            opacity: 1;
+        }
+    }
+
+    @keyframes ai-pulse-glow {
+
+        0%,
+        100% {
+            box-shadow: 0 0 5px rgba(0, 229, 255, 0.2), inset 0 0 5px rgba(0, 229, 255, 0.1);
+        }
+
+        50% {
+            box-shadow: 0 0 15px rgba(0, 229, 255, 0.4), inset 0 0 10px rgba(0, 229, 255, 0.2);
+        }
+    }
+
+    .animate-slide-in-right {
+        animation: slide-in-right 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    .animate-slide-out-right {
+        animation: slide-out-right 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    .animate-stagger-fade-in {
+        opacity: 0;
+        animation: stagger-fade-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    .ai-panel-glow {
+        animation: ai-pulse-glow 3s infinite ease-in-out;
+    }
+
+    /* Markdown styling for AI Panel */
+    .ai-markdown h3 {
+        @apply text-[10px] font-black uppercase tracking-widest mb-2 mt-6 first:mt-0 opacity-80;
+    }
+
+    .ai-markdown p {
+        @apply mb-3 last:mb-0 leading-relaxed text-[12px];
+    }
+
+    .ai-markdown ul {
+        @apply space-y-2 mb-4 list-none;
+    }
+
+    .ai-markdown li {
+        @apply text-[12px] relative pl-6 mb-2;
+    }
+
+    .ai-markdown li::before {
+        content: '→';
+        @apply absolute left-0 text-mysql-teal opacity-50 font-bold;
+    }
+
+    .ai-markdown code:not(pre code) {
+        @apply px-1 py-0.5 rounded bg-white/5 text-cyan-400 font-mono text-[11px] border border-white/5 inline-block align-baseline mx-0.5 leading-none;
+    }
+
+    .ai-markdown blockquote {
+        @apply border-l-2 border-mysql-teal/30 pl-3 py-1 italic mb-4 text-gray-400 text-[12px];
+    }
 }
 
 @layer utilities {

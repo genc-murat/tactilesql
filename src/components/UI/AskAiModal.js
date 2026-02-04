@@ -33,7 +33,7 @@ export class AskAiModal {
             return localStorage.getItem('openai_api_key') || '';
         };
         const getSavedModel = (p) => {
-            if (p === 'gemini') return localStorage.getItem('gemini_model') || 'gemini-3.0-flash';
+            if (p === 'gemini') return localStorage.getItem('gemini_model') || 'gemini-2.5-flash';
             if (p === 'anthropic') return localStorage.getItem('anthropic_model') || 'claude-3-5-sonnet-20241022';
             if (p === 'deepseek') return localStorage.getItem('deepseek_model') || 'deepseek-chat';
             if (p === 'local') return localStorage.getItem('local_model') || 'llama3';
@@ -71,7 +71,6 @@ export class AskAiModal {
                         ` : `
                             <select id="ai-model" class="w-full ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-300')} rounded px-3 py-2 text-xs outline-none focus:border-mysql-teal transition-colors">
                                 ${isGemini ? `
-                                    <option value="gemini-3.0-flash" ${savedModel === 'gemini-3.0-flash' ? 'selected' : ''}>Gemini 3.0 Flash (Newest)</option>
                                     <option value="gemini-2.5-flash" ${savedModel === 'gemini-2.5-flash' ? 'selected' : ''}>Gemini 2.5 Flash</option>
                                     <option value="gemini-2.0-flash-exp" ${savedModel === 'gemini-2.0-flash-exp' ? 'selected' : ''}>Gemini 2.0 Flash (Exp)</option>
                                     <option value="gemini-1.5-flash" ${savedModel === 'gemini-1.5-flash' ? 'selected' : ''}>Gemini 1.5 Flash (Stable)</option>
@@ -203,21 +202,40 @@ export class AskAiModal {
         let database = activeConfig.database;
         const dbType = activeConfig.dbType || 'mysql';
 
-        // Check if database is empty (common in Postgres connections relying on default DB)
-        if (!database) {
+        // 1. Try to resolve via SQL if config is empty
+        if (!database || database === 'null' || database === '') {
             try {
-                // Try to resolve dynamic database name
+                // Try to resolve dynamic database name from server session
                 const query = dbType === 'postgresql' ? 'SELECT current_database()' : 'SELECT DATABASE()';
                 const results = await invoke('execute_query', { query });
+
+                // execute_query returns an array of results, each having a 'rows' array
                 if (results && results[0] && results[0].rows && results[0].rows.length > 0) {
                     database = results[0].rows[0][0];
                 }
             } catch (err) {
-                console.warn("Failed to resolve active database:", err);
+                console.warn("SQL database resolution failed:", err);
             }
         }
 
-        if (!database) throw new Error("No active database selected");
+        // 2. Final fallback: if still no database, fetch all databases and pick the first user database
+        if (!database || database === 'null' || database === '') {
+            try {
+                const dbs = await invoke('get_databases');
+                if (dbs && dbs.length > 0) {
+                    // Filter system databases to find practical user databases
+                    const userDbs = dbs.filter(db => !['information_schema', 'mysql', 'performance_schema', 'sys', 'postgres', 'null', ''].includes(String(db).toLowerCase()));
+                    database = userDbs.length > 0 ? userDbs[0] : (dbs[0] !== 'null' ? dbs[0] : null);
+                    if (database) console.info(`Auto-selected database for AI context: ${database}`);
+                }
+            } catch (err) {
+                console.warn("Database list resolution fallback failed:", err);
+            }
+        }
+
+        if (!database || database === 'null' || database === '') {
+            throw new Error("No active database selected. Please select a database from the header dropdown or re-connect.");
+        }
 
         const tables = await invoke('get_tables', { database });
 

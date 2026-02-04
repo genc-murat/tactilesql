@@ -83,6 +83,11 @@ pub async fn create_pool(config: &ConnectionConfig) -> Result<Pool<MySql>, Strin
 // --- Query Execution ---
 
 pub async fn execute_query(pool: &Pool<MySql>, query: String) -> Result<Vec<QueryResult>, String> {
+    let query = query.trim().to_string();
+    if query.is_empty() {
+        return Ok(vec![QueryResult { columns: vec![], rows: vec![] }]);
+    }
+    
     let mut results = Vec::new();
     
     let stream_future = async {
@@ -842,36 +847,74 @@ pub async fn get_locks(pool: &Pool<MySql>) -> Result<Vec<LockInfo>, String> {
 pub async fn analyze_query(pool: &Pool<MySql>, query: &str) -> Result<QueryAnalysis, String> {
     let explain_query = format!("EXPLAIN FORMAT=JSON {}", query);
     
-    let row = sqlx::query(&explain_query)
+    let result = sqlx::query(&explain_query)
         .fetch_one(pool)
-        .await
-        .map_err(|e| format!("Failed to analyze query: {}", e))?;
+        .await;
 
-    let explain_json: String = row.try_get(0).unwrap_or_default();
-    let explain_result: serde_json::Value = serde_json::from_str(&explain_json)
-        .unwrap_or(serde_json::json!({}));
+    match result {
+        Ok(row) => {
+            let explain_json: String = row.try_get(0).unwrap_or_default();
+            let explain_result: serde_json::Value = serde_json::from_str(&explain_json)
+                .unwrap_or(serde_json::json!({}));
 
-    let mut suggestions = Vec::new();
-    let mut warnings = Vec::new();
+            let mut suggestions = Vec::new();
+            let mut warnings = Vec::new();
 
-    if let Some(query_block) = explain_result.get("query_block") {
-        if let Some(cost) = query_block.get("cost_info").and_then(|c| c.get("query_cost")) {
-            if let Some(cost_str) = cost.as_str() {
-                if let Ok(cost_val) = cost_str.parse::<f64>() {
-                    if cost_val > 1000.0 {
-                        warnings.push(format!("High query cost: {}", cost_val));
-                        suggestions.push("Consider adding indexes or optimizing the query".to_string());
+            if let Some(query_block) = explain_result.get("query_block") {
+                if let Some(cost) = query_block.get("cost_info").and_then(|c| c.get("query_cost")) {
+                    if let Some(cost_str) = cost.as_str() {
+                        if let Ok(cost_val) = cost_str.parse::<f64>() {
+                            if cost_val > 1000.0 {
+                                warnings.push(format!("High query cost: {}", cost_val));
+                                suggestions.push("Consider adding indexes or optimizing the query".to_string());
+                            }
+                        }
                     }
                 }
             }
+
+            Ok(QueryAnalysis {
+                explain_result: vec![explain_result],
+                warnings,
+                suggestions,
+            })
+        },
+        Err(_) => {
+            // Fallback for MySQL 5.6 or older that might not support FORMAT=JSON
+            let traditional_explain = format!("EXPLAIN {}", query);
+            let rows = sqlx::query(&traditional_explain)
+                .fetch_all(pool)
+                .await
+                .map_err(|e| format!("Failed to analyze query: {}", e))?;
+
+            let mut warnings = Vec::new();
+            let mut suggestions = Vec::new();
+
+            for row in rows {
+                let extra: String = row.try_get("Extra").unwrap_or_default();
+                if extra.contains("Using filesort") {
+                    warnings.push("Query is using filesort, which can be slow on large datasets.".to_string());
+                    suggestions.push("Consider adding an index to avoid sorting.".to_string());
+                }
+                if extra.contains("Using temporary") {
+                    warnings.push("Query is using a temporary table.".to_string());
+                    suggestions.push("Optimize the query or JOINs to avoid temporary tables.".to_string());
+                }
+                
+                let select_type: String = row.try_get("select_type").unwrap_or_default();
+                if select_type == "DEPENDENT SUBQUERY" {
+                    warnings.push("Dependent subquery detected, which can be very slow.".to_string());
+                    suggestions.push("Try converting the subquery into a JOIN.".to_string());
+                }
+            }
+
+            Ok(QueryAnalysis {
+                explain_result: vec![serde_json::json!({"info": "Traditional EXPLAIN used for compatibility"})],
+                warnings,
+                suggestions,
+            })
         }
     }
-
-    Ok(QueryAnalysis {
-        explain_result: vec![explain_result],
-        warnings,
-        suggestions,
-    })
 }
 
 pub async fn get_index_suggestions(pool: &Pool<MySql>, database: &str, table: &str) -> Result<Vec<IndexSuggestion>, String> {

@@ -29,7 +29,7 @@ export class AskAiBar {
             return localStorage.getItem('openai_api_key') || '';
         };
         const getSavedModel = (p) => {
-            if (p === 'gemini') return localStorage.getItem('gemini_model') || 'gemini-3.0-flash';
+            if (p === 'gemini') return localStorage.getItem('gemini_model') || 'gemini-2.5-flash';
             if (p === 'anthropic') return localStorage.getItem('anthropic_model') || 'claude-3-5-sonnet-20241022';
             if (p === 'deepseek') return localStorage.getItem('deepseek_model') || 'deepseek-chat';
             if (p === 'local') return localStorage.getItem('local_model') || 'llama3';
@@ -69,7 +69,7 @@ export class AskAiBar {
                             ${isLocal ? `
                                 <option value="${savedModel}">${savedModel}</option>
                             ` : (isGemini ? `
-                                <option value="gemini-3.0-flash" ${savedModel === 'gemini-3.0-flash' ? 'selected' : ''}>Gemini Flash</option>
+                                <option value="gemini-2.5-flash" ${savedModel === 'gemini-2.5-flash' ? 'selected' : ''}>Gemini Flash</option>
                                 <option value="gemini-1.5-flash" ${savedModel === 'gemini-1.5-flash' ? 'selected' : ''}>Gemini 1.5</option>
                             ` : (isAnthropic ? `
                                 <option value="claude-3-5-sonnet-20241022" ${savedModel === 'claude-3-5-sonnet-20241022' ? 'selected' : ''}>Claude 3.5</option>

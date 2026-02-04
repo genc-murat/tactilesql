@@ -12,7 +12,7 @@ import { debounce, DatabaseCache, CacheTypes } from '../../utils/helpers.js';
 import { AskAiModal } from '../UI/AskAiModal.js';
 import { AskAiBar } from '../UI/AskAiBar.js';
 import { AiService } from '../../utils/AiService.js';
-import { AiAssistanceModal } from '../UI/AiAssistanceModal.js';
+import { AiAssistancePanel } from '../UI/AiAssistancePanel.js';
 
 // SQL Keywords for autocomplete
 // Imported from SqlHighlighter.js
@@ -644,12 +644,24 @@ export function QueryEditor() {
                 <div class="px-1.5 py-0.5 flex items-center justify-between gap-1.5 ${isLight ? 'bg-gray-50/80' : (isDawn ? 'bg-[#faf4ed]/80' : (isOceanic ? 'bg-ocean-bg/50' : 'bg-[#16191e]/80'))} backdrop-blur-md relative z-30">
                     <div class="flex items-center gap-3">
                         ${!isPg ? `
-                            <div class="flex items-center gap-1 group/select relative" title="Select Active Database">
-                                <span class="material-symbols-outlined text-gray-500 group-hover/select:text-mysql-teal transition-colors" style="font-size: 13px;">database</span>
-                                <select id="db-selector" class="${isLight ? 'bg-white border-gray-200 text-gray-700' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50 text-ocean-text' : 'bg-[#0f1115] border-white/5 text-gray-300'))} border text-[8px] font-bold rounded px-1 py-0.5 outline-none focus:ring-1 focus:ring-mysql-teal/30 min-w-[100px] cursor-pointer appearance-none transition-all hover:border-mysql-teal/30 leading-none">
-                                    <option value="" disabled selected>Loading...</option>
-                                </select>
-                                <span class="material-symbols-outlined absolute right-1.5 top-1/2 -translate-y-1/2 text-[8px] text-gray-500 pointer-events-none group-hover/select:text-mysql-teal transition-colors">expand_more</span>
+                            <div class="relative group/db-selector" id="db-selector-container">
+                                <button id="db-selector-trigger" class="flex items-center gap-2 px-3 py-1 ${isLight ? 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279] hover:bg-[#faf4ed]' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50 text-ocean-text hover:bg-ocean-border/20' : 'bg-[#0f1115] border-white/5 text-gray-300 hover:bg-white/5'))} border text-[11px] font-bold rounded-lg transition-all duration-200 outline-none focus:ring-2 focus:ring-mysql-teal/30 min-w-[140px] shadow-sm">
+                                    <span class="material-symbols-outlined text-gray-500 group-hover/db-selector:text-mysql-teal transition-colors" style="font-size: 16px;">database</span>
+                                    <span id="current-db-name" class="flex-1 text-left truncate">Select Database</span>
+                                    <span class="material-symbols-outlined text-[14px] text-gray-500 group-hover/db-selector:text-mysql-teal transition-transform duration-200" id="db-selector-arrow">expand_more</span>
+                                </button>
+                                
+                                <div id="db-selector-dropdown" class="hidden absolute top-full left-0 mt-2 w-64 ${isLight ? 'bg-white border-gray-200 shadow-2xl' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-2xl' : (isOceanic ? 'bg-ocean-panel border-ocean-border shadow-2xl' : 'bg-[#1a1d23] border border-white/10 shadow-2xl'))} rounded-xl overflow-hidden z-[1000] animate-in fade-in slide-in-from-top-2 duration-200 backdrop-blur-xl">
+                                    <div class="p-2 border-b ${isLight ? 'border-gray-100 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border/30 bg-ocean-bg/50' : 'border-white/5 bg-[#16191e]'))}">
+                                        <div class="relative">
+                                            <span class="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-sm text-gray-500">search</span>
+                                            <input type="text" id="db-search-input" placeholder="Search databases..." class="w-full pl-8 pr-3 py-1.5 text-[11px] bg-transparent border-none outline-none ${isLight ? 'text-gray-700 placeholder-gray-400' : 'text-gray-300 placeholder-gray-600'} font-medium">
+                                        </div>
+                                    </div>
+                                    <div id="db-options-list" class="max-h-[300px] overflow-y-auto custom-scrollbar py-1">
+                                        <div class="px-4 py-8 text-center text-gray-500 text-[10px] italic">Loading databases...</div>
+                                    </div>
+                                </div>
                             </div>
                         ` : ''}
 
@@ -1837,7 +1849,7 @@ export function QueryEditor() {
                 if (isExecuting) return; // Prevent double-click
                 isExecuting = true;
 
-                const editorContent = container.querySelector('#query-input').value;
+                const editorContent = container.querySelector('#query-input').value.trim();
                 const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
                 const database = activeConfig.database || '';
                 const estimate = estimateQueryLatency(editorContent, database);
@@ -1970,7 +1982,7 @@ export function QueryEditor() {
 
                 const textarea = container.querySelector('#query-input');
                 const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
-                const queryToRun = selectedText.trim() ? selectedText : textarea.value;
+                const queryToRun = (selectedText.trim() ? selectedText : textarea.value).trim().replace(/;\s*$/, '');
 
                 if (!queryToRun.trim()) {
                     isExplaining = false;
@@ -2114,9 +2126,8 @@ export function QueryEditor() {
                 sampleBtn.classList.add('opacity-70');
 
                 try {
-                    const dbSelector = container.querySelector('#db-selector');
                     const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
-                    const database = dbSelector?.value || activeConfig.database;
+                    const database = activeConfig.database;
 
                     if (!database) {
                         Dialog.alert('Please select a database first.', 'Selection Required');
@@ -2157,52 +2168,139 @@ export function QueryEditor() {
         }
 
         // --- Database Selector Logic ---
-        const dbSelector = container.querySelector('#db-selector');
-        if (dbSelector) {
+        const dbContainer = container.querySelector('#db-selector-container');
+        const dbTrigger = container.querySelector('#db-selector-trigger');
+        const dbDropdown = container.querySelector('#db-selector-dropdown');
+        const dbSearchInput = container.querySelector('#db-search-input');
+        const dbOptionsList = container.querySelector('#db-options-list');
+        const currentDbName = container.querySelector('#current-db-name');
+        const dbArrow = container.querySelector('#db-selector-arrow');
+
+        if (dbTrigger && dbDropdown) {
+            let allDatabases = [];
+            let filteredDatabases = [];
+
+            const renderOptions = (dbs) => {
+                if (!dbOptionsList) return;
+                const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+                const currentDb = activeConfig.database || '';
+
+                if (dbs.length === 0) {
+                    dbOptionsList.innerHTML = `<div class="px-4 py-8 text-center text-gray-500 text-[10px] italic">No databases found</div>`;
+                    return;
+                }
+
+                dbOptionsList.innerHTML = dbs.map(db => `
+                    <div class="db-option px-3 py-2 flex items-center gap-2 cursor-pointer transition-colors ${db === currentDb ? (isLight ? 'bg-mysql-teal/10 text-mysql-teal font-bold' : 'bg-mysql-teal/20 text-mysql-teal font-bold') : (isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5')}" data-value="${db}">
+                        <span class="material-symbols-outlined text-[14px] ${db === currentDb ? 'text-mysql-teal' : 'text-gray-500'}">${db === currentDb ? 'check_circle' : 'database'}</span>
+                        <span class="text-[11px] truncate flex-1">${db}</span>
+                    </div>
+                `).join('');
+
+                // Add click events to options
+                dbOptionsList.querySelectorAll('.db-option').forEach(option => {
+                    option.addEventListener('click', async () => {
+                        const newDb = option.dataset.value;
+                        const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+
+                        // Close dropdown
+                        dbDropdown.classList.add('hidden');
+                        if (dbArrow) dbArrow.style.transform = '';
+
+                        if (newDb === activeConfig.database) return;
+
+                        if (!activeConfig.username) {
+                            Dialog.alert("Session lost. Please reconnect.", "Session Error");
+                            return;
+                        }
+
+                        try {
+                            dbTrigger.classList.add('opacity-50', 'pointer-events-none');
+                            if (currentDbName) currentDbName.textContent = `Connecting to ${newDb}...`;
+
+                            activeConfig.database = newDb;
+                            await invoke('establish_connection', {
+                                config: { ...activeConfig, id: activeConfig.id || null, name: activeConfig.name || null }
+                            });
+                            localStorage.setItem('activeConnection', JSON.stringify(activeConfig));
+
+                            if (currentDbName) currentDbName.textContent = newDb;
+                            // Load tables for new database
+                            loadTablesForAutocomplete(newDb);
+                            render(); // Re-render to update UI state
+                        } catch (error) {
+                            Dialog.alert(`Failed to switch database: ${String(error).replace(/\n/g, '<br>')}`, "Database Switch Error");
+                            if (currentDbName) currentDbName.textContent = activeConfig.database || 'Select Database';
+                        } finally {
+                            dbTrigger.classList.remove('opacity-50', 'pointer-events-none');
+                        }
+                    });
+                });
+            };
+
             const loadDatabases = async () => {
                 try {
                     const dbs = await invoke('get_databases');
-                    cachedDatabases = dbs; // Cache for autocomplete
+                    allDatabases = dbs;
+                    filteredDatabases = dbs;
+                    cachedDatabases = dbs;
+
                     const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
                     const currentDb = activeConfig.database || '';
-                    dbSelector.innerHTML = `
-                        <option value="">Select Database</option>
-                        ${dbs.map(db => `<option value="${db}" ${db === currentDb ? 'selected' : ''}>${db}</option>`).join('')}
-                    `;
-
-                    // Preload tables for current database
-                    if (currentDb) {
+                    if (currentDb && currentDbName) {
+                        currentDbName.textContent = currentDb;
                         loadTablesForAutocomplete(currentDb);
                     }
+
+                    renderOptions(filteredDatabases);
                 } catch (error) {
                     console.error('Failed to load DB list', error);
+                    if (dbOptionsList) dbOptionsList.innerHTML = `<div class="px-4 py-8 text-center text-red-500 text-[10px]">Error loading databases</div>`;
                 }
             };
 
-            dbSelector.addEventListener('change', async (e) => {
-                const newDb = e.target.value;
-                if (!newDb) return;
-                const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
-                if (!activeConfig.username) {
-                    Dialog.alert("Session lost. Please reconnect.", "Session Error");
-                    return;
-                }
-                try {
-                    e.target.disabled = true;
-                    activeConfig.database = newDb;
-                    await invoke('establish_connection', {
-                        config: { ...activeConfig, id: activeConfig.id || null, name: activeConfig.name || null }
-                    });
-                    localStorage.setItem('activeConnection', JSON.stringify(activeConfig));
+            // Toggle Dropdown
+            dbTrigger.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const isHidden = dbDropdown.classList.contains('hidden');
 
-                    // Load tables for new database
-                    loadTablesForAutocomplete(newDb);
-                } catch (error) {
-                    Dialog.alert(`Failed to switch database: ${String(error).replace(/\n/g, '<br>')}`, "Database Switch Error");
-                } finally {
-                    e.target.disabled = false;
+                // Close other menus if open
+                container.querySelectorAll('.menu-dropdown').forEach(d => d.classList.add('hidden'));
+
+                if (isHidden) {
+                    dbDropdown.classList.remove('hidden');
+                    if (dbArrow) dbArrow.style.transform = 'rotate(180deg)';
+                    if (dbSearchInput) {
+                        dbSearchInput.value = '';
+                        dbSearchInput.focus();
+                    }
+                    renderOptions(allDatabases);
+                } else {
+                    dbDropdown.classList.add('hidden');
+                    if (dbArrow) dbArrow.style.transform = '';
                 }
             });
+
+            // Search Logic
+            if (dbSearchInput) {
+                dbSearchInput.addEventListener('input', (e) => {
+                    const term = e.target.value.toLowerCase();
+                    filteredDatabases = allDatabases.filter(db => db.toLowerCase().includes(term));
+                    renderOptions(filteredDatabases);
+                });
+
+                // Prevent closing menu when clicking search input
+                dbSearchInput.addEventListener('click', (e) => e.stopPropagation());
+            }
+
+            // Click outside to close
+            const onOutsideClick = (e) => {
+                if (dbContainer && !dbContainer.contains(e.target)) {
+                    dbDropdown.classList.add('hidden');
+                    if (dbArrow) dbArrow.style.transform = '';
+                }
+            };
+            document.addEventListener('click', onOutsideClick);
 
             // Initial Load
             loadDatabases();
@@ -2406,7 +2504,7 @@ export function QueryEditor() {
         const provider = localStorage.getItem('ai_provider') || 'openai';
         const apiKey = localStorage.getItem(`${provider}_api_key`) || '';
         const model = localStorage.getItem(`${provider}_model`) ||
-            (provider === 'gemini' ? 'gemini-3.0-flash' :
+            (provider === 'gemini' ? 'gemini-2.5-flash' :
                 provider === 'anthropic' ? 'claude-3-5-sonnet-20241022' :
                     provider === 'deepseek' ? 'deepseek-chat' : 'gpt-4o');
         return { provider, apiKey, model };
@@ -2436,7 +2534,7 @@ export function QueryEditor() {
                 // Remove loading BEFORE showing the result modal
                 overlay.remove();
 
-                await AiAssistanceModal.show("Query Explanation", explanation);
+                await AiAssistancePanel.show("Query Explanation", explanation);
             } finally {
                 if (overlay && overlay.parentNode) overlay.remove();
             }
@@ -2469,7 +2567,7 @@ export function QueryEditor() {
                 // Remove loading BEFORE showing the result modal
                 overlay.remove();
 
-                const optimizedSql = await AiAssistanceModal.show("Optimization Suggestions", result, { showApply: true });
+                const optimizedSql = await AiAssistancePanel.show("Optimization Suggestions", result, { showApply: true });
                 if (optimizedSql) {
                     const activeTab = tabs.find(t => t.id === activeTabId);
                     if (activeTab) {
@@ -2655,42 +2753,13 @@ export function QueryEditor() {
     // Listen for connection changes to reload database list
     window.addEventListener('tactilesql:connection-changed', async () => {
         // Clear caches
+        DatabaseCache.invalidateAll();
         cachedDatabases = [];
         cachedTables = {};
         cachedColumns = {};
 
-        // Reload database list and autocomplete
-        await loadDatabasesForAutocomplete();
-
-        // Update database selector if it exists
-        const dbSelector = container.querySelector('#db-selector');
-        if (dbSelector) {
-            try {
-                const dbs = await invoke('get_databases');
-                const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
-                const currentDb = activeConfig.database || '';
-
-                dbSelector.innerHTML = `
-                    <option value="">Select Database</option>
-                    ${dbs.map(db => `<option value="${db}" ${db === currentDb ? 'selected' : ''}>${db}</option>`).join('')}
-                `;
-
-                if (currentDb) {
-                    loadTablesForAutocomplete(currentDb);
-                }
-
-                // Update active tab connection info if it doesn't have it or if connection changed
-                const activeTab = tabs.find(t => t.id === activeTabId);
-                if (activeTab) {
-                    activeTab.connectionName = activeConfig.name || '';
-                    activeTab.connectionColor = activeConfig.color || '';
-                    saveState();
-                    render();
-                }
-            } catch (error) {
-                // Silently fail
-            }
-        }
+        // Re-render everything to update the custom DB selector and other UI parts
+        render();
     });
 
     // Listen for Open SQL Script event from Object Explorer
@@ -2698,27 +2767,20 @@ export function QueryEditor() {
         const { database } = e.detail || {};
         if (!database) return;
 
-        // Update the database selector to reflect the new database
-        const dbSelector = container.querySelector('#db-selector');
-        if (dbSelector) {
-            // Refresh database list and select the target database
-            try {
-                const dbs = await invoke('get_databases');
-                dbSelector.innerHTML = `
-                    <option value="">Select Database</option>
-                    ${dbs.map(db => `<option value="${db}" ${db === database ? 'selected' : ''}>${db}</option>`).join('')}
-                `;
-            } catch (error) {
-                // Just try to select the database
-                dbSelector.value = database;
-            }
-        }
-
         // Load tables for autocomplete
         loadTablesForAutocomplete(database);
 
         // Create a new query tab for this database
         createNewTabWithQuery(`-- Database: ${database}\n\n`);
+
+        // Re-render to ensure DB selector shows correct DB (it will pick it up from localStorage if updated, 
+        // but here we might need to update localStorage first if the event didn't do it)
+        const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+        if (activeConfig.database !== database) {
+            activeConfig.database = database;
+            localStorage.setItem('activeConnection', JSON.stringify(activeConfig));
+        }
+        render();
 
         // Focus on the editor
         setTimeout(() => {
