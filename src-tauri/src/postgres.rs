@@ -816,6 +816,85 @@ pub async fn get_server_status(pool: &Pool<Postgres>) -> Result<ServerStatus, St
     })
 }
 
+// --- Capacity Metrics (PostgreSQL) ---
+
+pub async fn get_capacity_metrics(pool: &Pool<Postgres>, schema: &str) -> Result<CapacityMetrics, String> {
+    // Storage (data + indexes) for schema
+    let storage_row = sqlx::query(r#"
+        SELECT 
+            COALESCE(SUM(pg_table_size(c.oid)), 0) as data_bytes,
+            COALESCE(SUM(pg_indexes_size(c.oid)), 0) as index_bytes
+        FROM pg_class c
+        JOIN pg_namespace n ON c.relnamespace = n.oid
+        WHERE n.nspname = $1
+          AND c.relkind IN ('r','p','m','t')
+    "#)
+        .bind(schema)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch storage metrics: {}", e))?;
+
+    let data_bytes: i64 = storage_row.try_get::<i64, _>("data_bytes").unwrap_or(0);
+    let index_bytes: i64 = storage_row.try_get::<i64, _>("index_bytes").unwrap_or(0);
+
+    // Block size
+    let block_size_row = sqlx::query("SHOW block_size")
+        .fetch_one(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch block size: {}", e))?;
+    let block_size_str: String = block_size_row.try_get(0).unwrap_or_else(|_| "8192".to_string());
+    let block_size: i64 = block_size_str.parse().unwrap_or(8192);
+
+    // Buffer hit ratio (database level)
+    let stat_row = sqlx::query(r#"
+        SELECT blks_read, blks_hit
+        FROM pg_stat_database
+        WHERE datname = current_database()
+    "#)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch buffer stats: {}", e))?;
+
+    let blks_read: i64 = stat_row.try_get::<i64, _>("blks_read").unwrap_or(0);
+    let blks_hit: i64 = stat_row.try_get::<i64, _>("blks_hit").unwrap_or(0);
+    let total_blks = blks_read + blks_hit;
+    let buffer_hit_ratio = if total_blks > 0 {
+        (blks_hit as f64 / total_blks as f64).clamp(0.0, 1.0)
+    } else {
+        1.0
+    };
+
+    let disk_read_bytes = blks_read.saturating_mul(block_size);
+
+    // Disk write bytes (database-wide) from bgwriter buffers
+    let disk_write_bytes = match sqlx::query(r#"
+        SELECT 
+            COALESCE(buffers_checkpoint, 0) + COALESCE(buffers_clean, 0) + COALESCE(buffers_backend, 0) as buffers_written
+        FROM pg_stat_bgwriter
+    "#)
+        .fetch_one(pool)
+        .await
+    {
+        Ok(bg_row) => {
+            let buffers_written: i64 = bg_row.try_get::<i64, _>("buffers_written").unwrap_or(0);
+            buffers_written.saturating_mul(block_size)
+        }
+        Err(e) => {
+            eprintln!("Background writer stats unavailable: {}", e);
+            0
+        }
+    };
+
+    Ok(CapacityMetrics {
+        storage_bytes: data_bytes + index_bytes,
+        data_bytes,
+        index_bytes,
+        buffer_hit_ratio,
+        disk_read_bytes,
+        disk_write_bytes,
+    })
+}
+
 pub async fn get_process_list(pool: &Pool<Postgres>) -> Result<Vec<ProcessInfo>, String> {
     let query = r#"
         SELECT 

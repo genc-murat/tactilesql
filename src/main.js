@@ -139,6 +139,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         '/access-control': { component: lazyLoad(() => import('./pages/AccessControl.js'), 'AccessControl') },
         '/settings': { component: lazyLoad(() => import('./pages/Settings.js'), 'Settings') },
         '/data-tools': { component: lazyLoad(() => import('./pages/DataTools.js'), 'DataTools') },
+        '/capacity': { component: lazyLoad(() => import('./pages/CapacityPlanner.js'), 'CapacityPlanner') },
         '/monitor': { component: lazyLoad(() => import('./pages/ServerMonitor.js'), 'ServerMonitor') },
         '/schema-tracker': { component: lazyLoad(() => import('./components/AdvancedInsights/SchemaTracker/SchemaTracker.js'), 'SchemaTracker') },
         '/dependencies': { component: lazyLoad(() => import('./components/AdvancedInsights/DependencyGraph/DependencyExplorer.js'), 'DependencyExplorer') },

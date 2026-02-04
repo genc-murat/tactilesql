@@ -304,3 +304,14 @@ pub struct IndexSize {
     pub index_name: String,
     pub size_bytes: i64,
 }
+
+// --- Capacity Metrics ---
+#[derive(Serialize, Debug)]
+pub struct CapacityMetrics {
+    pub storage_bytes: i64,
+    pub data_bytes: i64,
+    pub index_bytes: i64,
+    pub buffer_hit_ratio: f64,
+    pub disk_read_bytes: i64,
+    pub disk_write_bytes: i64,
+}

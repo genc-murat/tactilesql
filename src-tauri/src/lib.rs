@@ -188,6 +188,7 @@ pub fn run() {
             db::get_index_suggestions,
             db::get_index_usage,
             db::get_index_sizes,
+            db::get_capacity_metrics,
             db::get_execution_plan,
             db::compare_queries,
             db::get_anomaly_history,

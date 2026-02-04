@@ -1516,6 +1516,32 @@ pub async fn get_index_sizes(
     }
 }
 
+#[tauri::command]
+pub async fn get_capacity_metrics(
+    app_state: State<'_, AppState>,
+    database: String
+) -> Result<CapacityMetrics, String> {
+    let db_type = {
+        let guard = app_state.active_db_type.lock().await;
+        guard.clone()
+    };
+
+    match db_type {
+        DatabaseType::PostgreSQL => {
+            let guard = app_state.postgres_pool.lock().await;
+            let pool = guard.as_ref()
+                .ok_or("No PostgreSQL connection established")?;
+            postgres::get_capacity_metrics(pool, &database).await
+        },
+        DatabaseType::MySQL => {
+            let guard = app_state.mysql_pool.lock().await;
+            let pool = guard.as_ref()
+                .ok_or("No MySQL connection established")?;
+            mysql::get_capacity_metrics(pool, &database).await
+        }
+    }
+}
+
 // =====================================================
 // TAURI COMMANDS - POSTGRESQL SPECIFIC
 // =====================================================

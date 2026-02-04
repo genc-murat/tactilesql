@@ -31,6 +31,7 @@ export function NavBar() {
                 id: 'menu-ops',
                 children: [
                     { path: '/data-tools', label: 'TOOLS', icon: 'build' },
+                    { path: '/capacity', label: 'CAPACITY', icon: 'data_usage' },
                     { path: '/audit', label: 'AUDIT', icon: 'visibility' },
                 ]
             },

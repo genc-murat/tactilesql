@@ -791,6 +791,69 @@ pub async fn get_server_status(pool: &Pool<MySql>) -> Result<ServerStatus, Strin
     Ok(status)
 }
 
+// --- Capacity Metrics (MySQL) ---
+
+pub async fn get_capacity_metrics(pool: &Pool<MySql>, database: &str) -> Result<CapacityMetrics, String> {
+    // Storage
+    let storage_row = sqlx::query(r#"
+        SELECT 
+            COALESCE(SUM(DATA_LENGTH), 0) as data_bytes,
+            COALESCE(SUM(INDEX_LENGTH), 0) as index_bytes
+        FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = ?
+    "#)
+        .bind(database)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch storage metrics: {}", e))?;
+
+    let data_bytes: i64 = storage_row.try_get::<i64, _>("data_bytes").unwrap_or(0);
+    let index_bytes: i64 = storage_row.try_get::<i64, _>("index_bytes").unwrap_or(0);
+
+    // Buffer/cache + IO counters
+    let status_rows = sqlx::query(r#"
+        SHOW GLOBAL STATUS
+        WHERE Variable_name IN (
+            'Innodb_buffer_pool_read_requests',
+            'Innodb_buffer_pool_reads',
+            'Innodb_data_read',
+            'Innodb_data_written'
+        )
+    "#)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch buffer metrics: {}", e))?;
+
+    let mut status_map: HashMap<String, i64> = HashMap::new();
+    for row in status_rows {
+        let name: String = row.try_get(0).unwrap_or_default();
+        let value: String = row.try_get(1).unwrap_or_default();
+        let val: i64 = value.parse().unwrap_or(0);
+        status_map.insert(name, val);
+    }
+
+    let read_requests = *status_map.get("Innodb_buffer_pool_read_requests").unwrap_or(&0);
+    let reads = *status_map.get("Innodb_buffer_pool_reads").unwrap_or(&0);
+    let disk_read_bytes = *status_map.get("Innodb_data_read").unwrap_or(&0);
+    let disk_write_bytes = *status_map.get("Innodb_data_written").unwrap_or(&0);
+
+    let buffer_hit_ratio = if read_requests > 0 {
+        let ratio = 1.0 - (reads as f64 / read_requests as f64);
+        ratio.clamp(0.0, 1.0)
+    } else {
+        1.0
+    };
+
+    Ok(CapacityMetrics {
+        storage_bytes: data_bytes + index_bytes,
+        data_bytes,
+        index_bytes,
+        buffer_hit_ratio,
+        disk_read_bytes,
+        disk_write_bytes,
+    })
+}
+
 pub async fn get_process_list(pool: &Pool<MySql>) -> Result<Vec<ProcessInfo>, String> {
     let rows = sqlx::query("SHOW FULL PROCESSLIST")
         .fetch_all(pool)
