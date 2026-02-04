@@ -43,6 +43,7 @@ export function Settings() {
         const currentTheme = ThemeManager.getCurrentTheme();
         const snippetSuggestionsEnabled = SettingsManager.get('autocomplete.snippets', true);
         const profilerEnabled = SettingsManager.get('profiler.enabled', true);
+        const profilerExplainEnabled = SettingsManager.get('profiler.explainAnalyze', true);
 
         container.innerHTML = `
         <div class="h-full p-6 lg:p-8">
@@ -273,6 +274,16 @@ export function Settings() {
                             </button>
                         </div>
 
+                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                            <div>
+                                <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">PostgreSQL EXPLAIN ANALYZE</h3>
+                                <p class="text-xs text-gray-500 mt-1">Collect EXPLAIN ANALYZE metrics in profiler (runs query twice)</p>
+                            </div>
+                            <button id="profiler-explain-toggle" class="relative w-12 h-6 rounded-full transition-all ${profilerExplainEnabled ? 'bg-gradient-to-r from-mysql-teal to-mysql-cyan' : (isLight ? 'bg-gray-200' : (isOceanic ? 'bg-ocean-border/40' : 'bg-white/10'))}">
+                                <span class="absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow-md transition-transform transform ${profilerExplainEnabled ? 'translate-x-6' : 'translate-x-0'}"></span>
+                            </button>
+                        </div>
+
                         <div class="flex items-center justify-between py-4">
                             <div>
                                 <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">AI Command</h3>
@@ -377,6 +388,7 @@ export function Settings() {
         const preview = container.querySelector('#theme-preview');
         const snippetToggle = container.querySelector('#autocomplete-snippets-toggle');
         const profilerToggle = container.querySelector('#profiler-enabled-toggle');
+        const profilerExplainToggle = container.querySelector('#profiler-explain-toggle');
 
         const isLight = theme === 'light' || theme === 'dawn';
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
@@ -465,6 +477,16 @@ export function Settings() {
                 window.dispatchEvent(new CustomEvent('settingschange', { detail: { key: 'profiler.enabled', value: next } }));
             });
             setToggleState(profilerToggle, SettingsManager.get('profiler.enabled', true));
+        }
+
+        if (profilerExplainToggle) {
+            profilerExplainToggle.addEventListener('click', () => {
+                const current = SettingsManager.get('profiler.explainAnalyze', true);
+                const next = !current;
+                SettingsManager.set('profiler.explainAnalyze', next);
+                setToggleState(profilerExplainToggle, next);
+            });
+            setToggleState(profilerExplainToggle, SettingsManager.get('profiler.explainAnalyze', true));
         }
 
         const devToolsBtn = container.querySelector('#open-devtools-btn');

@@ -293,7 +293,8 @@ export function QueryProfiler() {
             const indexScansTotal = pgIndexScans + pgIndexOnlyScans + pgBitmapScans;
             const sharedReadBytes = pgSharedReadBlocks * 8192;
             const sharedHitBytes = pgSharedHitBlocks * 8192;
-            const hasExplain = !!profileData.statusDiff;
+            const explainDisabled = profileData?.profileOptions?.explainAnalyze === false;
+            const hasExplain = !!profileData.statusDiff && !explainDisabled;
 
             // Heuristic score for PG
             let score = 100;
@@ -368,7 +369,7 @@ export function QueryProfiler() {
 
                 ${hasExplain ? '' : `
                     <div class="mb-2 px-2 py-1 rounded border ${isLight ? 'border-gray-200 text-gray-500' : 'border-white/10 text-gray-400'} text-[9px]">
-                        EXPLAIN ANALYZE metrics unavailable for this query type.
+                        ${explainDisabled ? 'EXPLAIN ANALYZE disabled in Settings.' : 'EXPLAIN ANALYZE metrics unavailable for this query type.'}
                     </div>
                 `}
 

@@ -5,6 +5,10 @@ const DEFAULT_SETTINGS = {
         enabled: true,
         snippets: true,
     },
+    profiler: {
+        enabled: true,
+        explainAnalyze: true,
+    },
 };
 
 const deepGet = (obj, path) => {
@@ -30,7 +34,12 @@ const loadSettings = () => {
         const raw = localStorage.getItem(SETTINGS_KEY);
         if (!raw) return { ...DEFAULT_SETTINGS };
         const parsed = JSON.parse(raw);
-        return { ...DEFAULT_SETTINGS, ...parsed, autocomplete: { ...DEFAULT_SETTINGS.autocomplete, ...(parsed.autocomplete || {}) } };
+        return {
+            ...DEFAULT_SETTINGS,
+            ...parsed,
+            autocomplete: { ...DEFAULT_SETTINGS.autocomplete, ...(parsed.autocomplete || {}) },
+            profiler: { ...DEFAULT_SETTINGS.profiler, ...(parsed.profiler || {}) }
+        };
     } catch {
         return { ...DEFAULT_SETTINGS };
     }

@@ -13,6 +13,7 @@ import { AskAiModal } from '../UI/AskAiModal.js';
 import { AskAiBar } from '../UI/AskAiBar.js';
 import { AiService } from '../../utils/AiService.js';
 import { AiAssistancePanel } from '../UI/AiAssistancePanel.js';
+import { SettingsManager } from '../../utils/SettingsManager.js';
 
 // SQL Keywords for autocomplete
 // Imported from SqlHighlighter.js
@@ -1865,7 +1866,9 @@ export function QueryEditor() {
                     window.dispatchEvent(new CustomEvent('tactilesql:query-executing'));
 
                     // Execute query (profiled) - UI stays responsive due to async/await
-                    const response = await invoke('execute_query_profiled', { query: editorContent });
+                    const explainAnalyze = SettingsManager.get('profiler.explainAnalyze', true);
+                    const profileOptions = { explainAnalyze };
+                    const response = await invoke('execute_query_profiled', { query: editorContent, profile_options: profileOptions });
                     const endTime = performance.now();
                     const safeResponse = Array.isArray(response) ? { results: response } : (response || {});
                     const durationMs = (typeof safeResponse.durationMs === 'number' && !Number.isNaN(safeResponse.durationMs))
@@ -1881,6 +1884,7 @@ export function QueryEditor() {
                     resultsArray.forEach((res, idx) => {
                         res.query = editorContent;
                         res.duration = lastExecutionTime;
+                        res.profileOptions = profileOptions;
                         if (statusDiff) {
                             res.statusDiff = statusDiff;
                         }

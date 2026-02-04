@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use tauri::{AppHandle, Manager, State};
 use aes_gcm::{
     aead::{Aead, KeyInit},
@@ -433,6 +433,12 @@ pub struct ProfiledQueryResponse {
     pub status_diff: Option<HashMap<String, i64>>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileOptions {
+    pub explain_analyze: Option<bool>,
+}
+
 fn spawn_awareness_log(
     app_state: &AppState,
     query: String,
@@ -600,7 +606,8 @@ pub async fn execute_query(
 #[tauri::command]
 pub async fn execute_query_profiled(
     app_state: State<'_, AppState>,
-    query: String
+    query: String,
+    profile_options: Option<ProfileOptions>
 ) -> Result<ProfiledQueryResponse, String> {
     let start_time = chrono::Utc::now();
 
@@ -609,13 +616,18 @@ pub async fn execute_query_profiled(
         guard.clone()
     };
 
+    let explain_analyze_enabled = profile_options
+        .as_ref()
+        .and_then(|opts| opts.explain_analyze)
+        .unwrap_or(true);
+
     let (results, status_diff) = match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
             let pool = guard.as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             let res = postgres::execute_query(pool, query.clone()).await?;
-            let explain_metrics = if is_safe_for_explain(&query) {
+            let explain_metrics = if explain_analyze_enabled && is_safe_for_explain(&query) {
                 postgres::get_explain_analyze_metrics(pool, &query).await.ok()
             } else {
                 None
