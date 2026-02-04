@@ -67,7 +67,14 @@ export function QueryProfiler() {
         return after - before;
     };
 
+    const getDbType = () => {
+        const stored = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+        return stored.db_type || stored.dbType || localStorage.getItem('activeDbType') || 'mysql';
+    };
+    let statusSupported = true;
+
     const fetchMonitorData = async () => {
+        if (getDbType() !== 'mysql' || !statusSupported) return;
         try {
             const result = await invoke('execute_query', { query: 'SHOW FULL PROCESSLIST' });
             if (result && result.rows) {
@@ -94,6 +101,7 @@ export function QueryProfiler() {
     };
 
     const fetchLocksData = async () => {
+        if (getDbType() !== 'mysql' || !statusSupported) return;
         const query = `
             SELECT
               r.trx_id AS 'BekleyenIslemID',
@@ -200,7 +208,6 @@ export function QueryProfiler() {
                     <button id="tab-locks" class="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest transition-colors ${activeTab === 'locks' ? dangerActiveColor : inactiveColor}">
                         <span class="material-symbols-outlined text-[12px]">lock</span> Locks
                     </button>
-                </div>
                 </div>
                 <button id="close-profiler" class="p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
                     <span class="material-symbols-outlined text-[14px] ${(isLight || isDawn) ? 'text-gray-400' : 'text-gray-500'}">close</span>
@@ -606,6 +613,7 @@ export function QueryProfiler() {
     const show = () => {
         isVisible = true;
         container.classList.remove('hidden');
+        container.style.display = 'block';
         container.classList.add('animate-slideUp');
         if (activeTab !== 'profile') {
             startMonitor();
@@ -615,6 +623,7 @@ export function QueryProfiler() {
     const hide = () => {
         isVisible = false;
         container.classList.add('hidden');
+        container.style.display = 'none';
         container.classList.remove('animate-slideUp');
         stopMonitor();
     };
@@ -625,6 +634,7 @@ export function QueryProfiler() {
 
     // Capture status before query
     const captureStatusBefore = async () => {
+        if (getDbType() !== 'mysql' || !statusSupported) return;
         try {
             const result = await invoke('execute_query', { query: 'SHOW SESSION STATUS' });
             statusBefore = {};
@@ -632,12 +642,14 @@ export function QueryProfiler() {
                 statusBefore[row[0]] = row[1];
             });
         } catch (e) {
-            console.warn('Could not capture pre-query status:', e);
+            statusSupported = false;
+            console.warn('Could not capture pre-query status, disabling status metrics for this session:', e);
         }
     };
 
     // Capture status after query and calculate diff
     const captureStatusAfter = async () => {
+        if (getDbType() !== 'mysql' || !statusSupported) return;
         try {
             const result = await invoke('execute_query', { query: 'SHOW SESSION STATUS' });
             statusAfter = {};
@@ -645,7 +657,8 @@ export function QueryProfiler() {
                 statusAfter[row[0]] = row[1];
             });
         } catch (e) {
-            console.warn('Could not capture post-query status:', e);
+            statusSupported = false;
+            console.warn('Could not capture post-query status, disabling status metrics for this session:', e);
         }
     };
 
@@ -661,18 +674,35 @@ export function QueryProfiler() {
     });
 
     window.addEventListener('tactilesql:query-result', async (e) => {
-        if (e.detail && e.detail.length > 0) {
-            await captureStatusAfter();
-            const mainResult = e.detail[0];
-            updateProfile({
-                query: mainResult.query || 'Query',
-                rowsReturned: mainResult.rows?.length || 0,
-                duration: mainResult.duration || 0
-            });
+        const detail = e.detail;
+        const resultsArray = Array.isArray(detail) ? detail : (detail ? [detail] : []);
+        if (resultsArray.length === 0) return;
 
-            // Auto-show when result arrives if not already visible
-            if (!isVisible) show();
-            else if (activeTab === 'profile') render();
+        await captureStatusAfter();
+        const mainResult = resultsArray[0];
+        updateProfile({
+            query: mainResult.query || 'Query',
+            rowsReturned: mainResult.rows?.length || 0,
+            duration: mainResult.duration || 0
+        });
+
+        // Auto-show when result arrives if not already visible
+        if (!isVisible) show();
+        else if (activeTab === 'profile') render();
+    });
+
+    // Show profiler immediately when execution starts (even before results)
+    window.addEventListener('tactilesql:query-executing', () => {
+        if (!isVisible) show();
+        const contentDiv = container.querySelector('#profiler-content');
+        if (contentDiv) {
+            const labelColor = (isLight || isDawn) ? 'text-gray-500' : 'text-gray-400';
+            contentDiv.innerHTML = `
+                <div class="h-32 flex flex-col items-center justify-center text-center ${labelColor}">
+                    <span class="material-symbols-outlined text-3xl animate-spin opacity-50 mb-1">sync</span>
+                    <span class="text-xs font-medium uppercase tracking-wider">Running query...</span>
+                </div>
+            `;
         }
     });
 
