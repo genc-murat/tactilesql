@@ -123,6 +123,9 @@ export function ObjectExplorer() {
 
     // --- Search State ---
     let searchQuery = '';
+    let isExactMatch = false;
+    let isRegexMatch = false;
+    let isCaseSensitive = false;
     let searchMatches = [];
     let currentMatchIndex = -1;
     let searchInputTimeout = null;
@@ -739,16 +742,24 @@ export function ObjectExplorer() {
             <div class="px-2 mt-2">
                 <div class="relative group">
                     <input type="text" id="explorer-search" placeholder="Search objects..." 
-                        class="w-full ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#fcf9f2] border-[#f2e9e1]' : 'bg-white/5 border-white/10')} border rounded px-7 py-1.5 text-[10px] focus:outline-none ${isDawn ? 'focus:border-[#ea9d34]/50' : 'focus:border-mysql-teal/50'} transition-colors"
+                        class="w-full ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#fcf9f2] border-[#f2e9e1]' : 'bg-white/5 border-white/10')} border rounded px-7 py-1.5 text-[10px] focus:outline-none ${isDawn ? 'focus:border-[#ea9d34]/50' : 'focus:border-mysql-teal/50'} transition-colors pr-24"
                         value="${escapeHtml(searchQuery)}">
                     <span class="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-[14px] ${iconColor}">search</span>
-                    <div id="search-controls-container" class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                        ${searchQuery ? `
-                            <span class="text-[9px] ${headerText} mr-1 whitespace-nowrap">${searchMatches.length > 0 ? `${currentMatchIndex + 1}/${searchMatches.length}` : '0/0'}</span>
-                            <button id="search-prev" class="material-symbols-outlined text-[14px] ${iconColor} hover:text-white cursor-pointer" title="Previous match">keyboard_arrow_up</button>
-                            <button id="search-next" class="material-symbols-outlined text-[14px] ${iconColor} hover:text-white cursor-pointer" title="Next match">keyboard_arrow_down</button>
-                            <button id="search-clear" class="material-symbols-outlined text-[14px] ${iconColor} hover:text-white cursor-pointer" title="Clear search">close</button>
-                        ` : ''}
+                    
+                    <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                        <div class="flex items-center bg-black/5 dark:bg-white/5 rounded-md p-0.5 border border-white/5">
+                            <button id="search-case-toggle" class="px-1 py-0.5 rounded text-[9px] font-black transition-all ${isCaseSensitive ? 'bg-mysql-teal text-black' : (isLight ? 'text-gray-400 hover:text-gray-600' : 'text-gray-500 hover:text-gray-300')}" title="Match Case (Aa)">Aa</button>
+                            <button id="search-exact-toggle" class="px-1 py-0.5 rounded text-[9px] font-black transition-all ${isExactMatch ? 'bg-mysql-teal text-black' : (isLight ? 'text-gray-400 hover:text-gray-600' : 'text-gray-500 hover:text-gray-300')}" title="Exact Match (Abc)">Abc</button>
+                            <button id="search-regex-toggle" class="px-1 py-0.5 rounded text-[9px] font-black transition-all ${isRegexMatch ? 'bg-mysql-teal text-black' : (isLight ? 'text-gray-400 hover:text-gray-600' : 'text-gray-500 hover:text-gray-300')}" title="Regex Match (.*)">.*</button>
+                        </div>
+                        <div id="search-controls-container" class="flex items-center gap-1">
+                            ${searchQuery ? `
+                                <span class="text-[9px] ${headerText} mr-1 whitespace-nowrap">${searchMatches.length > 0 ? `${currentMatchIndex + 1}/${searchMatches.length}` : '0/0'}</span>
+                                <button id="search-prev" class="material-symbols-outlined text-[14px] ${iconColor} hover:text-white cursor-pointer" title="Previous match">keyboard_arrow_up</button>
+                                <button id="search-next" class="material-symbols-outlined text-[14px] ${iconColor} hover:text-white cursor-pointer" title="Next match">keyboard_arrow_down</button>
+                                <button id="search-clear" class="material-symbols-outlined text-[14px] ${iconColor} hover:text-white cursor-pointer" title="Clear search">close</button>
+                            ` : ''}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -997,6 +1008,35 @@ export function ObjectExplorer() {
             const clearBtn = e.target.closest('#search-clear');
             if (clearBtn) { clearSearch(); return; }
 
+            const caseToggle = e.target.closest('#search-case-toggle');
+            if (caseToggle) {
+                isCaseSensitive = !isCaseSensitive;
+                didStateChangeSinceLastTreeRender = true;
+                performSearch();
+                render();
+                return;
+            }
+
+            const exactToggle = e.target.closest('#search-exact-toggle');
+            if (exactToggle) {
+                isExactMatch = !isExactMatch;
+                if (isExactMatch) isRegexMatch = false;
+                didStateChangeSinceLastTreeRender = true;
+                performSearch();
+                render();
+                return;
+            }
+
+            const regexToggle = e.target.closest('#search-regex-toggle');
+            if (regexToggle) {
+                isRegexMatch = !isRegexMatch;
+                if (isRegexMatch) isExactMatch = false;
+                didStateChangeSinceLastTreeRender = true;
+                performSearch();
+                render();
+                return;
+            }
+
             const prevBtn = e.target.closest('#search-prev');
             if (prevBtn) { await gotoMatch(currentMatchIndex - 1); return; }
 
@@ -1103,8 +1143,7 @@ export function ObjectExplorer() {
     };
 
     const performSearch = () => {
-        const tokens = tokenize(searchQuery);
-        if (tokens.length === 0) {
+        if (!searchQuery.trim()) {
             searchMatches = [];
             searchContext = null;
             currentMatchIndex = -1;
@@ -1112,10 +1151,40 @@ export function ObjectExplorer() {
             return;
         }
 
+        const tokens = tokenize(searchQuery);
+        const queryNorm = normalize(searchQuery);
+        let regex = null;
+        if (isRegexMatch) {
+            try {
+                regex = new RegExp(searchQuery, isCaseSensitive ? '' : 'i');
+            } catch (e) {
+                // Invalid regex
+                searchMatches = [];
+                searchContext = null;
+                currentMatchIndex = -1;
+                render();
+                return;
+            }
+        }
+
         const matches = [];
         const matchesTokens = (text) => {
-            const norm = normalize(text);
-            return tokens.every(t => norm.includes(t));
+            if (isRegexMatch && regex) return regex.test(text);
+
+            const subject = isCaseSensitive ? text : text.toLowerCase();
+            const target = isCaseSensitive ? searchQuery : searchQuery.toLowerCase();
+
+            if (isExactMatch) return subject === target;
+
+            // For tokens, since tokenize() currently lowercases everything, 
+            // if isCaseSensitive is true, we should probably re-tokenize without lowercasing 
+            // BUT for now let's just check if the lowercased tokens exist in the subject.
+            // Wait, if it's case sensitive, tokens should be case sensitive too.
+            const queryTokens = isCaseSensitive
+                ? searchQuery.split(/[\s._-]+/).filter(Boolean)
+                : tokens;
+
+            return queryTokens.every(t => subject.includes(t));
         };
 
         // Search in databases and nested objects
