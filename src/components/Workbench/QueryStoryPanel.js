@@ -2,7 +2,7 @@ import { QueryStoryAPI } from '../../api/queryStory.js';
 import './QueryStoryPanel.css';
 
 /**
- * Query Story Panel - Workbench'te sorgu hikayesini gösteren yan panel
+ * Query Story Panel - side drawer that shows the narrative of the current query.
  */
 export class QueryStoryPanel {
     constructor() {
@@ -11,239 +11,450 @@ export class QueryStoryPanel {
         this.currentHash = '';
         this.story = null;
         this.isVisible = false;
-        this.onVersionRestore = null; // Callback versiyon geri yükleme için
+        this.onVersionRestore = null; // Callback for version restore
+        this.refs = {};
+        this.emptyCopy = {
+            title: 'No story yet for this query.',
+            description: 'Add purpose, ownership, and version notes to keep the team aligned.'
+        };
     }
 
     render() {
-        const panel = document.createElement('div');
+        const panel = document.createElement('aside');
         panel.className = 'query-story-panel hidden';
         panel.innerHTML = `
             <div class="story-panel-header">
-                <h3>📖 Query Story</h3>
-                <button class="btn-close" title="Kapat">×</button>
+                <div class="story-header-text">
+                    <span class="eyebrow">Query Story</span>
+                    <div class="current-query" title="No query yet">No query yet</div>
+                </div>
+                <div class="header-actions">
+                    <button class="btn-ghost btn-refresh" title="Refresh">
+                        <span class="material-symbols-outlined">refresh</span>
+                    </button>
+                    <button class="btn-ghost btn-create-story" title="New story">
+                        <span class="material-symbols-outlined">add</span>
+                    </button>
+                    <button class="btn-close" title="Close">×</button>
+                </div>
             </div>
             <div class="story-panel-content">
-                <div class="story-empty-state">
-                    <p>Bu sorgunun henüz bir hikayesi yok.</p>
-                    <button class="btn-create-story">Hikaye Oluştur</button>
+                <div class="story-state story-loading hidden">
+                    ${this.renderSkeleton()}
                 </div>
-                <div class="story-details hidden">
-                    <!-- Context Card -->
-                    <div class="story-context-card">
-                        <div class="context-header">
-                            <span class="story-purpose"></span>
-                            <button class="btn-edit-context" title="Düzenle">✏️</button>
+
+                <div class="story-state story-empty">
+                    <div class="empty-card">
+                        <div class="empty-icon">📖</div>
+                        <div class="empty-title">${this.emptyCopy.title}</div>
+                        <p class="empty-desc">${this.emptyCopy.description}</p>
+                        <div class="empty-actions">
+                            <button class="btn-primary btn-create-story">Create Story</button>
+                            <button class="btn-ghost btn-refresh">Refresh</button>
                         </div>
-                        <div class="context-meta">
-                            <span class="story-author"></span>
-                            <span class="story-frequency"></span>
+                    </div>
+                </div>
+
+                <div class="story-state story-details hidden">
+                    <div class="story-meta-grid">
+                        <div class="meta-card meta-wide">
+                            <div class="meta-top">
+                                <div>
+                                    <p class="label">Purpose</p>
+                                    <div class="story-purpose" data-ref="purpose">Purpose not provided</div>
+                                </div>
+                                <button class="btn-ghost btn-edit-context" title="Edit context">
+                                    <span class="material-symbols-outlined">edit</span>
+                                </button>
+                            </div>
+                            <p class="muted story-notes" data-ref="notes"></p>
                         </div>
-                        <div class="story-tags"></div>
-                        <div class="story-stats">
-                            <span class="execution-count"></span>
-                            <button class="btn-favorite" title="Favori">⭐</button>
+
+                        <div class="meta-card">
+                            <p class="label">Business Domain</p>
+                            <div class="meta-value" data-ref="domain">—</div>
+                            <div class="pill" data-ref="frequency">Not planned</div>
+                        </div>
+
+                        <div class="meta-card">
+                            <p class="label">Owner</p>
+                            <div class="meta-value" data-ref="author">—</div>
+                            <div class="pill subtle" data-ref="executions">0 runs</div>
+                        </div>
+
+                        <div class="meta-card tags-card">
+                            <p class="label">Tags</p>
+                            <div class="story-tags" data-ref="tags"></div>
                         </div>
                     </div>
 
-                    <!-- Timeline -->
-                    <div class="story-timeline">
-                        <h4>Versiyon Geçmişi</h4>
-                        <div class="timeline-list"></div>
+                    <div class="story-insights">
+                        <div class="insight-card">
+                            <p class="label">Last Change</p>
+                            <div class="meta-value" data-ref="latest-date">—</div>
+                            <div class="muted" data-ref="latest-reason">No update note</div>
+                        </div>
+
+                        <div class="insight-card badge-card">
+                            <p class="label">Version</p>
+                            <div class="badge" data-ref="latest-version">—</div>
+                        </div>
+
+                        <div class="insight-card badge-card favorite-card">
+                            <p class="label">Favorite</p>
+                            <button class="btn-favorite pill" data-ref="favorite" title="Mark as favorite">☆ Favorite</button>
+                        </div>
                     </div>
 
-                    <!-- Comments -->
-                    <div class="story-comments">
-                        <h4>Yorumlar</h4>
-                        <div class="comments-list"></div>
-                        <div class="comment-input">
-                            <input type="text" placeholder="Yorum ekle..." />
-                            <button class="btn-add-comment">➕</button>
-                        </div>
+                    <div class="story-body-grid">
+                        <section class="story-timeline card">
+                            <div class="section-header">
+                                <div>
+                                    <p class="eyebrow">Version History</p>
+                                    <h4>Decision trail</h4>
+                                </div>
+                            </div>
+                            <div class="timeline-list" data-ref="timeline"></div>
+                        </section>
+
+                        <section class="story-comments card">
+                            <div class="section-header">
+                                <div>
+                                    <p class="eyebrow">Team Notes</p>
+                                    <h4>Comments</h4>
+                                </div>
+                            </div>
+                            <div class="comments-list" data-ref="comments"></div>
+                            <div class="comment-input">
+                                <input type="text" placeholder="Add a comment..." data-ref="comment-input" />
+                                <button class="btn-add-comment" data-ref="add-comment" title="Add comment">
+                                    <span class="material-symbols-outlined">send</span>
+                                </button>
+                            </div>
+                        </section>
                     </div>
                 </div>
             </div>
         `;
 
         this.element = panel;
+        this.cacheDom();
         this.attachEventListeners();
         return panel;
     }
 
+    renderSkeleton() {
+        return `
+            <div class="skeleton-block long"></div>
+            <div class="skeleton-grid">
+                <div class="skeleton-block"></div>
+                <div class="skeleton-block"></div>
+                <div class="skeleton-block"></div>
+            </div>
+            <div class="skeleton-block"></div>
+            <div class="skeleton-list">
+                <div class="skeleton-block"></div>
+                <div class="skeleton-block"></div>
+                <div class="skeleton-block"></div>
+            </div>
+        `;
+    }
+
+    cacheDom() {
+        const q = (selector) => this.element.querySelector(selector);
+        this.refs = {
+            states: {
+                loading: q('.story-loading'),
+                empty: q('.story-empty'),
+                details: q('.story-details')
+            },
+            currentQuery: q('.current-query'),
+            close: q('.btn-close'),
+            refreshButtons: this.element.querySelectorAll('.btn-refresh'),
+            createButtons: this.element.querySelectorAll('.btn-create-story'),
+            editContext: q('.btn-edit-context'),
+            favorite: q('[data-ref="favorite"]'),
+            purpose: q('[data-ref="purpose"]'),
+            notes: q('[data-ref="notes"]'),
+            domain: q('[data-ref="domain"]'),
+            frequency: q('[data-ref="frequency"]'),
+            author: q('[data-ref="author"]'),
+            executions: q('[data-ref="executions"]'),
+            tags: q('[data-ref="tags"]'),
+            latestVersion: q('[data-ref="latest-version"]'),
+            latestDate: q('[data-ref="latest-date"]'),
+            latestReason: q('[data-ref="latest-reason"]'),
+            timeline: q('[data-ref="timeline"]'),
+            comments: q('[data-ref="comments"]'),
+            commentInput: q('[data-ref="comment-input"]'),
+            addComment: q('[data-ref="add-comment"]')
+        };
+    }
+
     attachEventListeners() {
-        // Kapat butonu
-        this.element.querySelector('.btn-close').addEventListener('click', () => {
-            this.hide();
+        this.refs.close?.addEventListener('click', () => this.hide());
+
+        this.refs.refreshButtons?.forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (this.currentQuery) {
+                    this.loadStory(this.currentQuery);
+                }
+            });
         });
 
-        // Hikaye oluştur
-        this.element.querySelector('.btn-create-story')?.addEventListener('click', () => {
-            this.showCreateModal();
+        this.refs.createButtons?.forEach(btn => {
+            btn.addEventListener('click', () => this.showCreateModal());
         });
 
-        // Context düzenle
-        this.element.querySelector('.btn-edit-context')?.addEventListener('click', () => {
-            this.showEditContextModal();
+        this.refs.editContext?.addEventListener('click', () => {
+            if (this.story) this.showEditContextModal();
         });
 
-        // Favori toggle
-        this.element.querySelector('.btn-favorite')?.addEventListener('click', () => {
-            this.toggleFavorite();
-        });
+        this.refs.favorite?.addEventListener('click', () => this.toggleFavorite());
 
-        // Yorum ekle
-        const commentInput = this.element.querySelector('.comment-input input');
-        const addCommentBtn = this.element.querySelector('.btn-add-comment');
-        
-        addCommentBtn?.addEventListener('click', () => {
-            this.addComment(commentInput.value);
-            commentInput.value = '';
-        });
+        if (this.refs.addComment && this.refs.commentInput) {
+            this.refs.addComment.addEventListener('click', () => {
+                this.addComment(this.refs.commentInput.value);
+            });
 
-        commentInput?.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                this.addComment(commentInput.value);
-                commentInput.value = '';
+            this.refs.commentInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    this.addComment(this.refs.commentInput.value);
+                }
+            });
+        }
+    }
+
+    setHeaderQueryLabel(query) {
+        if (!this.refs.currentQuery) return;
+        const firstLine = (query || '').split('\n').find(line => line.trim()) || 'No query yet';
+        const trimmed = firstLine.length > 120 ? `${firstLine.slice(0, 117)}...` : firstLine;
+        this.refs.currentQuery.textContent = trimmed;
+        this.refs.currentQuery.title = query || 'No query yet';
+    }
+
+    updateEmptyCopy(title, description) {
+        const titleEl = this.refs.states.empty?.querySelector('.empty-title');
+        const descEl = this.refs.states.empty?.querySelector('.empty-desc');
+        if (titleEl) titleEl.textContent = title;
+        if (descEl) descEl.textContent = description;
+    }
+
+    showEmptyState() {
+        this.updateEmptyCopy(this.emptyCopy.title, this.emptyCopy.description);
+        this.setView('empty');
+    }
+
+    showErrorState(error) {
+        const message = error?.message || 'Unexpected error.';
+        this.updateEmptyCopy('Could not load story', message);
+        this.setView('empty');
+    }
+
+    setView(view) {
+        Object.entries(this.refs.states).forEach(([key, node]) => {
+            if (!node) return;
+            if (key === view) {
+                node.classList.remove('hidden');
+            } else {
+                node.classList.add('hidden');
             }
         });
     }
 
     async loadStory(query) {
-        this.currentQuery = query;
-        
+        this.currentQuery = query || '';
+        this.setHeaderQueryLabel(query);
+
+        if (!query || !query.trim()) {
+            this.story = null;
+            this.currentHash = '';
+            this.showEmptyState();
+            return;
+        }
+
+        this.setView('loading');
         try {
             const { exists, hash, story } = await QueryStoryAPI.hasStory(query);
             this.currentHash = hash;
             this.story = story;
 
-            if (exists) {
-                this.showStoryDetails();
-            } else {
+            if (!exists || !story) {
                 this.showEmptyState();
+                return;
             }
+
+            this.renderStoryDetails();
+            this.setView('details');
         } catch (error) {
-            console.error('Story yüklenirken hata:', error);
-            this.showEmptyState();
+            console.error('Error while loading story:', error);
+            this.showErrorState(error);
         }
     }
 
-    showEmptyState() {
-        this.element.querySelector('.story-empty-state').classList.remove('hidden');
-        this.element.querySelector('.story-details').classList.add('hidden');
-    }
+    renderStoryDetails() {
+        if (!this.story) return;
 
-    showStoryDetails() {
-        this.element.querySelector('.story-empty-state').classList.add('hidden');
-        this.element.querySelector('.story-details').classList.remove('hidden');
+        const { context = {}, versions = [], comments = [], isFavorite = false, executionCount = 0, tags = [] } = this.story;
 
-        const { context, versions, comments, isFavorite, executionCount } = this.story;
+        if (this.refs.purpose) this.refs.purpose.textContent = context.purpose || 'Purpose not provided';
+        if (this.refs.notes) this.refs.notes.textContent = context.notes || '';
+        if (this.refs.domain) this.refs.domain.textContent = context.businessDomain || 'Unknown';
+        if (this.refs.frequency) this.refs.frequency.textContent = this.formatFrequency(context.expectedFrequency);
+        if (this.refs.author) this.refs.author.textContent = this.story.author ? `👤 ${this.story.author}` : 'Unknown';
+        if (this.refs.executions) this.refs.executions.textContent = `${executionCount || 0} run${(executionCount || 0) === 1 ? '' : 's'}`;
 
-        // Context
-        this.element.querySelector('.story-purpose').textContent = context.purpose || 'Amaç belirtilmemiş';
-        this.element.querySelector('.story-author').textContent = `👤 ${this.story.author}`;
-        this.element.querySelector('.story-frequency').textContent = this.formatFrequency(context.expectedFrequency);
-        
-        // Tags
-        const tagsContainer = this.element.querySelector('.story-tags');
-        tagsContainer.innerHTML = (this.story.tags || []).map(tag => 
-            `<span class="tag">#${tag}</span>`
-        ).join('');
+        this.renderTags(tags);
+        this.setFavoriteButton(isFavorite);
 
-        // Stats
-        this.element.querySelector('.execution-count').textContent = `🚀 ${executionCount || 0} çalıştırma`;
-        this.element.querySelector('.btn-favorite').textContent = isFavorite ? '⭐' : '☆';
+        const sortedVersions = [...(versions || [])].sort((a, b) => a.versionNumber - b.versionNumber);
+        const latestVersion = sortedVersions[sortedVersions.length - 1];
 
-        // Timeline
-        this.renderTimeline(versions);
+        if (latestVersion) {
+            if (this.refs.latestVersion) this.refs.latestVersion.textContent = `v${latestVersion.versionNumber}`;
+            if (this.refs.latestDate) this.refs.latestDate.textContent = this.formatDate(latestVersion.changedAt);
+            if (this.refs.latestReason) this.refs.latestReason.textContent = latestVersion.changeReason || 'No update note';
+        } else {
+            if (this.refs.latestVersion) this.refs.latestVersion.textContent = '—';
+            if (this.refs.latestDate) this.refs.latestDate.textContent = '—';
+            if (this.refs.latestReason) this.refs.latestReason.textContent = 'No update note';
+        }
 
-        // Comments
+        this.renderTimeline(sortedVersions);
         this.renderComments(comments);
     }
 
-    renderTimeline(versions) {
-        const timelineList = this.element.querySelector('.timeline-list');
-        timelineList.innerHTML = versions.map((version, index) => `
-            <div class="timeline-item" data-version="${version.versionNumber}">
-                <div class="timeline-marker ${index === versions.length - 1 ? 'latest' : ''}"></div>
-                <div class="timeline-content">
-                    <div class="version-header">
-                        <span class="version-number">v${version.versionNumber}</span>
-                        <span class="version-date">${this.formatDate(version.changedAt)}</span>
-                    </div>
-                    <div class="version-author">👤 ${version.author}</div>
-                    <div class="version-reason">${version.changeReason}</div>
-                    <div class="version-summary">${version.diffSummary}</div>
-                    ${version.performanceAfter ? `
-                        <div class="version-performance">
-                            ⏱️ ${version.performanceAfter.executionTimeMs.toFixed(2)}ms
+    renderTags(tags = []) {
+        if (!this.refs.tags) return;
+        if (!tags.length) {
+            this.refs.tags.innerHTML = '<span class="tag muted">Etiket yok</span>';
+            return;
+        }
+
+        this.refs.tags.innerHTML = tags
+            .map(tag => `<span class="tag">#${this.escapeHtml(tag)}</span>`)
+            .join('');
+    }
+
+    renderTimeline(versions = []) {
+        const timelineList = this.refs.timeline;
+        if (!timelineList) return;
+
+        if (!versions.length) {
+            timelineList.innerHTML = '<p class="no-timeline">No versions yet.</p>';
+            return;
+        }
+
+        timelineList.innerHTML = versions.map((version, index) => {
+            const isLatest = index === versions.length - 1;
+            const safeReason = this.escapeHtml(version.changeReason || 'No change note');
+            const safeSummary = this.escapeHtml(version.diffSummary || '');
+            const safeAuthor = this.escapeHtml(version.author || 'Unknown');
+            const perf = version.performanceAfter?.executionTimeMs != null
+                ? `<div class="version-performance">⏱️ ${Number(version.performanceAfter.executionTimeMs).toFixed(2)}ms</div>`
+                : '';
+
+            return `
+                <div class="timeline-item ${isLatest ? 'is-latest' : ''}" data-version="${version.versionNumber}">
+                    <div class="timeline-marker"></div>
+                    <div class="timeline-content">
+                        <div class="version-header">
+                            <div class="version-left">
+                                <span class="version-number">v${version.versionNumber}</span>
+                                <span class="version-date">${this.formatDate(version.changedAt)}</span>
+                            </div>
+                            <div class="version-actions">
+                                <button class="btn-view-version" data-version="${version.versionNumber}">View</button>
+                                ${isLatest ? '' : `<button class="btn-restore-version" data-version="${version.versionNumber}">Restore</button>`}
+                            </div>
                         </div>
-                    ` : ''}
-                    <div class="version-actions">
-                        <button class="btn-view-version" data-version="${version.versionNumber}">Görüntüle</button>
-                        ${index !== versions.length - 1 ? `
-                            <button class="btn-restore-version" data-version="${version.versionNumber}">Geri Yükle</button>
-                        ` : ''}
+                        <div class="version-author">👤 ${safeAuthor}</div>
+                        <div class="version-reason">${safeReason}</div>
+                        ${safeSummary ? `<div class="version-summary">${safeSummary}</div>` : ''}
+                        ${perf}
                     </div>
                 </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
 
-        // Versiyon butonlarına event listener ekle
         timelineList.querySelectorAll('.btn-view-version').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                const versionNum = parseInt(e.target.dataset.version);
+                const versionNum = parseInt(e.currentTarget.dataset.version, 10);
                 this.viewVersion(versionNum);
             });
         });
 
         timelineList.querySelectorAll('.btn-restore-version').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                const versionNum = parseInt(e.target.dataset.version);
+                const versionNum = parseInt(e.currentTarget.dataset.version, 10);
                 this.restoreVersion(versionNum);
             });
         });
     }
 
-    renderComments(comments) {
-        const commentsList = this.element.querySelector('.comments-list');
-        if (!comments || comments.length === 0) {
-            commentsList.innerHTML = '<p class="no-comments">Henüz yorum yok.</p>';
+    renderComments(comments = []) {
+        const commentsList = this.refs.comments;
+        if (!commentsList) return;
+
+        if (!comments.length) {
+            commentsList.innerHTML = '<p class="no-comments">No comments yet.</p>';
             return;
         }
 
-        commentsList.innerHTML = comments.map(comment => `
-            <div class="comment-item" data-comment-id="${comment.id}">
-                <div class="comment-header">
-                    <span class="comment-author">👤 ${comment.author}</span>
-                    <span class="comment-date">${this.formatDate(comment.createdAt)}</span>
+        commentsList.innerHTML = comments.map(comment => {
+            const safeText = this.escapeHtml(comment.text || '');
+            const safeAuthor = this.escapeHtml(comment.author || 'User');
+            const lineRef = comment.lineReference ? `<div class="comment-line-ref">Line ${comment.lineReference}</div>` : '';
+
+            return `
+                <div class="comment-item" data-comment-id="${comment.id}">
+                    <div class="comment-header">
+                        <span class="comment-author">👤 ${safeAuthor}</span>
+                        <span class="comment-date">${this.formatDate(comment.createdAt)}</span>
+                    </div>
+                    <div class="comment-text">${safeText}</div>
+                    ${lineRef}
                 </div>
-                <div class="comment-text">${comment.text}</div>
-                ${comment.lineReference ? `
-                    <div class="comment-line-ref">Satır ${comment.lineReference}</div>
-                ` : ''}
-            </div>
-        `).join('');
+            `;
+        }).join('');
     }
 
     async addComment(text) {
-        if (!text.trim()) return;
+        if (!text || !text.trim() || !this.currentHash) return;
+
+        const trimmed = text.trim();
+        const addButton = this.refs.addComment;
 
         try {
-            const author = localStorage.getItem('username') || 'Kullanıcı';
-            await QueryStoryAPI.addComment(this.currentHash, author, text);
+            if (addButton) addButton.disabled = true;
+            const author = localStorage.getItem('username') || 'User';
+            await QueryStoryAPI.addComment(this.currentHash, author, trimmed);
+            if (this.refs.commentInput) this.refs.commentInput.value = '';
             await this.loadStory(this.currentQuery); // Yenile
         } catch (error) {
-            console.error('Yorum eklenirken hata:', error);
-            alert('Yorum eklenemedi: ' + error.message);
+            console.error('Error while adding comment:', error);
+            alert('Could not add comment: ' + error.message);
+        } finally {
+            if (addButton) addButton.disabled = false;
         }
     }
 
     async toggleFavorite() {
+        if (!this.currentHash) return;
         try {
             const newStatus = await QueryStoryAPI.toggleFavorite(this.currentHash);
-            this.element.querySelector('.btn-favorite').textContent = newStatus ? '⭐' : '☆';
+            this.setFavoriteButton(newStatus);
         } catch (error) {
-            console.error('Favori toggle hatası:', error);
+            console.error('Favorite toggle error:', error);
         }
+    }
+
+    setFavoriteButton(isFavorite) {
+        if (!this.refs.favorite) return;
+        this.refs.favorite.classList.toggle('active', !!isFavorite);
+        this.refs.favorite.textContent = isFavorite ? '★ Favorite' : '☆ Favorite';
+        this.refs.favorite.setAttribute('aria-pressed', !!isFavorite);
     }
 
     async viewVersion(versionNumber) {
@@ -251,68 +462,71 @@ export class QueryStoryPanel {
             const diff = await QueryStoryAPI.compareVersions(this.currentHash, versionNumber, versionNumber);
             this.showVersionDiffModal(diff);
         } catch (error) {
-            console.error('Versiyon görüntüleme hatası:', error);
+            console.error('Error while viewing version:', error);
         }
     }
 
     async restoreVersion(versionNumber) {
-        if (!confirm(`v${versionNumber} versiyonunu geri yüklemek istediğinize emin misiniz?`)) {
+        if (!confirm(`Are you sure you want to restore v${versionNumber}?`)) {
             return;
         }
 
         try {
-            const version = this.story.versions.find(v => v.versionNumber === versionNumber);
+            const version = this.story?.versions?.find(v => v.versionNumber === versionNumber);
             if (version && this.onVersionRestore) {
                 this.onVersionRestore(version.queryText);
             }
         } catch (error) {
-            console.error('Versiyon geri yükleme hatası:', error);
+            console.error('Version restore error:', error);
         }
     }
 
     showCreateModal() {
-        // Modal oluştur
         const modal = document.createElement('div');
         modal.className = 'modal query-story-modal';
         modal.innerHTML = `
             <div class="modal-content">
-                <h3>📖 Yeni Query Story Oluştur</h3>
+                <h3>📖 Create Query Story</h3>
                 <form class="story-form">
                     <div class="form-group">
-                        <label>Amaç / Açıklama</label>
-                        <textarea name="purpose" placeholder="Bu sorgu ne için kullanılıyor?" required></textarea>
+                        <label>Purpose / Description</label>
+                        <textarea name="purpose" placeholder="What does this query deliver?" required></textarea>
                     </div>
                     <div class="form-group">
-                        <label>İş Domaini</label>
+                        <label>Business Domain</label>
                         <select name="businessDomain">
-                            <option value="">Seçin...</option>
-                            <option value="Finans">Finans</option>
-                            <option value="Operasyon">Operasyon</option>
-                            <option value="Pazarlama">Pazarlama</option>
-                            <option value="İK">İK</option>
-                            <option value="Teknik">Teknik</option>
-                            <option value="Diğer">Diğer</option>
+                            <option value="">Select...</option>
+                            <option value="Finance">Finance</option>
+                            <option value="Operations">Operations</option>
+                            <option value="Marketing">Marketing</option>
+                            <option value="HR">HR</option>
+                            <option value="Technical">Technical</option>
+                            <option value="Other">Other</option>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>Beklenen Sıklık</label>
+                        <label>Expected Frequency</label>
                         <select name="frequency">
-                            <option value="OneTime">Bir kez</option>
-                            <option value="Daily">Günlük</option>
-                            <option value="Weekly">Haftalık</option>
-                            <option value="Monthly">Aylık</option>
-                            <option value="Quarterly">3 Aylık</option>
-                            <option value="Yearly">Yıllık</option>
-                            <option value="OnDemand">İhtiyaç halinde</option>
+                            <option value="OneTime">One time</option>
+                            <option value="Daily">Daily</option>
+                            <option value="Weekly">Weekly</option>
+                            <option value="Monthly">Monthly</option>
+                            <option value="Quarterly">Quarterly</option>
+                            <option value="Yearly">Yearly</option>
+                            <option value="OnDemand">On demand</option>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>Etiketler (virgülle ayırın)</label>
-                            <input type="text" name="tags" placeholder="rapor, analiz, kritik" />
+                        <label>Tags (comma separated)</label>
+                        <input type="text" name="tags" placeholder="report, analysis, critical" />
+                    </div>
+                    <div class="form-group">
+                        <label>Notes / Assumptions</label>
+                        <textarea name="notes" placeholder="Assumptions, risks, data source notes"></textarea>
                     </div>
                     <div class="form-actions">
-                        <button type="button" class="btn-cancel">İptal</button>
-                        <button type="submit" class="btn-primary">Oluştur</button>
+                        <button type="button" class="btn-cancel">Cancel</button>
+                        <button type="submit" class="btn-primary">Create</button>
                     </div>
                 </form>
             </div>
@@ -320,7 +534,6 @@ export class QueryStoryPanel {
 
         document.body.appendChild(modal);
 
-        // Event listeners
         modal.querySelector('.btn-cancel').addEventListener('click', () => {
             modal.remove();
         });
@@ -328,58 +541,78 @@ export class QueryStoryPanel {
         modal.querySelector('form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const formData = new FormData(e.target);
-            
+
             const context = {
                 purpose: formData.get('purpose'),
                 businessDomain: formData.get('businessDomain'),
                 expectedFrequency: formData.get('frequency'),
                 stakeholders: [],
                 relatedTables: [],
-                notes: ''
+                notes: formData.get('notes') || ''
             };
 
-            const tags = formData.get('tags').split(',').map(t => t.trim()).filter(t => t);
-            const author = localStorage.getItem('username') || 'Kullanıcı';
+            const rawTags = formData.get('tags') || '';
+            const tags = rawTags.split(',').map(t => t.trim()).filter(Boolean);
+            const author = localStorage.getItem('username') || 'User';
 
             try {
                 await QueryStoryAPI.createStory(this.currentQuery, author, context, tags);
                 modal.remove();
                 await this.loadStory(this.currentQuery);
             } catch (error) {
-                console.error('Story oluşturma hatası:', error);
-                alert('Story oluşturulamadı: ' + error.message);
+                console.error('Story creation error:', error);
+                alert('Story could not be created: ' + error.message);
             }
         });
 
-        // Modal dışına tıklayınca kapat
         modal.addEventListener('click', (e) => {
             if (e.target === modal) modal.remove();
         });
     }
 
     showEditContextModal() {
-        // Context düzenleme modalı
         const modal = document.createElement('div');
         modal.className = 'modal query-story-modal';
+
+        const context = this.story?.context || {};
+        const tagsValue = (this.story?.tags || []).join(', ');
+        const frequency = context.expectedFrequency || 'OnDemand';
+
         modal.innerHTML = `
             <div class="modal-content">
-                <h3>✏️ Context Düzenle</h3>
+                <h3>✏️ Edit Context</h3>
                 <form class="story-form">
                     <div class="form-group">
-                        <label>Amaç</label>
-                        <textarea name="purpose">${this.story.context.purpose}</textarea>
+                        <label>Purpose</label>
+                        <textarea name="purpose">${context.purpose || ''}</textarea>
                     </div>
                     <div class="form-group">
-                        <label>İş Domaini</label>
-                        <input type="text" name="businessDomain" value="${this.story.context.businessDomain}" />
+                        <label>Business Domain</label>
+                        <input type="text" name="businessDomain" value="${context.businessDomain || ''}" />
                     </div>
                     <div class="form-group">
-                        <label>Etiketler</label>
-                        <input type="text" name="tags" value="${this.story.tags.join(', ')}" />
+                        <label>Expected Frequency</label>
+                        <select name="frequency" value="${frequency}">
+                            <option value="OneTime" ${frequency === 'OneTime' ? 'selected' : ''}>One time</option>
+                            <option value="Daily" ${frequency === 'Daily' ? 'selected' : ''}>Daily</option>
+                            <option value="Weekly" ${frequency === 'Weekly' ? 'selected' : ''}>Weekly</option>
+                            <option value="Monthly" ${frequency === 'Monthly' ? 'selected' : ''}>Monthly</option>
+                            <option value="Quarterly" ${frequency === 'Quarterly' ? 'selected' : ''}>Quarterly</option>
+                            <option value="Yearly" ${frequency === 'Yearly' ? 'selected' : ''}>Yearly</option>
+                            <option value="OnDemand" ${frequency === 'OnDemand' ? 'selected' : ''}>On demand</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Tags</label>
+                        <input type="text" name="tags" value="${tagsValue}" />
+                    </div>
+                    <div class="form-group">
+                        <label>Notes</label>
+                        <textarea name="notes">${context.notes || ''}</textarea>
                     </div>
                     <div class="form-actions">
-                        <button type="button" class="btn-cancel">İptal</button>
-                        <button type="submit" class="btn-primary">Kaydet</button>
+                        <button type="button" class="btn-cancel">Cancel</button>
+                        <button type="submit" class="btn-primary">Save</button>
                     </div>
                 </form>
             </div>
@@ -394,22 +627,25 @@ export class QueryStoryPanel {
         modal.querySelector('form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const formData = new FormData(e.target);
-            
-            const context = {
-                ...this.story.context,
+
+            const updatedContext = {
+                ...context,
                 purpose: formData.get('purpose'),
-                businessDomain: formData.get('businessDomain')
+                businessDomain: formData.get('businessDomain'),
+                expectedFrequency: formData.get('frequency'),
+                notes: formData.get('notes') || ''
             };
 
-            const tags = formData.get('tags').split(',').map(t => t.trim()).filter(t => t);
+            const rawTags = formData.get('tags') || '';
+            const tags = rawTags.split(',').map(t => t.trim()).filter(Boolean);
 
             try {
-                await QueryStoryAPI.updateContext(this.currentHash, context, tags);
+                await QueryStoryAPI.updateContext(this.currentHash, updatedContext, tags);
                 modal.remove();
                 await this.loadStory(this.currentQuery);
             } catch (error) {
-                console.error('Context güncelleme hatası:', error);
-                alert('Context güncellenemedi: ' + error.message);
+                console.error('Context update error:', error);
+                alert('Context could not be updated: ' + error.message);
             }
         });
 
@@ -423,8 +659,8 @@ export class QueryStoryPanel {
         modal.className = 'modal version-diff-modal';
         modal.innerHTML = `
             <div class="modal-content large">
-                <h3>🔍 Versiyon Karşılaştırma</h3>
-                <div class="diff-summary">${diff.summary}</div>
+                <h3>🔍 Version Comparison</h3>
+                <div class="diff-summary">${this.escapeHtml(diff.summary)}</div>
                 <div class="diff-content">
                     ${diff.diffLines.map(line => {
                         let className = 'diff-line';
@@ -441,7 +677,7 @@ export class QueryStoryPanel {
                     }).join('')}
                 </div>
                 <div class="form-actions">
-                    <button class="btn-close-modal">Kapat</button>
+                    <button class="btn-close-modal">Close</button>
                 </div>
             </div>
         `;
@@ -475,23 +711,25 @@ export class QueryStoryPanel {
         }
     }
 
-    // Yardımcı metodlar
+    // Helper methods
     formatFrequency(freq) {
         const map = {
-            'OneTime': '🔴 Bir kez',
-            'Daily': '📅 Günlük',
-            'Weekly': '📅 Haftalık',
-            'Monthly': '📅 Aylık',
-            'Quarterly': '📅 3 Aylık',
-            'Yearly': '📅 Yıllık',
-            'OnDemand': '⚡ İhtiyaç halinde'
+            'OneTime': '🔴 One time',
+            'Daily': '📅 Daily',
+            'Weekly': '📅 Weekly',
+            'Monthly': '📅 Monthly',
+            'Quarterly': '📅 Quarterly',
+            'Yearly': '📅 Yearly',
+            'OnDemand': '⚡ On demand'
         };
-        return map[freq] || freq;
+        return map[freq] || 'Not planned';
     }
 
     formatDate(dateString) {
+        if (!dateString) return '—';
         const date = new Date(dateString);
-        return date.toLocaleDateString('tr-TR', {
+        if (Number.isNaN(date.getTime())) return '—';
+        return date.toLocaleDateString(navigator.language || 'en-US', {
             day: '2-digit',
             month: 'short',
             year: 'numeric',
@@ -502,7 +740,7 @@ export class QueryStoryPanel {
 
     escapeHtml(text) {
         const div = document.createElement('div');
-        div.textContent = text;
+        div.textContent = text ?? '';
         return div.innerHTML;
     }
 }
