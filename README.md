@@ -25,10 +25,12 @@ TactileSQL is a modern, desktop-first MySQL workbench built with Tauri 2 and van
 - **Data Import/Export Wizard** supporting CSV, SQL, and JSON formats with progress tracking.
 - **Backup & Restore** with scheduled backups, compression, and full/incremental backup modes.
 - **Real-time Server Monitor** with live metrics for CPU, memory, connections, queries, and InnoDB status.
+- **Capacity Planner** charts now sync total/data/index storage, cache hit, and disk I/O series under one tooltip with hover-linked markers.
 - **Schema Evolution Tracker**: Capture snapshots, detect drifts, and auto-generate migration scripts.
 - **AI Schema Impact Analysis**: LLM-based downstream risk analysis for schema diffs with persistent snapshot-pair history.
 - **Data Quality Analyzer**: Track data health scores, detect anomalies (NULLs, duplicates), and visualize quality trends.
 - **Dependency Engine**: Visualize lineage between tables, views, and procedures with impact analysis for schema changes.
+- **Density-aware Dependency Graph** with advanced zoom/pan controls, keyboard shortcuts, and a responsive mini-map for navigating large node/edge sets.
 - **Connection Manager** with encrypted credential storage, connection testing, and SSH tunnel configuration.
 - **Access Control** viewer for MySQL users and privileges.
 - **Themes**: Dark, Light, and Oceanic.
