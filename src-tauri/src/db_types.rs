@@ -12,6 +12,7 @@ use tokio::sync::Mutex;
 #[serde(rename_all = "lowercase")]
 pub enum DatabaseType {
     #[default]
+    Disconnected,
     MySQL,
     PostgreSQL,
 }
@@ -34,7 +35,7 @@ impl Default for AppState {
         Self {
             mysql_pool: Arc::new(Mutex::new(None)),
             postgres_pool: Arc::new(Mutex::new(None)),
-            active_db_type: Arc::new(Mutex::new(DatabaseType::MySQL)),
+            active_db_type: Arc::new(Mutex::new(DatabaseType::Disconnected)),
             encryption_key: Arc::new(Mutex::new(None)),
             awareness_store: Arc::new(Mutex::new(None)),
             schema_tracker_store: Arc::new(Mutex::new(None)),

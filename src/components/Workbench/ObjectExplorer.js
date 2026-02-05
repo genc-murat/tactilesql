@@ -564,10 +564,10 @@ export function ObjectExplorer() {
     };
 
     // --- Render ---
-        const render = () => {
-            const headerText = isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'));
-            const iconColor = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-600'));
-            const hoverIcon = isDawn ? 'hover:text-[#ea9d34]' : 'hover:text-mysql-teal';
+    const render = () => {
+        const headerText = isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'));
+        const iconColor = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-600'));
+        const hoverIcon = isDawn ? 'hover:text-[#ea9d34]' : 'hover:text-mysql-teal';
 
         const wasSearchFocused = document.activeElement && document.activeElement.id === 'explorer-search';
         const selectionStart = wasSearchFocused ? document.activeElement.selectionStart : 0;
@@ -1895,73 +1895,89 @@ export function ObjectExplorer() {
         const currentActiveConfig = connections.find(c => c.id === currentActiveId) || null;
 
         (async () => {
-            for (const conn of connections) {
+            // ONLY establish and prefetch for the ACTIVE connection
+            // to avoid disrupting the backend state with multiple connection attempts
+            if (currentActiveConfig) {
+                const conn = currentActiveConfig;
                 const stateKey = deriveStateKey(conn);
                 const state = getConnectionState(stateKey);
+
                 try {
-                    if (cancelPreload) break;
-                    await invoke('establish_connection', { config: conn });
-                    DatabaseCache.setConnectionId(conn.id);
-                    currentBackendId = conn.id;
+                    if (!cancelPreload) {
+                        await invoke('establish_connection', { config: conn });
+                        DatabaseCache.setConnectionId(conn.id);
+                        currentBackendId = conn.id;
 
-                    // Databases
-                    const dbs = await invoke('get_databases');
-                    state.databases = dbs;
+                        // Databases
+                        const dbs = await invoke('get_databases');
+                        state.databases = dbs;
 
-                    // Prefetch schema lists for each database
-                    for (const db of dbs) {
-                        if (!DatabaseCache.get(CacheTypes.SCHEMAS, db)) {
-                            try {
-                                const schema = await fetchDatabaseObjects(db);
-                                DatabaseCache.set(CacheTypes.SCHEMAS, db, schema, 24 * 60 * 60 * 1000);
-                                state.dbObjects[db] = schema;
-                                const tableDetails = await fetchTableDetailsAll(db, schema.tables || []);
-                                Object.entries(tableDetails).forEach(([table, details]) => {
-                                    const key = `${db}.${table}`;
-                                    state.tableDetails[key] = details;
-                                });
-                            } catch (err) {
-                                console.warn(`Background fetch failed for ${conn.name || conn.id} / ${db}:`, err);
-                            }
-                        } else {
-                            state.dbObjects[db] = DatabaseCache.get(CacheTypes.SCHEMAS, db);
-                            const tables = state.dbObjects[db]?.tables || [];
-                            tables.forEach(table => {
-                                const key = `${db}.${table}`;
-                                const cols = DatabaseCache.get(CacheTypes.COLUMNS, key);
-                                const idx = DatabaseCache.get(CacheTypes.INDEXES, key);
-                                const fks = DatabaseCache.get(CacheTypes.FOREIGN_KEYS, key);
-                                if (cols || idx || fks) {
-                                    state.tableDetails[key] = {
-                                        columns: cols || [],
-                                        indexes: idx || [],
-                                        fks: fks || [],
-                                        constraints: []
-                                    };
+                        // Prefetch schema lists for the database(s) in this connection
+                        for (const db of dbs) {
+                            if (!DatabaseCache.get(CacheTypes.SCHEMAS, db)) {
+                                try {
+                                    const schema = await fetchDatabaseObjects(db);
+                                    DatabaseCache.set(CacheTypes.SCHEMAS, db, schema, 24 * 60 * 60 * 1000);
+                                    state.dbObjects[db] = schema;
+                                    const tableDetails = await fetchTableDetailsAll(db, schema.tables || []);
+                                    Object.entries(tableDetails).forEach(([table, details]) => {
+                                        const key = `${db}.${table}`;
+                                        state.tableDetails[key] = details;
+                                    });
+                                } catch (err) {
+                                    console.warn(`Background fetch failed for ${conn.name || conn.id} / ${db}:`, err);
                                 }
-                            });
+                            } else {
+                                state.dbObjects[db] = DatabaseCache.get(CacheTypes.SCHEMAS, db);
+                                const tables = state.dbObjects[db]?.tables || [];
+                                tables.forEach(table => {
+                                    const key = `${db}.${table}`;
+                                    const cols = DatabaseCache.get(CacheTypes.COLUMNS, key);
+                                    const idx = DatabaseCache.get(CacheTypes.INDEXES, key);
+                                    const fks = DatabaseCache.get(CacheTypes.FOREIGN_KEYS, key);
+                                    if (cols || idx || fks) {
+                                        state.tableDetails[key] = {
+                                            columns: cols || [],
+                                            indexes: idx || [],
+                                            fks: fks || [],
+                                            constraints: []
+                                        };
+                                    }
+                                });
+                            }
                         }
                     }
-
-                    persistStates();
-                    render();
                 } catch (error) {
-                    console.warn(`Preload failed for connection ${conn.name || conn.id}:`, error);
+                    console.warn(`Preload failed for active connection ${conn.name || conn.id}:`, error);
                 }
             }
 
-            // Restore original active connection
-            if (currentActiveConfig) {
-                try {
-                    await invoke('establish_connection', { config: currentActiveConfig });
-                    DatabaseCache.setConnectionId(currentActiveId);
-                    currentBackendId = currentActiveId;
-                    loadStateForConnection(activeStateKey);
-                    await loadDatabases();
-                } catch (err) {
-                    console.error('Failed to restore active connection after preload:', err);
+            // For other connections, simply load what's in cache WITHOUT establishing a connection
+            for (const conn of connections) {
+                if (conn.id === currentActiveId) continue;
+
+                const stateKey = deriveStateKey(conn);
+                const state = getConnectionState(stateKey);
+
+                // If databases are not in state, check cache
+                if (!state.databases || state.databases.length === 0) {
+                    // Note: We don't have a specific cache for the DB list per connection yet
+                    // so we just leave it for when the user actually connects.
+                }
+
+                // Fill tables from cache if available
+                if (state.databases) {
+                    state.databases.forEach(db => {
+                        const cachedSchema = DatabaseCache.get(CacheTypes.SCHEMAS, db);
+                        if (cachedSchema) {
+                            state.dbObjects[db] = cachedSchema;
+                        }
+                    });
                 }
             }
+
+            persistStates();
+            render();
 
             isPreloadingConnections = false;
             cancelPreload = false;

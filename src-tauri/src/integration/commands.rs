@@ -85,7 +85,8 @@ pub async fn check_impact(
             let pool_guard = app_state.postgres_pool.lock().await;
             let pool = pool_guard.as_ref().ok_or("No active PostgreSQL connection")?;
             build_dependency_graph_postgres(pool, &connection_id, None, None).await?
-        }
+        },
+        DatabaseType::Disconnected => return Err("No connection established".into()),
     };
     
     // Run analysis

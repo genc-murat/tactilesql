@@ -40,6 +40,7 @@ fn generate_create_table(table: &TableDefinition, db_type: &DatabaseType) -> Str
         let col_def = match db_type {
             DatabaseType::MySQL => format_column_mysql(col),
             DatabaseType::PostgreSQL => format_column_postgres(col),
+            DatabaseType::Disconnected => String::new(),
         };
         columns_def.push(col_def);
     }
@@ -62,6 +63,7 @@ fn generate_alter_table(diff: &TableDiff, db_type: &DatabaseType) -> Vec<String>
          match db_type {
             DatabaseType::MySQL => stmts.push(format!("ALTER TABLE {} ADD COLUMN {}", table, format_column_mysql(col))),
             DatabaseType::PostgreSQL => stmts.push(format!("ALTER TABLE {} ADD COLUMN {}", table, format_column_postgres(col))),
+            DatabaseType::Disconnected => {},
         }
     }
 
@@ -72,7 +74,7 @@ fn generate_alter_table(diff: &TableDiff, db_type: &DatabaseType) -> Vec<String>
 
     // Modify Columns
     for col_diff in &diff.modified_columns {
-         match db_type {
+          match db_type {
             DatabaseType::MySQL => stmts.push(format!("ALTER TABLE {} MODIFY COLUMN {}", table, format_column_mysql(&col_diff.new_column))),
             DatabaseType::PostgreSQL => {
                 // Postgres ALTER COLUMN TYPE
@@ -105,6 +107,7 @@ fn generate_alter_table(diff: &TableDiff, db_type: &DatabaseType) -> Vec<String>
                     stmts.push(format!("ALTER TABLE {} {}", table, change));
                 }
             },
+            DatabaseType::Disconnected => {},
         }
     }
 

@@ -37,6 +37,7 @@ pub async fn capture_schema_snapshot(
             
             crate::schema_tracker::capture::capture_snapshot_postgres(pool, &schema_name, &connection_id).await?
         },
+        DatabaseType::Disconnected => return Err("No connection established".into()),
     };
 
     {

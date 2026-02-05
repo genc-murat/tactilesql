@@ -2273,6 +2273,10 @@ export function QueryEditor() {
 
                     renderOptions(filteredDatabases);
                 } catch (error) {
+                    if (error === 'No connection established') {
+                        if (dbOptionsList) dbOptionsList.innerHTML = `<div class="px-4 py-8 text-center text-gray-400 text-[10px]">No active connection</div>`;
+                        return;
+                    }
                     console.error('Failed to load DB list', error);
                     if (dbOptionsList) dbOptionsList.innerHTML = `<div class="px-4 py-8 text-center text-red-500 text-[10px]">Error loading databases</div>`;
                 }

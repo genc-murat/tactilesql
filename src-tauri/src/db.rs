@@ -252,6 +252,7 @@ pub async fn test_connection(config: ConnectionConfig) -> Result<String, String>
     match config.db_type {
         DatabaseType::PostgreSQL => postgres::test_connection(&config).await,
         DatabaseType::MySQL => mysql::test_connection(&config).await,
+        DatabaseType::Disconnected => Err("Cannot test connection for 'Disconnected' type".into()),
     }
 }
 
@@ -282,7 +283,8 @@ pub async fn establish_connection(
             *db_type_guard = DatabaseType::MySQL;
             
             Ok("MySQL connection established successfully".to_string())
-        }
+        },
+        DatabaseType::Disconnected => Err("Cannot establish a 'Disconnected' connection".into()),
     }
 }
 
@@ -305,8 +307,12 @@ pub async fn disconnect(app_state: State<'_, AppState>) -> Result<String, String
             if let Some(pool) = guard.take() {
                 pool.close().await;
             }
-        }
+        },
+        DatabaseType::Disconnected => {}
     }
+
+    let mut db_type_guard = app_state.active_db_type.lock().await;
+    *db_type_guard = DatabaseType::Disconnected;
 
     Ok("Disconnected successfully".to_string())
 }
@@ -493,7 +499,8 @@ fn spawn_awareness_log(
                             } else {
                                 Err("Postgres pool not available".to_string())
                             }
-                        }
+                        },
+                        DatabaseType::Disconnected => Err("No connection established".to_string()),
                     };
 
                     // Analyze Cause and Update Log
@@ -581,7 +588,8 @@ pub async fn execute_query(
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::execute_query(pool, query.clone()).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     };
 
     let duration_ms = (chrono::Utc::now() - start_time).num_milliseconds() as f64;
@@ -639,7 +647,8 @@ pub async fn execute_query_profiled(
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::execute_query_with_status(pool, query.clone()).await?
-        }
+        },
+        DatabaseType::Disconnected => return Err("No connection established".into()),
     };
 
     let duration_ms = (chrono::Utc::now() - start_time).num_milliseconds() as f64;
@@ -687,7 +696,8 @@ pub async fn get_databases(app_state: State<'_, AppState>) -> Result<Vec<String>
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_databases(pool).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -711,7 +721,8 @@ pub async fn get_schemas(app_state: State<'_, AppState>) -> Result<Vec<String>, 
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_databases(pool).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -737,7 +748,8 @@ pub async fn get_tables(
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_tables(pool, &database).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -764,7 +776,8 @@ pub async fn get_table_schema(
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_table_schema(pool, &database, &table).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -791,7 +804,8 @@ pub async fn get_table_ddl(
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_table_ddl(pool, &database, &table).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -822,7 +836,8 @@ pub async fn get_table_indexes(
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_table_indexes(pool, &database, &table).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -849,7 +864,8 @@ pub async fn get_table_foreign_keys(
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_table_foreign_keys(pool, &database, &table).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -876,7 +892,8 @@ pub async fn get_table_primary_keys(
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_table_primary_keys(pool, &database, &table).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -903,7 +920,8 @@ pub async fn get_table_constraints(
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_table_constraints(pool, &database, &table).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -930,7 +948,8 @@ pub async fn get_table_stats(
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_table_stats(pool, &database, &table).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -960,7 +979,8 @@ pub async fn get_views(
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_views(pool, &database).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -987,7 +1007,8 @@ pub async fn get_view_definition(
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_view_definition(pool, &database, &view).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -1014,7 +1035,8 @@ pub async fn alter_view(
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::alter_view(pool, &database, &definition).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -1044,7 +1066,8 @@ pub async fn get_triggers(
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_triggers(pool, &database).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -1071,7 +1094,8 @@ pub async fn get_table_triggers(
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_table_triggers(pool, &database, &table).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -1101,7 +1125,8 @@ pub async fn get_procedures(
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_procedures(pool, &database).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -1127,7 +1152,8 @@ pub async fn get_functions(
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_functions(pool, &database).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -1155,7 +1181,8 @@ pub async fn get_events(
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_events(pool, &database).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -1182,7 +1209,8 @@ pub async fn get_users(app_state: State<'_, AppState>) -> Result<Vec<MySqlUser>,
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_users(pool).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -1209,7 +1237,8 @@ pub async fn get_user_privileges(
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_user_privileges(pool, &user, &host).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -1236,7 +1265,8 @@ pub async fn get_server_status(app_state: State<'_, AppState>) -> Result<ServerS
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_server_status(pool).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -1259,7 +1289,8 @@ pub async fn get_process_list(app_state: State<'_, AppState>) -> Result<Vec<Proc
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_process_list(pool).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -1285,7 +1316,8 @@ pub async fn kill_process(
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::kill_process(pool, process_id).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -1305,7 +1337,8 @@ pub async fn get_innodb_status(app_state: State<'_, AppState>) -> Result<String,
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_innodb_status(pool).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 #[tauri::command]
@@ -1330,7 +1363,8 @@ pub async fn get_execution_plan(
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_execution_plan(pool, &query).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 #[tauri::command]
@@ -1352,7 +1386,8 @@ pub async fn get_replication_status(app_state: State<'_, AppState>) -> Result<se
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_replication_status(pool).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -1375,7 +1410,8 @@ pub async fn get_locks(app_state: State<'_, AppState>) -> Result<Vec<LockInfo>, 
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_locks(pool).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -1401,7 +1437,8 @@ pub async fn get_slow_queries(
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_slow_queries(pool, limit).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -1431,7 +1468,8 @@ pub async fn analyze_query(
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::analyze_query(pool, &query).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -1458,7 +1496,8 @@ pub async fn get_index_suggestions(
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_index_suggestions(pool, &database, &table).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -1485,7 +1524,8 @@ pub async fn get_index_usage(
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_index_usage(pool, &database, &table).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -1512,7 +1552,8 @@ pub async fn get_index_sizes(
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_index_sizes(pool, &database, &table).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -1538,7 +1579,8 @@ pub async fn get_capacity_metrics(
             let pool = guard.as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_capacity_metrics(pool, &database).await
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -1566,7 +1608,8 @@ pub async fn get_sequences(
         DatabaseType::MySQL => {
             // MySQL doesn't have sequences
             Ok(Vec::new())
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -1589,7 +1632,8 @@ pub async fn get_custom_types(
         },
         DatabaseType::MySQL => {
             Ok(Vec::new())
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -1609,7 +1653,8 @@ pub async fn get_extensions(app_state: State<'_, AppState>) -> Result<Vec<String
         },
         DatabaseType::MySQL => {
             Ok(Vec::new())
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -1629,7 +1674,8 @@ pub async fn get_tablespaces(app_state: State<'_, AppState>) -> Result<Vec<Strin
         },
         DatabaseType::MySQL => {
             Ok(Vec::new())
-        }
+        },
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 

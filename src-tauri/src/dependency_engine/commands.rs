@@ -27,7 +27,8 @@ pub async fn get_dependency_graph(
                 let pool_guard = app_state.postgres_pool.lock().await;
                 let pool = pool_guard.as_ref().ok_or("No active PostgreSQL connection")?;
                 super::extractor::build_dependency_graph_postgres(pool, &connection_id, database, table_name).await
-            }
+            },
+            DatabaseType::Disconnected => Err("No connection established".into()),
         }
     };
 

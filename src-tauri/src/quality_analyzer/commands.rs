@@ -44,6 +44,7 @@ pub async fn run_quality_analysis(
             
             crate::quality_analyzer::analyze::analyze_table_postgres(pool, &schema_name, &table, &connection_id).await?
         },
+        crate::db_types::DatabaseType::Disconnected => return Err("No connection established".into()),
     };
 
     // 2. Fetch Latest Schema Snapshot ID (Best effort)
