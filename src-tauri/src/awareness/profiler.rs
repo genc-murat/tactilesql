@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
@@ -47,12 +47,12 @@ pub fn normalize_query(query: &str) -> String {
     normalized = re_number.replace_all(&normalized, "?").to_string();
 
     // 4. Lowercase (optional, maybe unsafe depending on DB case sensitivity for tables, usually good for keywords)
-    // For now, let's keep case as is but maybe lowercase keywords? 
+    // For now, let's keep case as is but maybe lowercase keywords?
     // Safest is to just keep it, or only lowercase if we are sure.
     // Let's lowercase the whole thing for normalization purposes, assuming table names are case insensitive or user is consistent.
     // PostgreSQL is case sensitive for quoted identifiers. MySQL depends on OS.
     // Let's NOT lowercase for now to be safe, or maybe just standard keywords.
-    
+
     normalized
 }
 

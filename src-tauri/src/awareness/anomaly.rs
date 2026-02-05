@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
+use crate::awareness::profiler::{BaselineProfile, QueryExecution};
 use chrono::{DateTime, Utc};
-use crate::awareness::profiler::{QueryExecution, BaselineProfile};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Severity {
@@ -11,7 +11,7 @@ pub enum Severity {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnomalyConfig {
-    pub anomaly_threshold_pct: f64, // e.g. 50.0 for 50% deviation
+    pub anomaly_threshold_pct: f64,       // e.g. 50.0 for 50% deviation
     pub min_executions_for_baseline: u64, // e.g. 5
 }
 
@@ -48,7 +48,7 @@ impl AnomalyDetector {
     pub fn detect(
         execution: &QueryExecution,
         baseline: &BaselineProfile,
-        config: &AnomalyConfig
+        config: &AnomalyConfig,
     ) -> Option<Anomaly> {
         // 1. Check if we have enough history
         if baseline.total_executions < config.min_executions_for_baseline {
@@ -58,13 +58,13 @@ impl AnomalyDetector {
         // 2. Check deviation
         let avg = baseline.avg_duration_ms;
         let current = execution.resources.execution_time_ms;
-        
+
         if avg <= 0.0 {
-             return None;
+            return None;
         }
 
         let deviation = ((current - avg) / avg) * 100.0;
-        
+
         // Only care about regressions (slower), not faster queries
         if deviation <= config.anomaly_threshold_pct {
             return None;
@@ -92,16 +92,16 @@ impl AnomalyDetector {
 
     pub fn analyze_cause(plan: &str) -> Option<AnomalyCause> {
         // Simple heuristic analysis of execution plan
-        
+
         // Check for Full Table Scan (MySQL: type "ALL", Postgres: "Seq Scan")
         // Note: Simple string contains check might trigger false positives. logic should be robust enough.
-        
-        // Check for Full Table Scan 
+
+        // Check for Full Table Scan
         // MySQL JSON: "access_type": "ALL"
         // MySQL Text: type: ALL (or just ALL in specific column, difficult to parse without structure)
         // PostgreSQL: "Seq Scan"
         let has_full_scan = plan.contains("Seq Scan") || plan.contains("\"access_type\": \"ALL\"");
-        
+
         if has_full_scan {
             return Some(AnomalyCause {
                 cause_type: "Missing Index".to_string(),
@@ -109,7 +109,7 @@ impl AnomalyDetector {
                 description: "Execution plan indicates a full table scan. Consider adding an index on the filtered columns.".to_string(),
             });
         }
-        
+
         None
     }
 }

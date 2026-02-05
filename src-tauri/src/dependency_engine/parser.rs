@@ -113,7 +113,9 @@ fn visit_expr_for_subquery(expr: &Expr, deps: &mut Vec<(SchemaQualifiedName, Edg
         | Expr::IsUnknown(expr)
         | Expr::IsNotUnknown(expr)
         | Expr::Cast { expr, .. }
-        | Expr::AtTimeZone { timestamp: expr, .. }
+        | Expr::AtTimeZone {
+            timestamp: expr, ..
+        }
         | Expr::Extract { expr, .. } => {
             visit_expr_for_subquery(expr, deps);
         }
@@ -154,7 +156,10 @@ fn visit_expr_for_subquery(expr: &Expr, deps: &mut Vec<(SchemaQualifiedName, Edg
     }
 }
 
-fn visit_function_arguments(args: &FunctionArguments, deps: &mut Vec<(SchemaQualifiedName, EdgeType)>) {
+fn visit_function_arguments(
+    args: &FunctionArguments,
+    deps: &mut Vec<(SchemaQualifiedName, EdgeType)>,
+) {
     match args {
         FunctionArguments::None => {}
         FunctionArguments::Subquery(query) => visit_query(query, deps),
@@ -246,7 +251,9 @@ fn visit_table_factor_with_edge(
         TableFactor::Derived { subquery, .. } => {
             visit_query(subquery, deps);
         }
-        TableFactor::NestedJoin { table_with_joins, .. } => {
+        TableFactor::NestedJoin {
+            table_with_joins, ..
+        } => {
             visit_table_with_joins_with_edge(table_with_joins, edge_type, deps);
         }
         _ => {}
@@ -275,7 +282,10 @@ fn push_dependency_from_object_name(
     ));
 }
 
-fn parse_captured_identifier(raw_part1: &str, raw_part2: Option<&str>) -> Option<SchemaQualifiedName> {
+fn parse_captured_identifier(
+    raw_part1: &str,
+    raw_part2: Option<&str>,
+) -> Option<SchemaQualifiedName> {
     let part1 = raw_part1.trim();
     if part1.is_empty() {
         return None;

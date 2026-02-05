@@ -2,13 +2,13 @@
 // MySQL SPECIFIC DATABASE OPERATIONS
 // =====================================================
 
-use sqlx::{Pool, MySql, Row, Column, Executor, MySqlConnection};
-use sqlx::mysql::MySqlConnectOptions;
-use sqlx::ConnectOptions;
 use crate::db_types::*;
 use futures::StreamExt;
-use std::collections::{HashMap, HashSet};
 use serde_json::Value;
+use sqlx::mysql::MySqlConnectOptions;
+use sqlx::ConnectOptions;
+use sqlx::{Column, Executor, MySql, MySqlConnection, Pool, Row};
+use std::collections::{HashMap, HashSet};
 use tokio::time::{timeout, Duration};
 
 const SIM_EXPLAIN_TIMEOUT_MS: u64 = 2500;
@@ -24,7 +24,7 @@ pub async fn test_connection(config: &ConnectionConfig) -> Result<String, String
     if let Some(pwd) = &config.password {
         options = options.password(pwd);
     }
-    
+
     if let Some(db) = &config.database {
         if !db.is_empty() {
             options = options.database(db);
@@ -33,14 +33,16 @@ pub async fn test_connection(config: &ConnectionConfig) -> Result<String, String
 
     options = options.log_statements(log::LevelFilter::Debug).to_owned();
 
-    let mut conn = options.connect().await
-        .map_err(|e| {
-            let err_msg = e.to_string();
-            if err_msg.contains("os error 111") {
-                return format!("Connection Refused ({})\\n\\nCheck if MySQL is running on {}:{}", err_msg, config.host, config.port);
-            }
-            format!("Connection failed: {}", e)
-        })?;
+    let mut conn = options.connect().await.map_err(|e| {
+        let err_msg = e.to_string();
+        if err_msg.contains("os error 111") {
+            return format!(
+                "Connection Refused ({})\\n\\nCheck if MySQL is running on {}:{}",
+                err_msg, config.host, config.port
+            );
+        }
+        format!("Connection failed: {}", e)
+    })?;
 
     let _ = sqlx::query("SELECT 1")
         .fetch_one(&mut conn)
@@ -59,13 +61,13 @@ pub async fn create_pool(config: &ConnectionConfig) -> Result<Pool<MySql>, Strin
     if let Some(pwd) = &config.password {
         options = options.password(pwd);
     }
-    
+
     if let Some(db) = &config.database {
         if !db.is_empty() {
             options = options.database(db);
         }
     }
-    
+
     sqlx::mysql::MySqlPoolOptions::new()
         .max_connections(10)
         .min_connections(2)
@@ -87,13 +89,19 @@ pub async fn create_pool(config: &ConnectionConfig) -> Result<Pool<MySql>, Strin
 
 // --- Query Execution ---
 
-async fn execute_query_with_executor<'a, E>(executor: E, query: &'a str) -> Result<Vec<QueryResult>, String>
+async fn execute_query_with_executor<'a, E>(
+    executor: E,
+    query: &'a str,
+) -> Result<Vec<QueryResult>, String>
 where
     E: Executor<'a, Database = MySql>,
 {
     let query = query.trim();
     if query.is_empty() {
-        return Ok(vec![QueryResult { columns: vec![], rows: vec![] }]);
+        return Ok(vec![QueryResult {
+            columns: vec![],
+            rows: vec![],
+        }]);
     }
 
     let mut results = Vec::new();
@@ -118,30 +126,68 @@ where
                                 current_rows.clear();
                                 current_columns.clear();
                             }
-                        },
+                        }
                         Either::Right(row) => {
                             if current_columns.is_empty() {
-                                current_columns = row.columns().iter().map(|c| c.name().to_string()).collect();
+                                current_columns =
+                                    row.columns().iter().map(|c| c.name().to_string()).collect();
                             }
 
                             let mut row_data = Vec::new();
                             for (i, _) in current_columns.iter().enumerate() {
-                                let val: serde_json::Value = row.try_get_unchecked::<i64, _>(i)
+                                let val: serde_json::Value = row
+                                    .try_get_unchecked::<i64, _>(i)
                                     .map(|v| serde_json::json!(v))
-                                    .or_else(|_| row.try_get_unchecked::<i32, _>(i).map(|v| serde_json::json!(v)))
-                                    .or_else(|_| row.try_get_unchecked::<i16, _>(i).map(|v| serde_json::json!(v)))
-                                    .or_else(|_| row.try_get_unchecked::<i8, _>(i).map(|v| serde_json::json!(v)))
-                                    .or_else(|_| row.try_get_unchecked::<u64, _>(i).map(|v| serde_json::json!(v)))
-                                    .or_else(|_| row.try_get_unchecked::<u32, _>(i).map(|v| serde_json::json!(v)))
-                                    .or_else(|_| row.try_get_unchecked::<u16, _>(i).map(|v| serde_json::json!(v)))
-                                    .or_else(|_| row.try_get_unchecked::<u8, _>(i).map(|v| serde_json::json!(v)))
-                                    .or_else(|_| row.try_get_unchecked::<f64, _>(i).map(|v| serde_json::json!(v)))
-                                    .or_else(|_| row.try_get_unchecked::<f32, _>(i).map(|v| serde_json::json!(v)))
-                                    .or_else(|_| row.try_get_unchecked::<bool, _>(i).map(|v| serde_json::json!(v)))
-                                    .or_else(|_| row.try_get_unchecked::<String, _>(i).map(|v| serde_json::json!(v)))
                                     .or_else(|_| {
-                                        row.try_get_unchecked::<Vec<u8>, _>(i)
-                                            .map(|bytes| serde_json::json!(String::from_utf8_lossy(&bytes).to_string()))
+                                        row.try_get_unchecked::<i32, _>(i)
+                                            .map(|v| serde_json::json!(v))
+                                    })
+                                    .or_else(|_| {
+                                        row.try_get_unchecked::<i16, _>(i)
+                                            .map(|v| serde_json::json!(v))
+                                    })
+                                    .or_else(|_| {
+                                        row.try_get_unchecked::<i8, _>(i)
+                                            .map(|v| serde_json::json!(v))
+                                    })
+                                    .or_else(|_| {
+                                        row.try_get_unchecked::<u64, _>(i)
+                                            .map(|v| serde_json::json!(v))
+                                    })
+                                    .or_else(|_| {
+                                        row.try_get_unchecked::<u32, _>(i)
+                                            .map(|v| serde_json::json!(v))
+                                    })
+                                    .or_else(|_| {
+                                        row.try_get_unchecked::<u16, _>(i)
+                                            .map(|v| serde_json::json!(v))
+                                    })
+                                    .or_else(|_| {
+                                        row.try_get_unchecked::<u8, _>(i)
+                                            .map(|v| serde_json::json!(v))
+                                    })
+                                    .or_else(|_| {
+                                        row.try_get_unchecked::<f64, _>(i)
+                                            .map(|v| serde_json::json!(v))
+                                    })
+                                    .or_else(|_| {
+                                        row.try_get_unchecked::<f32, _>(i)
+                                            .map(|v| serde_json::json!(v))
+                                    })
+                                    .or_else(|_| {
+                                        row.try_get_unchecked::<bool, _>(i)
+                                            .map(|v| serde_json::json!(v))
+                                    })
+                                    .or_else(|_| {
+                                        row.try_get_unchecked::<String, _>(i)
+                                            .map(|v| serde_json::json!(v))
+                                    })
+                                    .or_else(|_| {
+                                        row.try_get_unchecked::<Vec<u8>, _>(i).map(|bytes| {
+                                            serde_json::json!(
+                                                String::from_utf8_lossy(&bytes).to_string()
+                                            )
+                                        })
                                     })
                                     .unwrap_or(serde_json::Value::Null);
                                 row_data.push(val);
@@ -149,7 +195,7 @@ where
                             current_rows.push(row_data);
                         }
                     }
-                },
+                }
                 Err(e) => return Err(format!("Query error: {}", e)),
             }
         }
@@ -164,15 +210,15 @@ where
         Ok::<_, String>(())
     };
 
-    tokio::time::timeout(
-        std::time::Duration::from_secs(30),
-        stream_future
-    )
-    .await
-    .map_err(|_| "Query timed out after 30 seconds".to_string())??;
+    tokio::time::timeout(std::time::Duration::from_secs(30), stream_future)
+        .await
+        .map_err(|_| "Query timed out after 30 seconds".to_string())??;
 
     if results.is_empty() {
-        return Ok(vec![QueryResult { columns: vec![], rows: vec![] }]);
+        return Ok(vec![QueryResult {
+            columns: vec![],
+            rows: vec![],
+        }]);
     }
 
     Ok(results)
@@ -186,16 +232,14 @@ async fn fetch_session_status(conn: &mut MySqlConnection) -> Result<HashMap<Stri
 
     let mut status_map = HashMap::new();
     for row in rows {
-        let name: String = row.try_get::<String, _>(0)
-            .unwrap_or_else(|_| {
-                let bytes: Vec<u8> = row.get(0);
-                String::from_utf8_lossy(&bytes).to_string()
-            });
-        let value_str: String = row.try_get::<String, _>(1)
-            .unwrap_or_else(|_| {
-                let bytes: Vec<u8> = row.get(1);
-                String::from_utf8_lossy(&bytes).to_string()
-            });
+        let name: String = row.try_get::<String, _>(0).unwrap_or_else(|_| {
+            let bytes: Vec<u8> = row.get(0);
+            String::from_utf8_lossy(&bytes).to_string()
+        });
+        let value_str: String = row.try_get::<String, _>(1).unwrap_or_else(|_| {
+            let bytes: Vec<u8> = row.get(1);
+            String::from_utf8_lossy(&bytes).to_string()
+        });
 
         if let Ok(value) = value_str.parse::<i64>() {
             status_map.insert(name, value);
@@ -205,7 +249,10 @@ async fn fetch_session_status(conn: &mut MySqlConnection) -> Result<HashMap<Stri
     Ok(status_map)
 }
 
-fn compute_status_diff(before: &HashMap<String, i64>, after: &HashMap<String, i64>) -> HashMap<String, i64> {
+fn compute_status_diff(
+    before: &HashMap<String, i64>,
+    after: &HashMap<String, i64>,
+) -> HashMap<String, i64> {
     let mut diff = HashMap::new();
     for (key, after_val) in after {
         let before_val = before.get(key).copied().unwrap_or(0);
@@ -214,13 +261,23 @@ fn compute_status_diff(before: &HashMap<String, i64>, after: &HashMap<String, i6
     diff
 }
 
-pub async fn execute_query_with_status(pool: &Pool<MySql>, query: String) -> Result<(Vec<QueryResult>, Option<HashMap<String, i64>>), String> {
+pub async fn execute_query_with_status(
+    pool: &Pool<MySql>,
+    query: String,
+) -> Result<(Vec<QueryResult>, Option<HashMap<String, i64>>), String> {
     let query = query.trim().to_string();
     if query.is_empty() {
-        return Ok((vec![QueryResult { columns: vec![], rows: vec![] }], None));
+        return Ok((
+            vec![QueryResult {
+                columns: vec![],
+                rows: vec![],
+            }],
+            None,
+        ));
     }
 
-    let mut conn = pool.acquire()
+    let mut conn = pool
+        .acquire()
         .await
         .map_err(|e| format!("Failed to acquire connection: {}", e))?;
 
@@ -251,15 +308,17 @@ pub async fn get_databases(pool: &Pool<MySql>) -> Result<Vec<String>, String> {
         .await
         .map_err(|e| format!("Failed to fetch databases: {}", e))?;
 
-    let databases: Vec<String> = rows.iter()
+    let databases: Vec<String> = rows
+        .iter()
         .map(|row| {
-            row.try_get::<String, _>(0)
-                .unwrap_or_else(|_| {
-                    let bytes: Vec<u8> = row.get(0);
-                    String::from_utf8_lossy(&bytes).to_string()
-                })
+            row.try_get::<String, _>(0).unwrap_or_else(|_| {
+                let bytes: Vec<u8> = row.get(0);
+                String::from_utf8_lossy(&bytes).to_string()
+            })
         })
-        .filter(|db| !["information_schema", "mysql", "performance_schema", "sys"].contains(&db.as_str()))
+        .filter(|db| {
+            !["information_schema", "mysql", "performance_schema", "sys"].contains(&db.as_str())
+        })
         .collect();
 
     Ok(databases)
@@ -272,20 +331,24 @@ pub async fn get_tables(pool: &Pool<MySql>, database: &str) -> Result<Vec<String
         .await
         .map_err(|e| format!("Failed to fetch tables: {}", e))?;
 
-    let tables: Vec<String> = rows.iter()
+    let tables: Vec<String> = rows
+        .iter()
         .map(|row| {
-            row.try_get::<String, _>(0)
-                .unwrap_or_else(|_| {
-                    let bytes: Vec<u8> = row.get(0);
-                    String::from_utf8_lossy(&bytes).to_string()
-                })
+            row.try_get::<String, _>(0).unwrap_or_else(|_| {
+                let bytes: Vec<u8> = row.get(0);
+                String::from_utf8_lossy(&bytes).to_string()
+            })
         })
         .collect();
 
     Ok(tables)
 }
 
-pub async fn get_table_schema(pool: &Pool<MySql>, database: &str, table: &str) -> Result<Vec<ColumnSchema>, String> {
+pub async fn get_table_schema(
+    pool: &Pool<MySql>,
+    database: &str,
+    table: &str,
+) -> Result<Vec<ColumnSchema>, String> {
     let query = format!("SHOW COLUMNS FROM `{}`.`{}`", database, table);
 
     let rows = sqlx::query(&query)
@@ -296,24 +359,28 @@ pub async fn get_table_schema(pool: &Pool<MySql>, database: &str, table: &str) -
     let mut columns = Vec::new();
     for row in rows {
         let name: String = row.try_get("Field").unwrap_or_default();
-        
+
         let full_type: String = match row.try_get::<Vec<u8>, _>("Type") {
             Ok(bytes) => String::from_utf8_lossy(&bytes).to_string(),
             Err(_) => row.try_get::<String, _>("Type").unwrap_or_else(|_| {
                 match row.try_get::<Vec<u8>, _>(1) {
                     Ok(bytes) => String::from_utf8_lossy(&bytes).to_string(),
-                    Err(_) => row.try_get::<String, _>(1).unwrap_or_default()
+                    Err(_) => row.try_get::<String, _>(1).unwrap_or_default(),
                 }
-            })
+            }),
         };
-        
+
         let is_nullable_str: String = row.try_get("Null").unwrap_or_default();
         let is_nullable = is_nullable_str == "YES";
         let column_key: String = row.try_get("Key").unwrap_or_default();
         let column_default: Option<String> = row.try_get("Default").ok();
         let extra: String = row.try_get("Extra").unwrap_or_default();
 
-        let data_type = full_type.split('(').next().unwrap_or(&full_type).to_string();
+        let data_type = full_type
+            .split('(')
+            .next()
+            .unwrap_or(&full_type)
+            .to_string();
 
         columns.push(ColumnSchema {
             name,
@@ -331,26 +398,34 @@ pub async fn get_table_schema(pool: &Pool<MySql>, database: &str, table: &str) -
 
 // --- Table DDL ---
 
-pub async fn get_table_ddl(pool: &Pool<MySql>, database: &str, table: &str) -> Result<String, String> {
+pub async fn get_table_ddl(
+    pool: &Pool<MySql>,
+    database: &str,
+    table: &str,
+) -> Result<String, String> {
     let query = format!("SHOW CREATE TABLE `{}`.`{}`", database, table);
-    
+
     let row = sqlx::query(&query)
         .fetch_one(pool)
         .await
         .map_err(|e| format!("Failed to fetch DDL: {}", e))?;
 
-    let ddl: String = row.try_get("Create Table").unwrap_or_else(|_| {
-        row.try_get::<String, _>(1).unwrap_or_default()
-    });
+    let ddl: String = row
+        .try_get("Create Table")
+        .unwrap_or_else(|_| row.try_get::<String, _>(1).unwrap_or_default());
 
     Ok(ddl)
 }
 
 // --- Indexes ---
 
-pub async fn get_table_indexes(pool: &Pool<MySql>, database: &str, table: &str) -> Result<Vec<TableIndex>, String> {
+pub async fn get_table_indexes(
+    pool: &Pool<MySql>,
+    database: &str,
+    table: &str,
+) -> Result<Vec<TableIndex>, String> {
     let query = format!("SHOW INDEX FROM `{}`.`{}`", database, table);
-    
+
     let rows = sqlx::query(&query)
         .fetch_all(pool)
         .await
@@ -358,13 +433,13 @@ pub async fn get_table_indexes(pool: &Pool<MySql>, database: &str, table: &str) 
 
     let mut indexes = Vec::new();
     let mut seen = std::collections::HashSet::new();
-    
+
     for row in rows {
         let name: String = row.try_get("Key_name").unwrap_or_default();
         let column_name: String = row.try_get("Column_name").unwrap_or_default();
         let non_unique: i64 = row.try_get("Non_unique").unwrap_or(1);
         let index_type: String = row.try_get("Index_type").unwrap_or_default();
-        
+
         let key = format!("{}:{}", name, column_name);
         if !seen.contains(&key) {
             seen.insert(key);
@@ -382,8 +457,13 @@ pub async fn get_table_indexes(pool: &Pool<MySql>, database: &str, table: &str) 
 
 // --- Foreign Keys ---
 
-pub async fn get_table_foreign_keys(pool: &Pool<MySql>, database: &str, table: &str) -> Result<Vec<ForeignKey>, String> {
-    let query = format!(r#"
+pub async fn get_table_foreign_keys(
+    pool: &Pool<MySql>,
+    database: &str,
+    table: &str,
+) -> Result<Vec<ForeignKey>, String> {
+    let query = format!(
+        r#"
         SELECT 
             CONSTRAINT_NAME,
             COLUMN_NAME,
@@ -394,7 +474,9 @@ pub async fn get_table_foreign_keys(pool: &Pool<MySql>, database: &str, table: &
         WHERE TABLE_SCHEMA = '{}'
             AND TABLE_NAME = '{}'
             AND REFERENCED_TABLE_NAME IS NOT NULL
-    "#, database, table);
+    "#,
+        database, table
+    );
 
     let rows = sqlx::query(&query)
         .fetch_all(pool)
@@ -417,15 +499,22 @@ pub async fn get_table_foreign_keys(pool: &Pool<MySql>, database: &str, table: &
 
 // --- Primary Keys ---
 
-pub async fn get_table_primary_keys(pool: &Pool<MySql>, database: &str, table: &str) -> Result<Vec<PrimaryKey>, String> {
-    let query = format!(r#"
+pub async fn get_table_primary_keys(
+    pool: &Pool<MySql>,
+    database: &str,
+    table: &str,
+) -> Result<Vec<PrimaryKey>, String> {
+    let query = format!(
+        r#"
         SELECT COLUMN_NAME, ORDINAL_POSITION
         FROM information_schema.KEY_COLUMN_USAGE
         WHERE TABLE_SCHEMA = '{}'
             AND TABLE_NAME = '{}'
             AND CONSTRAINT_NAME = 'PRIMARY'
         ORDER BY ORDINAL_POSITION
-    "#, database, table);
+    "#,
+        database, table
+    );
 
     let rows = sqlx::query(&query)
         .fetch_all(pool)
@@ -445,8 +534,13 @@ pub async fn get_table_primary_keys(pool: &Pool<MySql>, database: &str, table: &
 
 // --- Constraints ---
 
-pub async fn get_table_constraints(pool: &Pool<MySql>, database: &str, table: &str) -> Result<Vec<TableConstraint>, String> {
-    let query = format!(r#"
+pub async fn get_table_constraints(
+    pool: &Pool<MySql>,
+    database: &str,
+    table: &str,
+) -> Result<Vec<TableConstraint>, String> {
+    let query = format!(
+        r#"
         SELECT 
             tc.CONSTRAINT_NAME,
             tc.CONSTRAINT_TYPE,
@@ -458,7 +552,9 @@ pub async fn get_table_constraints(pool: &Pool<MySql>, database: &str, table: &s
             AND tc.TABLE_NAME = kcu.TABLE_NAME
         WHERE tc.TABLE_SCHEMA = '{}'
             AND tc.TABLE_NAME = '{}'
-    "#, database, table);
+    "#,
+        database, table
+    );
 
     let rows = sqlx::query(&query)
         .fetch_all(pool)
@@ -479,8 +575,13 @@ pub async fn get_table_constraints(pool: &Pool<MySql>, database: &str, table: &s
 
 // --- Table Stats ---
 
-pub async fn get_table_stats(pool: &Pool<MySql>, database: &str, table: &str) -> Result<TableStats, String> {
-    let query = format!(r#"
+pub async fn get_table_stats(
+    pool: &Pool<MySql>,
+    database: &str,
+    table: &str,
+) -> Result<TableStats, String> {
+    let query = format!(
+        r#"
         SELECT 
             TABLE_ROWS as row_count,
             DATA_LENGTH as data_size,
@@ -489,7 +590,9 @@ pub async fn get_table_stats(pool: &Pool<MySql>, database: &str, table: &str) ->
         FROM information_schema.TABLES
         WHERE TABLE_SCHEMA = '{}'
             AND TABLE_NAME = '{}'
-    "#, database, table);
+    "#,
+        database, table
+    );
 
     let row = sqlx::query(&query)
         .fetch_one(pool)
@@ -507,14 +610,18 @@ pub async fn get_table_stats(pool: &Pool<MySql>, database: &str, table: &str) ->
 // --- Views ---
 
 pub async fn get_views(pool: &Pool<MySql>, database: &str) -> Result<Vec<String>, String> {
-    let query = format!("SHOW FULL TABLES FROM `{}` WHERE Table_type = 'VIEW'", database);
-    
+    let query = format!(
+        "SHOW FULL TABLES FROM `{}` WHERE Table_type = 'VIEW'",
+        database
+    );
+
     let rows = sqlx::query(&query)
         .fetch_all(pool)
         .await
         .map_err(|e| format!("Failed to fetch views: {}", e))?;
 
-    let views: Vec<String> = rows.iter()
+    let views: Vec<String> = rows
+        .iter()
         .map(|row| {
             row.try_get::<String, _>(0).unwrap_or_else(|_| {
                 let bytes: Vec<u8> = row.get(0);
@@ -526,17 +633,21 @@ pub async fn get_views(pool: &Pool<MySql>, database: &str) -> Result<Vec<String>
     Ok(views)
 }
 
-pub async fn get_view_definition(pool: &Pool<MySql>, database: &str, view: &str) -> Result<ViewDefinition, String> {
+pub async fn get_view_definition(
+    pool: &Pool<MySql>,
+    database: &str,
+    view: &str,
+) -> Result<ViewDefinition, String> {
     let query = format!("SHOW CREATE VIEW `{}`.`{}`", database, view);
-    
+
     let row = sqlx::query(&query)
         .fetch_one(pool)
         .await
         .map_err(|e| format!("Failed to fetch view definition: {}", e))?;
 
-    let definition: String = row.try_get("Create View").unwrap_or_else(|_| {
-        row.try_get::<String, _>(1).unwrap_or_default()
-    });
+    let definition: String = row
+        .try_get("Create View")
+        .unwrap_or_else(|_| row.try_get::<String, _>(1).unwrap_or_default());
 
     Ok(ViewDefinition {
         name: view.to_string(),
@@ -544,7 +655,11 @@ pub async fn get_view_definition(pool: &Pool<MySql>, database: &str, view: &str)
     })
 }
 
-pub async fn alter_view(pool: &Pool<MySql>, database: &str, definition: &str) -> Result<String, String> {
+pub async fn alter_view(
+    pool: &Pool<MySql>,
+    database: &str,
+    definition: &str,
+) -> Result<String, String> {
     let use_db = format!("USE `{}`", database);
     sqlx::query(&use_db)
         .execute(pool)
@@ -563,7 +678,7 @@ pub async fn alter_view(pool: &Pool<MySql>, database: &str, definition: &str) ->
 
 pub async fn get_triggers(pool: &Pool<MySql>, database: &str) -> Result<Vec<TriggerInfo>, String> {
     let query = format!("SHOW TRIGGERS FROM `{}`", database);
-    
+
     let rows = sqlx::query(&query)
         .fetch_all(pool)
         .await
@@ -582,9 +697,16 @@ pub async fn get_triggers(pool: &Pool<MySql>, database: &str) -> Result<Vec<Trig
     Ok(triggers)
 }
 
-pub async fn get_table_triggers(pool: &Pool<MySql>, database: &str, table: &str) -> Result<Vec<TriggerInfo>, String> {
-    let query = format!("SHOW TRIGGERS FROM `{}` WHERE `Table` = '{}'", database, table);
-    
+pub async fn get_table_triggers(
+    pool: &Pool<MySql>,
+    database: &str,
+    table: &str,
+) -> Result<Vec<TriggerInfo>, String> {
+    let query = format!(
+        "SHOW TRIGGERS FROM `{}` WHERE `Table` = '{}'",
+        database, table
+    );
+
     let rows = sqlx::query(&query)
         .fetch_all(pool)
         .await
@@ -605,9 +727,12 @@ pub async fn get_table_triggers(pool: &Pool<MySql>, database: &str, table: &str)
 
 // --- Procedures & Functions ---
 
-pub async fn get_procedures(pool: &Pool<MySql>, database: &str) -> Result<Vec<RoutineInfo>, String> {
+pub async fn get_procedures(
+    pool: &Pool<MySql>,
+    database: &str,
+) -> Result<Vec<RoutineInfo>, String> {
     let query = format!("SHOW PROCEDURE STATUS WHERE Db = '{}'", database);
-    
+
     let rows = sqlx::query(&query)
         .fetch_all(pool)
         .await
@@ -626,7 +751,7 @@ pub async fn get_procedures(pool: &Pool<MySql>, database: &str) -> Result<Vec<Ro
 
 pub async fn get_functions(pool: &Pool<MySql>, database: &str) -> Result<Vec<RoutineInfo>, String> {
     let query = format!("SHOW FUNCTION STATUS WHERE Db = '{}'", database);
-    
+
     let rows = sqlx::query(&query)
         .fetch_all(pool)
         .await
@@ -647,7 +772,7 @@ pub async fn get_functions(pool: &Pool<MySql>, database: &str) -> Result<Vec<Rou
 
 pub async fn get_events(pool: &Pool<MySql>, database: &str) -> Result<Vec<EventInfo>, String> {
     let query = format!("SHOW EVENTS FROM `{}`", database);
-    
+
     let rows = sqlx::query(&query)
         .fetch_all(pool)
         .await
@@ -668,7 +793,8 @@ pub async fn get_events(pool: &Pool<MySql>, database: &str) -> Result<Vec<EventI
 // --- User Management ---
 
 pub async fn get_users(pool: &Pool<MySql>) -> Result<Vec<MySqlUser>, String> {
-    let query = "SELECT User, Host, account_locked, password_expired FROM mysql.user ORDER BY User, Host";
+    let query =
+        "SELECT User, Host, account_locked, password_expired FROM mysql.user ORDER BY User, Host";
 
     let rows = sqlx::query(query)
         .fetch_all(pool)
@@ -681,7 +807,7 @@ pub async fn get_users(pool: &Pool<MySql>) -> Result<Vec<MySqlUser>, String> {
         let host: String = row.try_get("Host").unwrap_or_default();
         let account_locked_str: String = row.try_get("account_locked").unwrap_or_default();
         let password_expired_str: String = row.try_get("password_expired").unwrap_or_default();
-        
+
         users.push(MySqlUser {
             user,
             host,
@@ -693,9 +819,13 @@ pub async fn get_users(pool: &Pool<MySql>) -> Result<Vec<MySqlUser>, String> {
     Ok(users)
 }
 
-pub async fn get_user_privileges(pool: &Pool<MySql>, user: &str, host: &str) -> Result<UserPrivileges, String> {
+pub async fn get_user_privileges(
+    pool: &Pool<MySql>,
+    user: &str,
+    host: &str,
+) -> Result<UserPrivileges, String> {
     let query = format!("SHOW GRANTS FOR '{}'@'{}'", user, host);
-    
+
     let rows = sqlx::query(&query)
         .fetch_all(pool)
         .await
@@ -703,17 +833,29 @@ pub async fn get_user_privileges(pool: &Pool<MySql>, user: &str, host: &str) -> 
 
     let mut global_privs = Vec::new();
     let mut databases = Vec::new();
-    
+
     let all_privileges = vec![
-        "SELECT", "INSERT", "UPDATE", "DELETE", 
-        "CREATE", "DROP", "ALTER", "INDEX",
-        "GRANT OPTION", "SUPER", "PROCESS", "RELOAD",
-        "LOCK TABLES", "REFERENCES", "EVENT", "TRIGGER"
+        "SELECT",
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "CREATE",
+        "DROP",
+        "ALTER",
+        "INDEX",
+        "GRANT OPTION",
+        "SUPER",
+        "PROCESS",
+        "RELOAD",
+        "LOCK TABLES",
+        "REFERENCES",
+        "EVENT",
+        "TRIGGER",
     ];
 
     for row in &rows {
         let grant: String = row.try_get(0).unwrap_or_default();
-        
+
         if grant.contains(" ON `") {
             if let Some(start) = grant.find(" ON `") {
                 let after_on = &grant[start + 5..];
@@ -725,10 +867,12 @@ pub async fn get_user_privileges(pool: &Pool<MySql>, user: &str, host: &str) -> 
                 }
             }
         }
-        
+
         for priv_name in &all_privileges {
             if grant.contains(priv_name) {
-                let already_exists = global_privs.iter().any(|p: &UserPrivilege| p.privilege == *priv_name);
+                let already_exists = global_privs
+                    .iter()
+                    .any(|p: &UserPrivilege| p.privilege == *priv_name);
                 if !already_exists {
                     global_privs.push(UserPrivilege {
                         privilege: priv_name.to_string(),
@@ -797,25 +941,31 @@ pub async fn get_server_status(pool: &Pool<MySql>) -> Result<ServerStatus, Strin
 
 // --- Capacity Metrics (MySQL) ---
 
-pub async fn get_capacity_metrics(pool: &Pool<MySql>, database: &str) -> Result<CapacityMetrics, String> {
+pub async fn get_capacity_metrics(
+    pool: &Pool<MySql>,
+    database: &str,
+) -> Result<CapacityMetrics, String> {
     // Storage
-    let storage_row = sqlx::query(r#"
+    let storage_row = sqlx::query(
+        r#"
         SELECT 
             COALESCE(SUM(DATA_LENGTH), 0) as data_bytes,
             COALESCE(SUM(INDEX_LENGTH), 0) as index_bytes
         FROM information_schema.TABLES
         WHERE TABLE_SCHEMA = ?
-    "#)
-        .bind(database)
-        .fetch_one(pool)
-        .await
-        .map_err(|e| format!("Failed to fetch storage metrics: {}", e))?;
+    "#,
+    )
+    .bind(database)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| format!("Failed to fetch storage metrics: {}", e))?;
 
     let data_bytes: i64 = storage_row.try_get::<i64, _>("data_bytes").unwrap_or(0);
     let index_bytes: i64 = storage_row.try_get::<i64, _>("index_bytes").unwrap_or(0);
 
     // Buffer/cache + IO counters
-    let status_rows = sqlx::query(r#"
+    let status_rows = sqlx::query(
+        r#"
         SHOW GLOBAL STATUS
         WHERE Variable_name IN (
             'Innodb_buffer_pool_read_requests',
@@ -823,10 +973,11 @@ pub async fn get_capacity_metrics(pool: &Pool<MySql>, database: &str) -> Result<
             'Innodb_data_read',
             'Innodb_data_written'
         )
-    "#)
-        .fetch_all(pool)
-        .await
-        .map_err(|e| format!("Failed to fetch buffer metrics: {}", e))?;
+    "#,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| format!("Failed to fetch buffer metrics: {}", e))?;
 
     let mut status_map: HashMap<String, i64> = HashMap::new();
     for row in status_rows {
@@ -836,7 +987,9 @@ pub async fn get_capacity_metrics(pool: &Pool<MySql>, database: &str) -> Result<
         status_map.insert(name, val);
     }
 
-    let read_requests = *status_map.get("Innodb_buffer_pool_read_requests").unwrap_or(&0);
+    let read_requests = *status_map
+        .get("Innodb_buffer_pool_read_requests")
+        .unwrap_or(&0);
     let reads = *status_map.get("Innodb_buffer_pool_reads").unwrap_or(&0);
     let disk_read_bytes = *status_map.get("Innodb_data_read").unwrap_or(&0);
     let disk_write_bytes = *status_map.get("Innodb_data_written").unwrap_or(&0);
@@ -919,25 +1072,30 @@ pub async fn get_replication_status(pool: &Pool<MySql>) -> Result<serde_json::Va
     }
 
     let row = &rows[0];
-    
+
     // MySQL 8.0.22+ changed column names from Slave_* to Replica_*
     // Try new names first, fall back to old names
-    let io_running = row.try_get::<String, _>("Replica_IO_Running")
+    let io_running = row
+        .try_get::<String, _>("Replica_IO_Running")
         .or_else(|_| row.try_get::<String, _>("Slave_IO_Running"))
         .unwrap_or_default();
-    let sql_running = row.try_get::<String, _>("Replica_SQL_Running")
+    let sql_running = row
+        .try_get::<String, _>("Replica_SQL_Running")
         .or_else(|_| row.try_get::<String, _>("Slave_SQL_Running"))
         .unwrap_or_default();
-    let seconds_behind = row.try_get::<i64, _>("Seconds_Behind_Source")
+    let seconds_behind = row
+        .try_get::<i64, _>("Seconds_Behind_Source")
         .or_else(|_| row.try_get::<i64, _>("Seconds_Behind_Master"))
         .ok();
-    let source_host = row.try_get::<String, _>("Source_Host")
+    let source_host = row
+        .try_get::<String, _>("Source_Host")
         .or_else(|_| row.try_get::<String, _>("Master_Host"))
         .unwrap_or_default();
-    let source_port = row.try_get::<i32, _>("Source_Port")
+    let source_port = row
+        .try_get::<i32, _>("Source_Port")
         .or_else(|_| row.try_get::<i32, _>("Master_Port"))
         .unwrap_or(0);
-    
+
     Ok(serde_json::json!({
         "slave_io_running": io_running,
         "slave_sql_running": sql_running,
@@ -978,31 +1136,112 @@ pub async fn get_locks(pool: &Pool<MySql>) -> Result<Vec<LockInfo>, String> {
     Ok(locks)
 }
 
+fn normalize_optional_text(value: Option<String>) -> Option<String> {
+    value
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+}
+
+pub async fn get_lock_graph_edges(pool: &Pool<MySql>) -> Result<Vec<LockGraphEdge>, String> {
+    let query = r#"
+        SELECT
+            COALESCE(rt.PROCESSLIST_ID, r.trx_mysql_thread_id) AS waiting_process_id,
+            COALESCE(bt.PROCESSLIST_ID, b.trx_mysql_thread_id) AS blocking_process_id,
+            COALESCE(TIMESTAMPDIFF(SECOND, COALESCE(r.trx_wait_started, r.trx_started), NOW()), 0) AS wait_seconds,
+            r.trx_query AS waiting_query,
+            b.trx_query AS blocking_query,
+            CONCAT_WS('.', rl.OBJECT_SCHEMA, rl.OBJECT_NAME) AS object_name,
+            rl.LOCK_TYPE AS lock_type,
+            rl.LOCK_MODE AS waiting_lock_mode,
+            bl.LOCK_MODE AS blocking_lock_mode
+        FROM performance_schema.data_lock_waits w
+        LEFT JOIN performance_schema.data_locks rl
+            ON rl.ENGINE_LOCK_ID = w.REQUESTING_ENGINE_LOCK_ID
+        LEFT JOIN performance_schema.data_locks bl
+            ON bl.ENGINE_LOCK_ID = w.BLOCKING_ENGINE_LOCK_ID
+        LEFT JOIN performance_schema.threads rt
+            ON rt.THREAD_ID = rl.THREAD_ID
+        LEFT JOIN performance_schema.threads bt
+            ON bt.THREAD_ID = bl.THREAD_ID
+        LEFT JOIN information_schema.innodb_trx r
+            ON r.trx_id = w.REQUESTING_ENGINE_TRANSACTION_ID
+        LEFT JOIN information_schema.innodb_trx b
+            ON b.trx_id = w.BLOCKING_ENGINE_TRANSACTION_ID
+        WHERE COALESCE(rt.PROCESSLIST_ID, r.trx_mysql_thread_id) IS NOT NULL
+          AND COALESCE(bt.PROCESSLIST_ID, b.trx_mysql_thread_id) IS NOT NULL
+        LIMIT 500
+    "#;
+
+    let rows = sqlx::query(query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch lock wait graph: {}", e))?;
+
+    let mut edges = Vec::new();
+    for row in rows {
+        let waiting_process_id = row
+            .try_get::<Option<i64>, _>("waiting_process_id")
+            .ok()
+            .flatten()
+            .unwrap_or(0);
+        let blocking_process_id = row
+            .try_get::<Option<i64>, _>("blocking_process_id")
+            .ok()
+            .flatten()
+            .unwrap_or(0);
+
+        if waiting_process_id <= 0 || blocking_process_id <= 0 {
+            continue;
+        }
+
+        edges.push(LockGraphEdge {
+            waiting_process_id,
+            blocking_process_id,
+            wait_seconds: row
+                .try_get::<Option<i64>, _>("wait_seconds")
+                .ok()
+                .flatten()
+                .unwrap_or(0),
+            object_name: normalize_optional_text(row.try_get("object_name").ok()),
+            lock_type: normalize_optional_text(row.try_get("lock_type").ok()),
+            waiting_lock_mode: normalize_optional_text(row.try_get("waiting_lock_mode").ok()),
+            blocking_lock_mode: normalize_optional_text(row.try_get("blocking_lock_mode").ok()),
+            waiting_query: normalize_optional_text(row.try_get("waiting_query").ok()),
+            blocking_query: normalize_optional_text(row.try_get("blocking_query").ok()),
+        });
+    }
+
+    Ok(edges)
+}
+
 // --- Query Analysis ---
 
 pub async fn analyze_query(pool: &Pool<MySql>, query: &str) -> Result<QueryAnalysis, String> {
     let explain_query = format!("EXPLAIN FORMAT=JSON {}", query);
-    
-    let result = sqlx::query(&explain_query)
-        .fetch_one(pool)
-        .await;
+
+    let result = sqlx::query(&explain_query).fetch_one(pool).await;
 
     match result {
         Ok(row) => {
             let explain_json: String = row.try_get(0).unwrap_or_default();
-            let explain_result: serde_json::Value = serde_json::from_str(&explain_json)
-                .unwrap_or(serde_json::json!({}));
+            let explain_result: serde_json::Value =
+                serde_json::from_str(&explain_json).unwrap_or(serde_json::json!({}));
 
             let mut suggestions = Vec::new();
             let mut warnings = Vec::new();
 
             if let Some(query_block) = explain_result.get("query_block") {
-                if let Some(cost) = query_block.get("cost_info").and_then(|c| c.get("query_cost")) {
+                if let Some(cost) = query_block
+                    .get("cost_info")
+                    .and_then(|c| c.get("query_cost"))
+                {
                     if let Some(cost_str) = cost.as_str() {
                         if let Ok(cost_val) = cost_str.parse::<f64>() {
                             if cost_val > 1000.0 {
                                 warnings.push(format!("High query cost: {}", cost_val));
-                                suggestions.push("Consider adding indexes or optimizing the query".to_string());
+                                suggestions.push(
+                                    "Consider adding indexes or optimizing the query".to_string(),
+                                );
                             }
                         }
                     }
@@ -1014,7 +1253,7 @@ pub async fn analyze_query(pool: &Pool<MySql>, query: &str) -> Result<QueryAnaly
                 warnings,
                 suggestions,
             })
-        },
+        }
         Err(_) => {
             // Fallback for MySQL 5.6 or older that might not support FORMAT=JSON
             let traditional_explain = format!("EXPLAIN {}", query);
@@ -1029,23 +1268,29 @@ pub async fn analyze_query(pool: &Pool<MySql>, query: &str) -> Result<QueryAnaly
             for row in rows {
                 let extra: String = row.try_get("Extra").unwrap_or_default();
                 if extra.contains("Using filesort") {
-                    warnings.push("Query is using filesort, which can be slow on large datasets.".to_string());
+                    warnings.push(
+                        "Query is using filesort, which can be slow on large datasets.".to_string(),
+                    );
                     suggestions.push("Consider adding an index to avoid sorting.".to_string());
                 }
                 if extra.contains("Using temporary") {
                     warnings.push("Query is using a temporary table.".to_string());
-                    suggestions.push("Optimize the query or JOINs to avoid temporary tables.".to_string());
+                    suggestions
+                        .push("Optimize the query or JOINs to avoid temporary tables.".to_string());
                 }
-                
+
                 let select_type: String = row.try_get("select_type").unwrap_or_default();
                 if select_type == "DEPENDENT SUBQUERY" {
-                    warnings.push("Dependent subquery detected, which can be very slow.".to_string());
+                    warnings
+                        .push("Dependent subquery detected, which can be very slow.".to_string());
                     suggestions.push("Try converting the subquery into a JOIN.".to_string());
                 }
             }
 
             Ok(QueryAnalysis {
-                explain_result: vec![serde_json::json!({"info": "Traditional EXPLAIN used for compatibility"})],
+                explain_result: vec![
+                    serde_json::json!({"info": "Traditional EXPLAIN used for compatibility"}),
+                ],
                 warnings,
                 suggestions,
             })
@@ -1053,22 +1298,31 @@ pub async fn analyze_query(pool: &Pool<MySql>, query: &str) -> Result<QueryAnaly
     }
 }
 
-pub async fn get_index_suggestions(pool: &Pool<MySql>, database: &str, table: &str) -> Result<Vec<IndexSuggestion>, String> {
+pub async fn get_index_suggestions(
+    pool: &Pool<MySql>,
+    database: &str,
+    table: &str,
+) -> Result<Vec<IndexSuggestion>, String> {
     let mut suggestions = Vec::new();
     let mut flagged_indexes: HashSet<String> = HashSet::new();
 
     // 1) Real unused index detection via sys.schema_unused_indexes (if available)
-    let sys_query = format!(r#"
+    let sys_query = format!(
+        r#"
         SELECT index_name
         FROM sys.schema_unused_indexes
         WHERE object_schema = '{}'
           AND object_name = '{}'
-    "#, database, table);
+    "#,
+        database, table
+    );
 
     if let Ok(rows) = sqlx::query(&sys_query).fetch_all(pool).await {
         for row in rows {
             let index_name: String = row.try_get("index_name").unwrap_or_default();
-            if index_name.is_empty() { continue; }
+            if index_name.is_empty() {
+                continue;
+            }
             if flagged_indexes.insert(index_name.clone()) {
                 suggestions.push(IndexSuggestion {
                     table_name: table.to_string(),
@@ -1082,7 +1336,8 @@ pub async fn get_index_suggestions(pool: &Pool<MySql>, database: &str, table: &s
     }
 
     // 2) Real usage metrics via performance_schema (if enabled)
-    let perf_query = format!(r#"
+    let perf_query = format!(
+        r#"
         SELECT 
             INDEX_NAME,
             COUNT_STAR as total_ops
@@ -1090,13 +1345,17 @@ pub async fn get_index_suggestions(pool: &Pool<MySql>, database: &str, table: &s
         WHERE OBJECT_SCHEMA = '{}'
           AND OBJECT_NAME = '{}'
           AND INDEX_NAME IS NOT NULL
-    "#, database, table);
+    "#,
+        database, table
+    );
 
     if let Ok(rows) = sqlx::query(&perf_query).fetch_all(pool).await {
         for row in rows {
             let index_name: String = row.try_get("INDEX_NAME").unwrap_or_default();
             let total_ops: i64 = row.try_get::<i64, _>("total_ops").unwrap_or(0);
-            if index_name.is_empty() { continue; }
+            if index_name.is_empty() {
+                continue;
+            }
             if total_ops == 0 && flagged_indexes.insert(index_name.clone()) {
                 suggestions.push(IndexSuggestion {
                     table_name: table.to_string(),
@@ -1110,7 +1369,8 @@ pub async fn get_index_suggestions(pool: &Pool<MySql>, database: &str, table: &s
     }
 
     // 3) Low cardinality fallback (less reliable)
-    let query = format!(r#"
+    let query = format!(
+        r#"
         SELECT 
             TABLE_NAME,
             COLUMN_NAME,
@@ -1119,7 +1379,9 @@ pub async fn get_index_suggestions(pool: &Pool<MySql>, database: &str, table: &s
         FROM information_schema.STATISTICS
         WHERE TABLE_SCHEMA = '{}'
             AND TABLE_NAME = '{}'
-    "#, database, table);
+    "#,
+        database, table
+    );
 
     let rows = sqlx::query(&query)
         .fetch_all(pool)
@@ -1135,9 +1397,16 @@ pub async fn get_index_suggestions(pool: &Pool<MySql>, database: &str, table: &s
             suggestions.push(IndexSuggestion {
                 table_name: table.to_string(),
                 column_name: column_name.clone(),
-                index_name: if index_name.is_empty() { None } else { Some(index_name.clone()) },
+                index_name: if index_name.is_empty() {
+                    None
+                } else {
+                    Some(index_name.clone())
+                },
                 suggestion: "Consider removing this index".to_string(),
-                reason: format!("Low cardinality ({}), index may not be effective", cardinality),
+                reason: format!(
+                    "Low cardinality ({}), index may not be effective",
+                    cardinality
+                ),
             });
         }
     }
@@ -1147,8 +1416,13 @@ pub async fn get_index_suggestions(pool: &Pool<MySql>, database: &str, table: &s
 
 // --- Index Usage (MySQL) ---
 
-pub async fn get_index_usage(pool: &Pool<MySql>, database: &str, table: &str) -> Result<Vec<IndexUsage>, String> {
-    let query = format!(r#"
+pub async fn get_index_usage(
+    pool: &Pool<MySql>,
+    database: &str,
+    table: &str,
+) -> Result<Vec<IndexUsage>, String> {
+    let query = format!(
+        r#"
         SELECT 
             INDEX_NAME,
             COUNT_STAR as total_ops
@@ -1156,7 +1430,9 @@ pub async fn get_index_usage(pool: &Pool<MySql>, database: &str, table: &str) ->
         WHERE OBJECT_SCHEMA = '{}'
           AND OBJECT_NAME = '{}'
           AND INDEX_NAME IS NOT NULL
-    "#, database, table);
+    "#,
+        database, table
+    );
 
     match sqlx::query(&query).fetch_all(pool).await {
         Ok(rows) => {
@@ -1164,7 +1440,9 @@ pub async fn get_index_usage(pool: &Pool<MySql>, database: &str, table: &str) ->
             for row in rows {
                 let index_name: String = row.try_get("INDEX_NAME").unwrap_or_default();
                 let total_ops: i64 = row.try_get::<i64, _>("total_ops").unwrap_or(0);
-                if index_name.is_empty() { continue; }
+                if index_name.is_empty() {
+                    continue;
+                }
                 usage.push(IndexUsage {
                     index_name,
                     total_ops,
@@ -1173,7 +1451,7 @@ pub async fn get_index_usage(pool: &Pool<MySql>, database: &str, table: &str) ->
                 });
             }
             Ok(usage)
-        },
+        }
         Err(e) => {
             eprintln!("Performance schema index usage unavailable: {}", e);
             Ok(vec![])
@@ -1183,7 +1461,11 @@ pub async fn get_index_usage(pool: &Pool<MySql>, database: &str, table: &str) ->
 
 // --- Index Sizes (MySQL) ---
 
-pub async fn get_index_sizes(pool: &Pool<MySql>, database: &str, table: &str) -> Result<Vec<IndexSize>, String> {
+pub async fn get_index_sizes(
+    pool: &Pool<MySql>,
+    database: &str,
+    table: &str,
+) -> Result<Vec<IndexSize>, String> {
     let page_size = match sqlx::query("SELECT @@innodb_page_size as page_size")
         .fetch_one(pool)
         .await
@@ -1192,7 +1474,8 @@ pub async fn get_index_sizes(pool: &Pool<MySql>, database: &str, table: &str) ->
         Err(_) => 16384,
     };
 
-    let query = format!(r#"
+    let query = format!(
+        r#"
         SELECT 
             index_name,
             stat_value
@@ -1200,7 +1483,9 @@ pub async fn get_index_sizes(pool: &Pool<MySql>, database: &str, table: &str) ->
         WHERE database_name = '{}'
           AND table_name = '{}'
           AND stat_name = 'size'
-    "#, database, table);
+    "#,
+        database, table
+    );
 
     match sqlx::query(&query).fetch_all(pool).await {
         Ok(rows) => {
@@ -1208,14 +1493,16 @@ pub async fn get_index_sizes(pool: &Pool<MySql>, database: &str, table: &str) ->
             for row in rows {
                 let index_name: String = row.try_get("index_name").unwrap_or_default();
                 let stat_value: i64 = row.try_get::<i64, _>("stat_value").unwrap_or(0);
-                if index_name.is_empty() { continue; }
+                if index_name.is_empty() {
+                    continue;
+                }
                 sizes.push(IndexSize {
                     index_name,
                     size_bytes: stat_value.saturating_mul(page_size),
                 });
             }
             Ok(sizes)
-        },
+        }
         Err(e) => {
             eprintln!("InnoDB index stats unavailable: {}", e);
             Ok(vec![])
@@ -1292,7 +1579,9 @@ fn has_index_usage_signal(value: &Value, index_name: &str) -> bool {
             }
             has_index_usage_signal(child, index_name)
         }),
-        Value::Array(arr) => arr.iter().any(|child| has_index_usage_signal(child, index_name)),
+        Value::Array(arr) => arr
+            .iter()
+            .any(|child| has_index_usage_signal(child, index_name)),
         _ => false,
     }
 }
@@ -1310,7 +1599,7 @@ async fn explain_json_mysql(pool: &Pool<MySql>, query: &str) -> Result<Value, St
     )
     .await
     .map_err(|_| format!("EXPLAIN timed out after {}ms", SIM_EXPLAIN_TIMEOUT_MS))?
-        .map_err(|e| format!("EXPLAIN failed: {}", e))?;
+    .map_err(|e| format!("EXPLAIN failed: {}", e))?;
 
     let explain_json = row
         .try_get::<String, _>("EXPLAIN")
@@ -1398,8 +1687,10 @@ pub async fn simulate_index_drop(
     queries: &[(String, String)],
 ) -> Result<(Vec<IndexSimulationQueryDiff>, Vec<String>), String> {
     let mut notes = vec![
-        "MySQL simulation is heuristic in this build (no transactional index invisibility toggle).".to_string(),
-        "EXPLAIN requests are timeout-limited and use MAX_EXECUTION_TIME when available.".to_string(),
+        "MySQL simulation is heuristic in this build (no transactional index invisibility toggle)."
+            .to_string(),
+        "EXPLAIN requests are timeout-limited and use MAX_EXECUTION_TIME when available."
+            .to_string(),
     ];
     let mut diffs: Vec<IndexSimulationQueryDiff> = Vec::new();
 
@@ -1424,7 +1715,9 @@ pub async fn simulate_index_drop(
                 });
 
                 let delta_pct = match (before_cost, estimated_after) {
-                    (Some(before), Some(after)) if before > 0.0 => Some(((after - before) / before) * 100.0),
+                    (Some(before), Some(after)) if before > 0.0 => {
+                        Some(((after - before) / before) * 100.0)
+                    }
                     _ => None,
                 };
                 let regression = delta_pct.map(|d| d > 5.0).unwrap_or(false);
@@ -1462,7 +1755,8 @@ pub async fn simulate_index_drop(
     }
 
     if diffs.is_empty() {
-        notes.push("No explainable query candidates were found in local query history.".to_string());
+        notes
+            .push("No explainable query candidates were found in local query history.".to_string());
     }
 
     Ok((diffs, notes))
@@ -1506,7 +1800,8 @@ use crate::db_types::SlowQuery;
 pub async fn get_slow_queries(pool: &Pool<MySql>, limit: i32) -> Result<Vec<SlowQuery>, String> {
     // Try to get slow queries from performance_schema or mysql.slow_log
     // First, check if performance_schema.events_statements_summary_by_digest is available
-    let query = format!(r#"
+    let query = format!(
+        r#"
         SELECT 
             DATE_FORMAT(CURRENT_TIMESTAMP, '%Y-%m-%d %H:%i:%s') as start_time,
             IFNULL(SCHEMA_NAME, 'N/A') as user_host,
@@ -1519,11 +1814,11 @@ pub async fn get_slow_queries(pool: &Pool<MySql>, limit: i32) -> Result<Vec<Slow
         WHERE AVG_TIMER_WAIT > 1000000000000
         ORDER BY AVG_TIMER_WAIT DESC
         LIMIT {}
-    "#, limit);
+    "#,
+        limit
+    );
 
-    let rows = sqlx::query(&query)
-        .fetch_all(pool)
-        .await;
+    let rows = sqlx::query(&query).fetch_all(pool).await;
 
     match rows {
         Ok(rows) => {
@@ -1540,10 +1835,11 @@ pub async fn get_slow_queries(pool: &Pool<MySql>, limit: i32) -> Result<Vec<Slow
                 });
             }
             Ok(queries)
-        },
+        }
         Err(_) => {
             // Fallback: Try process list for currently running slow queries
-            let fallback_query = format!(r#"
+            let fallback_query = format!(
+                r#"
                 SELECT 
                     DATE_FORMAT(NOW() - INTERVAL TIME SECOND, '%Y-%m-%d %H:%i:%s') as start_time,
                     CONCAT(USER, '@', HOST) as user_host,
@@ -1558,7 +1854,9 @@ pub async fn get_slow_queries(pool: &Pool<MySql>, limit: i32) -> Result<Vec<Slow
                     AND INFO IS NOT NULL
                 ORDER BY TIME DESC
                 LIMIT {}
-            "#, limit);
+            "#,
+                limit
+            );
 
             let rows = sqlx::query(&fallback_query)
                 .fetch_all(pool)
@@ -1592,9 +1890,9 @@ pub async fn get_execution_plan(pool: &Pool<MySql>, query: &str) -> Result<Strin
 
     match row {
         Some(r) => {
-             let plan: String = r.try_get(0).unwrap_or_default();
-             Ok(plan)
-        },
-        None => Err("No execution plan returned".to_string())
+            let plan: String = r.try_get(0).unwrap_or_default();
+            Ok(plan)
+        }
+        None => Err("No execution plan returned".to_string()),
     }
 }

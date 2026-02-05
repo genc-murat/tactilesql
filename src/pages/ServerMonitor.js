@@ -22,6 +22,7 @@ export function ServerMonitor() {
     let replicationStatus = null;
     let slowQueries = [];
     let locks = [];
+    let lockAnalysis = null;
     let isLoading = true;
     let autoRefresh = true;
     let refreshInterval = null;
@@ -47,11 +48,15 @@ export function ServerMonitor() {
                 const isPostgres = activeDbType === 'postgresql';
                 
                 // Load data - some commands are MySQL specific
-                const [status, processes, replication, lockData] = await Promise.all([
+                const [status, processes, replication, lockData, lockAnalysisData] = await Promise.all([
                     invoke('get_server_status'),
                     invoke('get_process_list'),
                     invoke('get_replication_status'),
-                    invoke('get_locks')
+                    invoke('get_locks'),
+                    invoke('get_lock_analysis').catch((e) => {
+                        console.warn('Lock analysis not available:', e);
+                        return null;
+                    })
                 ]);
 
                 // MySQL-specific data
@@ -81,6 +86,7 @@ export function ServerMonitor() {
                 replicationStatus = replication;
                 slowQueries = slow;
                 locks = lockData;
+                lockAnalysis = lockAnalysisData;
                 isLoading = false;
                 render();
             } catch (error) {
@@ -556,7 +562,13 @@ SET GLOBAL long_query_time = 1;</pre>
         const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
 
-        if (locks.length === 0) {
+        const analysisEdges = Array.isArray(lockAnalysis?.edges) ? lockAnalysis.edges : [];
+        const analysisChains = Array.isArray(lockAnalysis?.chains) ? lockAnalysis.chains : [];
+        const analysisNodes = Array.isArray(lockAnalysis?.nodes) ? lockAnalysis.nodes : [];
+        const analysisRecommendations = Array.isArray(lockAnalysis?.recommendations) ? lockAnalysis.recommendations : [];
+        const summary = lockAnalysis?.summary || {};
+
+        if (locks.length === 0 && analysisEdges.length === 0) {
             return `
                 <div class="rounded-xl p-12 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))} text-center">
                     <span class="material-symbols-outlined text-5xl text-green-500 mb-4">lock_open</span>
@@ -566,46 +578,230 @@ SET GLOBAL long_query_time = 1;</pre>
             `;
         }
 
+        const severityClass = (severity) => {
+            switch ((severity || '').toLowerCase()) {
+                case 'critical':
+                    return 'bg-red-500/20 text-red-500 border border-red-500/30';
+                case 'high':
+                    return 'bg-orange-500/20 text-orange-500 border border-orange-500/30';
+                case 'medium':
+                    return 'bg-yellow-500/20 text-yellow-500 border border-yellow-500/30';
+                default:
+                    return isLight ? 'bg-gray-100 text-gray-700 border border-gray-200' : 'bg-blue-500/20 text-blue-400 border border-blue-500/30';
+            }
+        };
+
+        const generatedAt = lockAnalysis?.generated_at ? new Date(lockAnalysis.generated_at) : null;
+        const generatedAtLabel = generatedAt && !Number.isNaN(generatedAt.getTime())
+            ? generatedAt.toLocaleTimeString()
+            : (lockAnalysis?.generated_at || '-');
+
+        const topBlockers = [...analysisNodes]
+            .filter(node => (node.blocked_count || 0) > 0)
+            .sort((a, b) => (b.blocked_count || 0) - (a.blocked_count || 0))
+            .slice(0, 3);
+
+        const graphHtml = analysisEdges.length > 0
+            ? analysisEdges.slice(0, 60).map(edge => `
+                <div class="p-3 rounded-lg ${isLight ? 'bg-gray-50 border border-gray-200' : (isDawn ? 'bg-[#faf4ed] border border-[#f2e9e1]' : 'bg-white/5 border border-white/10')}">
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="px-2 py-0.5 rounded text-xs font-mono ${isDawn ? 'bg-[#b4637a]/10 text-[#b4637a]' : 'bg-red-500/15 text-red-500'}">#${edge.blocking_process_id}</span>
+                            <span class="${isLight ? 'text-gray-400' : 'text-gray-500'}">-&gt;</span>
+                            <span class="px-2 py-0.5 rounded text-xs font-mono ${isDawn ? 'bg-[#56949f]/10 text-[#56949f]' : 'bg-yellow-500/15 text-yellow-500'}">#${edge.waiting_process_id}</span>
+                            <span class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">${edge.wait_seconds || 0}s wait</span>
+                        </div>
+                        <button class="kill-blocking-btn px-2 py-1 rounded text-xs ${isLight ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'} transition-colors" data-id="${edge.blocking_process_id}">
+                            Kill blocker
+                        </button>
+                    </div>
+                    <div class="mt-2 flex flex-wrap gap-2 text-[11px] ${isLight ? 'text-gray-600' : 'text-gray-400'}">
+                        <span class="px-2 py-0.5 rounded ${isLight ? 'bg-gray-100' : 'bg-white/10'}">${escapeHtml(edge.lock_type || 'unknown-lock')}</span>
+                        <span class="px-2 py-0.5 rounded ${isLight ? 'bg-gray-100' : 'bg-white/10'}">${escapeHtml(edge.object_name || 'unknown-object')}</span>
+                        <span class="px-2 py-0.5 rounded ${isLight ? 'bg-gray-100' : 'bg-white/10'}">wait:${escapeHtml(edge.waiting_lock_mode || '-')}</span>
+                        <span class="px-2 py-0.5 rounded ${isLight ? 'bg-gray-100' : 'bg-white/10'}">block:${escapeHtml(edge.blocking_lock_mode || '-')}</span>
+                    </div>
+                    <div class="mt-2 grid grid-cols-2 gap-2 text-[11px]">
+                        <div class="p-2 rounded ${isLight ? 'bg-white border border-gray-200 text-gray-700' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border border-white/10 text-gray-300')}">
+                            <p class="font-semibold mb-1 text-[10px] uppercase tracking-wide opacity-70">Blocking SQL</p>
+                            <p class="font-mono break-words">${escapeHtml(edge.blocking_query || '-')}</p>
+                        </div>
+                        <div class="p-2 rounded ${isLight ? 'bg-white border border-gray-200 text-gray-700' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border border-white/10 text-gray-300')}">
+                            <p class="font-semibold mb-1 text-[10px] uppercase tracking-wide opacity-70">Waiting SQL</p>
+                            <p class="font-mono break-words">${escapeHtml(edge.waiting_query || '-')}</p>
+                        </div>
+                    </div>
+                </div>
+            `).join('')
+            : `
+                <div class="p-3 rounded-lg ${isLight ? 'bg-gray-50 text-gray-500' : 'bg-white/5 text-gray-400'} text-sm">
+                    No blocking edges found.
+                </div>
+            `;
+
+        const chainsHtml = analysisChains.length > 0
+            ? analysisChains.slice(0, 20).map(chain => {
+                const path = (Array.isArray(chain.process_chain) ? chain.process_chain : [])
+                    .map(pid => `<span class="px-2 py-0.5 rounded text-xs font-mono ${isLight ? 'bg-gray-100 text-gray-700' : (isDawn ? 'bg-[#f2e9e1] text-[#575279]' : 'bg-white/10 text-gray-200')}">#${pid}</span>`)
+                    .join(`<span class="${isLight ? 'text-gray-400' : 'text-gray-500'}">-&gt;</span>`);
+                return `
+                    <div class="p-3 rounded-lg ${isLight ? 'bg-gray-50 border border-gray-200' : (isDawn ? 'bg-[#faf4ed] border border-[#f2e9e1]' : 'bg-white/5 border border-white/10')}">
+                        <div class="flex items-center justify-between gap-2 mb-2">
+                            <div class="flex items-center gap-2 text-xs ${isLight ? 'text-gray-600' : 'text-gray-400'}">
+                                <span>Depth: <strong>${chain.depth || 0}</strong></span>
+                                <span>Total Wait: <strong>${chain.total_wait_seconds || 0}s</strong></span>
+                            </div>
+                            ${chain.contains_cycle ? `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-red-500/20 text-red-500">Deadlock cycle</span>` : ''}
+                        </div>
+                        <div class="flex items-center flex-wrap gap-2">${path}</div>
+                    </div>
+                `;
+            }).join('')
+            : `
+                <div class="p-3 rounded-lg ${isLight ? 'bg-gray-50 text-gray-500' : 'bg-white/5 text-gray-400'} text-sm">
+                    No blocking chain found.
+                </div>
+            `;
+
+        const recommendationsHtml = analysisRecommendations.length > 0
+            ? analysisRecommendations.map(rec => `
+                <div class="p-3 rounded-lg ${severityClass(rec.severity)}">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="material-symbols-outlined text-sm">tips_and_updates</span>
+                        <span class="text-xs font-semibold uppercase tracking-wide">${escapeHtml(rec.severity || 'low')}</span>
+                    </div>
+                    <p class="font-semibold text-sm mb-1">${escapeHtml(rec.title || '')}</p>
+                    <p class="text-xs leading-relaxed">${escapeHtml(rec.action || '')}</p>
+                </div>
+            `).join('')
+            : `
+                <div class="p-3 rounded-lg ${isLight ? 'bg-gray-50 text-gray-500' : 'bg-white/5 text-gray-400'} text-sm">
+                    Automatic recommendations are unavailable.
+                </div>
+            `;
+
         return `
-            <div class="rounded-xl ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))} overflow-hidden">
-                <div class="p-4 border-b ${isLight ? 'border-gray-200' : 'border-white/10'}">
-                    <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} flex items-center gap-2">
-                        <span class="material-symbols-outlined text-amber-500">lock</span>
-                        Active Locks
-                        <span class="px-2 py-0.5 text-xs rounded-full bg-amber-500/20 text-amber-500">${locks.length} locks</span>
-                    </h3>
-                </div>
-                <div class="overflow-auto max-h-[500px]">
-                    <table class="w-full text-sm">
-                        <thead class="sticky top-0 ${isLight ? 'bg-gray-100' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]')}">
-                            <tr class="${isLight ? 'text-gray-600' : 'text-gray-400'} text-xs uppercase tracking-wider">
-                                <th class="px-4 py-3 text-left">Lock ID</th>
-                                <th class="px-4 py-3 text-left">Lock Mode</th>
-                                <th class="px-4 py-3 text-left">Lock Type</th>
-                                <th class="px-4 py-3 text-left">Table</th>
-                                <th class="px-4 py-3 text-left">Lock Data</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y ${isLight ? 'divide-gray-100' : 'divide-white/5'}">
-                            ${locks.map(lock => `
-                                <tr class="${isLight ? 'hover:bg-gray-50' : 'hover:bg-white/5'} transition-colors">
-                                    <td class="px-4 py-3 ${isLight ? 'text-gray-900' : 'text-white'} font-mono text-xs">${escapeHtml(lock.lock_id || '')}</td>
-                                    <td class="px-4 py-3">
-                                        <span class="px-2 py-0.5 rounded text-xs font-mono ${lock.lock_mode?.includes('X') ? 'bg-red-500/20 text-red-500' : 'bg-blue-500/20 text-blue-500'}">${escapeHtml(lock.lock_mode || '')}</span>
-                                    </td>
-                                    <td class="px-4 py-3 ${isLight ? 'text-gray-700' : 'text-gray-300'}">${escapeHtml(lock.lock_type || '')}</td>
-                                    <td class="px-4 py-3 ${isDawn ? 'text-[#56949f]' : 'text-mysql-cyan'} font-mono text-xs">${escapeHtml(lock.lock_table || '') || '-'}</td>
-                                    <td class="px-4 py-3 ${isLight ? 'text-gray-600' : 'text-gray-400'} font-mono text-xs max-w-[200px] truncate" title="${escapeHtml(lock.lock_data || '')}">${escapeHtml(lock.lock_data || '') || '-'}</td>
+            <div class="space-y-6">
+                <div class="rounded-xl ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))} overflow-hidden">
+                    <div class="p-4 border-b ${isLight ? 'border-gray-200' : 'border-white/10'}">
+                        <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} flex items-center gap-2">
+                            <span class="material-symbols-outlined text-amber-500">lock</span>
+                            Active Locks
+                            <span class="px-2 py-0.5 text-xs rounded-full bg-amber-500/20 text-amber-500">${locks.length} locks</span>
+                        </h3>
+                    </div>
+                    <div class="overflow-auto max-h-[420px]">
+                        <table class="w-full text-sm">
+                            <thead class="sticky top-0 ${isLight ? 'bg-gray-100' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]')}">
+                                <tr class="${isLight ? 'text-gray-600' : 'text-gray-400'} text-xs uppercase tracking-wider">
+                                    <th class="px-4 py-3 text-left">Lock ID</th>
+                                    <th class="px-4 py-3 text-left">Lock Mode</th>
+                                    <th class="px-4 py-3 text-left">Lock Type</th>
+                                    <th class="px-4 py-3 text-left">Table</th>
+                                    <th class="px-4 py-3 text-left">Lock Data</th>
                                 </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody class="divide-y ${isLight ? 'divide-gray-100' : 'divide-white/5'}">
+                                ${locks.map(lock => `
+                                    <tr class="${isLight ? 'hover:bg-gray-50' : 'hover:bg-white/5'} transition-colors">
+                                        <td class="px-4 py-3 ${isLight ? 'text-gray-900' : 'text-white'} font-mono text-xs">${escapeHtml(lock.lock_id || '')}</td>
+                                        <td class="px-4 py-3">
+                                            <span class="px-2 py-0.5 rounded text-xs font-mono ${lock.lock_mode?.includes('X') ? 'bg-red-500/20 text-red-500' : 'bg-blue-500/20 text-blue-500'}">${escapeHtml(lock.lock_mode || '')}</span>
+                                        </td>
+                                        <td class="px-4 py-3 ${isLight ? 'text-gray-700' : 'text-gray-300'}">${escapeHtml(lock.lock_type || '')}</td>
+                                        <td class="px-4 py-3 ${isDawn ? 'text-[#56949f]' : 'text-mysql-cyan'} font-mono text-xs">${escapeHtml(lock.lock_table || '') || '-'}</td>
+                                        <td class="px-4 py-3 ${isLight ? 'text-gray-600' : 'text-gray-400'} font-mono text-xs max-w-[200px] truncate" title="${escapeHtml(lock.lock_data || '')}">${escapeHtml(lock.lock_data || '') || '-'}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="p-4 border-t ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : 'border-white/10 bg-white/5')}">
+                        <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">
+                            <span class="material-symbols-outlined text-xs align-middle ${isDawn ? 'text-[#907aa9]' : 'text-purple-500'}">info</span>
+                            <span class="font-semibold">Note:</span> X (Exclusive) locks block other transactions. S (Shared) locks allow concurrent reads.
+                        </p>
+                    </div>
                 </div>
-                <div class="p-4 border-t ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : 'border-white/10 bg-white/5')}">
-                    <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">
-                        <span class="material-symbols-outlined text-xs align-middle ${isDawn ? 'text-[#907aa9]' : 'text-purple-500'}">info</span>
-                        <span class="font-semibold">Note:</span> X (Exclusive) locks block other transactions. S (Shared) locks allow concurrent reads.
-                    </p>
+
+                <div class="rounded-xl ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))} overflow-hidden">
+                    <div class="p-4 border-b ${isLight ? 'border-gray-200' : 'border-white/10'}">
+                        <div class="flex items-center justify-between gap-3 flex-wrap">
+                            <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} flex items-center gap-2">
+                                <span class="material-symbols-outlined ${lockAnalysis?.has_deadlock ? 'text-red-500' : 'text-mysql-teal'}">timeline</span>
+                                Blocking Chain Analysis
+                            </h3>
+                            <span class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">
+                                Last generated: ${escapeHtml(generatedAtLabel)}
+                            </span>
+                        </div>
+                    </div>
+
+                    ${lockAnalysis ? `
+                        <div class="p-4 grid grid-cols-2 lg:grid-cols-4 gap-3 border-b ${isLight ? 'border-gray-200' : 'border-white/10'}">
+                            <div class="p-3 rounded-lg ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#faf4ed]' : 'bg-white/5')}">
+                                <p class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">Waiting Sessions</p>
+                                <p class="text-lg font-bold ${isLight ? 'text-gray-900' : 'text-white'}">${formatNumber(summary.waiting_sessions || 0)}</p>
+                            </div>
+                            <div class="p-3 rounded-lg ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#faf4ed]' : 'bg-white/5')}">
+                                <p class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">Blocking Sessions</p>
+                                <p class="text-lg font-bold ${isLight ? 'text-gray-900' : 'text-white'}">${formatNumber(summary.blocking_sessions || 0)}</p>
+                            </div>
+                            <div class="p-3 rounded-lg ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#faf4ed]' : 'bg-white/5')}">
+                                <p class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">Max Wait</p>
+                                <p class="text-lg font-bold ${isLight ? 'text-gray-900' : 'text-white'}">${formatNumber(summary.max_wait_seconds || 0)}s</p>
+                            </div>
+                            <div class="p-3 rounded-lg ${lockAnalysis.has_deadlock ? 'bg-red-500/10 border border-red-500/30' : (isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#faf4ed]' : 'bg-white/5'))}">
+                                <p class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">Deadlock</p>
+                                <p class="text-lg font-bold ${lockAnalysis.has_deadlock ? 'text-red-500' : (isLight ? 'text-gray-900' : 'text-white')}">${lockAnalysis.has_deadlock ? 'Detected' : 'No'}</p>
+                            </div>
+                        </div>
+
+                        ${topBlockers.length > 0 ? `
+                            <div class="p-4 border-b ${isLight ? 'border-gray-200' : 'border-white/10'}">
+                                <h4 class="text-sm font-semibold mb-3 ${isLight ? 'text-gray-900' : 'text-white'}">Root Blockers</h4>
+                                <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                                    ${topBlockers.map(node => `
+                                        <div class="p-3 rounded-lg ${isLight ? 'bg-gray-50 border border-gray-200' : (isDawn ? 'bg-[#faf4ed] border border-[#f2e9e1]' : 'bg-white/5 border border-white/10')}">
+                                            <div class="flex items-center justify-between mb-2">
+                                                <span class="text-sm font-mono ${isLight ? 'text-gray-900' : 'text-white'}">#${node.process_id}</span>
+                                                <span class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">${node.blocked_count || 0} blocked</span>
+                                            </div>
+                                            <p class="text-xs ${isLight ? 'text-gray-600' : 'text-gray-400'} mb-2 break-words">${escapeHtml(node.sample_query || 'No SQL sample')}</p>
+                                            <button class="kill-blocking-btn w-full px-2 py-1 rounded text-xs ${isLight ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'} transition-colors" data-id="${node.process_id}">
+                                                Kill blocker #${node.process_id}
+                                            </button>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        ` : ''}
+
+                        <div class="p-4 border-b ${isLight ? 'border-gray-200' : 'border-white/10'}">
+                            <h4 class="text-sm font-semibold mb-3 ${isLight ? 'text-gray-900' : 'text-white'}">Lock Graph</h4>
+                            <div class="space-y-2 max-h-[420px] overflow-auto custom-scrollbar">
+                                ${graphHtml}
+                            </div>
+                        </div>
+
+                        <div class="p-4 border-b ${isLight ? 'border-gray-200' : 'border-white/10'}">
+                            <h4 class="text-sm font-semibold mb-3 ${isLight ? 'text-gray-900' : 'text-white'}">Blocking Chains</h4>
+                            <div class="space-y-2 max-h-[300px] overflow-auto custom-scrollbar">
+                                ${chainsHtml}
+                            </div>
+                        </div>
+
+                        <div class="p-4">
+                            <h4 class="text-sm font-semibold mb-3 ${isLight ? 'text-gray-900' : 'text-white'}">Automatic Recommendations</h4>
+                            <div class="space-y-2">
+                                ${recommendationsHtml}
+                            </div>
+                        </div>
+                    ` : `
+                        <div class="p-6 text-sm ${isLight ? 'text-gray-600' : 'text-gray-400'}">
+                            Lock analysis data could not be loaded (permissions or DB metadata access issue). Basic lock list is still available.
+                        </div>
+                    `}
                 </div>
             </div>
         `;

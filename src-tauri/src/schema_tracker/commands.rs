@@ -1,13 +1,13 @@
-use tauri::{State, command};
 use crate::db::AppState;
 use crate::db_types::DatabaseType;
-use crate::schema_tracker::models::{SchemaSnapshot, SchemaDiff, SchemaImpactAiReport};
 use crate::schema_tracker::diff::BreakingChange;
+use crate::schema_tracker::models::{SchemaDiff, SchemaImpactAiReport, SchemaSnapshot};
+use tauri::{command, State};
 
 #[command]
 pub async fn capture_schema_snapshot(
     app_state: State<'_, AppState>,
-    connection_id: String
+    connection_id: String,
 ) -> Result<SchemaSnapshot, String> {
     // 1. Determine DB Type and Pool
     let db_type = {
@@ -23,27 +23,41 @@ pub async fn capture_schema_snapshot(
             // But capture_snapshot needs database name.
             // We can get it from connection config or just query 'SELECT DATABASE()'.
             // For MVP, assume the pool is connected to the right DB.
-            let row: (String,) = sqlx::query_as("SELECT DATABASE()").fetch_one(pool).await.map_err(|e| e.to_string())?;
+            let row: (String,) = sqlx::query_as("SELECT DATABASE()")
+                .fetch_one(pool)
+                .await
+                .map_err(|e| e.to_string())?;
             let db_name = row.0;
-            
-            crate::schema_tracker::capture::capture_snapshot_mysql(pool, &db_name, &connection_id).await?
-        },
+
+            crate::schema_tracker::capture::capture_snapshot_mysql(pool, &db_name, &connection_id)
+                .await?
+        }
         DatabaseType::PostgreSQL => {
             let pool_guard = app_state.postgres_pool.lock().await;
-            let pool = pool_guard.as_ref().ok_or("PostgreSQL pool not initialized")?;
+            let pool = pool_guard
+                .as_ref()
+                .ok_or("PostgreSQL pool not initialized")?;
             // Assume 'public' schema or fetch current schema
-            let row: (String,) = sqlx::query_as("SELECT current_schema()").fetch_one(pool).await.map_err(|e| e.to_string())?;
+            let row: (String,) = sqlx::query_as("SELECT current_schema()")
+                .fetch_one(pool)
+                .await
+                .map_err(|e| e.to_string())?;
             let schema_name = row.0;
-            
-            crate::schema_tracker::capture::capture_snapshot_postgres(pool, &schema_name, &connection_id).await?
-        },
+
+            crate::schema_tracker::capture::capture_snapshot_postgres(
+                pool,
+                &schema_name,
+                &connection_id,
+            )
+            .await?
+        }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     };
 
     {
         let store_guard = app_state.schema_tracker_store.lock().await;
         if let Some(store) = store_guard.as_ref() {
-             store.save_snapshot(&snapshot).await?;
+            store.save_snapshot(&snapshot).await?;
         }
     }
 
@@ -53,24 +67,23 @@ pub async fn capture_schema_snapshot(
 #[command]
 pub async fn compare_schema_snapshots(
     snapshot1: SchemaSnapshot,
-    snapshot2: SchemaSnapshot
+    snapshot2: SchemaSnapshot,
 ) -> Result<SchemaDiff, String> {
-    Ok(crate::schema_tracker::diff::compare_schemas(&snapshot1, &snapshot2))
+    Ok(crate::schema_tracker::diff::compare_schemas(
+        &snapshot1, &snapshot2,
+    ))
 }
 
 #[command]
-pub async fn detect_breaking_changes(
-    diff: SchemaDiff
-) -> Result<Vec<BreakingChange>, String> {
+pub async fn detect_breaking_changes(diff: SchemaDiff) -> Result<Vec<BreakingChange>, String> {
     Ok(crate::schema_tracker::diff::detect_breaking_changes(&diff))
 }
 
 #[command]
-pub async fn generate_migration(
-    diff: SchemaDiff,
-    db_type: DatabaseType
-) -> Result<String, String> {
-    Ok(crate::schema_tracker::migration::generate_migration_script(&diff, &db_type))
+pub async fn generate_migration(diff: SchemaDiff, db_type: DatabaseType) -> Result<String, String> {
+    Ok(crate::schema_tracker::migration::generate_migration_script(
+        &diff, &db_type,
+    ))
 }
 
 #[command]
@@ -78,11 +91,13 @@ pub async fn add_snapshot_tag(
     app_state: State<'_, AppState>,
     snapshot_id: i64,
     tag: String,
-    annotation: String
+    annotation: String,
 ) -> Result<(), String> {
     let store_guard = app_state.schema_tracker_store.lock().await;
     if let Some(store) = store_guard.as_ref() {
-        store.add_version_tag(snapshot_id, &tag, &annotation).await?;
+        store
+            .add_version_tag(snapshot_id, &tag, &annotation)
+            .await?;
         Ok(())
     } else {
         Err("Schema Tracker Store not initialized".to_string())
@@ -92,7 +107,7 @@ pub async fn add_snapshot_tag(
 #[command]
 pub async fn get_schema_snapshots(
     app_state: State<'_, AppState>,
-    connection_id: String
+    connection_id: String,
 ) -> Result<Vec<SchemaSnapshot>, String> {
     let store_guard = app_state.schema_tracker_store.lock().await;
     if let Some(store) = store_guard.as_ref() {
@@ -118,14 +133,16 @@ pub async fn save_ai_impact_report(
 
     let store_guard = app_state.schema_tracker_store.lock().await;
     if let Some(store) = store_guard.as_ref() {
-        store.save_ai_impact_report(
-            &connection_id,
-            base_snapshot_id,
-            target_snapshot_id,
-            &provider,
-            &model,
-            &analysis_text,
-        ).await
+        store
+            .save_ai_impact_report(
+                &connection_id,
+                base_snapshot_id,
+                target_snapshot_id,
+                &provider,
+                &model,
+                &analysis_text,
+            )
+            .await
     } else {
         Err("Schema Tracker Store not initialized".to_string())
     }
@@ -140,7 +157,9 @@ pub async fn get_ai_impact_report(
 ) -> Result<Option<SchemaImpactAiReport>, String> {
     let store_guard = app_state.schema_tracker_store.lock().await;
     if let Some(store) = store_guard.as_ref() {
-        store.get_ai_impact_report(&connection_id, base_snapshot_id, target_snapshot_id).await
+        store
+            .get_ai_impact_report(&connection_id, base_snapshot_id, target_snapshot_id)
+            .await
     } else {
         Err("Schema Tracker Store not initialized".to_string())
     }
@@ -150,15 +169,15 @@ pub async fn get_ai_impact_report(
 pub async fn generate_story_command(
     app_state: State<'_, AppState>,
     snapshot1: SchemaSnapshot,
-    snapshot2: SchemaSnapshot
+    snapshot2: SchemaSnapshot,
 ) -> Result<crate::chronicle::storytelling::Story, String> {
     // 1. Calculate Diff
     let diff = crate::schema_tracker::diff::compare_schemas(&snapshot1, &snapshot2);
-    
+
     // 2. Timestamps (already DateTime<Utc>)
     let t1 = snapshot1.timestamp;
     let t2 = snapshot2.timestamp;
-        
+
     // Ensure chronological order
     let (start, end) = if t1 < t2 { (t1, t2) } else { (t2, t1) };
 
@@ -166,7 +185,11 @@ pub async fn generate_story_command(
     let queries = {
         let guard = app_state.awareness_store.lock().await;
         if let Some(store) = guard.as_ref() {
-            Some(store.get_query_history_range(Some(start), Some(end), 1000).await?)
+            Some(
+                store
+                    .get_query_history_range(Some(start), Some(end), 1000)
+                    .await?,
+            )
         } else {
             None
         }
@@ -175,7 +198,11 @@ pub async fn generate_story_command(
     let anomalies = {
         let guard = app_state.awareness_store.lock().await;
         if let Some(store) = guard.as_ref() {
-            Some(store.get_anomalies_range(Some(start), Some(end), 100).await?)
+            Some(
+                store
+                    .get_anomalies_range(Some(start), Some(end), 100)
+                    .await?,
+            )
         } else {
             None
         }
@@ -183,8 +210,8 @@ pub async fn generate_story_command(
 
     // 4. Generate Story
     Ok(crate::chronicle::storytelling::generate_story(
-        &diff, 
-        queries.as_deref(), 
-        anomalies.as_deref()
+        &diff,
+        queries.as_deref(),
+        anomalies.as_deref(),
     ))
 }

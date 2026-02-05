@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
-use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::algo;
+use petgraph::graph::{DiGraph, NodeIndex};
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -21,7 +21,7 @@ impl SchemaQualifiedName {
     pub fn new(schema: Option<String>, name: String) -> Self {
         Self { schema, name }
     }
-    
+
     pub fn to_string(&self) -> String {
         match &self.schema {
             Some(s) => format!("{}.{}", s, self.name),
@@ -46,7 +46,7 @@ pub enum EdgeType {
     Delete,     // Procedure deletes from Table
     ForeignKey, // Table depends on Table (FK)
     Call,       // Procedure calls Procedure
-    Unknown
+    Unknown,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -83,9 +83,14 @@ impl DependencyGraph {
         }
     }
 
-    pub fn add_node(&mut self, schema: Option<String>, name: String, node_type: NodeType) -> String {
+    pub fn add_node(
+        &mut self,
+        schema: Option<String>,
+        name: String,
+        node_type: NodeType,
+    ) -> String {
         let id = SchemaQualifiedName::new(schema.clone(), name.clone()).to_string();
-        
+
         if self.node_indices.contains_key(&id) {
             return id;
         }
@@ -96,7 +101,7 @@ impl DependencyGraph {
             schema,
             node_type,
         };
-        
+
         let index = self.graph.add_node(node);
         self.node_indices.insert(id.clone(), index);
         id
@@ -107,7 +112,7 @@ impl DependencyGraph {
             Some(idx) => *idx,
             None => return, // Or handle error? For now silent fail
         };
-        
+
         let target_idx = match self.node_indices.get(target_id) {
             Some(idx) => *idx,
             None => return,
@@ -117,32 +122,33 @@ impl DependencyGraph {
         if !self.edge_keys.insert(edge_key) {
             return;
         }
-        
-        self.graph.add_edge(source_idx, target_idx, GraphEdge { edge_type });
+
+        self.graph
+            .add_edge(source_idx, target_idx, GraphEdge { edge_type });
     }
-    
+
     pub fn to_data(&self) -> DependencyGraphData {
         let mut nodes = Vec::new();
         let mut edges = Vec::new();
-        
+
         for idx in self.graph.node_indices() {
             if let Some(node) = self.graph.node_weight(idx) {
                 nodes.push(node.clone());
             }
         }
-        
+
         for edge in self.graph.edge_references() {
             use petgraph::visit::EdgeRef;
             let source_node = self.graph.node_weight(edge.source()).unwrap();
             let target_node = self.graph.node_weight(edge.target()).unwrap();
-            
+
             edges.push(DependencyLink {
                 source: source_node.id.clone(),
                 target: target_node.id.clone(),
                 edge_type: edge.weight().edge_type.clone(),
             });
         }
-        
+
         // Find cycles
         let cycles = self.find_cycles();
 
@@ -152,16 +158,17 @@ impl DependencyGraph {
             cycles,
         }
     }
-    
+
     pub fn find_cycles(&self) -> Vec<Vec<String>> {
         // Tarjan's SCC algo is good for finding strongly connected components
         // A cycle exists if an SCC has > 1 node OR a node has a self-loop
         let sccs = algo::tarjan_scc(&self.graph);
         let mut cycle_groups = Vec::new();
-        
+
         for scc in sccs {
             if scc.len() > 1 {
-                let ids: Vec<String> = scc.iter()
+                let ids: Vec<String> = scc
+                    .iter()
                     .map(|idx| self.graph.node_weight(*idx).unwrap().id.clone())
                     .collect();
                 cycle_groups.push(ids);
@@ -169,16 +176,20 @@ impl DependencyGraph {
                 // Check for self loop
                 let idx = scc[0];
                 if self.graph.contains_edge(idx, idx) {
-                      let node = self.graph.node_weight(idx).unwrap();
-                      cycle_groups.push(vec![node.id.clone()]);
+                    let node = self.graph.node_weight(idx).unwrap();
+                    cycle_groups.push(vec![node.id.clone()]);
                 }
             }
         }
-        
+
         cycle_groups
     }
 
-    fn resolve_center_index(&self, center_id: &str, preferred_schema: Option<&str>) -> Option<NodeIndex> {
+    fn resolve_center_index(
+        &self,
+        center_id: &str,
+        preferred_schema: Option<&str>,
+    ) -> Option<NodeIndex> {
         let normalized = center_id.trim();
         if normalized.is_empty() {
             return None;
@@ -263,7 +274,12 @@ impl DependencyGraph {
         }
     }
 
-    pub fn filter_neighborhood(&mut self, center_id: &str, preferred_schema: Option<&str>, max_hops: usize) {
+    pub fn filter_neighborhood(
+        &mut self,
+        center_id: &str,
+        preferred_schema: Option<&str>,
+        max_hops: usize,
+    ) {
         let center_idx = match self.resolve_center_index(center_id, preferred_schema) {
             Some(idx) => idx,
             None => return,

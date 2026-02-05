@@ -1,6 +1,6 @@
-use sqlx::{Pool, Sqlite, Row};
 use crate::query_story::models::*;
 use chrono::{DateTime, Utc};
+use sqlx::{Pool, Row, Sqlite};
 
 pub struct QueryStoryStore {
     pool: Pool<Sqlite>,
@@ -62,7 +62,7 @@ impl QueryStoryStore {
             CREATE INDEX IF NOT EXISTS idx_stories_favorite ON query_stories(is_favorite);
             CREATE INDEX IF NOT EXISTS idx_versions_hash ON query_versions(query_hash);
             CREATE INDEX IF NOT EXISTS idx_comments_hash ON query_comments(query_hash);
-            "#
+            "#,
         )
         .execute(&self.pool)
         .await
@@ -71,11 +71,14 @@ impl QueryStoryStore {
         Ok(())
     }
 
-    pub async fn create_story(&self, request: CreateQueryStoryRequest) -> Result<QueryStory, String> {
+    pub async fn create_story(
+        &self,
+        request: CreateQueryStoryRequest,
+    ) -> Result<QueryStory, String> {
         let id = uuid::Uuid::new_v4().to_string();
         let query_hash = Self::calculate_query_hash(&request.query_text);
         let now = Utc::now();
-        
+
         let context_data = serde_json::to_vec(&request.context).map_err(|e| e.to_string())?;
         let tags_json = serde_json::to_string(&request.tags).map_err(|e| e.to_string())?;
 
@@ -122,17 +125,17 @@ impl QueryStoryStore {
         .await
         .map_err(|e| format!("Failed to create initial version: {}", e))?;
 
-        self.get_story(&query_hash).await?.ok_or_else(|| "Failed to retrieve created story".to_string())
+        self.get_story(&query_hash)
+            .await?
+            .ok_or_else(|| "Failed to retrieve created story".to_string())
     }
 
     pub async fn get_story(&self, query_hash: &str) -> Result<Option<QueryStory>, String> {
-        let row = sqlx::query(
-            "SELECT * FROM query_stories WHERE query_hash = ?"
-        )
-        .bind(query_hash)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(|e| format!("Failed to fetch story: {}", e))?;
+        let row = sqlx::query("SELECT * FROM query_stories WHERE query_hash = ?")
+            .bind(query_hash)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| format!("Failed to fetch story: {}", e))?;
 
         if let Some(row) = row {
             let story = self.row_to_story(&row).await?;
@@ -158,7 +161,7 @@ impl QueryStoryStore {
             GROUP BY qs.query_hash
             ORDER BY qs.updated_at DESC
             LIMIT ?
-            "#
+            "#,
         )
         .bind(limit)
         .fetch_all(&self.pool)
@@ -169,7 +172,7 @@ impl QueryStoryStore {
         for row in rows {
             let context_data: Vec<u8> = row.try_get("context_data").unwrap_or_default();
             let context: QueryContext = serde_json::from_slice(&context_data).unwrap_or_default();
-            
+
             let tags_json: String = row.try_get("tags").unwrap_or_default();
             let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
 
@@ -190,7 +193,7 @@ impl QueryStoryStore {
     pub async fn add_version(&self, request: AddVersionRequest) -> Result<QueryVersion, String> {
         // Get current max version number
         let max_version: i32 = sqlx::query(
-            "SELECT COALESCE(MAX(version_number), 0) FROM query_versions WHERE query_hash = ?"
+            "SELECT COALESCE(MAX(version_number), 0) FROM query_versions WHERE query_hash = ?",
         )
         .bind(&request.query_hash)
         .fetch_one(&self.pool)
@@ -204,13 +207,19 @@ impl QueryStoryStore {
         let now = Utc::now();
 
         // Generate diff summary
-        let old_query = self.get_query_text_at_version(&request.query_hash, max_version as u32).await?;
+        let old_query = self
+            .get_query_text_at_version(&request.query_hash, max_version as u32)
+            .await?;
         let diff_summary = Self::generate_diff_summary(&old_query, &request.new_query_text);
 
-        let perf_before = request.performance_before.as_ref()
+        let perf_before = request
+            .performance_before
+            .as_ref()
             .map(|p| serde_json::to_vec(p).ok())
             .flatten();
-        let perf_after = request.performance_after.as_ref()
+        let perf_after = request
+            .performance_after
+            .as_ref()
             .map(|p| serde_json::to_vec(p).ok())
             .flatten();
 
@@ -236,15 +245,13 @@ impl QueryStoryStore {
         .map_err(|e| format!("Failed to add version: {}", e))?;
 
         // Update story's updated_at and query_text
-        sqlx::query(
-            "UPDATE query_stories SET updated_at = ?, query_text = ? WHERE query_hash = ?"
-        )
-        .bind(now.timestamp())
-        .bind(&request.new_query_text)
-        .bind(&request.query_hash)
-        .execute(&self.pool)
-        .await
-        .map_err(|e| format!("Failed to update story: {}", e))?;
+        sqlx::query("UPDATE query_stories SET updated_at = ?, query_text = ? WHERE query_hash = ?")
+            .bind(now.timestamp())
+            .bind(&request.new_query_text)
+            .bind(&request.query_hash)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| format!("Failed to update story: {}", e))?;
 
         Ok(QueryVersion {
             version_id,
@@ -268,7 +275,7 @@ impl QueryStoryStore {
             INSERT INTO query_comments 
             (id, query_hash, author, text, created_at, line_reference, parent_id)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-            "#
+            "#,
         )
         .bind(&id)
         .bind(&request.query_hash)
@@ -311,13 +318,14 @@ impl QueryStoryStore {
     }
 
     pub async fn toggle_favorite(&self, query_hash: &str) -> Result<bool, String> {
-        let current: i32 = sqlx::query("SELECT is_favorite FROM query_stories WHERE query_hash = ?")
-            .bind(query_hash)
-            .fetch_one(&self.pool)
-            .await
-            .map_err(|e| format!("Failed to get favorite status: {}", e))?
-            .try_get(0)
-            .unwrap_or(0);
+        let current: i32 =
+            sqlx::query("SELECT is_favorite FROM query_stories WHERE query_hash = ?")
+                .bind(query_hash)
+                .fetch_one(&self.pool)
+                .await
+                .map_err(|e| format!("Failed to get favorite status: {}", e))?
+                .try_get(0)
+                .unwrap_or(0);
 
         let new_status = if current == 1 { 0 } else { 1 };
 
@@ -333,7 +341,7 @@ impl QueryStoryStore {
 
     pub async fn increment_execution(&self, query_hash: &str) -> Result<(), String> {
         let now = Utc::now();
-        
+
         sqlx::query(
             "UPDATE query_stories SET execution_count = execution_count + 1, last_executed = ? WHERE query_hash = ?"
         )
@@ -346,7 +354,12 @@ impl QueryStoryStore {
         Ok(())
     }
 
-    pub async fn compare_versions(&self, query_hash: &str, version1: u32, version2: u32) -> Result<DiffResult, String> {
+    pub async fn compare_versions(
+        &self,
+        query_hash: &str,
+        version1: u32,
+        version2: u32,
+    ) -> Result<DiffResult, String> {
         let v1 = self.get_version(query_hash, version1).await?;
         let v2 = self.get_version(query_hash, version2).await?;
 
@@ -374,9 +387,10 @@ impl QueryStoryStore {
     // Helper methods
     async fn row_to_story(&self, row: &sqlx::sqlite::SqliteRow) -> Result<QueryStory, String> {
         let query_hash: String = row.try_get("query_hash").unwrap_or_default();
-        
+
         let context_data: Vec<u8> = row.try_get("context_data").unwrap_or_default();
-        let context: QueryContext = serde_json::from_slice(&context_data).map_err(|e| e.to_string())?;
+        let context: QueryContext =
+            serde_json::from_slice(&context_data).map_err(|e| e.to_string())?;
 
         let tags_json: String = row.try_get("tags").unwrap_or_default();
         let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
@@ -386,7 +400,7 @@ impl QueryStoryStore {
 
         // Fetch versions
         let versions = self.get_versions(&query_hash).await?;
-        
+
         // Fetch comments
         let comments = self.get_comments(&query_hash).await?;
 
@@ -403,14 +417,17 @@ impl QueryStoryStore {
             tags,
             is_favorite: row.try_get::<i32, _>("is_favorite").unwrap_or(0) == 1,
             execution_count: row.try_get::<i32, _>("execution_count").unwrap_or(0) as u32,
-            last_executed: row.try_get::<i64, _>("last_executed").ok().map(Self::timestamp_to_datetime),
+            last_executed: row
+                .try_get::<i64, _>("last_executed")
+                .ok()
+                .map(Self::timestamp_to_datetime),
             related_queries,
         })
     }
 
     async fn get_versions(&self, query_hash: &str) -> Result<Vec<QueryVersion>, String> {
         let rows = sqlx::query(
-            "SELECT * FROM query_versions WHERE query_hash = ? ORDER BY version_number ASC"
+            "SELECT * FROM query_versions WHERE query_hash = ? ORDER BY version_number ASC",
         )
         .bind(query_hash)
         .fetch_all(&self.pool)
@@ -440,7 +457,7 @@ impl QueryStoryStore {
 
     async fn get_comments(&self, query_hash: &str) -> Result<Vec<Comment>, String> {
         let rows = sqlx::query(
-            "SELECT * FROM query_comments WHERE query_hash = ? ORDER BY created_at ASC"
+            "SELECT * FROM query_comments WHERE query_hash = ? ORDER BY created_at ASC",
         )
         .bind(query_hash)
         .fetch_all(&self.pool)
@@ -454,7 +471,10 @@ impl QueryStoryStore {
                 author: row.try_get("author").unwrap_or_default(),
                 text: row.try_get("text").unwrap_or_default(),
                 created_at: Self::timestamp_to_datetime(row.try_get("created_at").unwrap_or(0)),
-                line_reference: row.try_get::<i32, _>("line_reference").ok().map(|l| l as u32),
+                line_reference: row
+                    .try_get::<i32, _>("line_reference")
+                    .ok()
+                    .map(|l| l as u32),
                 parent_id: row.try_get("parent_id").ok(),
             });
         }
@@ -462,15 +482,18 @@ impl QueryStoryStore {
         Ok(comments)
     }
 
-    async fn get_version(&self, query_hash: &str, version_number: u32) -> Result<QueryVersion, String> {
-        let row = sqlx::query(
-            "SELECT * FROM query_versions WHERE query_hash = ? AND version_number = ?"
-        )
-        .bind(query_hash)
-        .bind(version_number as i32)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| format!("Failed to fetch version: {}", e))?;
+    async fn get_version(
+        &self,
+        query_hash: &str,
+        version_number: u32,
+    ) -> Result<QueryVersion, String> {
+        let row =
+            sqlx::query("SELECT * FROM query_versions WHERE query_hash = ? AND version_number = ?")
+                .bind(query_hash)
+                .bind(version_number as i32)
+                .fetch_one(&self.pool)
+                .await
+                .map_err(|e| format!("Failed to fetch version: {}", e))?;
 
         let perf_before: Option<Vec<u8>> = row.try_get("performance_before").ok();
         let perf_after: Option<Vec<u8>> = row.try_get("performance_after").ok();
@@ -488,9 +511,13 @@ impl QueryStoryStore {
         })
     }
 
-    async fn get_query_text_at_version(&self, query_hash: &str, version_number: u32) -> Result<String, String> {
+    async fn get_query_text_at_version(
+        &self,
+        query_hash: &str,
+        version_number: u32,
+    ) -> Result<String, String> {
         let text: String = sqlx::query(
-            "SELECT query_text FROM query_versions WHERE query_hash = ? AND version_number = ?"
+            "SELECT query_text FROM query_versions WHERE query_hash = ? AND version_number = ?",
         )
         .bind(query_hash)
         .bind(version_number as i32)
@@ -504,7 +531,7 @@ impl QueryStoryStore {
     }
 
     fn calculate_query_hash(query: &str) -> String {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(query.trim().to_lowercase().as_bytes());
         format!("{:x}", hasher.finalize())
@@ -517,7 +544,7 @@ impl QueryStoryStore {
     fn generate_diff_summary(old: &str, new: &str) -> String {
         let old_lines = old.lines().count();
         let new_lines = new.lines().count();
-        
+
         if old == new {
             "No changes".to_string()
         } else if new_lines > old_lines {
@@ -530,8 +557,8 @@ impl QueryStoryStore {
     }
 
     fn compute_diff(old: &str, new: &str) -> Vec<DiffLine> {
-        use similar::{TextDiff, ChangeTag};
-        
+        use similar::{ChangeTag, TextDiff};
+
         let diff = TextDiff::from_lines(old, new);
         let mut lines = Vec::new();
         let mut line_num = 1u32;
@@ -544,7 +571,7 @@ impl QueryStoryStore {
             };
 
             let value = change.value().to_string();
-            
+
             lines.push(DiffLine {
                 line_number: line_num,
                 old_content: if matches!(change_type, ChangeType::Removed | ChangeType::Unchanged) {

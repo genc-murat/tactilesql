@@ -2,13 +2,13 @@
 // POSTGRESQL SPECIFIC DATABASE OPERATIONS
 // =====================================================
 
-use sqlx::{Pool, Postgres, Row, Column, Executor};
-use sqlx::postgres::PgConnectOptions;
-use sqlx::ConnectOptions;
 use crate::db_types::*;
 use futures::StreamExt;
-use std::collections::HashMap;
 use serde_json::Value;
+use sqlx::postgres::PgConnectOptions;
+use sqlx::ConnectOptions;
+use sqlx::{Column, Executor, Pool, Postgres, Row};
+use std::collections::HashMap;
 use tokio::time::{timeout, Duration};
 
 const SIM_EXPLAIN_TIMEOUT_MS: u64 = 2500;
@@ -24,32 +24,34 @@ pub async fn test_connection(config: &ConnectionConfig) -> Result<String, String
     if let Some(pwd) = &config.password {
         options = options.password(pwd);
     }
-    
+
     if let Some(db) = &config.database {
         if !db.is_empty() {
             options = options.database(db);
         }
     }
-    
+
     if let Some(ssl) = &config.ssl_mode {
         options = match ssl.as_str() {
             "disable" => options.ssl_mode(sqlx::postgres::PgSslMode::Disable),
             "prefer" => options.ssl_mode(sqlx::postgres::PgSslMode::Prefer),
             "require" => options.ssl_mode(sqlx::postgres::PgSslMode::Require),
-            _ => options
+            _ => options,
         };
     }
 
     options = options.log_statements(log::LevelFilter::Debug).to_owned();
 
-    let mut conn = options.connect().await
-        .map_err(|e| {
-            let err_msg = e.to_string();
-            if err_msg.contains("connection refused") {
-                return format!("Connection Refused\\n\\nCheck if PostgreSQL is running on {}:{}", config.host, config.port);
-            }
-            format!("Connection failed: {}", e)
-        })?;
+    let mut conn = options.connect().await.map_err(|e| {
+        let err_msg = e.to_string();
+        if err_msg.contains("connection refused") {
+            return format!(
+                "Connection Refused\\n\\nCheck if PostgreSQL is running on {}:{}",
+                config.host, config.port
+            );
+        }
+        format!("Connection failed: {}", e)
+    })?;
 
     let _ = sqlx::query("SELECT 1")
         .fetch_one(&mut conn)
@@ -68,22 +70,22 @@ pub async fn create_pool(config: &ConnectionConfig) -> Result<Pool<Postgres>, St
     if let Some(pwd) = &config.password {
         options = options.password(pwd);
     }
-    
+
     if let Some(db) = &config.database {
         if !db.is_empty() {
             options = options.database(db);
         }
     }
-    
+
     if let Some(ssl) = &config.ssl_mode {
         options = match ssl.as_str() {
             "disable" => options.ssl_mode(sqlx::postgres::PgSslMode::Disable),
             "prefer" => options.ssl_mode(sqlx::postgres::PgSslMode::Prefer),
             "require" => options.ssl_mode(sqlx::postgres::PgSslMode::Require),
-            _ => options
+            _ => options,
         };
     }
-    
+
     sqlx::postgres::PgPoolOptions::new()
         .max_connections(10)
         .min_connections(2)
@@ -105,15 +107,18 @@ pub async fn create_pool(config: &ConnectionConfig) -> Result<Pool<Postgres>, St
 
 // --- Query Execution ---
 
-pub async fn execute_query(pool: &Pool<Postgres>, query: String) -> Result<Vec<QueryResult>, String> {
+pub async fn execute_query(
+    pool: &Pool<Postgres>,
+    query: String,
+) -> Result<Vec<QueryResult>, String> {
     let mut results = Vec::new();
-    
+
     let stream_future = async {
         let mut stream = sqlx::raw_sql(&query).fetch_many(pool);
-        
+
         let mut current_rows = Vec::new();
         let mut current_columns = Vec::new();
-        
+
         while let Some(result) = stream.next().await {
             match result {
                 Ok(either) => {
@@ -128,25 +133,48 @@ pub async fn execute_query(pool: &Pool<Postgres>, query: String) -> Result<Vec<Q
                                 current_rows.clear();
                                 current_columns.clear();
                             }
-                        },
+                        }
                         Either::Right(row) => {
                             if current_columns.is_empty() {
-                                current_columns = row.columns().iter().map(|c| c.name().to_string()).collect();
+                                current_columns =
+                                    row.columns().iter().map(|c| c.name().to_string()).collect();
                             }
-                             
+
                             let mut row_data = Vec::new();
                             for (i, _) in current_columns.iter().enumerate() {
-                                let val: serde_json::Value = row.try_get_unchecked::<i64, _>(i)
+                                let val: serde_json::Value = row
+                                    .try_get_unchecked::<i64, _>(i)
                                     .map(|v| serde_json::json!(v))
-                                    .or_else(|_| row.try_get_unchecked::<i32, _>(i).map(|v| serde_json::json!(v)))
-                                    .or_else(|_| row.try_get_unchecked::<i16, _>(i).map(|v| serde_json::json!(v)))
-                                    .or_else(|_| row.try_get_unchecked::<f64, _>(i).map(|v| serde_json::json!(v)))
-                                    .or_else(|_| row.try_get_unchecked::<f32, _>(i).map(|v| serde_json::json!(v)))
-                                    .or_else(|_| row.try_get_unchecked::<bool, _>(i).map(|v| serde_json::json!(v)))
-                                    .or_else(|_| row.try_get_unchecked::<String, _>(i).map(|v| serde_json::json!(v)))
                                     .or_else(|_| {
-                                        row.try_get_unchecked::<Vec<u8>, _>(i)
-                                            .map(|bytes| serde_json::json!(String::from_utf8_lossy(&bytes).to_string()))
+                                        row.try_get_unchecked::<i32, _>(i)
+                                            .map(|v| serde_json::json!(v))
+                                    })
+                                    .or_else(|_| {
+                                        row.try_get_unchecked::<i16, _>(i)
+                                            .map(|v| serde_json::json!(v))
+                                    })
+                                    .or_else(|_| {
+                                        row.try_get_unchecked::<f64, _>(i)
+                                            .map(|v| serde_json::json!(v))
+                                    })
+                                    .or_else(|_| {
+                                        row.try_get_unchecked::<f32, _>(i)
+                                            .map(|v| serde_json::json!(v))
+                                    })
+                                    .or_else(|_| {
+                                        row.try_get_unchecked::<bool, _>(i)
+                                            .map(|v| serde_json::json!(v))
+                                    })
+                                    .or_else(|_| {
+                                        row.try_get_unchecked::<String, _>(i)
+                                            .map(|v| serde_json::json!(v))
+                                    })
+                                    .or_else(|_| {
+                                        row.try_get_unchecked::<Vec<u8>, _>(i).map(|bytes| {
+                                            serde_json::json!(
+                                                String::from_utf8_lossy(&bytes).to_string()
+                                            )
+                                        })
                                     })
                                     .unwrap_or(serde_json::Value::Null);
                                 row_data.push(val);
@@ -154,30 +182,30 @@ pub async fn execute_query(pool: &Pool<Postgres>, query: String) -> Result<Vec<Q
                             current_rows.push(row_data);
                         }
                     }
-                },
+                }
                 Err(e) => return Err(format!("Query error: {}", e)),
             }
         }
-        
+
         if !current_rows.is_empty() {
             results.push(QueryResult {
                 columns: current_columns,
                 rows: current_rows,
             });
         }
-        
+
         Ok::<_, String>(())
     };
 
-    tokio::time::timeout(
-        std::time::Duration::from_secs(30),
-        stream_future
-    )
-    .await
-    .map_err(|_| "Query timed out after 30 seconds".to_string())??;
+    tokio::time::timeout(std::time::Duration::from_secs(30), stream_future)
+        .await
+        .map_err(|_| "Query timed out after 30 seconds".to_string())??;
 
     if results.is_empty() {
-        return Ok(vec![QueryResult { columns: vec![], rows: vec![] }]);
+        return Ok(vec![QueryResult {
+            columns: vec![],
+            rows: vec![],
+        }]);
     }
 
     Ok(results)
@@ -187,12 +215,14 @@ pub async fn execute_query(pool: &Pool<Postgres>, query: String) -> Result<Vec<Q
 
 #[allow(dead_code)]
 pub async fn get_databases(pool: &Pool<Postgres>) -> Result<Vec<String>, String> {
-    let rows = sqlx::query("SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname")
-        .fetch_all(pool)
-        .await
-        .map_err(|e| format!("Failed to fetch databases: {}", e))?;
+    let rows =
+        sqlx::query("SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname")
+            .fetch_all(pool)
+            .await
+            .map_err(|e| format!("Failed to fetch databases: {}", e))?;
 
-    let databases: Vec<String> = rows.iter()
+    let databases: Vec<String> = rows
+        .iter()
         .map(|row| row.try_get::<String, _>("datname").unwrap_or_default())
         .collect();
 
@@ -203,15 +233,25 @@ pub async fn get_schemas(pool: &Pool<Postgres>) -> Result<Vec<String>, String> {
     let rows = sqlx::query(
         "SELECT schema_name FROM information_schema.schemata 
          WHERE schema_name NOT IN ('pg_toast')
-         ORDER BY schema_name"
+         ORDER BY schema_name",
     )
-        .fetch_all(pool)
-        .await
-        .map_err(|e| format!("Failed to fetch schemas: {}", e))?;
+    .fetch_all(pool)
+    .await
+    .map_err(|e| format!("Failed to fetch schemas: {}", e))?;
 
-    let schemas: Vec<String> = rows.iter()
+    let schemas: Vec<String> = rows
+        .iter()
         .map(|row| row.try_get::<String, _>("schema_name").unwrap_or_default())
-        .filter(|s| !["information_schema", "pg_catalog", "pg_toast", "pg_temp_1", "pg_toast_temp_1"].contains(&s.as_str()))
+        .filter(|s| {
+            ![
+                "information_schema",
+                "pg_catalog",
+                "pg_toast",
+                "pg_temp_1",
+                "pg_toast_temp_1",
+            ]
+            .contains(&s.as_str())
+        })
         .collect();
 
     Ok(schemas)
@@ -219,24 +259,30 @@ pub async fn get_schemas(pool: &Pool<Postgres>) -> Result<Vec<String>, String> {
 
 pub async fn get_tables(pool: &Pool<Postgres>, schema: &str) -> Result<Vec<String>, String> {
     let query = format!(
-        "SELECT tablename FROM pg_tables WHERE schemaname = '{}' ORDER BY tablename", 
+        "SELECT tablename FROM pg_tables WHERE schemaname = '{}' ORDER BY tablename",
         schema
     );
-    
+
     let rows = sqlx::query(&query)
         .fetch_all(pool)
         .await
         .map_err(|e| format!("Failed to fetch tables: {}", e))?;
 
-    let tables: Vec<String> = rows.iter()
+    let tables: Vec<String> = rows
+        .iter()
         .map(|row| row.try_get::<String, _>("tablename").unwrap_or_default())
         .collect();
 
     Ok(tables)
 }
 
-pub async fn get_table_schema(pool: &Pool<Postgres>, schema: &str, table: &str) -> Result<Vec<ColumnSchema>, String> {
-    let query = format!(r#"
+pub async fn get_table_schema(
+    pool: &Pool<Postgres>,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<ColumnSchema>, String> {
+    let query = format!(
+        r#"
         SELECT 
             c.column_name,
             c.data_type,
@@ -260,7 +306,9 @@ pub async fn get_table_schema(pool: &Pool<Postgres>, schema: &str, table: &str) 
         WHERE c.table_schema = '{}'
             AND c.table_name = '{}'
         ORDER BY c.ordinal_position
-    "#, schema, table, schema, table);
+    "#,
+        schema, table, schema, table
+    );
 
     let rows = sqlx::query(&query)
         .fetch_all(pool)
@@ -277,13 +325,13 @@ pub async fn get_table_schema(pool: &Pool<Postgres>, schema: &str, table: &str) 
         let is_nullable = is_nullable_str == "YES";
         let column_key: String = row.try_get("column_key").unwrap_or_default();
         let column_default: Option<String> = row.try_get("column_default").ok();
-        
+
         let column_type = if let Some(len) = max_length {
             format!("{}({})", udt_name, len)
         } else {
             udt_name.clone()
         };
-        
+
         let extra = if let Some(ref def) = column_default {
             if def.contains("nextval") {
                 "auto_increment".to_string()
@@ -310,8 +358,13 @@ pub async fn get_table_schema(pool: &Pool<Postgres>, schema: &str, table: &str) 
 
 // --- Table DDL ---
 
-pub async fn get_table_ddl(pool: &Pool<Postgres>, schema: &str, table: &str) -> Result<String, String> {
-    let query = format!(r#"
+pub async fn get_table_ddl(
+    pool: &Pool<Postgres>,
+    schema: &str,
+    table: &str,
+) -> Result<String, String> {
+    let query = format!(
+        r#"
         WITH columns AS (
             SELECT 
                 column_name,
@@ -337,7 +390,9 @@ pub async fn get_table_ddl(pool: &Pool<Postgres>, schema: &str, table: &str) -> 
             E',\n    '
         ) as columns_def
         FROM columns
-    "#, schema, table);
+    "#,
+        schema, table
+    );
 
     let row = sqlx::query(&query)
         .fetch_one(pool)
@@ -345,8 +400,9 @@ pub async fn get_table_ddl(pool: &Pool<Postgres>, schema: &str, table: &str) -> 
         .map_err(|e| format!("Failed to fetch DDL: {}", e))?;
 
     let columns_def: String = row.try_get("columns_def").unwrap_or_default();
-    
-    let pk_query = format!(r#"
+
+    let pk_query = format!(
+        r#"
         SELECT kcu.column_name
         FROM information_schema.table_constraints tc
         JOIN information_schema.key_column_usage kcu 
@@ -355,17 +411,20 @@ pub async fn get_table_ddl(pool: &Pool<Postgres>, schema: &str, table: &str) -> 
             AND tc.table_name = '{}' 
             AND tc.constraint_type = 'PRIMARY KEY'
         ORDER BY kcu.ordinal_position
-    "#, schema, table);
-    
+    "#,
+        schema, table
+    );
+
     let pk_rows = sqlx::query(&pk_query)
         .fetch_all(pool)
         .await
         .unwrap_or_default();
-    
-    let pk_columns: Vec<String> = pk_rows.iter()
+
+    let pk_columns: Vec<String> = pk_rows
+        .iter()
         .map(|r| r.try_get::<String, _>("column_name").unwrap_or_default())
         .collect();
-    
+
     let pk_constraint = if !pk_columns.is_empty() {
         format!(",\n    PRIMARY KEY ({})", pk_columns.join(", "))
     } else {
@@ -382,8 +441,13 @@ pub async fn get_table_ddl(pool: &Pool<Postgres>, schema: &str, table: &str) -> 
 
 // --- Indexes ---
 
-pub async fn get_table_indexes(pool: &Pool<Postgres>, schema: &str, table: &str) -> Result<Vec<TableIndex>, String> {
-    let query = format!(r#"
+pub async fn get_table_indexes(
+    pool: &Pool<Postgres>,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<TableIndex>, String> {
+    let query = format!(
+        r#"
         SELECT 
             i.relname as index_name,
             a.attname as column_name,
@@ -397,7 +461,9 @@ pub async fn get_table_indexes(pool: &Pool<Postgres>, schema: &str, table: &str)
         JOIN pg_namespace n ON t.relnamespace = n.oid
         WHERE n.nspname = '{}' AND t.relname = '{}'
         ORDER BY i.relname, a.attnum
-    "#, schema, table);
+    "#,
+        schema, table
+    );
 
     let rows = sqlx::query(&query)
         .fetch_all(pool)
@@ -419,8 +485,13 @@ pub async fn get_table_indexes(pool: &Pool<Postgres>, schema: &str, table: &str)
 
 // --- Foreign Keys ---
 
-pub async fn get_table_foreign_keys(pool: &Pool<Postgres>, schema: &str, table: &str) -> Result<Vec<ForeignKey>, String> {
-    let query = format!(r#"
+pub async fn get_table_foreign_keys(
+    pool: &Pool<Postgres>,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<ForeignKey>, String> {
+    let query = format!(
+        r#"
         SELECT 
             tc.constraint_name,
             kcu.column_name,
@@ -437,7 +508,9 @@ pub async fn get_table_foreign_keys(pool: &Pool<Postgres>, schema: &str, table: 
         WHERE tc.constraint_type = 'FOREIGN KEY'
             AND tc.table_schema = '{}'
             AND tc.table_name = '{}'
-    "#, schema, table);
+    "#,
+        schema, table
+    );
 
     let rows = sqlx::query(&query)
         .fetch_all(pool)
@@ -460,8 +533,13 @@ pub async fn get_table_foreign_keys(pool: &Pool<Postgres>, schema: &str, table: 
 
 // --- Primary Keys ---
 
-pub async fn get_table_primary_keys(pool: &Pool<Postgres>, schema: &str, table: &str) -> Result<Vec<PrimaryKey>, String> {
-    let query = format!(r#"
+pub async fn get_table_primary_keys(
+    pool: &Pool<Postgres>,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<PrimaryKey>, String> {
+    let query = format!(
+        r#"
         SELECT kcu.column_name, kcu.ordinal_position::integer
         FROM information_schema.table_constraints tc
         JOIN information_schema.key_column_usage kcu
@@ -471,7 +549,9 @@ pub async fn get_table_primary_keys(pool: &Pool<Postgres>, schema: &str, table: 
             AND tc.table_schema = '{}'
             AND tc.table_name = '{}'
         ORDER BY kcu.ordinal_position
-    "#, schema, table);
+    "#,
+        schema, table
+    );
 
     let rows = sqlx::query(&query)
         .fetch_all(pool)
@@ -491,8 +571,13 @@ pub async fn get_table_primary_keys(pool: &Pool<Postgres>, schema: &str, table: 
 
 // --- Constraints ---
 
-pub async fn get_table_constraints(pool: &Pool<Postgres>, schema: &str, table: &str) -> Result<Vec<TableConstraint>, String> {
-    let query = format!(r#"
+pub async fn get_table_constraints(
+    pool: &Pool<Postgres>,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<TableConstraint>, String> {
+    let query = format!(
+        r#"
         SELECT 
             tc.constraint_name,
             tc.constraint_type,
@@ -503,7 +588,9 @@ pub async fn get_table_constraints(pool: &Pool<Postgres>, schema: &str, table: &
             AND tc.table_schema = kcu.table_schema
         WHERE tc.table_schema = '{}'
             AND tc.table_name = '{}'
-    "#, schema, table);
+    "#,
+        schema, table
+    );
 
     let rows = sqlx::query(&query)
         .fetch_all(pool)
@@ -524,8 +611,13 @@ pub async fn get_table_constraints(pool: &Pool<Postgres>, schema: &str, table: &
 
 // --- Table Stats ---
 
-pub async fn get_table_stats(pool: &Pool<Postgres>, schema: &str, table: &str) -> Result<TableStats, String> {
-    let query = format!(r#"
+pub async fn get_table_stats(
+    pool: &Pool<Postgres>,
+    schema: &str,
+    table: &str,
+) -> Result<TableStats, String> {
+    let query = format!(
+        r#"
         SELECT 
             COALESCE(c.reltuples::bigint, 0) as row_count,
             COALESCE(pg_relation_size(c.oid), 0) as data_size,
@@ -533,7 +625,9 @@ pub async fn get_table_stats(pool: &Pool<Postgres>, schema: &str, table: &str) -
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = '{}' AND c.relname = '{}'
-    "#, schema, table);
+    "#,
+        schema, table
+    );
 
     let row = sqlx::query(&query)
         .fetch_one(pool)
@@ -555,32 +649,40 @@ pub async fn get_views(pool: &Pool<Postgres>, schema: &str) -> Result<Vec<String
         "SELECT viewname FROM pg_views WHERE schemaname = '{}' ORDER BY viewname",
         schema
     );
-    
+
     let rows = sqlx::query(&query)
         .fetch_all(pool)
         .await
         .map_err(|e| format!("Failed to fetch views: {}", e))?;
 
-    let views: Vec<String> = rows.iter()
+    let views: Vec<String> = rows
+        .iter()
         .map(|row| row.try_get::<String, _>("viewname").unwrap_or_default())
         .collect();
 
     Ok(views)
 }
 
-pub async fn get_view_definition(pool: &Pool<Postgres>, schema: &str, view: &str) -> Result<ViewDefinition, String> {
+pub async fn get_view_definition(
+    pool: &Pool<Postgres>,
+    schema: &str,
+    view: &str,
+) -> Result<ViewDefinition, String> {
     let query = format!(
         "SELECT definition FROM pg_views WHERE schemaname = '{}' AND viewname = '{}'",
         schema, view
     );
-    
+
     let row = sqlx::query(&query)
         .fetch_one(pool)
         .await
         .map_err(|e| format!("Failed to fetch view definition: {}", e))?;
 
     let definition: String = row.try_get("definition").unwrap_or_default();
-    let full_definition = format!("CREATE OR REPLACE VIEW {}.{} AS\n{}", schema, view, definition);
+    let full_definition = format!(
+        "CREATE OR REPLACE VIEW {}.{} AS\n{}",
+        schema, view, definition
+    );
 
     Ok(ViewDefinition {
         name: view.to_string(),
@@ -600,7 +702,8 @@ pub async fn alter_view(pool: &Pool<Postgres>, definition: &str) -> Result<Strin
 // --- Triggers ---
 
 pub async fn get_triggers(pool: &Pool<Postgres>, schema: &str) -> Result<Vec<TriggerInfo>, String> {
-    let query = format!(r#"
+    let query = format!(
+        r#"
         SELECT 
             t.tgname as trigger_name,
             CASE t.tgtype & 2 WHEN 2 THEN 'BEFORE' ELSE 'AFTER' END as timing,
@@ -616,7 +719,9 @@ pub async fn get_triggers(pool: &Pool<Postgres>, schema: &str) -> Result<Vec<Tri
         JOIN pg_namespace n ON c.relnamespace = n.oid
         WHERE n.nspname = '{}'
             AND NOT t.tgisinternal
-    "#, schema);
+    "#,
+        schema
+    );
 
     let rows = sqlx::query(&query)
         .fetch_all(pool)
@@ -636,8 +741,13 @@ pub async fn get_triggers(pool: &Pool<Postgres>, schema: &str) -> Result<Vec<Tri
     Ok(triggers)
 }
 
-pub async fn get_table_triggers(pool: &Pool<Postgres>, schema: &str, table: &str) -> Result<Vec<TriggerInfo>, String> {
-    let query = format!(r#"
+pub async fn get_table_triggers(
+    pool: &Pool<Postgres>,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<TriggerInfo>, String> {
+    let query = format!(
+        r#"
         SELECT 
             t.tgname as trigger_name,
             CASE t.tgtype & 2 WHEN 2 THEN 'BEFORE' ELSE 'AFTER' END as timing,
@@ -654,7 +764,9 @@ pub async fn get_table_triggers(pool: &Pool<Postgres>, schema: &str, table: &str
         WHERE n.nspname = '{}' 
             AND c.relname = '{}'
             AND NOT t.tgisinternal
-    "#, schema, table);
+    "#,
+        schema, table
+    );
 
     let rows = sqlx::query(&query)
         .fetch_all(pool)
@@ -676,8 +788,12 @@ pub async fn get_table_triggers(pool: &Pool<Postgres>, schema: &str, table: &str
 
 // --- Procedures & Functions ---
 
-pub async fn get_procedures(pool: &Pool<Postgres>, schema: &str) -> Result<Vec<RoutineInfo>, String> {
-    let query = format!(r#"
+pub async fn get_procedures(
+    pool: &Pool<Postgres>,
+    schema: &str,
+) -> Result<Vec<RoutineInfo>, String> {
+    let query = format!(
+        r#"
         SELECT 
             p.proname as name,
             r.rolname as definer
@@ -687,7 +803,9 @@ pub async fn get_procedures(pool: &Pool<Postgres>, schema: &str) -> Result<Vec<R
         WHERE n.nspname = '{}'
             AND p.prokind = 'p'
         ORDER BY p.proname
-    "#, schema);
+    "#,
+        schema
+    );
 
     let rows = sqlx::query(&query)
         .fetch_all(pool)
@@ -705,8 +823,12 @@ pub async fn get_procedures(pool: &Pool<Postgres>, schema: &str) -> Result<Vec<R
     Ok(procedures)
 }
 
-pub async fn get_functions(pool: &Pool<Postgres>, schema: &str) -> Result<Vec<RoutineInfo>, String> {
-    let query = format!(r#"
+pub async fn get_functions(
+    pool: &Pool<Postgres>,
+    schema: &str,
+) -> Result<Vec<RoutineInfo>, String> {
+    let query = format!(
+        r#"
         SELECT 
             p.proname as name,
             r.rolname as definer
@@ -716,7 +838,9 @@ pub async fn get_functions(pool: &Pool<Postgres>, schema: &str) -> Result<Vec<Ro
         WHERE n.nspname = '{}'
             AND p.prokind = 'f'
         ORDER BY p.proname
-    "#, schema);
+    "#,
+        schema
+    );
 
     let rows = sqlx::query(&query)
         .fetch_all(pool)
@@ -741,13 +865,14 @@ pub async fn get_sequences(pool: &Pool<Postgres>, schema: &str) -> Result<Vec<St
         "SELECT sequencename FROM pg_sequences WHERE schemaname = '{}' ORDER BY sequencename",
         schema
     );
-    
+
     let rows = sqlx::query(&query)
         .fetch_all(pool)
         .await
         .map_err(|e| format!("Failed to fetch sequences: {}", e))?;
 
-    let sequences: Vec<String> = rows.iter()
+    let sequences: Vec<String> = rows
+        .iter()
         .map(|row| row.try_get::<String, _>("sequencename").unwrap_or_default())
         .collect();
 
@@ -757,21 +882,25 @@ pub async fn get_sequences(pool: &Pool<Postgres>, schema: &str) -> Result<Vec<St
 // --- Types (PostgreSQL specific) ---
 
 pub async fn get_custom_types(pool: &Pool<Postgres>, schema: &str) -> Result<Vec<String>, String> {
-    let query = format!(r#"
+    let query = format!(
+        r#"
         SELECT t.typname
         FROM pg_type t
         JOIN pg_namespace n ON t.typnamespace = n.oid
         WHERE n.nspname = '{}'
             AND t.typtype IN ('e', 'c')
         ORDER BY t.typname
-    "#, schema);
+    "#,
+        schema
+    );
 
     let rows = sqlx::query(&query)
         .fetch_all(pool)
         .await
         .map_err(|e| format!("Failed to fetch custom types: {}", e))?;
 
-    let types: Vec<String> = rows.iter()
+    let types: Vec<String> = rows
+        .iter()
         .map(|row| row.try_get::<String, _>("typname").unwrap_or_default())
         .collect();
 
@@ -781,12 +910,13 @@ pub async fn get_custom_types(pool: &Pool<Postgres>, schema: &str) -> Result<Vec
 // --- Server Monitoring ---
 
 pub async fn get_server_status(pool: &Pool<Postgres>) -> Result<ServerStatus, String> {
-    let uptime_query = "SELECT EXTRACT(EPOCH FROM (now() - pg_postmaster_start_time()))::bigint as uptime";
+    let uptime_query =
+        "SELECT EXTRACT(EPOCH FROM (now() - pg_postmaster_start_time()))::bigint as uptime";
     let uptime_row = sqlx::query(uptime_query)
         .fetch_one(pool)
         .await
         .map_err(|e| format!("Failed to fetch uptime: {}", e))?;
-    
+
     let uptime: i64 = uptime_row.try_get("uptime").unwrap_or(0);
 
     let conn_query = "SELECT count(*) as cnt FROM pg_stat_activity";
@@ -794,14 +924,12 @@ pub async fn get_server_status(pool: &Pool<Postgres>) -> Result<ServerStatus, St
         .fetch_one(pool)
         .await
         .map_err(|e| format!("Failed to fetch connections: {}", e))?;
-    
+
     let connections: i64 = conn_row.try_get("cnt").unwrap_or(0);
 
     let active_query = "SELECT count(*) as cnt FROM pg_stat_activity WHERE state = 'active'";
-    let active_row = sqlx::query(active_query)
-        .fetch_one(pool)
-        .await;
-    
+    let active_row = sqlx::query(active_query).fetch_one(pool).await;
+
     let active: i64 = match active_row {
         Ok(row) => row.try_get("cnt").unwrap_or(0),
         Err(_) => 0,
@@ -821,9 +949,13 @@ pub async fn get_server_status(pool: &Pool<Postgres>) -> Result<ServerStatus, St
 
 // --- Capacity Metrics (PostgreSQL) ---
 
-pub async fn get_capacity_metrics(pool: &Pool<Postgres>, schema: &str) -> Result<CapacityMetrics, String> {
+pub async fn get_capacity_metrics(
+    pool: &Pool<Postgres>,
+    schema: &str,
+) -> Result<CapacityMetrics, String> {
     // Storage (data + indexes) for schema
-    let storage_row = sqlx::query(r#"
+    let storage_row = sqlx::query(
+        r#"
         SELECT 
             COALESCE(SUM(pg_table_size(c.oid)), 0) as data_bytes,
             COALESCE(SUM(pg_indexes_size(c.oid)), 0) as index_bytes
@@ -831,11 +963,12 @@ pub async fn get_capacity_metrics(pool: &Pool<Postgres>, schema: &str) -> Result
         JOIN pg_namespace n ON c.relnamespace = n.oid
         WHERE n.nspname = $1
           AND c.relkind IN ('r','p','m','t')
-    "#)
-        .bind(schema)
-        .fetch_one(pool)
-        .await
-        .map_err(|e| format!("Failed to fetch storage metrics: {}", e))?;
+    "#,
+    )
+    .bind(schema)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| format!("Failed to fetch storage metrics: {}", e))?;
 
     let data_bytes: i64 = storage_row.try_get::<i64, _>("data_bytes").unwrap_or(0);
     let index_bytes: i64 = storage_row.try_get::<i64, _>("index_bytes").unwrap_or(0);
@@ -845,18 +978,22 @@ pub async fn get_capacity_metrics(pool: &Pool<Postgres>, schema: &str) -> Result
         .fetch_one(pool)
         .await
         .map_err(|e| format!("Failed to fetch block size: {}", e))?;
-    let block_size_str: String = block_size_row.try_get(0).unwrap_or_else(|_| "8192".to_string());
+    let block_size_str: String = block_size_row
+        .try_get(0)
+        .unwrap_or_else(|_| "8192".to_string());
     let block_size: i64 = block_size_str.parse().unwrap_or(8192);
 
     // Buffer hit ratio (database level)
-    let stat_row = sqlx::query(r#"
+    let stat_row = sqlx::query(
+        r#"
         SELECT blks_read, blks_hit
         FROM pg_stat_database
         WHERE datname = current_database()
-    "#)
-        .fetch_one(pool)
-        .await
-        .map_err(|e| format!("Failed to fetch buffer stats: {}", e))?;
+    "#,
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(|e| format!("Failed to fetch buffer stats: {}", e))?;
 
     let blks_read: i64 = stat_row.try_get::<i64, _>("blks_read").unwrap_or(0);
     let blks_hit: i64 = stat_row.try_get::<i64, _>("blks_hit").unwrap_or(0);
@@ -978,6 +1115,93 @@ pub async fn get_locks(pool: &Pool<Postgres>) -> Result<Vec<LockInfo>, String> {
     Ok(locks)
 }
 
+fn normalize_optional_text(value: Option<String>) -> Option<String> {
+    value
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+}
+
+pub async fn get_lock_graph_edges(pool: &Pool<Postgres>) -> Result<Vec<LockGraphEdge>, String> {
+    let query = r#"
+        SELECT
+            blocked_locks.pid::bigint AS waiting_process_id,
+            blocking_locks.pid::bigint AS blocking_process_id,
+            COALESCE(
+                EXTRACT(EPOCH FROM (NOW() - COALESCE(blocked_activity.state_change, blocked_activity.query_start, blocked_activity.xact_start)))::bigint,
+                0
+            ) AS wait_seconds,
+            blocked_activity.query AS waiting_query,
+            blocking_activity.query AS blocking_query,
+            COALESCE(blocked_class.relname::text, '') AS object_name,
+            blocked_locks.locktype::text AS lock_type,
+            blocked_locks.mode::text AS waiting_lock_mode,
+            blocking_locks.mode::text AS blocking_lock_mode
+        FROM pg_locks blocked_locks
+        JOIN pg_stat_activity blocked_activity
+            ON blocked_activity.pid = blocked_locks.pid
+        JOIN pg_locks blocking_locks
+            ON blocking_locks.locktype = blocked_locks.locktype
+           AND blocking_locks.database IS NOT DISTINCT FROM blocked_locks.database
+           AND blocking_locks.relation IS NOT DISTINCT FROM blocked_locks.relation
+           AND blocking_locks.page IS NOT DISTINCT FROM blocked_locks.page
+           AND blocking_locks.tuple IS NOT DISTINCT FROM blocked_locks.tuple
+           AND blocking_locks.virtualxid IS NOT DISTINCT FROM blocked_locks.virtualxid
+           AND blocking_locks.transactionid IS NOT DISTINCT FROM blocked_locks.transactionid
+           AND blocking_locks.classid IS NOT DISTINCT FROM blocked_locks.classid
+           AND blocking_locks.objid IS NOT DISTINCT FROM blocked_locks.objid
+           AND blocking_locks.objsubid IS NOT DISTINCT FROM blocked_locks.objsubid
+           AND blocking_locks.pid <> blocked_locks.pid
+        JOIN pg_stat_activity blocking_activity
+            ON blocking_activity.pid = blocking_locks.pid
+        LEFT JOIN pg_class blocked_class
+            ON blocked_class.oid = blocked_locks.relation
+        WHERE NOT blocked_locks.granted
+          AND blocking_locks.granted
+        LIMIT 500
+    "#;
+
+    let rows = sqlx::query(query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch lock wait graph: {}", e))?;
+
+    let mut edges = Vec::new();
+    for row in rows {
+        let waiting_process_id = row
+            .try_get::<Option<i64>, _>("waiting_process_id")
+            .ok()
+            .flatten()
+            .unwrap_or(0);
+        let blocking_process_id = row
+            .try_get::<Option<i64>, _>("blocking_process_id")
+            .ok()
+            .flatten()
+            .unwrap_or(0);
+
+        if waiting_process_id <= 0 || blocking_process_id <= 0 {
+            continue;
+        }
+
+        edges.push(LockGraphEdge {
+            waiting_process_id,
+            blocking_process_id,
+            wait_seconds: row
+                .try_get::<Option<i64>, _>("wait_seconds")
+                .ok()
+                .flatten()
+                .unwrap_or(0),
+            object_name: normalize_optional_text(row.try_get("object_name").ok()),
+            lock_type: normalize_optional_text(row.try_get("lock_type").ok()),
+            waiting_lock_mode: normalize_optional_text(row.try_get("waiting_lock_mode").ok()),
+            blocking_lock_mode: normalize_optional_text(row.try_get("blocking_lock_mode").ok()),
+            waiting_query: normalize_optional_text(row.try_get("waiting_query").ok()),
+            blocking_query: normalize_optional_text(row.try_get("blocking_query").ok()),
+        });
+    }
+
+    Ok(edges)
+}
+
 // --- Replication ---
 
 pub async fn get_replication_status(pool: &Pool<Postgres>) -> Result<serde_json::Value, String> {
@@ -1018,15 +1242,15 @@ pub async fn get_replication_status(pool: &Pool<Postgres>) -> Result<serde_json:
 
 pub async fn analyze_query(pool: &Pool<Postgres>, query: &str) -> Result<QueryAnalysis, String> {
     let explain_query = format!("EXPLAIN (FORMAT JSON, ANALYZE false) {}", query);
-    
+
     let row = sqlx::query(&explain_query)
         .fetch_one(pool)
         .await
         .map_err(|e| format!("Failed to analyze query: {}", e))?;
 
     let explain_json: String = row.try_get(0).unwrap_or_default();
-    let explain_result: Vec<serde_json::Value> = serde_json::from_str(&explain_json)
-        .unwrap_or_else(|_| vec![serde_json::json!({})]);
+    let explain_result: Vec<serde_json::Value> =
+        serde_json::from_str(&explain_json).unwrap_or_else(|_| vec![serde_json::json!({})]);
 
     let mut suggestions = Vec::new();
     let mut warnings = Vec::new();
@@ -1038,7 +1262,7 @@ pub async fn analyze_query(pool: &Pool<Postgres>, query: &str) -> Result<QueryAn
                 suggestions.push("Consider adding an index for better performance".to_string());
             }
         }
-        
+
         if let Some(cost) = plan.get("Total Cost").and_then(|c| c.as_f64()) {
             if cost > 1000.0 {
                 warnings.push(format!("High query cost: {}", cost));
@@ -1054,8 +1278,13 @@ pub async fn analyze_query(pool: &Pool<Postgres>, query: &str) -> Result<QueryAn
     })
 }
 
-pub async fn get_index_suggestions(pool: &Pool<Postgres>, schema: &str, table: &str) -> Result<Vec<IndexSuggestion>, String> {
-    let query = format!(r#"
+pub async fn get_index_suggestions(
+    pool: &Pool<Postgres>,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<IndexSuggestion>, String> {
+    let query = format!(
+        r#"
         SELECT 
             s.relname as table_name,
             s.indexrelname as index_name,
@@ -1065,7 +1294,9 @@ pub async fn get_index_suggestions(pool: &Pool<Postgres>, schema: &str, table: &
         JOIN pg_class c ON s.relid = c.oid
         JOIN pg_namespace n ON c.relnamespace = n.oid
         WHERE n.nspname = '{}' AND c.relname = '{}'
-    "#, schema, table);
+    "#,
+        schema, table
+    );
 
     let rows = sqlx::query(&query)
         .fetch_all(pool)
@@ -1076,7 +1307,7 @@ pub async fn get_index_suggestions(pool: &Pool<Postgres>, schema: &str, table: &
     for row in rows {
         let idx_scan: i64 = row.try_get::<i64, _>("idx_scan").unwrap_or(0);
         let index_name: String = row.try_get("index_name").unwrap_or_default();
-        
+
         if idx_scan == 0 {
             suggestions.push(IndexSuggestion {
                 table_name: table.to_string(),
@@ -1093,8 +1324,13 @@ pub async fn get_index_suggestions(pool: &Pool<Postgres>, schema: &str, table: &
 
 // --- Index Usage (PostgreSQL) ---
 
-pub async fn get_index_usage(pool: &Pool<Postgres>, schema: &str, table: &str) -> Result<Vec<IndexUsage>, String> {
-    let query = format!(r#"
+pub async fn get_index_usage(
+    pool: &Pool<Postgres>,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<IndexUsage>, String> {
+    let query = format!(
+        r#"
         SELECT 
             s.indexrelname as index_name,
             s.idx_scan,
@@ -1103,7 +1339,9 @@ pub async fn get_index_usage(pool: &Pool<Postgres>, schema: &str, table: &str) -
         JOIN pg_class c ON s.relid = c.oid
         JOIN pg_namespace n ON c.relnamespace = n.oid
         WHERE n.nspname = '{}' AND c.relname = '{}'
-    "#, schema, table);
+    "#,
+        schema, table
+    );
 
     let rows = sqlx::query(&query)
         .fetch_all(pool)
@@ -1115,7 +1353,9 @@ pub async fn get_index_usage(pool: &Pool<Postgres>, schema: &str, table: &str) -
         let index_name: String = row.try_get("index_name").unwrap_or_default();
         let idx_scan: i64 = row.try_get::<i64, _>("idx_scan").unwrap_or(0);
         let idx_tup_read: i64 = row.try_get::<i64, _>("idx_tup_read").unwrap_or(0);
-        if index_name.is_empty() { continue; }
+        if index_name.is_empty() {
+            continue;
+        }
         usage.push(IndexUsage {
             index_name,
             total_ops: idx_scan,
@@ -1129,8 +1369,13 @@ pub async fn get_index_usage(pool: &Pool<Postgres>, schema: &str, table: &str) -
 
 // --- Index Sizes (PostgreSQL) ---
 
-pub async fn get_index_sizes(pool: &Pool<Postgres>, schema: &str, table: &str) -> Result<Vec<IndexSize>, String> {
-    let query = format!(r#"
+pub async fn get_index_sizes(
+    pool: &Pool<Postgres>,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<IndexSize>, String> {
+    let query = format!(
+        r#"
         SELECT 
             i.relname as index_name,
             pg_relation_size(i.oid) as size_bytes
@@ -1139,7 +1384,9 @@ pub async fn get_index_sizes(pool: &Pool<Postgres>, schema: &str, table: &str) -
         JOIN pg_class i ON i.oid = ix.indexrelid
         JOIN pg_namespace n ON t.relnamespace = n.oid
         WHERE n.nspname = '{}' AND t.relname = '{}'
-    "#, schema, table);
+    "#,
+        schema, table
+    );
 
     let rows = sqlx::query(&query)
         .fetch_all(pool)
@@ -1150,8 +1397,13 @@ pub async fn get_index_sizes(pool: &Pool<Postgres>, schema: &str, table: &str) -
     for row in rows {
         let index_name: String = row.try_get("index_name").unwrap_or_default();
         let size_bytes: i64 = row.try_get::<i64, _>("size_bytes").unwrap_or(0);
-        if index_name.is_empty() { continue; }
-        sizes.push(IndexSize { index_name, size_bytes });
+        if index_name.is_empty() {
+            continue;
+        }
+        sizes.push(IndexSize {
+            index_name,
+            size_bytes,
+        });
     }
 
     Ok(sizes)
@@ -1210,7 +1462,10 @@ where
         .ok_or_else(|| "Total Cost not found in PostgreSQL EXPLAIN JSON".to_string())
 }
 
-async fn explain_total_cost_pg_with_timeout(pool: &Pool<Postgres>, query: &str) -> Result<f64, String> {
+async fn explain_total_cost_pg_with_timeout(
+    pool: &Pool<Postgres>,
+    query: &str,
+) -> Result<f64, String> {
     timeout(
         Duration::from_millis(SIM_EXPLAIN_TIMEOUT_MS),
         explain_total_cost_pg(pool, query),
@@ -1317,7 +1572,8 @@ pub async fn simulate_index_drop(
     }
 
     if diffs.is_empty() {
-        notes.push("No explainable query candidates were found in local query history.".to_string());
+        notes
+            .push("No explainable query candidates were found in local query history.".to_string());
         return Ok((diffs, notes));
     }
 
@@ -1339,7 +1595,8 @@ pub async fn simulate_index_drop(
         ));
         for diff in &mut diffs {
             if diff.reason.is_none() {
-                diff.reason = Some("Simulation skipped after-drop EXPLAIN due to drop error".to_string());
+                diff.reason =
+                    Some("Simulation skipped after-drop EXPLAIN due to drop error".to_string());
             }
         }
         return Ok((diffs, notes));
@@ -1390,7 +1647,10 @@ pub async fn simulate_index_drop(
     }
 
     if let Err(e) = tx.rollback().await {
-        notes.push(format!("Simulation transaction rollback reported an error: {}", e));
+        notes.push(format!(
+            "Simulation transaction rollback reported an error: {}",
+            e
+        ));
     }
 
     Ok((diffs, notes))
@@ -1423,7 +1683,8 @@ pub async fn get_extensions(pool: &Pool<Postgres>) -> Result<Vec<String>, String
         .await
         .map_err(|e| format!("Failed to fetch extensions: {}", e))?;
 
-    let extensions: Vec<String> = rows.iter()
+    let extensions: Vec<String> = rows
+        .iter()
         .map(|row| row.try_get::<String, _>("extname").unwrap_or_default())
         .collect();
 
@@ -1438,7 +1699,8 @@ pub async fn get_tablespaces(pool: &Pool<Postgres>) -> Result<Vec<String>, Strin
         .await
         .map_err(|e| format!("Failed to fetch tablespaces: {}", e))?;
 
-    let tablespaces: Vec<String> = rows.iter()
+    let tablespaces: Vec<String> = rows
+        .iter()
         .map(|row| row.try_get::<String, _>("spcname").unwrap_or_default())
         .collect();
 
@@ -1447,7 +1709,7 @@ pub async fn get_tablespaces(pool: &Pool<Postgres>) -> Result<Vec<String>, Strin
 
 // --- User Management (PostgreSQL) ---
 
-use crate::db_types::{MySqlUser, UserPrivileges, UserPrivilege};
+use crate::db_types::{MySqlUser, UserPrivilege, UserPrivileges};
 
 pub async fn get_users(pool: &Pool<Postgres>) -> Result<Vec<MySqlUser>, String> {
     // PostgreSQL uses roles instead of users
@@ -1473,7 +1735,7 @@ pub async fn get_users(pool: &Pool<Postgres>) -> Result<Vec<MySqlUser>, String> 
         let user: String = row.try_get("user").unwrap_or_default();
         let account_locked: bool = row.try_get("account_locked").unwrap_or(false);
         let password_expired: bool = row.try_get("password_expired").unwrap_or(false);
-        
+
         users.push(MySqlUser {
             user,
             host: "localhost".to_string(), // PostgreSQL doesn't have host concept like MySQL
@@ -1485,23 +1747,30 @@ pub async fn get_users(pool: &Pool<Postgres>) -> Result<Vec<MySqlUser>, String> 
     Ok(users)
 }
 
-pub async fn get_user_privileges(pool: &Pool<Postgres>, user: &str, _host: &str) -> Result<UserPrivileges, String> {
+pub async fn get_user_privileges(
+    pool: &Pool<Postgres>,
+    user: &str,
+    _host: &str,
+) -> Result<UserPrivileges, String> {
     // Get role attributes
-    let attr_query = format!(r#"
+    let attr_query = format!(
+        r#"
         SELECT 
             rolsuper, rolcreaterole, rolcreatedb, rolcanlogin,
             rolreplication, rolbypassrls
         FROM pg_roles
         WHERE rolname = '{}'
-    "#, user);
-    
+    "#,
+        user
+    );
+
     let attr_row = sqlx::query(&attr_query)
         .fetch_optional(pool)
         .await
         .map_err(|e| format!("Failed to fetch role attributes: {}", e))?;
 
     let mut global_privs = Vec::new();
-    
+
     // Define PostgreSQL privileges
     let privilege_checks = vec![
         ("SUPERUSER", "rolsuper"),
@@ -1523,32 +1792,39 @@ pub async fn get_user_privileges(pool: &Pool<Postgres>, user: &str, _host: &str)
     }
 
     // Get database-level privileges
-    let db_query = format!(r#"
+    let db_query = format!(
+        r#"
         SELECT datname
         FROM pg_database d
         JOIN pg_roles r ON d.datdba = r.oid
         WHERE r.rolname = '{}'
         AND datistemplate = false
-    "#, user);
-    
+    "#,
+        user
+    );
+
     let db_rows = sqlx::query(&db_query)
         .fetch_all(pool)
         .await
         .map_err(|e| format!("Failed to fetch database privileges: {}", e))?;
 
-    let databases: Vec<String> = db_rows.iter()
+    let databases: Vec<String> = db_rows
+        .iter()
         .map(|row| row.try_get::<String, _>("datname").unwrap_or_default())
         .collect();
 
     // Also check for CONNECT privilege on databases
-    let connect_query = format!(r#"
+    let connect_query = format!(
+        r#"
         SELECT d.datname
         FROM pg_database d
         WHERE has_database_privilege('{}', d.datname, 'CONNECT')
         AND datistemplate = false
         AND datname NOT IN (SELECT datname FROM pg_database d2 JOIN pg_roles r ON d2.datdba = r.oid WHERE r.rolname = '{}')
-    "#, user, user);
-    
+    "#,
+        user, user
+    );
+
     let connect_rows = sqlx::query(&connect_query)
         .fetch_all(pool)
         .await
@@ -1582,7 +1858,8 @@ pub async fn get_slow_queries(pool: &Pool<Postgres>, limit: i32) -> Result<Vec<S
 
     if check_ext.is_some() {
         // pg_stat_statements is available
-        let query = format!(r#"
+        let query = format!(
+            r#"
             SELECT 
                 TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS') as start_time,
                 COALESCE(usename, 'N/A') as user_host,
@@ -1596,11 +1873,11 @@ pub async fn get_slow_queries(pool: &Pool<Postgres>, limit: i32) -> Result<Vec<S
             WHERE mean_exec_time > 1000
             ORDER BY mean_exec_time DESC
             LIMIT {}
-        "#, limit);
+        "#,
+            limit
+        );
 
-        let rows = sqlx::query(&query)
-            .fetch_all(pool)
-            .await;
+        let rows = sqlx::query(&query).fetch_all(pool).await;
 
         match rows {
             Ok(rows) => {
@@ -1617,7 +1894,7 @@ pub async fn get_slow_queries(pool: &Pool<Postgres>, limit: i32) -> Result<Vec<S
                     });
                 }
                 return Ok(queries);
-            },
+            }
             Err(e) => {
                 // pg_stat_statements might need different permissions
                 return Err(format!("Failed to query pg_stat_statements: {}. Make sure you have proper permissions.", e));
@@ -1626,7 +1903,8 @@ pub async fn get_slow_queries(pool: &Pool<Postgres>, limit: i32) -> Result<Vec<S
     }
 
     // Fallback: Get currently running slow queries from pg_stat_activity
-    let fallback_query = format!(r#"
+    let fallback_query = format!(
+        r#"
         SELECT 
             TO_CHAR(query_start, 'YYYY-MM-DD HH24:MI:SS') as start_time,
             COALESCE(usename, 'N/A') || '@' || COALESCE(client_addr::text, 'local') as user_host,
@@ -1641,7 +1919,9 @@ pub async fn get_slow_queries(pool: &Pool<Postgres>, limit: i32) -> Result<Vec<S
             AND query_start < NOW() - INTERVAL '1 second'
         ORDER BY query_start ASC
         LIMIT {}
-    "#, limit);
+    "#,
+        limit
+    );
 
     let rows = sqlx::query(&fallback_query)
         .fetch_all(pool)
@@ -1673,13 +1953,13 @@ pub async fn get_execution_plan(pool: &Pool<Postgres>, query: &str) -> Result<St
 
     match row {
         Some(r) => {
-             // Postgres returns JSON as a Value or String.
-             // Usually column is QUERY PLAN and type is JSON/JSONB or TEXT.
-             // Try to get as Value first then to string.
-             let plan: serde_json::Value = r.try_get(0).unwrap_or(serde_json::Value::Null);
-             Ok(plan.to_string())
-        },
-        None => Err("No execution plan returned".to_string())
+            // Postgres returns JSON as a Value or String.
+            // Usually column is QUERY PLAN and type is JSON/JSONB or TEXT.
+            // Try to get as Value first then to string.
+            let plan: serde_json::Value = r.try_get(0).unwrap_or(serde_json::Value::Null);
+            Ok(plan.to_string())
+        }
+        None => Err("No execution plan returned".to_string()),
     }
 }
 
@@ -1773,13 +2053,20 @@ fn visit_plan(node: &Value, metrics: &mut PgExplainMetrics) {
         }
     }
 
-    let loops = node.get("Actual Loops").map(value_to_i64).unwrap_or(1).max(1);
+    let loops = node
+        .get("Actual Loops")
+        .map(value_to_i64)
+        .unwrap_or(1)
+        .max(1);
     metrics.loops += loops;
 
     let actual_rows = node.get("Actual Rows").map(value_to_i64).unwrap_or(0);
     metrics.rows += actual_rows.saturating_mul(loops);
 
-    let removed_rows = node.get("Rows Removed by Filter").map(value_to_i64).unwrap_or(0);
+    let removed_rows = node
+        .get("Rows Removed by Filter")
+        .map(value_to_i64)
+        .unwrap_or(0);
     metrics.rows_removed += removed_rows.saturating_mul(loops);
 
     if let Some(buffers) = node.get("Buffers") {
@@ -1793,8 +2080,14 @@ fn visit_plan(node: &Value, metrics: &mut PgExplainMetrics) {
     }
 }
 
-pub async fn get_explain_analyze_metrics(pool: &Pool<Postgres>, query: &str) -> Result<HashMap<String, i64>, String> {
-    let explain_query = format!("EXPLAIN (FORMAT JSON, ANALYZE true, BUFFERS true) {}", query);
+pub async fn get_explain_analyze_metrics(
+    pool: &Pool<Postgres>,
+    query: &str,
+) -> Result<HashMap<String, i64>, String> {
+    let explain_query = format!(
+        "EXPLAIN (FORMAT JSON, ANALYZE true, BUFFERS true) {}",
+        query
+    );
     let row = sqlx::query(&explain_query)
         .fetch_optional(pool)
         .await
@@ -1810,14 +2103,18 @@ pub async fn get_explain_analyze_metrics(pool: &Pool<Postgres>, query: &str) -> 
             } else {
                 return Err("Failed to read EXPLAIN JSON".to_string());
             }
-        },
+        }
         None => return Err("No EXPLAIN output returned".to_string()),
     };
 
     let mut metrics = PgExplainMetrics::default();
 
     // EXPLAIN FORMAT JSON returns an array with a single object
-    if let Some(root_obj) = plan_value.as_array().and_then(|arr| arr.first()).and_then(|v| v.as_object()) {
+    if let Some(root_obj) = plan_value
+        .as_array()
+        .and_then(|arr| arr.first())
+        .and_then(|v| v.as_object())
+    {
         if let Some(plan) = root_obj.get("Plan") {
             visit_plan(plan, &mut metrics);
         }
@@ -1831,16 +2128,40 @@ pub async fn get_explain_analyze_metrics(pool: &Pool<Postgres>, query: &str) -> 
     }
 
     let mut map = HashMap::new();
-    map.insert("pg_shared_hit_blocks".to_string(), metrics.shared_hit_blocks);
-    map.insert("pg_shared_read_blocks".to_string(), metrics.shared_read_blocks);
-    map.insert("pg_shared_dirtied_blocks".to_string(), metrics.shared_dirtied_blocks);
-    map.insert("pg_shared_written_blocks".to_string(), metrics.shared_written_blocks);
+    map.insert(
+        "pg_shared_hit_blocks".to_string(),
+        metrics.shared_hit_blocks,
+    );
+    map.insert(
+        "pg_shared_read_blocks".to_string(),
+        metrics.shared_read_blocks,
+    );
+    map.insert(
+        "pg_shared_dirtied_blocks".to_string(),
+        metrics.shared_dirtied_blocks,
+    );
+    map.insert(
+        "pg_shared_written_blocks".to_string(),
+        metrics.shared_written_blocks,
+    );
     map.insert("pg_local_hit_blocks".to_string(), metrics.local_hit_blocks);
-    map.insert("pg_local_read_blocks".to_string(), metrics.local_read_blocks);
-    map.insert("pg_local_dirtied_blocks".to_string(), metrics.local_dirtied_blocks);
-    map.insert("pg_local_written_blocks".to_string(), metrics.local_written_blocks);
+    map.insert(
+        "pg_local_read_blocks".to_string(),
+        metrics.local_read_blocks,
+    );
+    map.insert(
+        "pg_local_dirtied_blocks".to_string(),
+        metrics.local_dirtied_blocks,
+    );
+    map.insert(
+        "pg_local_written_blocks".to_string(),
+        metrics.local_written_blocks,
+    );
     map.insert("pg_temp_read_blocks".to_string(), metrics.temp_read_blocks);
-    map.insert("pg_temp_written_blocks".to_string(), metrics.temp_written_blocks);
+    map.insert(
+        "pg_temp_written_blocks".to_string(),
+        metrics.temp_written_blocks,
+    );
     map.insert("pg_seq_scans".to_string(), metrics.seq_scans);
     map.insert("pg_index_scans".to_string(), metrics.index_scans);
     map.insert("pg_index_only_scans".to_string(), metrics.index_only_scans);
@@ -1854,6 +2175,9 @@ pub async fn get_explain_analyze_metrics(pool: &Pool<Postgres>, query: &str) -> 
     map.insert("pg_loops".to_string(), metrics.loops);
     map.insert("pg_plan_nodes".to_string(), metrics.plan_nodes);
     map.insert("pg_planning_time_ms".to_string(), metrics.planning_time_ms);
-    map.insert("pg_execution_time_ms".to_string(), metrics.execution_time_ms);
+    map.insert(
+        "pg_execution_time_ms".to_string(),
+        metrics.execution_time_ms,
+    );
     Ok(map)
 }

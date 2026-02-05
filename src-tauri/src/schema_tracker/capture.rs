@@ -1,16 +1,15 @@
-use sqlx::{Pool, MySql, Postgres, Row};
 use crate::db_types::*;
 use crate::schema_tracker::models::{SchemaSnapshot, TableDefinition};
 use chrono::Utc;
+use sha2::{Digest, Sha256};
+use sqlx::{MySql, Pool, Postgres, Row};
 use std::collections::HashMap;
-use sha2::{Sha256, Digest};
 
 pub async fn capture_snapshot_mysql(
     pool: &Pool<MySql>,
     database: &str,
-    connection_id: &str
+    connection_id: &str,
 ) -> Result<SchemaSnapshot, String> {
-    
     // 1. Fetch all TABLES
     let tables_query = format!(
         "SELECT TABLE_NAME, TABLE_ROWS FROM information_schema.TABLES WHERE TABLE_SCHEMA = '{}' AND TABLE_TYPE = 'BASE TABLE'",
@@ -20,10 +19,11 @@ pub async fn capture_snapshot_mysql(
         .fetch_all(pool)
         .await
         .map_err(|e| format!("Failed to fetch tables: {}", e))?;
-    
+
     // Store row counts in a map
     let mut table_stats: HashMap<String, Option<u64>> = HashMap::new();
-    let table_names: Vec<String> = table_rows.iter()
+    let table_names: Vec<String> = table_rows
+        .iter()
         .map(|r| {
             let name: String = r.try_get("TABLE_NAME").unwrap_or_default();
             let rows: Option<i64> = r.try_get("TABLE_ROWS").ok();
@@ -33,35 +33,42 @@ pub async fn capture_snapshot_mysql(
         .collect();
 
     // 2. Fetch all COLUMNS
-    let columns_query = format!(r#"
+    let columns_query = format!(
+        r#"
         SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, COLUMN_DEFAULT, EXTRA
         FROM information_schema.COLUMNS 
         WHERE TABLE_SCHEMA = '{}' 
         ORDER BY TABLE_NAME, ORDINAL_POSITION
-    "#, database);
-    
+    "#,
+        database
+    );
+
     let column_rows = sqlx::query(&columns_query)
         .fetch_all(pool)
         .await
         .map_err(|e| format!("Failed to fetch columns: {}", e))?;
-        
+
     let mut columns_by_table: HashMap<String, Vec<ColumnSchema>> = HashMap::new();
     for row in column_rows {
         let table_name: String = row.try_get("TABLE_NAME").unwrap_or_default();
         let name: String = row.try_get("COLUMN_NAME").unwrap_or_default();
         let full_type: String = row.try_get::<String, _>("COLUMN_TYPE").unwrap_or_else(|_| {
-             let bytes: Vec<u8> = row.get("COLUMN_TYPE");
-             String::from_utf8_lossy(&bytes).to_string()
+            let bytes: Vec<u8> = row.get("COLUMN_TYPE");
+            String::from_utf8_lossy(&bytes).to_string()
         });
         let is_nullable_str: String = row.try_get("IS_NULLABLE").unwrap_or_default();
         let is_nullable = is_nullable_str == "YES";
         let column_key: String = row.try_get("COLUMN_KEY").unwrap_or_default();
-        
+
         // Handle Default which can be NULL or a string
         let column_default: Option<String> = row.try_get("COLUMN_DEFAULT").ok();
-        
+
         let extra: String = row.try_get("EXTRA").unwrap_or_default();
-        let data_type = full_type.split('(').next().unwrap_or(&full_type).to_string();
+        let data_type = full_type
+            .split('(')
+            .next()
+            .unwrap_or(&full_type)
+            .to_string();
 
         let col = ColumnSchema {
             name,
@@ -72,23 +79,29 @@ pub async fn capture_snapshot_mysql(
             column_default,
             extra,
         };
-        
-        columns_by_table.entry(table_name).or_insert_with(Vec::new).push(col);
+
+        columns_by_table
+            .entry(table_name)
+            .or_insert_with(Vec::new)
+            .push(col);
     }
 
     // 3. Fetch all INDEXES (Simplified for MVP, might need more detail)
-    let indexes_query = format!(r#"
+    let indexes_query = format!(
+        r#"
         SELECT TABLE_NAME, INDEX_NAME as Key_name, COLUMN_NAME, NON_UNIQUE, INDEX_TYPE
         FROM information_schema.STATISTICS
         WHERE TABLE_SCHEMA = '{}'
         ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX
-    "#, database);
-    
+    "#,
+        database
+    );
+
     let index_rows = sqlx::query(&indexes_query)
         .fetch_all(pool)
         .await
         .map_err(|e| format!("Failed to fetch indexes: {}", e))?;
-        
+
     let mut indexes_by_table: HashMap<String, Vec<TableIndex>> = HashMap::new();
 
     for row in index_rows {
@@ -97,22 +110,26 @@ pub async fn capture_snapshot_mysql(
         let column_name: String = row.try_get("COLUMN_NAME").unwrap_or_default();
         let non_unique: i64 = row.try_get("NON_UNIQUE").unwrap_or(1); // 1 = non-unique
         let index_type: String = row.try_get("INDEX_TYPE").unwrap_or_default();
-        
+
         let _key = format!("{}:{}:{}", table_name, name, column_name); // Unique per column in index
-        // Actually db_types::TableIndex represents a column in an index, or the index itself?
-        // "pub column_name: String" suggests it's per column in the index.
-        // It's a flat list.
-        
-        indexes_by_table.entry(table_name).or_insert_with(Vec::new).push(TableIndex {
-            name,
-            column_name,
-            non_unique: non_unique != 0,
-            index_type,
-        });
+                                                                       // Actually db_types::TableIndex represents a column in an index, or the index itself?
+                                                                       // "pub column_name: String" suggests it's per column in the index.
+                                                                       // It's a flat list.
+
+        indexes_by_table
+            .entry(table_name)
+            .or_insert_with(Vec::new)
+            .push(TableIndex {
+                name,
+                column_name,
+                non_unique: non_unique != 0,
+                index_type,
+            });
     }
 
     // 4. Fetch Constraints (Constraints + Key Usage for FKs/PKs)
-    let fk_query = format!(r#"
+    let fk_query = format!(
+        r#"
         SELECT 
             TABLE_NAME,
             CONSTRAINT_NAME,
@@ -123,7 +140,9 @@ pub async fn capture_snapshot_mysql(
         FROM information_schema.KEY_COLUMN_USAGE
         WHERE TABLE_SCHEMA = '{}'
             AND REFERENCED_TABLE_NAME IS NOT NULL
-    "#, database);
+    "#,
+        database
+    );
 
     let fk_rows = sqlx::query(&fk_query)
         .fetch_all(pool)
@@ -133,22 +152,28 @@ pub async fn capture_snapshot_mysql(
     let mut foreign_keys_by_table: HashMap<String, Vec<ForeignKey>> = HashMap::new();
     for row in fk_rows {
         let table_name: String = row.try_get("TABLE_NAME").unwrap_or_default();
-        foreign_keys_by_table.entry(table_name).or_insert_with(Vec::new).push(ForeignKey {
-            constraint_name: row.try_get("CONSTRAINT_NAME").unwrap_or_default(),
-            column_name: row.try_get("COLUMN_NAME").unwrap_or_default(),
-            referenced_table: row.try_get("REFERENCED_TABLE_NAME").unwrap_or_default(),
-            referenced_column: row.try_get("REFERENCED_COLUMN_NAME").unwrap_or_default(),
-            referenced_schema: row.try_get("REFERENCED_TABLE_SCHEMA").ok(),
-        });
+        foreign_keys_by_table
+            .entry(table_name)
+            .or_insert_with(Vec::new)
+            .push(ForeignKey {
+                constraint_name: row.try_get("CONSTRAINT_NAME").unwrap_or_default(),
+                column_name: row.try_get("COLUMN_NAME").unwrap_or_default(),
+                referenced_table: row.try_get("REFERENCED_TABLE_NAME").unwrap_or_default(),
+                referenced_column: row.try_get("REFERENCED_COLUMN_NAME").unwrap_or_default(),
+                referenced_schema: row.try_get("REFERENCED_TABLE_SCHEMA").ok(),
+            });
     }
 
-    let pk_query = format!(r#"
+    let pk_query = format!(
+        r#"
         SELECT TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION
         FROM information_schema.KEY_COLUMN_USAGE
         WHERE TABLE_SCHEMA = '{}'
             AND CONSTRAINT_NAME = 'PRIMARY'
         ORDER BY TABLE_NAME, ORDINAL_POSITION
-    "#, database);
+    "#,
+        database
+    );
 
     let pk_rows = sqlx::query(&pk_query)
         .fetch_all(pool)
@@ -158,13 +183,17 @@ pub async fn capture_snapshot_mysql(
     let mut primary_keys_by_table: HashMap<String, Vec<PrimaryKey>> = HashMap::new();
     for row in pk_rows {
         let table_name: String = row.try_get("TABLE_NAME").unwrap_or_default();
-        primary_keys_by_table.entry(table_name).or_insert_with(Vec::new).push(PrimaryKey {
-            column_name: row.try_get("COLUMN_NAME").unwrap_or_default(),
-            ordinal_position: row.try_get::<i32, _>("ORDINAL_POSITION").unwrap_or(0),
-        });
+        primary_keys_by_table
+            .entry(table_name)
+            .or_insert_with(Vec::new)
+            .push(PrimaryKey {
+                column_name: row.try_get("COLUMN_NAME").unwrap_or_default(),
+                ordinal_position: row.try_get::<i32, _>("ORDINAL_POSITION").unwrap_or(0),
+            });
     }
 
-    let constraints_query = format!(r#"
+    let constraints_query = format!(
+        r#"
         SELECT 
             tc.TABLE_NAME,
             tc.CONSTRAINT_NAME,
@@ -176,7 +205,9 @@ pub async fn capture_snapshot_mysql(
             AND tc.TABLE_SCHEMA = kcu.TABLE_SCHEMA
             AND tc.TABLE_NAME = kcu.TABLE_NAME
         WHERE tc.TABLE_SCHEMA = '{}'
-    "#, database);
+    "#,
+        database
+    );
 
     let constraint_rows = sqlx::query(&constraints_query)
         .fetch_all(pool)
@@ -186,24 +217,37 @@ pub async fn capture_snapshot_mysql(
     let mut constraints_by_table: HashMap<String, Vec<TableConstraint>> = HashMap::new();
     for row in constraint_rows {
         let table_name: String = row.try_get("TABLE_NAME").unwrap_or_default();
-        constraints_by_table.entry(table_name).or_insert_with(Vec::new).push(TableConstraint {
-            name: row.try_get("CONSTRAINT_NAME").unwrap_or_default(),
-            constraint_type: row.try_get("CONSTRAINT_TYPE").unwrap_or_default(),
-            column_name: row.try_get("COLUMN_NAME").unwrap_or_default(),
-        });
+        constraints_by_table
+            .entry(table_name)
+            .or_insert_with(Vec::new)
+            .push(TableConstraint {
+                name: row.try_get("CONSTRAINT_NAME").unwrap_or_default(),
+                constraint_type: row.try_get("CONSTRAINT_TYPE").unwrap_or_default(),
+                column_name: row.try_get("COLUMN_NAME").unwrap_or_default(),
+            });
     }
 
-    let tables: Vec<TableDefinition> = table_names.iter().map(|t_name| {
-        TableDefinition {
+    let tables: Vec<TableDefinition> = table_names
+        .iter()
+        .map(|t_name| TableDefinition {
             name: t_name.clone(),
             columns: columns_by_table.get(t_name).cloned().unwrap_or_default(),
             indexes: indexes_by_table.get(t_name).cloned().unwrap_or_default(),
-            foreign_keys: foreign_keys_by_table.get(t_name).cloned().unwrap_or_default(),
-            primary_keys: primary_keys_by_table.get(t_name).cloned().unwrap_or_default(),
-            constraints: constraints_by_table.get(t_name).cloned().unwrap_or_default(),
+            foreign_keys: foreign_keys_by_table
+                .get(t_name)
+                .cloned()
+                .unwrap_or_default(),
+            primary_keys: primary_keys_by_table
+                .get(t_name)
+                .cloned()
+                .unwrap_or_default(),
+            constraints: constraints_by_table
+                .get(t_name)
+                .cloned()
+                .unwrap_or_default(),
             row_count: table_stats.get(t_name).cloned().flatten(),
-        }
-    }).collect();
+        })
+        .collect();
 
     let view_names = crate::mysql::get_views(pool, database).await?;
     let mut views = Vec::new();
@@ -218,7 +262,7 @@ pub async fn capture_snapshot_mysql(
     routines.extend(crate::mysql::get_functions(pool, database).await?);
 
     let triggers = crate::mysql::get_triggers(pool, database).await?;
-    
+
     // Calculate simple hash of the schema
     let mut hasher = Sha256::new();
     let schema_json = serde_json::to_string(&tables).unwrap_or_default();
@@ -240,11 +284,11 @@ pub async fn capture_snapshot_mysql(
 pub async fn capture_snapshot_postgres(
     pool: &Pool<Postgres>,
     schema: &str, // Postgres uses schemas (e.g., 'public'), 'database' is usually connection level
-    connection_id: &str
+    connection_id: &str,
 ) -> Result<SchemaSnapshot, String> {
-    
     // 1. Fetch all TABLES with row counts
-    let tables_query = format!(r#"
+    let tables_query = format!(
+        r#"
         SELECT 
             t.tablename, 
             c.reltuples::bigint as estimated_rows
@@ -253,16 +297,19 @@ pub async fn capture_snapshot_postgres(
         JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = t.schemaname
         WHERE t.schemaname = '{}' 
         ORDER BY t.tablename
-    "#, schema);
+    "#,
+        schema
+    );
 
     let table_rows = sqlx::query(&tables_query)
         .fetch_all(pool)
         .await
         .map_err(|e| format!("Failed to fetch tables: {}", e))?;
-    
+
     // Store row counts
     let mut table_stats: HashMap<String, Option<u64>> = HashMap::new();
-    let table_names: Vec<String> = table_rows.iter()
+    let table_names: Vec<String> = table_rows
+        .iter()
         .map(|r| {
             let name: String = r.try_get("tablename").unwrap_or_default();
             let rows: Option<i64> = r.try_get("estimated_rows").ok();
@@ -272,20 +319,23 @@ pub async fn capture_snapshot_postgres(
         .collect();
 
     // 2. Fetch all COLUMNS
-    let columns_query = format!(r#"
+    let columns_query = format!(
+        r#"
         SELECT 
             table_name, column_name, data_type, udt_name, 
             character_maximum_length, is_nullable, column_default
         FROM information_schema.columns 
         WHERE table_schema = '{}' 
         ORDER BY table_name, ordinal_position
-    "#, schema);
-    
+    "#,
+        schema
+    );
+
     let column_rows = sqlx::query(&columns_query)
         .fetch_all(pool)
         .await
         .map_err(|e| format!("Failed to fetch columns: {}", e))?;
-        
+
     let mut columns_by_table: HashMap<String, Vec<ColumnSchema>> = HashMap::new();
     for row in column_rows {
         let table_name: String = row.try_get("table_name").unwrap_or_default();
@@ -293,7 +343,7 @@ pub async fn capture_snapshot_postgres(
         let data_type_str: String = row.try_get("data_type").unwrap_or_default();
         let udt_name: String = row.try_get("udt_name").unwrap_or_default();
         let max_length: Option<i32> = row.try_get("character_maximum_length").ok();
-        
+
         // Construct full type
         let column_type = if let Some(len) = max_length {
             format!("{}({})", udt_name, len)
@@ -303,9 +353,9 @@ pub async fn capture_snapshot_postgres(
 
         let is_nullable_str: String = row.try_get("is_nullable").unwrap_or_default();
         let is_nullable = is_nullable_str == "YES";
-        
+
         let column_default: Option<String> = row.try_get("column_default").ok();
-        
+
         // Simple extra detection
         let extra = if let Some(ref def) = column_default {
             if def.contains("nextval") {
@@ -326,12 +376,16 @@ pub async fn capture_snapshot_postgres(
             column_default,
             extra,
         };
-        
-        columns_by_table.entry(table_name).or_insert_with(Vec::new).push(col);
+
+        columns_by_table
+            .entry(table_name)
+            .or_insert_with(Vec::new)
+            .push(col);
     }
 
     // 3. Fetch all INDEXES
-    let indexes_query = format!(r#"
+    let indexes_query = format!(
+        r#"
         SELECT 
             t.relname as table_name,
             i.relname as index_name,
@@ -346,15 +400,17 @@ pub async fn capture_snapshot_postgres(
         JOIN pg_namespace n ON t.relnamespace = n.oid
         WHERE n.nspname = '{}'
         ORDER BY t.relname, i.relname, a.attnum
-    "#, schema);
-    
+    "#,
+        schema
+    );
+
     let index_rows = sqlx::query(&indexes_query)
         .fetch_all(pool)
         .await
         .map_err(|e| format!("Failed to fetch indexes: {}", e))?;
-        
+
     let mut indexes_by_table: HashMap<String, Vec<TableIndex>> = HashMap::new();
-    
+
     for row in index_rows {
         let table_name: String = row.try_get("table_name").unwrap_or_default();
         let name: String = row.try_get("index_name").unwrap_or_default();
@@ -362,16 +418,20 @@ pub async fn capture_snapshot_postgres(
         let non_unique: bool = row.try_get("non_unique").unwrap_or(true);
         let index_type: String = row.try_get("index_type").unwrap_or_default();
 
-        indexes_by_table.entry(table_name).or_insert_with(Vec::new).push(TableIndex {
-            name,
-            column_name,
-            non_unique,
-            index_type,
-        });
+        indexes_by_table
+            .entry(table_name)
+            .or_insert_with(Vec::new)
+            .push(TableIndex {
+                name,
+                column_name,
+                non_unique,
+                index_type,
+            });
     }
 
     // 4. Update PK info in columns (Postgres doesn't put PRI in information_schema.columns directly)
-    let pk_query = format!(r#"
+    let pk_query = format!(
+        r#"
         SELECT tc.table_name, kcu.column_name, kcu.ordinal_position
         FROM information_schema.table_constraints tc
         JOIN information_schema.key_column_usage kcu 
@@ -379,7 +439,9 @@ pub async fn capture_snapshot_postgres(
             AND tc.table_schema = kcu.table_schema
         WHERE tc.table_schema = '{}' AND tc.constraint_type = 'PRIMARY KEY'
         ORDER BY tc.table_name, kcu.ordinal_position
-    "#, schema);
+    "#,
+        schema
+    );
 
     let pk_rows = sqlx::query(&pk_query)
         .fetch_all(pool)
@@ -390,7 +452,7 @@ pub async fn capture_snapshot_postgres(
     for row in pk_rows {
         let t_name: String = row.try_get("table_name").unwrap_or_default();
         let c_name: String = row.try_get("column_name").unwrap_or_default();
-        
+
         if let Some(cols) = columns_by_table.get_mut(&t_name) {
             for col in cols {
                 if col.name == c_name {
@@ -400,13 +462,17 @@ pub async fn capture_snapshot_postgres(
         }
 
         let ordinal: i32 = row.try_get("ordinal_position").unwrap_or(0);
-        primary_keys_by_table.entry(t_name).or_insert_with(Vec::new).push(PrimaryKey {
-            column_name: c_name,
-            ordinal_position: ordinal,
-        });
+        primary_keys_by_table
+            .entry(t_name)
+            .or_insert_with(Vec::new)
+            .push(PrimaryKey {
+                column_name: c_name,
+                ordinal_position: ordinal,
+            });
     }
 
-    let fk_query = format!(r#"
+    let fk_query = format!(
+        r#"
         SELECT 
             tc.table_name,
             tc.constraint_name,
@@ -423,7 +489,9 @@ pub async fn capture_snapshot_postgres(
             AND ccu.table_schema = tc.table_schema
         WHERE tc.constraint_type = 'FOREIGN KEY'
             AND tc.table_schema = '{}'
-    "#, schema);
+    "#,
+        schema
+    );
 
     let fk_rows = sqlx::query(&fk_query)
         .fetch_all(pool)
@@ -433,16 +501,20 @@ pub async fn capture_snapshot_postgres(
     let mut foreign_keys_by_table: HashMap<String, Vec<ForeignKey>> = HashMap::new();
     for row in fk_rows {
         let t_name: String = row.try_get("table_name").unwrap_or_default();
-        foreign_keys_by_table.entry(t_name).or_insert_with(Vec::new).push(ForeignKey {
-            constraint_name: row.try_get("constraint_name").unwrap_or_default(),
-            column_name: row.try_get("column_name").unwrap_or_default(),
-            referenced_table: row.try_get("referenced_table").unwrap_or_default(),
-            referenced_column: row.try_get("referenced_column").unwrap_or_default(),
-            referenced_schema: row.try_get("referenced_schema").ok(),
-        });
+        foreign_keys_by_table
+            .entry(t_name)
+            .or_insert_with(Vec::new)
+            .push(ForeignKey {
+                constraint_name: row.try_get("constraint_name").unwrap_or_default(),
+                column_name: row.try_get("column_name").unwrap_or_default(),
+                referenced_table: row.try_get("referenced_table").unwrap_or_default(),
+                referenced_column: row.try_get("referenced_column").unwrap_or_default(),
+                referenced_schema: row.try_get("referenced_schema").ok(),
+            });
     }
 
-    let constraints_query = format!(r#"
+    let constraints_query = format!(
+        r#"
         SELECT 
             tc.table_name,
             tc.constraint_name,
@@ -453,7 +525,9 @@ pub async fn capture_snapshot_postgres(
             ON tc.constraint_name = kcu.constraint_name
             AND tc.table_schema = kcu.table_schema
         WHERE tc.table_schema = '{}'
-    "#, schema);
+    "#,
+        schema
+    );
 
     let constraint_rows = sqlx::query(&constraints_query)
         .fetch_all(pool)
@@ -463,25 +537,38 @@ pub async fn capture_snapshot_postgres(
     let mut constraints_by_table: HashMap<String, Vec<TableConstraint>> = HashMap::new();
     for row in constraint_rows {
         let t_name: String = row.try_get("table_name").unwrap_or_default();
-        constraints_by_table.entry(t_name).or_insert_with(Vec::new).push(TableConstraint {
-            name: row.try_get("constraint_name").unwrap_or_default(),
-            constraint_type: row.try_get("constraint_type").unwrap_or_default(),
-            column_name: row.try_get("column_name").unwrap_or_default(),
-        });
+        constraints_by_table
+            .entry(t_name)
+            .or_insert_with(Vec::new)
+            .push(TableConstraint {
+                name: row.try_get("constraint_name").unwrap_or_default(),
+                constraint_type: row.try_get("constraint_type").unwrap_or_default(),
+                column_name: row.try_get("column_name").unwrap_or_default(),
+            });
     }
 
-    let tables: Vec<TableDefinition> = table_names.iter().map(|t_name| {
-        TableDefinition {
+    let tables: Vec<TableDefinition> = table_names
+        .iter()
+        .map(|t_name| TableDefinition {
             name: t_name.clone(),
             columns: columns_by_table.get(t_name).cloned().unwrap_or_default(),
             indexes: indexes_by_table.get(t_name).cloned().unwrap_or_default(),
-            foreign_keys: foreign_keys_by_table.get(t_name).cloned().unwrap_or_default(),
-            primary_keys: primary_keys_by_table.get(t_name).cloned().unwrap_or_default(),
-            constraints: constraints_by_table.get(t_name).cloned().unwrap_or_default(),
+            foreign_keys: foreign_keys_by_table
+                .get(t_name)
+                .cloned()
+                .unwrap_or_default(),
+            primary_keys: primary_keys_by_table
+                .get(t_name)
+                .cloned()
+                .unwrap_or_default(),
+            constraints: constraints_by_table
+                .get(t_name)
+                .cloned()
+                .unwrap_or_default(),
             row_count: table_stats.get(t_name).cloned().flatten(),
-        }
-    }).collect();
-    
+        })
+        .collect();
+
     // Hash
     let mut hasher = Sha256::new();
     let schema_json = serde_json::to_string(&tables).unwrap_or_default();

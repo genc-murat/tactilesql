@@ -1,8 +1,8 @@
+use crate::dependency_engine::graph::DependencyGraphData;
 use sqlx::{Pool, Sqlite};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use crate::dependency_engine::graph::DependencyGraphData;
 
 const GRAPH_CACHE_TTL: Duration = Duration::from_secs(45);
 const GRAPH_CACHE_MAX_ENTRIES: usize = 16;
@@ -25,7 +25,7 @@ struct CachedGraph {
 
 #[derive(Debug, Clone)]
 pub struct DependencyEngineStore {
-#[allow(dead_code)]
+    #[allow(dead_code)]
     pool: Pool<Sqlite>,
     graph_cache: Arc<Mutex<HashMap<GraphCacheKey, CachedGraph>>>,
 }

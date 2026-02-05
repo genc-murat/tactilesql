@@ -23,19 +23,19 @@ fn is_devtools_open(webview: WebviewWindow) -> bool {
 }
 
 // Database modules
-mod db_types;
-mod mysql;
-mod postgres;
-mod db;
-mod common;
 pub mod awareness;
-pub mod schema_tracker;
 pub mod chronicle;
-pub mod quality_analyzer;
+mod common;
+mod db;
+mod db_types;
 pub mod dependency_engine;
 pub mod integration;
-pub mod scheduler;
+mod mysql;
+mod postgres;
+pub mod quality_analyzer;
 pub mod query_story;
+pub mod scheduler;
+pub mod schema_tracker;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -61,8 +61,10 @@ pub fn run() {
                 Ok(key) => {
                     let mut guard = futures::executor::block_on(state.encryption_key.lock());
                     *guard = Some(key);
-                    println!("Encryption key initialized successfully (from Keychain or Migration).");
-                },
+                    println!(
+                        "Encryption key initialized successfully (from Keychain or Migration)."
+                    );
+                }
                 Err(e) => {
                     eprintln!("CRITICAL ERROR: Failed to initialize encryption key: {}", e);
                     // We might want to show a dialog here or panic, but for now log it.
@@ -85,53 +87,64 @@ pub fn run() {
                         // Awareness Store
                         match crate::awareness::store::AwarenessStore::new(pool.clone()).await {
                             Ok(store) => {
-                                 let mut guard = state.awareness_store.lock().await;
-                                 *guard = Some(store);
-                                 println!("Awareness Store initialized.");
-                            },
+                                let mut guard = state.awareness_store.lock().await;
+                                *guard = Some(store);
+                                println!("Awareness Store initialized.");
+                            }
                             Err(e) => eprintln!("Failed to init Awareness Store: {}", e),
                         }
-                        
+
                         // Schema Tracker Store
-                        match crate::schema_tracker::storage::SchemaTrackerStore::new(pool.clone()).await {
+                        match crate::schema_tracker::storage::SchemaTrackerStore::new(pool.clone())
+                            .await
+                        {
                             Ok(store) => {
-                                 let mut guard = state.schema_tracker_store.lock().await;
-                                 *guard = Some(store);
-                                 println!("Schema Tracker Store initialized.");
-                            },
+                                let mut guard = state.schema_tracker_store.lock().await;
+                                *guard = Some(store);
+                                println!("Schema Tracker Store initialized.");
+                            }
                             Err(e) => eprintln!("Failed to init Schema Tracker Store: {}", e),
                         }
 
                         // Quality Analyzer Store
-                        match crate::quality_analyzer::storage::QualityAnalyzerStore::new(pool.clone()).await {
+                        match crate::quality_analyzer::storage::QualityAnalyzerStore::new(
+                            pool.clone(),
+                        )
+                        .await
+                        {
                             Ok(store) => {
-                                 let mut guard = state.quality_analyzer_store.lock().await;
-                                 *guard = Some(store);
-                                 println!("Quality Analyzer Store initialized.");
-                            },
+                                let mut guard = state.quality_analyzer_store.lock().await;
+                                *guard = Some(store);
+                                println!("Quality Analyzer Store initialized.");
+                            }
                             Err(e) => eprintln!("Failed to init Quality Analyzer Store: {}", e),
                         }
 
                         // Dependency Engine Store
-                        match crate::dependency_engine::storage::DependencyEngineStore::new(pool.clone()).await {
+                        match crate::dependency_engine::storage::DependencyEngineStore::new(
+                            pool.clone(),
+                        )
+                        .await
+                        {
                             Ok(store) => {
-                                 let mut guard = state.dependency_engine_store.lock().await;
-                                 *guard = Some(store);
-                                 println!("Dependency Engine Store initialized.");
-                            },
+                                let mut guard = state.dependency_engine_store.lock().await;
+                                *guard = Some(store);
+                                println!("Dependency Engine Store initialized.");
+                            }
                             Err(e) => eprintln!("Failed to init Dependency Engine Store: {}", e),
                         }
 
                         // Query Story Store
-                        match crate::query_story::storage::QueryStoryStore::new(pool.clone()).await {
+                        match crate::query_story::storage::QueryStoryStore::new(pool.clone()).await
+                        {
                             Ok(store) => {
-                                 let mut guard = state.query_story_store.lock().await;
-                                 *guard = Some(store);
-                                 println!("Query Story Store initialized.");
-                            },
+                                let mut guard = state.query_story_store.lock().await;
+                                *guard = Some(store);
+                                println!("Query Story Store initialized.");
+                            }
                             Err(e) => eprintln!("Failed to init Query Story Store: {}", e),
                         }
-                    },
+                    }
                     Err(e) => eprintln!("Failed to initialize Local Storage: {}", e),
                 }
             });
@@ -149,7 +162,7 @@ pub fn run() {
             close_devtools,
             is_devtools_open,
             // Connection Management
-            db::test_connection, 
+            db::test_connection,
             db::establish_connection,
             db::disconnect,
             db::get_active_db_type,
@@ -193,6 +206,7 @@ pub fn run() {
             db::get_innodb_status,
             db::get_replication_status,
             db::get_locks,
+            db::get_lock_analysis,
             db::get_slow_queries,
             // Query Analysis
             db::analyze_query,

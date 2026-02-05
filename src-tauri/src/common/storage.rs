@@ -1,5 +1,5 @@
-use std::fs;
 use sqlx::{sqlite::SqlitePoolOptions, Pool, Sqlite};
+use std::fs;
 use tauri::AppHandle;
 use tauri::Manager;
 

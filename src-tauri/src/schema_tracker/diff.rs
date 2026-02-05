@@ -1,7 +1,7 @@
-use crate::schema_tracker::models::*;
 use crate::db_types::*;
+use crate::schema_tracker::models::*;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
 
 pub fn compare_schemas(old: &SchemaSnapshot, new: &SchemaSnapshot) -> SchemaDiff {
     let mut diff = SchemaDiff {
@@ -10,8 +10,10 @@ pub fn compare_schemas(old: &SchemaSnapshot, new: &SchemaSnapshot) -> SchemaDiff
         modified_tables: vec![],
     };
 
-    let old_tables: HashMap<String, &TableDefinition> = old.tables.iter().map(|t| (t.name.clone(), t)).collect();
-    let new_tables: HashMap<String, &TableDefinition> = new.tables.iter().map(|t| (t.name.clone(), t)).collect();
+    let old_tables: HashMap<String, &TableDefinition> =
+        old.tables.iter().map(|t| (t.name.clone(), t)).collect();
+    let new_tables: HashMap<String, &TableDefinition> =
+        new.tables.iter().map(|t| (t.name.clone(), t)).collect();
 
     // 1. Detect New and Modified Tables
     for (name, new_def) in &new_tables {
@@ -20,7 +22,7 @@ pub fn compare_schemas(old: &SchemaSnapshot, new: &SchemaSnapshot) -> SchemaDiff
                 if let Some(table_diff) = compare_tables(old_def, new_def) {
                     diff.modified_tables.push(table_diff);
                 }
-            },
+            }
             None => {
                 diff.new_tables.push((*new_def).clone());
             }
@@ -53,8 +55,10 @@ fn compare_tables(old: &TableDefinition, new: &TableDefinition) -> Option<TableD
         row_count_change,
     };
 
-    let old_cols: HashMap<String, &ColumnSchema> = old.columns.iter().map(|c| (c.name.clone(), c)).collect();
-    let new_cols: HashMap<String, &ColumnSchema> = new.columns.iter().map(|c| (c.name.clone(), c)).collect();
+    let old_cols: HashMap<String, &ColumnSchema> =
+        old.columns.iter().map(|c| (c.name.clone(), c)).collect();
+    let new_cols: HashMap<String, &ColumnSchema> =
+        new.columns.iter().map(|c| (c.name.clone(), c)).collect();
 
     // Columns
     for (name, new_col) in &new_cols {
@@ -69,7 +73,7 @@ fn compare_tables(old: &TableDefinition, new: &TableDefinition) -> Option<TableD
                         changes,
                     });
                 }
-            },
+            }
             None => table_diff.new_columns.push((*new_col).clone()),
         }
     }
@@ -83,8 +87,10 @@ fn compare_tables(old: &TableDefinition, new: &TableDefinition) -> Option<TableD
     // Indexes
     // Simplified index comparison based on name for now.
     // Better comparison would check columns even if name changed, but unique constraint names usually matter.
-    let old_idxs: HashMap<String, &TableIndex> = old.indexes.iter().map(|i| (i.name.clone(), i)).collect();
-    let new_idxs: HashMap<String, &TableIndex> = new.indexes.iter().map(|i| (i.name.clone(), i)).collect();
+    let old_idxs: HashMap<String, &TableIndex> =
+        old.indexes.iter().map(|i| (i.name.clone(), i)).collect();
+    let new_idxs: HashMap<String, &TableIndex> =
+        new.indexes.iter().map(|i| (i.name.clone(), i)).collect();
 
     for (name, new_idx) in &new_idxs {
         if !old_idxs.contains_key(name) {
@@ -92,19 +98,20 @@ fn compare_tables(old: &TableDefinition, new: &TableDefinition) -> Option<TableD
         }
         // If exists, assume same for MVP, or compare fields
     }
-    
+
     for (name, old_idx) in &old_idxs {
         if !new_idxs.contains_key(name) {
             table_diff.dropped_indexes.push((*old_idx).clone());
         }
     }
 
-    if table_diff.new_columns.is_empty() 
-        && table_diff.dropped_columns.is_empty() 
-        && table_diff.modified_columns.is_empty() 
+    if table_diff.new_columns.is_empty()
+        && table_diff.dropped_columns.is_empty()
+        && table_diff.modified_columns.is_empty()
         && table_diff.new_indexes.is_empty()
         && table_diff.dropped_indexes.is_empty()
-        && (table_diff.row_count_change.is_none() || table_diff.row_count_change == Some(0)) {
+        && (table_diff.row_count_change.is_none() || table_diff.row_count_change == Some(0))
+    {
         return None;
     }
 
@@ -114,24 +121,25 @@ fn compare_tables(old: &TableDefinition, new: &TableDefinition) -> Option<TableD
 fn compare_columns(old: &ColumnSchema, new: &ColumnSchema) -> Vec<DiffType> {
     let mut changes = Vec::new();
 
-    if old.column_type != new.column_type { // Using full type string for strict comparison
-        changes.push(DiffType::TypeChanged { 
-            old: old.column_type.clone(), 
-            new: new.column_type.clone() 
+    if old.column_type != new.column_type {
+        // Using full type string for strict comparison
+        changes.push(DiffType::TypeChanged {
+            old: old.column_type.clone(),
+            new: new.column_type.clone(),
         });
     }
-    
+
     if old.is_nullable != new.is_nullable {
-        changes.push(DiffType::NullableChanged { 
-            old: old.is_nullable, 
-            new: new.is_nullable 
+        changes.push(DiffType::NullableChanged {
+            old: old.is_nullable,
+            new: new.is_nullable,
         });
     }
 
     if old.column_default != new.column_default {
-        changes.push(DiffType::DefaultChanged { 
-            old: old.column_default.clone(), 
-            new: new.column_default.clone() 
+        changes.push(DiffType::DefaultChanged {
+            old: old.column_default.clone(),
+            new: new.column_default.clone(),
         });
     }
 
@@ -188,19 +196,26 @@ pub fn detect_breaking_changes(diff: &SchemaDiff) -> Vec<BreakingChange> {
                             breaking_changes.push(BreakingChange {
                                 table_name: table_diff.table_name.clone(),
                                 change_type: "Type Changed".to_string(),
-                                description: format!("Column '{}' changed type from '{}' to '{}'.", col_diff.column_name, old, new),
+                                description: format!(
+                                    "Column '{}' changed type from '{}' to '{}'.",
+                                    col_diff.column_name, old, new
+                                ),
                             });
                         }
-                    },
+                    }
                     DiffType::NullableChanged { old, new } => {
-                        if *old && !*new { // Was nullable, now NOT nullable
-                             breaking_changes.push(BreakingChange {
+                        if *old && !*new {
+                            // Was nullable, now NOT nullable
+                            breaking_changes.push(BreakingChange {
                                 table_name: table_diff.table_name.clone(),
                                 change_type: "Nullable Constraint".to_string(),
-                                description: format!("Column '{}' is no longer nullable.", col_diff.column_name),
+                                description: format!(
+                                    "Column '{}' is no longer nullable.",
+                                    col_diff.column_name
+                                ),
                             });
                         }
-                    },
+                    }
                     _ => {}
                 }
             }
@@ -245,7 +260,12 @@ fn parse_type(raw: &str) -> Option<ParsedType> {
         return None;
     }
 
-    Some(ParsedType { base, len, scale, unsigned })
+    Some(ParsedType {
+        base,
+        len,
+        scale,
+        unsigned,
+    })
 }
 
 fn is_type_change_safe(old: &str, new: &str) -> bool {
@@ -291,18 +311,14 @@ fn normalize_type_base(base: &str) -> String {
 fn is_same_base_widening(old: &ParsedType, new: &ParsedType) -> bool {
     let base = normalize_type_base(&old.base);
     match base.as_str() {
-        "varchar" | "char" | "nvarchar" | "nchar" => {
-            match (old.len, new.len) {
-                (Some(o), Some(n)) => n >= o,
-                _ => false,
-            }
-        }
-        "varbinary" | "binary" => {
-            match (old.len, new.len) {
-                (Some(o), Some(n)) => n >= o,
-                _ => false,
-            }
-        }
+        "varchar" | "char" | "nvarchar" | "nchar" => match (old.len, new.len) {
+            (Some(o), Some(n)) => n >= o,
+            _ => false,
+        },
+        "varbinary" | "binary" => match (old.len, new.len) {
+            (Some(o), Some(n)) => n >= o,
+            _ => false,
+        },
         "decimal" | "numeric" => {
             match (old.len, old.scale, new.len, new.scale) {
                 // Be conservative: increasing scale can break due to storage/rounding rules

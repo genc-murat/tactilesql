@@ -1,8 +1,8 @@
-use tauri::{command, State};
 use crate::db::AppState;
 use crate::db_types::DatabaseType;
 use crate::dependency_engine::graph::DependencyGraphData;
 use crate::dependency_engine::storage::GraphCacheKey;
+use tauri::{command, State};
 
 #[command]
 pub async fn get_dependency_graph(
@@ -12,7 +12,6 @@ pub async fn get_dependency_graph(
     table_name: Option<String>,
     hop_depth: Option<u8>,
 ) -> Result<DependencyGraphData, String> {
-    
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
         guard.clone()
@@ -42,7 +41,7 @@ pub async fn get_dependency_graph(
             return Ok(cached);
         }
     }
-    
+
     let graph_future = async {
         let hop_depth_usize = hop_depth.map(|value| value as usize);
         match db_type {
@@ -57,10 +56,12 @@ pub async fn get_dependency_graph(
                     hop_depth_usize,
                 )
                 .await
-            },
+            }
             DatabaseType::PostgreSQL => {
                 let pool_guard = app_state.postgres_pool.lock().await;
-                let pool = pool_guard.as_ref().ok_or("No active PostgreSQL connection")?;
+                let pool = pool_guard
+                    .as_ref()
+                    .ok_or("No active PostgreSQL connection")?;
                 super::extractor::build_dependency_graph_postgres(
                     pool,
                     &connection_id,
@@ -69,7 +70,7 @@ pub async fn get_dependency_graph(
                     hop_depth_usize,
                 )
                 .await
-            },
+            }
             DatabaseType::Disconnected => Err("No connection established".into()),
         }
     };

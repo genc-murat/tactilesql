@@ -1,4 +1,4 @@
-use sqlx::{Pool, Sqlite, Row};
+use sqlx::{Pool, Row, Sqlite};
 
 pub struct AwarenessStore {
     pool: Pool<Sqlite>,
@@ -31,7 +31,7 @@ impl AwarenessStore {
                 total_executions INTEGER NOT NULL,
                 last_updated DATETIME NOT NULL
             );
-            "#
+            "#,
         )
         .execute(&self.pool)
         .await
@@ -49,7 +49,7 @@ impl AwarenessStore {
                 rows_affected INTEGER,
                 FOREIGN KEY(query_hash) REFERENCES baseline_profiles(query_hash)
             );
-            "#
+            "#,
         )
         .execute(&self.pool)
         .await
@@ -69,7 +69,7 @@ impl AwarenessStore {
                 deviation_details TEXT, -- JSON payload of what was different
                 status TEXT DEFAULT 'OPEN' -- OPEN, ACKNOWLEDGED, RESOLVED
             );
-            "#
+            "#,
         )
         .execute(&self.pool)
         .await
@@ -83,19 +83,20 @@ impl AwarenessStore {
                 value TEXT NOT NULL,
                 updated_at DATETIME NOT NULL
             );
-            "#
+            "#,
         )
         .execute(&self.pool)
         .await
         .map_err(|e| e.to_string())?;
 
-        let default_config = serde_json::to_string(&crate::awareness::anomaly::AnomalyConfig::default())
-            .map_err(|e| e.to_string())?;
+        let default_config =
+            serde_json::to_string(&crate::awareness::anomaly::AnomalyConfig::default())
+                .map_err(|e| e.to_string())?;
         sqlx::query(
             r#"
             INSERT OR IGNORE INTO awareness_config (key, value, updated_at)
             VALUES (?, ?, ?)
-            "#
+            "#,
         )
         .bind("anomaly_config")
         .bind(default_config)
@@ -141,12 +142,14 @@ impl AwarenessStore {
         let mut detected_anomaly = None;
         if let Some(ref baseline) = current_baseline {
             let config = self.get_anomaly_config().await?;
-            if let Some(anomaly) = crate::awareness::anomaly::AnomalyDetector::detect(execution, baseline, &config) {
-                 if let Err(e) = self.log_anomaly(&anomaly).await {
-                     log::error!("Failed to log anomaly: {}", e);
-                 } else {
-                     detected_anomaly = Some(anomaly);
-                 }
+            if let Some(anomaly) =
+                crate::awareness::anomaly::AnomalyDetector::detect(execution, baseline, &config)
+            {
+                if let Err(e) = self.log_anomaly(&anomaly).await {
+                    log::error!("Failed to log anomaly: {}", e);
+                } else {
+                    detected_anomaly = Some(anomaly);
+                }
             }
         }
 
@@ -159,7 +162,7 @@ impl AwarenessStore {
             SELECT value
             FROM awareness_config
             WHERE key = ?
-            "#
+            "#,
         )
         .bind("anomaly_config")
         .fetch_optional(&self.pool)
@@ -180,7 +183,10 @@ impl AwarenessStore {
         }
     }
 
-    pub async fn log_anomaly(&self, anomaly: &crate::awareness::anomaly::Anomaly) -> Result<(), String> {
+    pub async fn log_anomaly(
+        &self,
+        anomaly: &crate::awareness::anomaly::Anomaly,
+    ) -> Result<(), String> {
         let severity_int = anomaly.severity.clone() as i32;
         let deviation_json = serde_json::json!({
             "duration": anomaly.duration_ms,
@@ -208,19 +214,19 @@ impl AwarenessStore {
     }
 
     pub async fn update_anomaly_cause(
-        &self, 
-        query_hash: &str, 
-        timestamp: chrono::DateTime<chrono::Utc>, 
-        cause: &crate::awareness::anomaly::AnomalyCause
+        &self,
+        query_hash: &str,
+        timestamp: chrono::DateTime<chrono::Utc>,
+        cause: &crate::awareness::anomaly::AnomalyCause,
     ) -> Result<(), String> {
         let cause_json = serde_json::to_string(cause).unwrap_or_default();
-        
+
         sqlx::query(
             r#"
             UPDATE anomaly_log 
             SET cause = ?
             WHERE query_hash = ? AND detected_at = ?
-            "#
+            "#,
         )
         .bind(cause_json)
         .bind(query_hash)
@@ -228,7 +234,7 @@ impl AwarenessStore {
         .execute(&self.pool)
         .await
         .map_err(|e| format!("Failed to update anomaly cause: {}", e))?;
-        
+
         Ok(())
     }
 
@@ -243,7 +249,7 @@ impl AwarenessStore {
             FROM anomaly_log
             WHERE query_hash = ? AND detected_at = ?
             LIMIT 1
-            "#
+            "#,
         )
         .bind(query_hash)
         .bind(timestamp)
@@ -293,24 +299,24 @@ impl AwarenessStore {
             Some((avg, std_dev, total)) => {
                 let new_total = total + 1;
                 let new_val = execution.resources.execution_time_ms;
-                
-                // Welford's online algorithm for standard deviation could be better, 
+
+                // Welford's online algorithm for standard deviation could be better,
                 // but for simplicity/storage limitation we might use a simpler approximation or re-query history if needed.
                 // However, fetching all history is expensive.
                 // Let's use a simple running average.
                 // new_avg = old_avg + (new_val - old_avg) / new_n
                 let new_avg = avg + (new_val - avg) / (new_total as f64);
-                
-                // For std_dev online update: 
+
+                // For std_dev online update:
                 // M2_new = M2_old + (new_val - old_avg) * (new_val - new_avg)
                 // std_dev = sqrt(M2 / n)
                 // We'd need to store M2 (sum of squares of differences) to be accurate.
                 // Or we can just approximation or assume 0 for now if we don't strictly need it yet.
                 // Let's try to do it right if we can, but we didn't store M2.
-                // Let's just stick to average for now to avoid complexity without schema change, 
-                // or just leave std_dev as is (0.0) until we need it. 
-                // Wait, I defined std_dev_duration_ms in schema. 
-                
+                // Let's just stick to average for now to avoid complexity without schema change,
+                // or just leave std_dev as is (0.0) until we need it.
+                // Wait, I defined std_dev_duration_ms in schema.
+
                 // Let's just update average and count for MVP.
                 (new_avg, std_dev, new_total)
             }
@@ -381,21 +387,28 @@ impl AwarenessStore {
         }
     }
 
-    pub async fn get_anomalies(&self, limit: i64) -> Result<Vec<crate::awareness::anomaly::Anomaly>, String> {
+    pub async fn get_anomalies(
+        &self,
+        limit: i64,
+    ) -> Result<Vec<crate::awareness::anomaly::Anomaly>, String> {
         self.get_anomalies_range(None, None, limit).await
     }
 
     pub async fn get_anomalies_range(
-        &self, 
-        start: Option<chrono::DateTime<chrono::Utc>>, 
-        end: Option<chrono::DateTime<chrono::Utc>>, 
-        limit: i64
+        &self,
+        start: Option<chrono::DateTime<chrono::Utc>>,
+        end: Option<chrono::DateTime<chrono::Utc>>,
+        limit: i64,
     ) -> Result<Vec<crate::awareness::anomaly::Anomaly>, String> {
         let mut query = "SELECT al.query_hash, al.detected_at, al.severity, al.deviation_details, bp.query_pattern FROM anomaly_log al LEFT JOIN baseline_profiles bp ON al.query_hash = bp.query_hash".to_string();
         let mut conditions = Vec::new();
-        if start.is_some() { conditions.push("al.detected_at >= ?"); }
-        if end.is_some() { conditions.push("al.detected_at <= ?"); }
-        
+        if start.is_some() {
+            conditions.push("al.detected_at >= ?");
+        }
+        if end.is_some() {
+            conditions.push("al.detected_at <= ?");
+        }
+
         if !conditions.is_empty() {
             query.push_str(" WHERE ");
             query.push_str(&conditions.join(" AND "));
@@ -403,20 +416,26 @@ impl AwarenessStore {
         query.push_str(" ORDER BY al.detected_at DESC LIMIT ?");
 
         let mut sql = sqlx::query(&query);
-        if let Some(s) = start { sql = sql.bind(s); }
-        if let Some(e) = end { sql = sql.bind(e); }
+        if let Some(s) = start {
+            sql = sql.bind(s);
+        }
+        if let Some(e) = end {
+            sql = sql.bind(e);
+        }
         sql = sql.bind(limit);
 
-        let rows = sql.fetch_all(&self.pool)
+        let rows = sql
+            .fetch_all(&self.pool)
             .await
             .map_err(|e| format!("Failed to fetch anomalies range: {}", e))?;
 
         let mut anomalies = Vec::new();
         for row in rows {
             let details_str: String = row.try_get("deviation_details").unwrap_or_default();
-            let details: serde_json::Value = serde_json::from_str(&details_str).unwrap_or(serde_json::json!({
-                "duration": 0.0, "baseline": 0.0, "deviation_pct": 0.0
-            }));
+            let details: serde_json::Value =
+                serde_json::from_str(&details_str).unwrap_or(serde_json::json!({
+                    "duration": 0.0, "baseline": 0.0, "deviation_pct": 0.0
+                }));
 
             let severity_int: i32 = row.try_get("severity").unwrap_or(1);
             let severity = match severity_int {
@@ -427,7 +446,9 @@ impl AwarenessStore {
 
             anomalies.push(crate::awareness::anomaly::Anomaly {
                 query_hash: row.try_get("query_hash").unwrap_or_default(),
-                query: row.try_get("query_pattern").unwrap_or_else(|_| "Unknown Query".to_string()),
+                query: row
+                    .try_get("query_pattern")
+                    .unwrap_or_else(|_| "Unknown Query".to_string()),
                 detected_at: row.try_get("detected_at").unwrap_or_default(),
                 severity,
                 duration_ms: details["duration"].as_f64().unwrap_or(0.0),
@@ -438,21 +459,28 @@ impl AwarenessStore {
         Ok(anomalies)
     }
 
-    pub async fn get_query_history(&self, limit: i64) -> Result<Vec<crate::awareness::profiler::QueryExecution>, String> {
+    pub async fn get_query_history(
+        &self,
+        limit: i64,
+    ) -> Result<Vec<crate::awareness::profiler::QueryExecution>, String> {
         self.get_query_history_range(None, None, limit).await
     }
 
     pub async fn get_query_history_range(
-        &self, 
-        start: Option<chrono::DateTime<chrono::Utc>>, 
-        end: Option<chrono::DateTime<chrono::Utc>>, 
-        limit: i64
+        &self,
+        start: Option<chrono::DateTime<chrono::Utc>>,
+        end: Option<chrono::DateTime<chrono::Utc>>,
+        limit: i64,
     ) -> Result<Vec<crate::awareness::profiler::QueryExecution>, String> {
         let mut query = "SELECT query_hash, exact_query, duration_ms, timestamp, rows_affected FROM execution_history".to_string();
         let mut conditions = Vec::new();
-        if start.is_some() { conditions.push("timestamp >= ?"); }
-        if end.is_some() { conditions.push("timestamp <= ?"); }
-        
+        if start.is_some() {
+            conditions.push("timestamp >= ?");
+        }
+        if end.is_some() {
+            conditions.push("timestamp <= ?");
+        }
+
         if !conditions.is_empty() {
             query.push_str(" WHERE ");
             query.push_str(&conditions.join(" AND "));
@@ -460,11 +488,16 @@ impl AwarenessStore {
         query.push_str(" ORDER BY timestamp DESC LIMIT ?");
 
         let mut sql = sqlx::query(&query);
-        if let Some(s) = start { sql = sql.bind(s); }
-        if let Some(e) = end { sql = sql.bind(e); }
+        if let Some(s) = start {
+            sql = sql.bind(s);
+        }
+        if let Some(e) = end {
+            sql = sql.bind(e);
+        }
         sql = sql.bind(limit);
 
-        let rows = sql.fetch_all(&self.pool)
+        let rows = sql
+            .fetch_all(&self.pool)
             .await
             .map_err(|e| format!("Failed to fetch history range: {}", e))?;
 
@@ -477,7 +510,7 @@ impl AwarenessStore {
                 resources: crate::awareness::profiler::ResourceUsage {
                     execution_time_ms: row.try_get("duration_ms").unwrap_or_default(),
                     rows_affected: row.try_get::<i64, _>("rows_affected").unwrap_or(0) as u64,
-                }
+                },
             });
         }
         Ok(executions)

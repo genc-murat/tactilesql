@@ -1,6 +1,9 @@
-use serde::{Serialize, Deserialize};
+use crate::db_types::{
+    ColumnSchema, ForeignKey, PrimaryKey, RoutineInfo, TableConstraint, TableIndex, TriggerInfo,
+    ViewDefinition,
+};
 use chrono::{DateTime, Utc};
-use crate::db_types::{ColumnSchema, TableIndex, ForeignKey, PrimaryKey, TableConstraint, TriggerInfo, RoutineInfo, ViewDefinition};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SchemaSnapshot {
@@ -48,14 +51,23 @@ pub struct ColumnDiff {
     pub column_name: String,
     pub old_column: ColumnSchema,
     pub new_column: ColumnSchema,
-    pub changes: Vec<DiffType>, 
+    pub changes: Vec<DiffType>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum DiffType {
-    TypeChanged { old: String, new: String },
-    NullableChanged { old: bool, new: bool },
-    DefaultChanged { old: Option<String>, new: Option<String> },
+    TypeChanged {
+        old: String,
+        new: String,
+    },
+    NullableChanged {
+        old: bool,
+        new: bool,
+    },
+    DefaultChanged {
+        old: Option<String>,
+        new: Option<String>,
+    },
     KeyChanged,
     Other(String),
 }

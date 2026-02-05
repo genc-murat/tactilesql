@@ -1,5 +1,5 @@
-use crate::schema_tracker::models::{SchemaDiff};
-use serde::{Serialize, Deserialize};
+use crate::schema_tracker::models::SchemaDiff;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Story {
@@ -64,42 +64,52 @@ pub fn generate_story(
     for table_diff in &diff.modified_tables {
         let mut changes_desc = Vec::new();
         let mut detailed_changes = Vec::new();
-        
+
         if !table_diff.new_columns.is_empty() {
-             changes_desc.push(format!("added {} columns", table_diff.new_columns.len()));
-             for col in &table_diff.new_columns {
-                 detailed_changes.push(format!("Added column '{}' ({})", col.name, col.column_type));
-             }
+            changes_desc.push(format!("added {} columns", table_diff.new_columns.len()));
+            for col in &table_diff.new_columns {
+                detailed_changes.push(format!("Added column '{}' ({})", col.name, col.column_type));
+            }
         }
         if !table_diff.dropped_columns.is_empty() {
-             changes_desc.push(format!("removed {} columns", table_diff.dropped_columns.len()));
-             for col in &table_diff.dropped_columns {
-                 detailed_changes.push(format!("Dropped column '{}'", col.name));
-             }
+            changes_desc.push(format!(
+                "removed {} columns",
+                table_diff.dropped_columns.len()
+            ));
+            for col in &table_diff.dropped_columns {
+                detailed_changes.push(format!("Dropped column '{}'", col.name));
+            }
         }
-        
+
         // Row Counts & Spikes
         if let Some(change) = table_diff.row_count_change {
             if change != 0 {
                 let direction = if change > 0 { "grew by" } else { "shrank by" };
                 changes_desc.push(format!("{} {} rows", direction, change.abs()));
                 detailed_changes.push(format!("Rows: {:+} ({})", change, direction));
-                
+
                 // Spike Detection (absolute threshold heuristic)
                 if change < -1000 {
-                     detailed_changes.push("⚠️ SIGNIFICANT DATA LOSS DETECTED".to_string());
+                    detailed_changes.push("⚠️ SIGNIFICANT DATA LOSS DETECTED".to_string());
                 }
             }
         }
 
         if !changes_desc.is_empty() {
             let mut severity = 1;
-            if !table_diff.dropped_columns.is_empty() { severity = 2; }
-            if table_diff.row_count_change.unwrap_or(0) < -1000 { severity = 3; }
+            if !table_diff.dropped_columns.is_empty() {
+                severity = 2;
+            }
+            if table_diff.row_count_change.unwrap_or(0) < -1000 {
+                severity = 3;
+            }
 
             sections.push(StorySection {
                 title: format!("Updates to '{}'", table_diff.table_name),
-                content: format!("The table experienced the following changes: {}.", changes_desc.join(", ")),
+                content: format!(
+                    "The table experienced the following changes: {}.",
+                    changes_desc.join(", ")
+                ),
                 icon: "edit".to_string(),
                 changes: detailed_changes,
                 severity,
@@ -111,8 +121,12 @@ pub fn generate_story(
     if let Some(q_list) = queries {
         if !q_list.is_empty() {
             let total_rows: u64 = q_list.iter().map(|e| e.resources.rows_affected).sum();
-            let avg_time: f64 = q_list.iter().map(|e| e.resources.execution_time_ms).sum::<f64>() / q_list.len() as f64;
-            
+            let avg_time: f64 = q_list
+                .iter()
+                .map(|e| e.resources.execution_time_ms)
+                .sum::<f64>()
+                / q_list.len() as f64;
+
             sections.push(StorySection {
                 title: "Query Activity".to_string(),
                 content: format!(
@@ -132,8 +146,11 @@ pub fn generate_story(
     // 5. Awareness: Anomalies
     if let Some(a_list) = anomalies {
         if !a_list.is_empty() {
-            let criticals = a_list.iter().filter(|a| matches!(a.severity, crate::awareness::anomaly::Severity::Critical)).count();
-            
+            let criticals = a_list
+                .iter()
+                .filter(|a| matches!(a.severity, crate::awareness::anomaly::Severity::Critical))
+                .count();
+
             sections.push(StorySection {
                 title: format!("{} Anomalies Detected", a_list.len()),
                 content: format!(
@@ -148,9 +165,10 @@ pub fn generate_story(
     }
 
     if sections.is_empty() {
-         sections.push(StorySection {
+        sections.push(StorySection {
             title: "No Significant Changes".to_string(),
-            content: "The database schema and data volume remained stable during this period.".to_string(),
+            content: "The database schema and data volume remained stable during this period."
+                .to_string(),
             icon: "check_circle".to_string(),
             changes: vec![],
             severity: 0,

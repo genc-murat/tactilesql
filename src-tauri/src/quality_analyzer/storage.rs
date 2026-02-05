@@ -1,5 +1,5 @@
-use sqlx::{sqlite::SqliteRow, Pool, Row, Sqlite};
 use crate::quality_analyzer::models::{QualityAiReport, TableQualityReport};
+use sqlx::{sqlite::SqliteRow, Pool, Row, Sqlite};
 
 pub struct QualityAnalyzerStore {
     pool: Pool<Sqlite>,
@@ -75,7 +75,12 @@ impl QualityAnalyzerStore {
             sqlx::query("ALTER TABLE quality_reports ADD COLUMN schema_name TEXT")
                 .execute(&self.pool)
                 .await
-                .map_err(|e| format!("Failed to migrate quality_reports table (schema_name): {}", e))?;
+                .map_err(|e| {
+                    format!(
+                        "Failed to migrate quality_reports table (schema_name): {}",
+                        e
+                    )
+                })?;
         }
 
         Ok(())
@@ -83,7 +88,7 @@ impl QualityAnalyzerStore {
 
     pub async fn save_report(&self, report: &TableQualityReport) -> Result<i64, String> {
         let data = serde_json::to_vec(report).map_err(|e| e.to_string())?;
-        
+
         let id = sqlx::query(
             r#"
             INSERT INTO quality_reports (connection_id, table_name, timestamp, overall_score, report_data, schema_snapshot_id, schema_name)
@@ -106,8 +111,11 @@ impl QualityAnalyzerStore {
 
         Ok(id)
     }
-    
-    pub async fn get_reports(&self, connection_id: &str) -> Result<Vec<TableQualityReport>, String> {
+
+    pub async fn get_reports(
+        &self,
+        connection_id: &str,
+    ) -> Result<Vec<TableQualityReport>, String> {
         let rows = sqlx::query(
             "SELECT id, report_data, schema_name FROM quality_reports WHERE connection_id = ? ORDER BY timestamp DESC LIMIT 50"
         )
@@ -121,8 +129,9 @@ impl QualityAnalyzerStore {
             let id: i64 = row.try_get("id").unwrap_or_default();
             let data: Vec<u8> = row.try_get("report_data").unwrap_or_default();
             let schema_name: Option<String> = row.try_get("schema_name").unwrap_or(None);
-            
-            let mut report: TableQualityReport = serde_json::from_slice(&data).map_err(|e| e.to_string())?;
+
+            let mut report: TableQualityReport =
+                serde_json::from_slice(&data).map_err(|e| e.to_string())?;
             report.id = Some(id);
             // If the blob didn't have schema_name (old records), use the column value if present
             if report.schema_name.is_none() {
@@ -130,7 +139,7 @@ impl QualityAnalyzerStore {
             }
             reports.push(report);
         }
-        
+
         Ok(reports)
     }
 
@@ -180,7 +189,7 @@ impl QualityAnalyzerStore {
                 analysis_text,
                 created_at,
                 updated_at
-            "#
+            "#,
         )
         .bind(quality_report_id)
         .bind(connection_id)
@@ -218,7 +227,7 @@ impl QualityAnalyzerStore {
                 updated_at
             FROM quality_ai_reports
             WHERE connection_id = ? AND quality_report_id = ?
-            "#
+            "#,
         )
         .bind(connection_id)
         .bind(quality_report_id)
@@ -238,7 +247,9 @@ impl QualityAnalyzerStore {
 
         Ok(QualityAiReport {
             id: Some(row.try_get("id").map_err(|e| e.to_string())?),
-            quality_report_id: row.try_get("quality_report_id").map_err(|e| e.to_string())?,
+            quality_report_id: row
+                .try_get("quality_report_id")
+                .map_err(|e| e.to_string())?,
             connection_id: row.try_get("connection_id").map_err(|e| e.to_string())?,
             table_name: row.try_get("table_name").map_err(|e| e.to_string())?,
             schema_name: row.try_get("schema_name").map_err(|e| e.to_string())?,

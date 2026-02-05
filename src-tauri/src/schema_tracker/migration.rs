@@ -1,5 +1,5 @@
+use crate::db_types::{ColumnSchema, DatabaseType};
 use crate::schema_tracker::models::*;
-use crate::db_types::{DatabaseType, ColumnSchema};
 
 pub fn generate_migration_script(diff: &SchemaDiff, db_type: &DatabaseType) -> String {
     let mut script = String::new();
@@ -44,14 +44,22 @@ fn generate_create_table(table: &TableDefinition, db_type: &DatabaseType) -> Str
         };
         columns_def.push(col_def);
     }
-    
+
     // PKs
-    let pk_cols: Vec<String> = table.primary_keys.iter().map(|pk| pk.column_name.clone()).collect();
+    let pk_cols: Vec<String> = table
+        .primary_keys
+        .iter()
+        .map(|pk| pk.column_name.clone())
+        .collect();
     if !pk_cols.is_empty() {
         columns_def.push(format!("PRIMARY KEY ({})", pk_cols.join(", ")));
     }
 
-    format!("CREATE TABLE {} (\n    {}\n);", table.name, columns_def.join(",\n    "))
+    format!(
+        "CREATE TABLE {} (\n    {}\n);",
+        table.name,
+        columns_def.join(",\n    ")
+    )
 }
 
 fn generate_alter_table(diff: &TableDiff, db_type: &DatabaseType) -> Vec<String> {
@@ -60,10 +68,18 @@ fn generate_alter_table(diff: &TableDiff, db_type: &DatabaseType) -> Vec<String>
 
     // Add Columns
     for col in &diff.new_columns {
-         match db_type {
-            DatabaseType::MySQL => stmts.push(format!("ALTER TABLE {} ADD COLUMN {}", table, format_column_mysql(col))),
-            DatabaseType::PostgreSQL => stmts.push(format!("ALTER TABLE {} ADD COLUMN {}", table, format_column_postgres(col))),
-            DatabaseType::Disconnected => {},
+        match db_type {
+            DatabaseType::MySQL => stmts.push(format!(
+                "ALTER TABLE {} ADD COLUMN {}",
+                table,
+                format_column_mysql(col)
+            )),
+            DatabaseType::PostgreSQL => stmts.push(format!(
+                "ALTER TABLE {} ADD COLUMN {}",
+                table,
+                format_column_postgres(col)
+            )),
+            DatabaseType::Disconnected => {}
         }
     }
 
@@ -74,40 +90,61 @@ fn generate_alter_table(diff: &TableDiff, db_type: &DatabaseType) -> Vec<String>
 
     // Modify Columns
     for col_diff in &diff.modified_columns {
-          match db_type {
-            DatabaseType::MySQL => stmts.push(format!("ALTER TABLE {} MODIFY COLUMN {}", table, format_column_mysql(&col_diff.new_column))),
+        match db_type {
+            DatabaseType::MySQL => stmts.push(format!(
+                "ALTER TABLE {} MODIFY COLUMN {}",
+                table,
+                format_column_mysql(&col_diff.new_column)
+            )),
             DatabaseType::PostgreSQL => {
                 // Postgres ALTER COLUMN TYPE
                 // Check if type changed
                 let mut changes = Vec::new();
                 for change in &col_diff.changes {
                     match change {
-                         DiffType::TypeChanged { .. } => {
-                             changes.push(format!("ALTER COLUMN {} TYPE {} USING {}::{}", 
-                                col_diff.column_name, col_diff.new_column.data_type, col_diff.column_name, col_diff.new_column.data_type));
-                         },
-                         DiffType::NullableChanged { new, .. } => {
-                             if *new {
-                                 changes.push(format!("ALTER COLUMN {} DROP NOT NULL", col_diff.column_name));
-                             } else {
-                                  changes.push(format!("ALTER COLUMN {} SET NOT NULL", col_diff.column_name));
-                             }
-                         },
-                         DiffType::DefaultChanged { new, .. } => {
-                             if let Some(def) = new {
-                                 changes.push(format!("ALTER COLUMN {} SET DEFAULT {}", col_diff.column_name, def));
-                             } else {
-                                 changes.push(format!("ALTER COLUMN {} DROP DEFAULT", col_diff.column_name));
-                             }
-                         },
-                         _ => {}
+                        DiffType::TypeChanged { .. } => {
+                            changes.push(format!(
+                                "ALTER COLUMN {} TYPE {} USING {}::{}",
+                                col_diff.column_name,
+                                col_diff.new_column.data_type,
+                                col_diff.column_name,
+                                col_diff.new_column.data_type
+                            ));
+                        }
+                        DiffType::NullableChanged { new, .. } => {
+                            if *new {
+                                changes.push(format!(
+                                    "ALTER COLUMN {} DROP NOT NULL",
+                                    col_diff.column_name
+                                ));
+                            } else {
+                                changes.push(format!(
+                                    "ALTER COLUMN {} SET NOT NULL",
+                                    col_diff.column_name
+                                ));
+                            }
+                        }
+                        DiffType::DefaultChanged { new, .. } => {
+                            if let Some(def) = new {
+                                changes.push(format!(
+                                    "ALTER COLUMN {} SET DEFAULT {}",
+                                    col_diff.column_name, def
+                                ));
+                            } else {
+                                changes.push(format!(
+                                    "ALTER COLUMN {} DROP DEFAULT",
+                                    col_diff.column_name
+                                ));
+                            }
+                        }
+                        _ => {}
                     }
                 }
                 for change in changes {
                     stmts.push(format!("ALTER TABLE {} {}", table, change));
                 }
-            },
-            DatabaseType::Disconnected => {},
+            }
+            DatabaseType::Disconnected => {}
         }
     }
 
@@ -121,12 +158,15 @@ fn format_column_mysql(col: &ColumnSchema) -> String {
     } else {
         String::new()
     };
-    
+
     // Reconstruct type
     // If we have full_type in 'column_type' field (from capture), use it.
     // Assuming 'column_type' holds e.g. "varchar(255)"
-    
-    format!("{} {} {} {}", col.name, col.column_type, null_def, default_def)
+
+    format!(
+        "{} {} {} {}",
+        col.name, col.column_type, null_def, default_def
+    )
 }
 
 fn format_column_postgres(col: &ColumnSchema) -> String {
@@ -136,6 +176,9 @@ fn format_column_postgres(col: &ColumnSchema) -> String {
     } else {
         String::new()
     };
-    
-    format!("{} {} {} {}", col.name, col.column_type, null_def, default_def)
+
+    format!(
+        "{} {} {} {}",
+        col.name, col.column_type, null_def, default_def
+    )
 }

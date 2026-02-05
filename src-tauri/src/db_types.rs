@@ -3,7 +3,7 @@
 // =====================================================
 
 use serde::{Deserialize, Serialize};
-use sqlx::{Pool, MySql, Postgres, Sqlite};
+use sqlx::{MySql, Pool, Postgres, Sqlite};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -24,9 +24,12 @@ pub struct AppState {
     pub active_db_type: Arc<Mutex<DatabaseType>>,
     pub encryption_key: Arc<Mutex<Option<Vec<u8>>>>,
     pub awareness_store: Arc<Mutex<Option<crate::awareness::store::AwarenessStore>>>,
-    pub schema_tracker_store: Arc<Mutex<Option<crate::schema_tracker::storage::SchemaTrackerStore>>>,
-    pub quality_analyzer_store: Arc<Mutex<Option<crate::quality_analyzer::storage::QualityAnalyzerStore>>>,
-    pub dependency_engine_store: Arc<Mutex<Option<crate::dependency_engine::storage::DependencyEngineStore>>>,
+    pub schema_tracker_store:
+        Arc<Mutex<Option<crate::schema_tracker::storage::SchemaTrackerStore>>>,
+    pub quality_analyzer_store:
+        Arc<Mutex<Option<crate::quality_analyzer::storage::QualityAnalyzerStore>>>,
+    pub dependency_engine_store:
+        Arc<Mutex<Option<crate::dependency_engine::storage::DependencyEngineStore>>>,
     pub query_story_store: Arc<Mutex<Option<crate::query_story::storage::QueryStoryStore>>>,
     pub local_db_pool: Arc<Mutex<Option<Pool<Sqlite>>>>,
 }
@@ -262,6 +265,67 @@ pub struct LockInfo {
     pub lock_type: String,
     pub lock_table: String,
     pub lock_data: Option<String>,
+}
+
+// --- Lock/Deadlock Analysis ---
+#[derive(Serialize, Debug, Clone)]
+pub struct LockGraphEdge {
+    pub waiting_process_id: i64,
+    pub blocking_process_id: i64,
+    pub wait_seconds: i64,
+    pub object_name: Option<String>,
+    pub lock_type: Option<String>,
+    pub waiting_lock_mode: Option<String>,
+    pub blocking_lock_mode: Option<String>,
+    pub waiting_query: Option<String>,
+    pub blocking_query: Option<String>,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct LockGraphNode {
+    pub process_id: i64,
+    pub role: String, // waiting | blocking | both
+    pub blocked_count: i64,
+    pub waiting_on_count: i64,
+    pub max_wait_seconds: i64,
+    pub sample_query: Option<String>,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct BlockingChain {
+    pub process_chain: Vec<i64>,
+    pub depth: i32,
+    pub total_wait_seconds: i64,
+    pub contains_cycle: bool,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct LockRecommendation {
+    pub severity: String, // critical | high | medium | low
+    pub title: String,
+    pub action: String,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct LockAnalysisSummary {
+    pub total_edges: i64,
+    pub waiting_sessions: i64,
+    pub blocking_sessions: i64,
+    pub max_wait_seconds: i64,
+    pub max_chain_depth: i32,
+    pub deadlock_cycles: i64,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct LockAnalysis {
+    pub db_type: String,      // mysql | postgresql
+    pub generated_at: String, // RFC3339
+    pub has_deadlock: bool,
+    pub summary: LockAnalysisSummary,
+    pub nodes: Vec<LockGraphNode>,
+    pub edges: Vec<LockGraphEdge>,
+    pub chains: Vec<BlockingChain>,
+    pub recommendations: Vec<LockRecommendation>,
 }
 
 // --- SSH Tunnel Config ---

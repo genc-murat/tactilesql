@@ -1,5 +1,5 @@
-use sqlx::{Pool, Sqlite, Row, sqlite::SqliteRow};
-use crate::schema_tracker::models::{SchemaSnapshot, SchemaImpactAiReport};
+use crate::schema_tracker::models::{SchemaImpactAiReport, SchemaSnapshot};
+use sqlx::{sqlite::SqliteRow, Pool, Row, Sqlite};
 
 pub struct SchemaTrackerStore {
     pool: Pool<Sqlite>,
@@ -60,14 +60,14 @@ impl SchemaTrackerStore {
 
     pub async fn save_snapshot(&self, snapshot: &SchemaSnapshot) -> Result<i64, String> {
         let data = serde_json::to_vec(snapshot).map_err(|e| e.to_string())?;
-        
+
         let id = sqlx::query(
             r#"
             INSERT INTO schema_snapshots (connection_id, timestamp, schema_hash, snapshot_data)
             VALUES (?, ?, ?, ?)
             ON CONFLICT(connection_id, schema_hash) DO UPDATE SET timestamp = excluded.timestamp
             RETURNING id
-            "#
+            "#,
         )
         .bind(&snapshot.connection_id)
         .bind(snapshot.timestamp.timestamp())
@@ -95,15 +95,21 @@ impl SchemaTrackerStore {
         for row in rows {
             let id: i64 = row.try_get("id").unwrap_or_default();
             let data: Vec<u8> = row.try_get("snapshot_data").unwrap_or_default();
-            let mut snapshot: SchemaSnapshot = serde_json::from_slice(&data).map_err(|e| e.to_string())?;
+            let mut snapshot: SchemaSnapshot =
+                serde_json::from_slice(&data).map_err(|e| e.to_string())?;
             snapshot.id = Some(id);
             snapshots.push(snapshot);
         }
-        
+
         Ok(snapshots)
     }
 
-    pub async fn add_version_tag(&self, snapshot_id: i64, tag: &str, annotation: &str) -> Result<(), String> {
+    pub async fn add_version_tag(
+        &self,
+        snapshot_id: i64,
+        tag: &str,
+        annotation: &str,
+    ) -> Result<(), String> {
         sqlx::query(
             "INSERT INTO schema_versions (snapshot_id, tag, annotation, created_at) VALUES (?, ?, ?, ?)"
         )
@@ -158,7 +164,7 @@ impl SchemaTrackerStore {
                 analysis_text,
                 created_at,
                 updated_at
-            "#
+            "#,
         )
         .bind(connection_id)
         .bind(base_snapshot_id)
@@ -195,7 +201,7 @@ impl SchemaTrackerStore {
                 updated_at
             FROM schema_ai_impact_reports
             WHERE connection_id = ? AND base_snapshot_id = ? AND target_snapshot_id = ?
-            "#
+            "#,
         )
         .bind(connection_id)
         .bind(base_snapshot_id)
@@ -218,7 +224,9 @@ impl SchemaTrackerStore {
             id: Some(row.try_get("id").map_err(|e| e.to_string())?),
             connection_id: row.try_get("connection_id").map_err(|e| e.to_string())?,
             base_snapshot_id: row.try_get("base_snapshot_id").map_err(|e| e.to_string())?,
-            target_snapshot_id: row.try_get("target_snapshot_id").map_err(|e| e.to_string())?,
+            target_snapshot_id: row
+                .try_get("target_snapshot_id")
+                .map_err(|e| e.to_string())?,
             provider: row.try_get("provider").map_err(|e| e.to_string())?,
             model: row.try_get("model").map_err(|e| e.to_string())?,
             analysis_text: row.try_get("analysis_text").map_err(|e| e.to_string())?,

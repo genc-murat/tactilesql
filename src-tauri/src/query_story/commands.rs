@@ -1,6 +1,6 @@
-use tauri::State;
 use crate::db::AppState;
 use crate::query_story::models::*;
+use tauri::State;
 
 #[tauri::command]
 pub async fn create_query_story(
@@ -115,7 +115,9 @@ pub async fn compare_query_versions(
 ) -> Result<DiffResult, String> {
     let guard = app_state.query_story_store.lock().await;
     if let Some(store) = guard.as_ref() {
-        store.compare_versions(&query_hash, version1, version2).await
+        store
+            .compare_versions(&query_hash, version1, version2)
+            .await
     } else {
         Err("Query story store not initialized".to_string())
     }
@@ -135,10 +137,8 @@ pub async fn delete_query_story(
 }
 
 #[tauri::command]
-pub async fn calculate_query_hash(
-    query: String,
-) -> Result<String, String> {
-    use sha2::{Sha256, Digest};
+pub async fn calculate_query_hash(query: String) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     hasher.update(query.trim().to_lowercase().as_bytes());
     Ok(format!("{:x}", hasher.finalize()))

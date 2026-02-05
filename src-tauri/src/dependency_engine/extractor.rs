@@ -6,12 +6,11 @@ use tokio::time::timeout;
 
 /// Helper to safely get a string from a MySQL row column, handling both String and Vec<u8>.
 fn get_mysql_string(row: &sqlx::mysql::MySqlRow, index: usize) -> String {
-    row.try_get::<String, _>(index).unwrap_or_else(|_| {
-        match row.try_get::<Vec<u8>, _>(index) {
+    row.try_get::<String, _>(index)
+        .unwrap_or_else(|_| match row.try_get::<Vec<u8>, _>(index) {
             Ok(bytes) => String::from_utf8_lossy(&bytes).to_string(),
             Err(_) => String::new(),
-        }
-    })
+        })
 }
 
 fn target_id_from_dependency(dep: SchemaQualifiedName, default_schema: &str) -> String {
@@ -59,13 +58,19 @@ pub async fn build_dependency_graph_mysql(
         db_filter
     );
 
-    let tables_rows = timeout(Duration::from_secs(15), sqlx::query(&tables_query).fetch_all(pool))
-        .await
-        .map_err(|_| "Fetching tables timed out after 15s".to_string())?
-        .map_err(|e| {
-            println!("DEBUG ERROR: [MySQL Extractor] Fetching tables failed: {}", e);
-            e.to_string()
-        })?;
+    let tables_rows = timeout(
+        Duration::from_secs(15),
+        sqlx::query(&tables_query).fetch_all(pool),
+    )
+    .await
+    .map_err(|_| "Fetching tables timed out after 15s".to_string())?
+    .map_err(|e| {
+        println!(
+            "DEBUG ERROR: [MySQL Extractor] Fetching tables failed: {}",
+            e
+        );
+        e.to_string()
+    })?;
 
     for row in tables_rows {
         tokio::task::yield_now().await;
@@ -81,13 +86,19 @@ pub async fn build_dependency_graph_mysql(
         db_filter
     );
 
-    let views_rows = timeout(Duration::from_secs(15), sqlx::query(&views_query).fetch_all(pool))
-        .await
-        .map_err(|_| "Fetching views timed out after 15s".to_string())?
-        .map_err(|e| {
-            println!("DEBUG ERROR: [MySQL Extractor] Fetching views failed: {}", e);
-            e.to_string()
-        })?;
+    let views_rows = timeout(
+        Duration::from_secs(15),
+        sqlx::query(&views_query).fetch_all(pool),
+    )
+    .await
+    .map_err(|_| "Fetching views timed out after 15s".to_string())?
+    .map_err(|e| {
+        println!(
+            "DEBUG ERROR: [MySQL Extractor] Fetching views failed: {}",
+            e
+        );
+        e.to_string()
+    })?;
 
     for row in views_rows {
         tokio::task::yield_now().await;
@@ -125,16 +136,19 @@ pub async fn build_dependency_graph_mysql(
         db_filter
     );
 
-    let routines_rows = timeout(Duration::from_secs(20), sqlx::query(&routines_query).fetch_all(pool))
-        .await
-        .map_err(|_| "Fetching routines timed out after 20s".to_string())?
-        .map_err(|e| {
-            println!(
-                "DEBUG ERROR: [MySQL Extractor] Fetching routines failed: {}",
-                e
-            );
-            e.to_string()
-        })?;
+    let routines_rows = timeout(
+        Duration::from_secs(20),
+        sqlx::query(&routines_query).fetch_all(pool),
+    )
+    .await
+    .map_err(|_| "Fetching routines timed out after 20s".to_string())?
+    .map_err(|e| {
+        println!(
+            "DEBUG ERROR: [MySQL Extractor] Fetching routines failed: {}",
+            e
+        );
+        e.to_string()
+    })?;
 
     let mut routines = Vec::new();
     for row in routines_rows {
@@ -185,13 +199,16 @@ pub async fn build_dependency_graph_mysql(
         db_filter
     );
 
-    let fks_rows = timeout(Duration::from_secs(30), sqlx::query(&fks_query).fetch_all(pool))
-        .await
-        .map_err(|_| "Fetching foreign keys timed out after 30s".to_string())?
-        .map_err(|e| {
-            println!("DEBUG ERROR: [MySQL Extractor] Fetching FKs failed: {}", e);
-            e.to_string()
-        })?;
+    let fks_rows = timeout(
+        Duration::from_secs(30),
+        sqlx::query(&fks_query).fetch_all(pool),
+    )
+    .await
+    .map_err(|_| "Fetching foreign keys timed out after 30s".to_string())?
+    .map_err(|e| {
+        println!("DEBUG ERROR: [MySQL Extractor] Fetching FKs failed: {}", e);
+        e.to_string()
+    })?;
 
     for row in fks_rows {
         tokio::task::yield_now().await;

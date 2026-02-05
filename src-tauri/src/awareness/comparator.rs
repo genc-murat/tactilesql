@@ -1,6 +1,6 @@
+use crate::awareness::profiler::BaselineProfile;
 use serde::{Deserialize, Serialize};
 use similar::{ChangeTag, TextDiff};
-use crate::awareness::profiler::BaselineProfile;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComparisonRequest {
@@ -62,16 +62,23 @@ impl Comparator {
         }
     }
 
-    pub fn compare_metrics(profile_a: &BaselineProfile, profile_b: &BaselineProfile) -> Vec<MetricComparison> {
+    pub fn compare_metrics(
+        profile_a: &BaselineProfile,
+        profile_b: &BaselineProfile,
+    ) -> Vec<MetricComparison> {
         let mut metrics = Vec::new();
 
         // Duration
         let val_a = profile_a.avg_duration_ms;
         let val_b = profile_b.avg_duration_ms;
-        let pct_diff = if val_a == 0.0 { 
-            if val_b == 0.0 { 0.0 } else { 100.0 } 
-        } else { 
-            ((val_b - val_a) / val_a) * 100.0 
+        let pct_diff = if val_a == 0.0 {
+            if val_b == 0.0 {
+                0.0
+            } else {
+                100.0
+            }
+        } else {
+            ((val_b - val_a) / val_a) * 100.0
         };
 
         metrics.push(MetricComparison {

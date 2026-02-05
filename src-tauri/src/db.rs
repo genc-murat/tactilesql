@@ -3,19 +3,18 @@
 // Routes database operations to MySQL or PostgreSQL modules
 // =====================================================
 
-use std::collections::HashMap;
-use std::fs;
-use std::path::PathBuf;
-use serde::{Serialize, Deserialize};
-use tauri::{AppHandle, Manager, State};
 use aes_gcm::{
     aead::{Aead, KeyInit},
-    Aes256Gcm, Nonce
+    Aes256Gcm, Nonce,
 };
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
-use rand::Rng;
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use keyring::Entry;
-
+use rand::Rng;
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
+use std::fs;
+use std::path::PathBuf;
+use tauri::{AppHandle, Manager, State};
 
 // Re-export types from db_types
 pub use crate::db_types::*;
@@ -55,35 +54,35 @@ fn get_key_file_path(app_handle: &AppHandle) -> PathBuf {
         .path()
         .app_data_dir()
         .expect("Failed to get app data directory");
-    
+
     if !app_data_dir.exists() {
         let _ = fs::create_dir_all(&app_data_dir);
     }
-    
+
     app_data_dir.join("encryption.key")
 }
 
 pub fn initialize_key(app_handle: &AppHandle) -> Result<Vec<u8>, String> {
     let entry = get_key_entry()?;
     let key_file_path = get_key_file_path(app_handle);
-    
+
     // Helper to save key to both locations
     let save_key = |key_b64: &str| -> Result<(), String> {
         // 1. Save to file (Primary fallback)
         fs::write(&key_file_path, key_b64)
             .map_err(|e| format!("Failed to save key to file: {}", e))?;
-            
+
         // 2. Try to save to keychain (Best effort)
         if let Err(e) = entry.set_password(key_b64) {
-             println!("Warning: Failed to sync key to keychain: {}", e);
+            println!("Warning: Failed to sync key to keychain: {}", e);
         }
-        
+
         Ok(())
     };
 
     // 1. Try to load from Keychain
     let key_from_keychain = entry.get_password().ok();
-    
+
     // 2. Try to load from File
     let key_from_file = if key_file_path.exists() {
         fs::read_to_string(&key_file_path).ok()
@@ -95,32 +94,36 @@ pub fn initialize_key(app_handle: &AppHandle) -> Result<Vec<u8>, String> {
         (Some(k), _) => {
             // Found in keychain. Sync to file just in case.
             if !key_file_path.exists() {
-                 let _ = fs::write(&key_file_path, &k);
+                let _ = fs::write(&key_file_path, &k);
             }
-            BASE64.decode(&k).map_err(|e| format!("Failed to decode key from keychain: {}", e))
-        },
+            BASE64
+                .decode(&k)
+                .map_err(|e| format!("Failed to decode key from keychain: {}", e))
+        }
         (None, Some(k)) => {
             // Found in file but not keychain. Restore to keychain.
             println!("Key found in file but not keychain. Restoring to keychain.");
             let _ = entry.set_password(&k);
-            BASE64.decode(&k).map_err(|e| format!("Failed to decode key from file: {}", e))
-        },
+            BASE64
+                .decode(&k)
+                .map_err(|e| format!("Failed to decode key from file: {}", e))
+        }
         (None, None) => {
             // Not found anywhere.
             let connections_file = get_connections_file_path(app_handle);
-            
+
             if connections_file.exists() {
                 println!("Migrating legacy connections or recovering from lost key...");
                 // MIGRATION / RECOVERY SCENARIO
                 let new_key = generate_new_key();
-                
+
                 // Read existing file
                 let content = fs::read_to_string(&connections_file)
                     .map_err(|e| format!("Failed to read connections file: {}", e))?;
-                
+
                 let mut connections: Vec<ConnectionConfig> = serde_json::from_str(&content)
                     .map_err(|e| format!("Failed to parse JSON: {}", e))?;
-                
+
                 // Re-encrypt passwords
                 for conn in &mut connections {
                     if let Some(ref encrypted_pwd) = conn.password {
@@ -135,17 +138,17 @@ pub fn initialize_key(app_handle: &AppHandle) -> Result<Vec<u8>, String> {
                         }
                     }
                 }
-                
+
                 // Save new connections file
                 let json = serde_json::to_string_pretty(&connections)
                     .map_err(|e| format!("Failed to serialize: {}", e))?;
                 fs::write(connections_file, json)
                     .map_err(|e| format!("Failed to write migrated file: {}", e))?;
-                
+
                 // Save NEW key to both locations
                 let key_base64 = BASE64.encode(&new_key);
                 save_key(&key_base64)?;
-                
+
                 Ok(new_key)
             } else {
                 // FRESH INSTALL SCENARIO
@@ -178,23 +181,23 @@ fn encrypt_password_with_key(password: &str, key: &[u8]) -> Result<String, Strin
     if password.is_empty() {
         return Ok(String::new());
     }
-    
-    let cipher = Aes256Gcm::new_from_slice(key)
-        .map_err(|e| format!("Failed to create cipher: {}", e))?;
-    
+
+    let cipher =
+        Aes256Gcm::new_from_slice(key).map_err(|e| format!("Failed to create cipher: {}", e))?;
+
     let mut rng = rand::thread_rng();
     let nonce_bytes: [u8; 12] = rng.gen();
     let nonce = Nonce::from_slice(&nonce_bytes);
-    
-    let ciphertext = cipher.encrypt(nonce, password.as_bytes())
+
+    let ciphertext = cipher
+        .encrypt(nonce, password.as_bytes())
         .map_err(|e| format!("Encryption failed: {}", e))?;
-    
+
     let mut combined = nonce_bytes.to_vec();
     combined.extend(ciphertext);
-    
+
     Ok(BASE64.encode(combined))
 }
-
 
 fn decrypt_password(encrypted: &str, app_state: &State<'_, AppState>) -> Result<String, String> {
     let key_guard = futures::executor::block_on(app_state.encryption_key.lock());
@@ -206,27 +209,27 @@ fn decrypt_password_with_key(encrypted: &str, key: &[u8]) -> Result<String, Stri
     if encrypted.is_empty() {
         return Ok(String::new());
     }
-    
-    let combined = BASE64.decode(encrypted)
+
+    let combined = BASE64
+        .decode(encrypted)
         .map_err(|e| format!("Base64 decode failed: {}", e))?;
-    
+
     if combined.len() < 12 {
         return Err("Invalid encrypted data".to_string());
     }
-    
-    let cipher = Aes256Gcm::new_from_slice(key)
-        .map_err(|e| format!("Failed to create cipher: {}", e))?;
-    
+
+    let cipher =
+        Aes256Gcm::new_from_slice(key).map_err(|e| format!("Failed to create cipher: {}", e))?;
+
     let nonce = Nonce::from_slice(&combined[..12]);
     let ciphertext = &combined[12..];
-    
-    let plaintext = cipher.decrypt(nonce, ciphertext)
-        .map_err(|e| format!("Decryption failed: {}", e))?;
-    
-    String::from_utf8(plaintext)
-        .map_err(|e| format!("UTF-8 conversion failed: {}", e))
-}
 
+    let plaintext = cipher
+        .decrypt(nonce, ciphertext)
+        .map_err(|e| format!("Decryption failed: {}", e))?;
+
+    String::from_utf8(plaintext).map_err(|e| format!("UTF-8 conversion failed: {}", e))
+}
 
 // =====================================================
 // CONNECTION FILE STORAGE
@@ -237,9 +240,9 @@ fn get_connections_file_path(app_handle: &AppHandle) -> PathBuf {
         .path()
         .app_data_dir()
         .expect("Failed to get app data directory");
-    
+
     fs::create_dir_all(&app_data_dir).expect("Failed to create app data directory");
-    
+
     app_data_dir.join("connections.json")
 }
 
@@ -259,17 +262,17 @@ pub async fn test_connection(config: ConnectionConfig) -> Result<String, String>
 #[tauri::command]
 pub async fn establish_connection(
     app_state: State<'_, AppState>,
-    config: ConnectionConfig
+    config: ConnectionConfig,
 ) -> Result<String, String> {
     let connection_id = config.id.clone();
 
     match config.db_type {
         DatabaseType::PostgreSQL => {
             let pool = postgres::create_pool(&config).await?;
-            
+
             let mut pg_guard = app_state.postgres_pool.lock().await;
             *pg_guard = Some(pool);
-            
+
             let mut db_type_guard = app_state.active_db_type.lock().await;
             *db_type_guard = DatabaseType::PostgreSQL;
 
@@ -282,15 +285,15 @@ pub async fn establish_connection(
                     store.invalidate_connection_cache(id);
                 }
             }
-            
+
             Ok("PostgreSQL connection established successfully".to_string())
-        },
+        }
         DatabaseType::MySQL => {
             let pool = mysql::create_pool(&config).await?;
-            
+
             let mut mysql_guard = app_state.mysql_pool.lock().await;
             *mysql_guard = Some(pool);
-            
+
             let mut db_type_guard = app_state.active_db_type.lock().await;
             *db_type_guard = DatabaseType::MySQL;
 
@@ -303,9 +306,9 @@ pub async fn establish_connection(
                     store.invalidate_connection_cache(id);
                 }
             }
-            
+
             Ok("MySQL connection established successfully".to_string())
-        },
+        }
         DatabaseType::Disconnected => Err("Cannot establish a 'Disconnected' connection".into()),
     }
 }
@@ -323,13 +326,13 @@ pub async fn disconnect(app_state: State<'_, AppState>) -> Result<String, String
             if let Some(pool) = guard.take() {
                 pool.close().await;
             }
-        },
+        }
         DatabaseType::MySQL => {
             let mut guard = app_state.mysql_pool.lock().await;
             if let Some(pool) = guard.take() {
                 pool.close().await;
             }
-        },
+        }
         DatabaseType::Disconnected => {}
     }
 
@@ -358,14 +361,18 @@ pub async fn get_active_db_type(app_state: State<'_, AppState>) -> Result<Databa
 // =====================================================
 
 #[tauri::command]
-pub fn save_connection(app_handle: AppHandle, app_state: State<'_, AppState>, mut config: ConnectionConfig) -> Result<(), String> {
+pub fn save_connection(
+    app_handle: AppHandle,
+    app_state: State<'_, AppState>,
+    mut config: ConnectionConfig,
+) -> Result<(), String> {
     let file_path = get_connections_file_path(&app_handle);
-    
+
     // Generate ID if not provided
     if config.id.is_none() {
         config.id = Some(uuid::Uuid::new_v4().to_string());
     }
-    
+
     // Encrypt password before saving
     if let Some(ref pwd) = config.password {
         if !pwd.is_empty() {
@@ -373,7 +380,6 @@ pub fn save_connection(app_handle: AppHandle, app_state: State<'_, AppState>, mu
         }
     }
 
-    
     let mut connections: Vec<ConnectionConfig> = if file_path.exists() {
         let content = fs::read_to_string(&file_path)
             .map_err(|e| format!("Failed to read connections file: {}", e))?;
@@ -381,36 +387,38 @@ pub fn save_connection(app_handle: AppHandle, app_state: State<'_, AppState>, mu
     } else {
         Vec::new()
     };
-    
+
     // Remove existing connection with same ID or name, then add new one
     let config_id = config.id.clone();
     let config_name = config.name.clone();
     connections.retain(|c| c.id != config_id && c.name != config_name);
     connections.push(config);
-    
+
     let json = serde_json::to_string_pretty(&connections)
         .map_err(|e| format!("Failed to serialize: {}", e))?;
-    
-    fs::write(file_path, json)
-        .map_err(|e| format!("Failed to write file: {}", e))?;
-    
+
+    fs::write(file_path, json).map_err(|e| format!("Failed to write file: {}", e))?;
+
     Ok(())
 }
 
 #[tauri::command]
-pub fn load_connections(app_handle: AppHandle, app_state: State<'_, AppState>) -> Result<Vec<ConnectionConfig>, String> {
+pub fn load_connections(
+    app_handle: AppHandle,
+    app_state: State<'_, AppState>,
+) -> Result<Vec<ConnectionConfig>, String> {
     let file_path = get_connections_file_path(&app_handle);
-    
+
     if !file_path.exists() {
         return Ok(Vec::new());
     }
-    
+
     let content = fs::read_to_string(&file_path)
         .map_err(|e| format!("Failed to read connections file: {}", e))?;
-    
-    let mut connections: Vec<ConnectionConfig> = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse JSON: {}", e))?;
-    
+
+    let mut connections: Vec<ConnectionConfig> =
+        serde_json::from_str(&content).map_err(|e| format!("Failed to parse JSON: {}", e))?;
+
     // Decrypt passwords - gracefully handle decryption failures
     for conn in &mut connections {
         if let Some(ref encrypted_pwd) = conn.password {
@@ -428,32 +436,29 @@ pub fn load_connections(app_handle: AppHandle, app_state: State<'_, AppState>) -
             }
         }
     }
-    
+
     Ok(connections)
 }
 
 #[tauri::command]
 pub fn delete_connection(app_handle: AppHandle, id: String) -> Result<(), String> {
     let file_path = get_connections_file_path(&app_handle);
-    
+
     if !file_path.exists() {
         return Ok(());
     }
-    
-    let content = fs::read_to_string(&file_path)
-        .map_err(|e| format!("Failed to read: {}", e))?;
-    
-    let mut connections: Vec<ConnectionConfig> = serde_json::from_str(&content)
-        .unwrap_or_default();
-    
+
+    let content = fs::read_to_string(&file_path).map_err(|e| format!("Failed to read: {}", e))?;
+
+    let mut connections: Vec<ConnectionConfig> = serde_json::from_str(&content).unwrap_or_default();
+
     connections.retain(|c| c.id != Some(id.clone()));
-    
+
     let json = serde_json::to_string_pretty(&connections)
         .map_err(|e| format!("Failed to serialize: {}", e))?;
-    
-    fs::write(file_path, json)
-        .map_err(|e| format!("Failed to write: {}", e))?;
-    
+
+    fs::write(file_path, json).map_err(|e| format!("Failed to write: {}", e))?;
+
     Ok(())
 }
 
@@ -507,7 +512,7 @@ fn spawn_awareness_log(
                 resources: crate::awareness::profiler::ResourceUsage {
                     execution_time_ms: duration_ms,
                     rows_affected,
-                }
+                },
             };
 
             match store.log_query_execution(&execution).await {
@@ -521,7 +526,7 @@ fn spawn_awareness_log(
                             } else {
                                 Err("MySQL pool not available".to_string())
                             }
-                        },
+                        }
                         DatabaseType::PostgreSQL => {
                             let g = postgres_pool_arc.lock().await;
                             if let Some(pool) = g.as_ref() {
@@ -529,20 +534,29 @@ fn spawn_awareness_log(
                             } else {
                                 Err("Postgres pool not available".to_string())
                             }
-                        },
+                        }
                         DatabaseType::Disconnected => Err("No connection established".to_string()),
                     };
 
                     // Analyze Cause and Update Log
                     if let Ok(plan) = plan_result {
-                        if let Some(cause) = crate::awareness::anomaly::AnomalyDetector::analyze_cause(&plan) {
-                            if let Err(e) = store.update_anomaly_cause(&anomaly.query_hash, anomaly.detected_at, &cause).await {
+                        if let Some(cause) =
+                            crate::awareness::anomaly::AnomalyDetector::analyze_cause(&plan)
+                        {
+                            if let Err(e) = store
+                                .update_anomaly_cause(
+                                    &anomaly.query_hash,
+                                    anomaly.detected_at,
+                                    &cause,
+                                )
+                                .await
+                            {
                                 eprintln!("Failed to update anomaly cause: {}", e);
                             }
                         }
                     }
-                },
-                Ok(None) => {}, // No anomaly
+                }
+                Ok(None) => {} // No anomaly
                 Err(e) => eprintln!("Failed to log query execution: {}", e),
             }
         }
@@ -582,14 +596,16 @@ fn is_safe_for_explain(query: &str) -> bool {
         return false;
     }
 
-    let head = strip_leading_sql_comments(single).trim_start().to_uppercase();
+    let head = strip_leading_sql_comments(single)
+        .trim_start()
+        .to_uppercase();
     if !(head.starts_with("SELECT") || head.starts_with("WITH")) {
         return false;
     }
     // Avoid data-changing statements inside CTEs or mixed statements
     let forbidden = [
-        "INSERT", "UPDATE", "DELETE", "MERGE", "ALTER", "CREATE", "DROP", "TRUNCATE",
-        "VACUUM", "GRANT", "REVOKE", "CALL", "DO",
+        "INSERT", "UPDATE", "DELETE", "MERGE", "ALTER", "CREATE", "DROP", "TRUNCATE", "VACUUM",
+        "GRANT", "REVOKE", "CALL", "DO",
     ];
     !forbidden.iter().any(|kw| head.contains(kw))
 }
@@ -597,10 +613,10 @@ fn is_safe_for_explain(query: &str) -> bool {
 #[tauri::command]
 pub async fn execute_query(
     app_state: State<'_, AppState>,
-    query: String
+    query: String,
 ) -> Result<Vec<QueryResult>, String> {
     let start_time = chrono::Utc::now();
-    
+
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
         guard.clone()
@@ -609,16 +625,16 @@ pub async fn execute_query(
     let result = match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::execute_query(pool, query.clone()).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::execute_query(pool, query.clone()).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     };
 
@@ -645,7 +661,7 @@ pub async fn execute_query(
 pub async fn execute_query_profiled(
     app_state: State<'_, AppState>,
     query: String,
-    profile_options: Option<ProfileOptions>
+    profile_options: Option<ProfileOptions>,
 ) -> Result<ProfiledQueryResponse, String> {
     let start_time = chrono::Utc::now();
 
@@ -662,22 +678,24 @@ pub async fn execute_query_profiled(
     let (results, status_diff) = match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             let res = postgres::execute_query(pool, query.clone()).await?;
             let explain_metrics = if explain_analyze_enabled && is_safe_for_explain(&query) {
-                postgres::get_explain_analyze_metrics(pool, &query).await.ok()
+                postgres::get_explain_analyze_metrics(pool, &query)
+                    .await
+                    .ok()
             } else {
                 None
             };
             (res, explain_metrics)
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::execute_query_with_status(pool, query.clone()).await?
-        },
+        }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     };
 
@@ -717,16 +735,16 @@ pub async fn get_databases(app_state: State<'_, AppState>) -> Result<Vec<String>
             // PostgreSQL: Return schemas instead of databases
             // because we connect to a specific database and browse schemas within it
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_schemas(pool).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_databases(pool).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -741,17 +759,17 @@ pub async fn get_schemas(app_state: State<'_, AppState>) -> Result<Vec<String>, 
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_schemas(pool).await
-        },
+        }
         DatabaseType::MySQL => {
             // MySQL doesn't have schemas like PostgreSQL
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_databases(pool).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -759,7 +777,7 @@ pub async fn get_schemas(app_state: State<'_, AppState>) -> Result<Vec<String>, 
 #[tauri::command]
 pub async fn get_tables(
     app_state: State<'_, AppState>,
-    database: String
+    database: String,
 ) -> Result<Vec<String>, String> {
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
@@ -769,16 +787,16 @@ pub async fn get_tables(
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_tables(pool, &database).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_tables(pool, &database).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -787,7 +805,7 @@ pub async fn get_tables(
 pub async fn get_table_schema(
     app_state: State<'_, AppState>,
     database: String,
-    table: String
+    table: String,
 ) -> Result<Vec<ColumnSchema>, String> {
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
@@ -797,16 +815,16 @@ pub async fn get_table_schema(
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_table_schema(pool, &database, &table).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_table_schema(pool, &database, &table).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -815,7 +833,7 @@ pub async fn get_table_schema(
 pub async fn get_table_ddl(
     app_state: State<'_, AppState>,
     database: String,
-    table: String
+    table: String,
 ) -> Result<String, String> {
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
@@ -825,16 +843,16 @@ pub async fn get_table_ddl(
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_table_ddl(pool, &database, &table).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_table_ddl(pool, &database, &table).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -847,7 +865,7 @@ pub async fn get_table_ddl(
 pub async fn get_table_indexes(
     app_state: State<'_, AppState>,
     database: String,
-    table: String
+    table: String,
 ) -> Result<Vec<TableIndex>, String> {
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
@@ -857,16 +875,16 @@ pub async fn get_table_indexes(
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_table_indexes(pool, &database, &table).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_table_indexes(pool, &database, &table).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -875,7 +893,7 @@ pub async fn get_table_indexes(
 pub async fn get_table_foreign_keys(
     app_state: State<'_, AppState>,
     database: String,
-    table: String
+    table: String,
 ) -> Result<Vec<ForeignKey>, String> {
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
@@ -885,16 +903,16 @@ pub async fn get_table_foreign_keys(
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_table_foreign_keys(pool, &database, &table).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_table_foreign_keys(pool, &database, &table).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -903,7 +921,7 @@ pub async fn get_table_foreign_keys(
 pub async fn get_table_primary_keys(
     app_state: State<'_, AppState>,
     database: String,
-    table: String
+    table: String,
 ) -> Result<Vec<PrimaryKey>, String> {
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
@@ -913,16 +931,16 @@ pub async fn get_table_primary_keys(
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_table_primary_keys(pool, &database, &table).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_table_primary_keys(pool, &database, &table).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -931,7 +949,7 @@ pub async fn get_table_primary_keys(
 pub async fn get_table_constraints(
     app_state: State<'_, AppState>,
     database: String,
-    table: String
+    table: String,
 ) -> Result<Vec<TableConstraint>, String> {
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
@@ -941,16 +959,16 @@ pub async fn get_table_constraints(
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_table_constraints(pool, &database, &table).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_table_constraints(pool, &database, &table).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -959,7 +977,7 @@ pub async fn get_table_constraints(
 pub async fn get_table_stats(
     app_state: State<'_, AppState>,
     database: String,
-    table: String
+    table: String,
 ) -> Result<TableStats, String> {
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
@@ -969,16 +987,16 @@ pub async fn get_table_stats(
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_table_stats(pool, &database, &table).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_table_stats(pool, &database, &table).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -990,7 +1008,7 @@ pub async fn get_table_stats(
 #[tauri::command]
 pub async fn get_views(
     app_state: State<'_, AppState>,
-    database: String
+    database: String,
 ) -> Result<Vec<String>, String> {
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
@@ -1000,16 +1018,16 @@ pub async fn get_views(
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_views(pool, &database).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_views(pool, &database).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -1018,7 +1036,7 @@ pub async fn get_views(
 pub async fn get_view_definition(
     app_state: State<'_, AppState>,
     database: String,
-    view: String
+    view: String,
 ) -> Result<ViewDefinition, String> {
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
@@ -1028,16 +1046,16 @@ pub async fn get_view_definition(
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_view_definition(pool, &database, &view).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_view_definition(pool, &database, &view).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -1046,7 +1064,7 @@ pub async fn get_view_definition(
 pub async fn alter_view(
     app_state: State<'_, AppState>,
     database: String,
-    definition: String
+    definition: String,
 ) -> Result<String, String> {
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
@@ -1056,16 +1074,16 @@ pub async fn alter_view(
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::alter_view(pool, &definition).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::alter_view(pool, &database, &definition).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -1077,7 +1095,7 @@ pub async fn alter_view(
 #[tauri::command]
 pub async fn get_triggers(
     app_state: State<'_, AppState>,
-    database: String
+    database: String,
 ) -> Result<Vec<TriggerInfo>, String> {
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
@@ -1087,16 +1105,16 @@ pub async fn get_triggers(
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_triggers(pool, &database).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_triggers(pool, &database).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -1105,7 +1123,7 @@ pub async fn get_triggers(
 pub async fn get_table_triggers(
     app_state: State<'_, AppState>,
     database: String,
-    table: String
+    table: String,
 ) -> Result<Vec<TriggerInfo>, String> {
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
@@ -1115,16 +1133,16 @@ pub async fn get_table_triggers(
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_table_triggers(pool, &database, &table).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_table_triggers(pool, &database, &table).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -1136,7 +1154,7 @@ pub async fn get_table_triggers(
 #[tauri::command]
 pub async fn get_procedures(
     app_state: State<'_, AppState>,
-    database: String
+    database: String,
 ) -> Result<Vec<RoutineInfo>, String> {
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
@@ -1146,16 +1164,16 @@ pub async fn get_procedures(
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_procedures(pool, &database).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_procedures(pool, &database).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -1163,7 +1181,7 @@ pub async fn get_procedures(
 #[tauri::command]
 pub async fn get_functions(
     app_state: State<'_, AppState>,
-    database: String
+    database: String,
 ) -> Result<Vec<RoutineInfo>, String> {
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
@@ -1173,16 +1191,16 @@ pub async fn get_functions(
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_functions(pool, &database).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_functions(pool, &database).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -1194,7 +1212,7 @@ pub async fn get_functions(
 #[tauri::command]
 pub async fn get_events(
     app_state: State<'_, AppState>,
-    database: String
+    database: String,
 ) -> Result<Vec<EventInfo>, String> {
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
@@ -1205,13 +1223,12 @@ pub async fn get_events(
         DatabaseType::PostgreSQL => {
             // PostgreSQL doesn't have events like MySQL
             Ok(Vec::new())
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_events(pool, &database).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -1230,16 +1247,16 @@ pub async fn get_users(app_state: State<'_, AppState>) -> Result<Vec<MySqlUser>,
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_users(pool).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_users(pool).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -1248,7 +1265,7 @@ pub async fn get_users(app_state: State<'_, AppState>) -> Result<Vec<MySqlUser>,
 pub async fn get_user_privileges(
     app_state: State<'_, AppState>,
     user: String,
-    host: String
+    host: String,
 ) -> Result<UserPrivileges, String> {
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
@@ -1258,16 +1275,16 @@ pub async fn get_user_privileges(
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_user_privileges(pool, &user, &host).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_user_privileges(pool, &user, &host).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -1286,16 +1303,16 @@ pub async fn get_server_status(app_state: State<'_, AppState>) -> Result<ServerS
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_server_status(pool).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_server_status(pool).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -1310,16 +1327,16 @@ pub async fn get_process_list(app_state: State<'_, AppState>) -> Result<Vec<Proc
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_process_list(pool).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_process_list(pool).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -1327,7 +1344,7 @@ pub async fn get_process_list(app_state: State<'_, AppState>) -> Result<Vec<Proc
 #[tauri::command]
 pub async fn kill_process(
     app_state: State<'_, AppState>,
-    process_id: i64
+    process_id: i64,
 ) -> Result<String, String> {
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
@@ -1337,16 +1354,16 @@ pub async fn kill_process(
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::kill_process(pool, process_id).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::kill_process(pool, process_id).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -1359,22 +1376,19 @@ pub async fn get_innodb_status(app_state: State<'_, AppState>) -> Result<String,
     };
 
     match db_type {
-        DatabaseType::PostgreSQL => {
-            Err("InnoDB status is MySQL specific".to_string())
-        },
+        DatabaseType::PostgreSQL => Err("InnoDB status is MySQL specific".to_string()),
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_innodb_status(pool).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 #[tauri::command]
 pub async fn get_execution_plan(
     app_state: State<'_, AppState>,
-    query: String
+    query: String,
 ) -> Result<String, String> {
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
@@ -1384,21 +1398,23 @@ pub async fn get_execution_plan(
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_execution_plan(pool, &query).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_execution_plan(pool, &query).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 #[tauri::command]
-pub async fn get_replication_status(app_state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+pub async fn get_replication_status(
+    app_state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
         guard.clone()
@@ -1407,16 +1423,16 @@ pub async fn get_replication_status(app_state: State<'_, AppState>) -> Result<se
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_replication_status(pool).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_replication_status(pool).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -1431,24 +1447,540 @@ pub async fn get_locks(app_state: State<'_, AppState>) -> Result<Vec<LockInfo>, 
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_locks(pool).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_locks(pool).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
+}
+
+fn collapse_whitespace(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn truncate_chars(value: &str, max_chars: usize) -> String {
+    let mut out = String::new();
+    for (idx, ch) in value.chars().enumerate() {
+        if idx >= max_chars {
+            out.push_str("...");
+            break;
+        }
+        out.push(ch);
+    }
+    out
+}
+
+fn normalize_query_sample(value: &Option<String>) -> Option<String> {
+    value.as_ref().and_then(|raw| {
+        let compact = collapse_whitespace(raw);
+        if compact.is_empty() {
+            None
+        } else {
+            Some(truncate_chars(&compact, 240))
+        }
+    })
+}
+
+fn build_chain_signature(process_chain: &[i64], contains_cycle: bool) -> String {
+    format!(
+        "{}|{}",
+        if contains_cycle { "1" } else { "0" },
+        process_chain
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("->")
+    )
+}
+
+fn push_chain(
+    chains: &mut Vec<BlockingChain>,
+    seen_signatures: &mut HashSet<String>,
+    process_chain: Vec<i64>,
+    total_wait_seconds: i64,
+    contains_cycle: bool,
+) {
+    if process_chain.len() < 2 {
+        return;
+    }
+
+    let signature = build_chain_signature(&process_chain, contains_cycle);
+    if seen_signatures.insert(signature) {
+        chains.push(BlockingChain {
+            depth: (process_chain.len().saturating_sub(1)) as i32,
+            process_chain,
+            total_wait_seconds,
+            contains_cycle,
+        });
+    }
+}
+
+fn walk_blocking_paths(
+    current: i64,
+    outgoing: &HashMap<i64, Vec<i64>>,
+    edge_wait_lookup: &HashMap<(i64, i64), i64>,
+    path: &mut Vec<i64>,
+    in_path: &mut HashSet<i64>,
+    cumulative_wait: i64,
+    chains: &mut Vec<BlockingChain>,
+    seen_signatures: &mut HashSet<String>,
+) {
+    let next_nodes = outgoing.get(&current);
+    if next_nodes.is_none() || next_nodes.is_some_and(|nodes| nodes.is_empty()) {
+        push_chain(
+            chains,
+            seen_signatures,
+            path.clone(),
+            cumulative_wait,
+            false,
+        );
+        return;
+    }
+
+    if let Some(nodes) = next_nodes {
+        for next in nodes {
+            let edge_wait = edge_wait_lookup
+                .get(&(current, *next))
+                .copied()
+                .unwrap_or(0);
+
+            if in_path.contains(next) {
+                let mut cycle_path = path.clone();
+                cycle_path.push(*next);
+                push_chain(
+                    chains,
+                    seen_signatures,
+                    cycle_path,
+                    cumulative_wait + edge_wait,
+                    true,
+                );
+                continue;
+            }
+
+            path.push(*next);
+            in_path.insert(*next);
+            walk_blocking_paths(
+                *next,
+                outgoing,
+                edge_wait_lookup,
+                path,
+                in_path,
+                cumulative_wait + edge_wait,
+                chains,
+                seen_signatures,
+            );
+            in_path.remove(next);
+            path.pop();
+        }
+    }
+}
+
+fn extract_blocking_chains(edges: &[LockGraphEdge]) -> Vec<BlockingChain> {
+    let mut outgoing_sets: HashMap<i64, HashSet<i64>> = HashMap::new();
+    let mut incoming_count: HashMap<i64, i64> = HashMap::new();
+    let mut edge_wait_lookup: HashMap<(i64, i64), i64> = HashMap::new();
+
+    for edge in edges {
+        outgoing_sets
+            .entry(edge.blocking_process_id)
+            .or_default()
+            .insert(edge.waiting_process_id);
+        *incoming_count.entry(edge.waiting_process_id).or_insert(0) += 1;
+
+        edge_wait_lookup
+            .entry((edge.blocking_process_id, edge.waiting_process_id))
+            .and_modify(|current| *current = (*current).max(edge.wait_seconds))
+            .or_insert(edge.wait_seconds);
+    }
+
+    let mut outgoing: HashMap<i64, Vec<i64>> = HashMap::new();
+    for (from, to_set) in outgoing_sets {
+        let mut to_nodes: Vec<i64> = to_set.into_iter().collect();
+        to_nodes.sort_unstable();
+        outgoing.insert(from, to_nodes);
+    }
+
+    let mut roots: Vec<i64> = outgoing
+        .keys()
+        .copied()
+        .filter(|node_id| incoming_count.get(node_id).copied().unwrap_or(0) == 0)
+        .collect();
+    roots.sort_unstable();
+
+    let start_nodes = if roots.is_empty() {
+        let mut cycle_starts: Vec<i64> = outgoing.keys().copied().collect();
+        cycle_starts.sort_unstable();
+        cycle_starts
+    } else {
+        roots
+    };
+
+    let mut chains = Vec::new();
+    let mut seen_signatures = HashSet::new();
+
+    for start in start_nodes {
+        let mut path = vec![start];
+        let mut in_path = HashSet::new();
+        in_path.insert(start);
+
+        walk_blocking_paths(
+            start,
+            &outgoing,
+            &edge_wait_lookup,
+            &mut path,
+            &mut in_path,
+            0,
+            &mut chains,
+            &mut seen_signatures,
+        );
+    }
+
+    if chains.is_empty() {
+        for edge in edges {
+            push_chain(
+                &mut chains,
+                &mut seen_signatures,
+                vec![edge.blocking_process_id, edge.waiting_process_id],
+                edge.wait_seconds,
+                false,
+            );
+        }
+    }
+
+    chains.sort_by(|a, b| {
+        b.depth
+            .cmp(&a.depth)
+            .then_with(|| b.total_wait_seconds.cmp(&a.total_wait_seconds))
+    });
+    chains
+}
+
+fn is_exclusive_lock_mode(mode: &str) -> bool {
+    let normalized = mode.to_ascii_lowercase();
+    let compact = normalized.replace(' ', "");
+    compact == "x"
+        || compact.starts_with("x,")
+        || compact.ends_with(",x")
+        || compact.contains(",x,")
+        || compact.contains("exclusive")
+}
+
+fn db_terminate_hint(db_type: &DatabaseType, process_id: i64) -> String {
+    match db_type {
+        DatabaseType::MySQL => format!("KILL {};", process_id),
+        DatabaseType::PostgreSQL => format!("SELECT pg_terminate_backend({});", process_id),
+        DatabaseType::Disconnected => format!("Terminate process {}", process_id),
+    }
+}
+
+fn build_lock_recommendations(
+    db_type: &DatabaseType,
+    nodes: &[LockGraphNode],
+    edges: &[LockGraphEdge],
+    chains: &[BlockingChain],
+    has_deadlock: bool,
+) -> Vec<LockRecommendation> {
+    let mut recommendations = Vec::new();
+
+    if edges.is_empty() {
+        recommendations.push(LockRecommendation {
+            severity: "low".to_string(),
+            title: "No Active Blocking Chain".to_string(),
+            action: "No immediate action needed. Keep monitoring for recurring lock spikes."
+                .to_string(),
+        });
+        return recommendations;
+    }
+
+    if has_deadlock {
+        let cycle = chains.iter().find(|chain| chain.contains_cycle);
+        let cycle_text = cycle
+            .map(|c| {
+                c.process_chain
+                    .iter()
+                    .map(std::string::ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(" -> ")
+            })
+            .unwrap_or_else(|| "cycle detected in blocking graph".to_string());
+
+        recommendations.push(LockRecommendation {
+            severity: "critical".to_string(),
+            title: "Deadlock Pattern Detected".to_string(),
+            action: format!(
+                "Break the cycle immediately by terminating one session in this chain: {}. Then enforce consistent table/row access order across transactions.",
+                cycle_text
+            ),
+        });
+    }
+
+    let mut blocking_nodes: Vec<&LockGraphNode> =
+        nodes.iter().filter(|node| node.blocked_count > 0).collect();
+    blocking_nodes.sort_by(|a, b| b.blocked_count.cmp(&a.blocked_count));
+
+    if let Some(top_blocker) = blocking_nodes.first() {
+        if top_blocker.blocked_count >= 2 {
+            recommendations.push(LockRecommendation {
+                severity: "high".to_string(),
+                title: format!("Session {} Is the Main Root Blocker", top_blocker.process_id),
+                action: format!(
+                    "Inspect and finish/terminate this session first (currently blocking {} sessions). Emergency command: {}",
+                    top_blocker.blocked_count,
+                    db_terminate_hint(db_type, top_blocker.process_id)
+                ),
+            });
+        }
+    }
+
+    let max_wait_seconds = edges
+        .iter()
+        .map(|edge| edge.wait_seconds)
+        .max()
+        .unwrap_or(0);
+    if max_wait_seconds >= 30 {
+        recommendations.push(LockRecommendation {
+            severity: "high".to_string(),
+            title: "Long Lock Wait Detected".to_string(),
+            action: format!(
+                "Max wait time is {}s. Reduce transaction scope, commit earlier, and add selective indexes on locked predicates.",
+                max_wait_seconds
+            ),
+        });
+    } else if max_wait_seconds >= 10 {
+        recommendations.push(LockRecommendation {
+            severity: "medium".to_string(),
+            title: "Elevated Lock Wait Time".to_string(),
+            action: format!(
+                "Max wait time is {}s. Review transaction boundaries and lock granularity before peak traffic.",
+                max_wait_seconds
+            ),
+        });
+    }
+
+    if edges.iter().any(|edge| {
+        edge.blocking_lock_mode
+            .as_ref()
+            .is_some_and(|mode| is_exclusive_lock_mode(mode))
+    }) {
+        recommendations.push(LockRecommendation {
+            severity: "medium".to_string(),
+            title: "Exclusive Locks Are Dominating".to_string(),
+            action: "Shorten write transactions and ensure WHERE clauses hit indexes to reduce lock contention width.".to_string(),
+        });
+    }
+
+    let max_chain_depth = chains.iter().map(|chain| chain.depth).max().unwrap_or(0);
+    if max_chain_depth >= 3 {
+        recommendations.push(LockRecommendation {
+            severity: "high".to_string(),
+            title: "Deep Blocking Chain".to_string(),
+            action: format!(
+                "Detected chain depth {}. Prioritize the first blocker in each chain and split long transactions into smaller units.",
+                max_chain_depth
+            ),
+        });
+    }
+
+    let db_hint = match db_type {
+        DatabaseType::MySQL => "For queue-like workloads, use NOWAIT/SKIP LOCKED where supported and prefer READ COMMITTED to reduce gap-lock stalls.",
+        DatabaseType::PostgreSQL => "For queue-like workloads, use FOR UPDATE NOWAIT/SKIP LOCKED and keep transactions short around critical rows.",
+        DatabaseType::Disconnected => "Reconnect to a database to get DB-specific lock mitigation hints.",
+    };
+    recommendations.push(LockRecommendation {
+        severity: "low".to_string(),
+        title: "Preventive Concurrency Guardrail".to_string(),
+        action: db_hint.to_string(),
+    });
+
+    recommendations
+}
+
+fn build_lock_analysis(db_type: &DatabaseType, raw_edges: Vec<LockGraphEdge>) -> LockAnalysis {
+    let mut deduped: HashMap<String, LockGraphEdge> = HashMap::new();
+    for mut edge in raw_edges {
+        if edge.waiting_process_id <= 0 || edge.blocking_process_id <= 0 {
+            continue;
+        }
+
+        edge.wait_seconds = edge.wait_seconds.max(0);
+        edge.waiting_query = normalize_query_sample(&edge.waiting_query);
+        edge.blocking_query = normalize_query_sample(&edge.blocking_query);
+
+        let dedup_key = format!(
+            "{}|{}|{}|{}|{}|{}",
+            edge.waiting_process_id,
+            edge.blocking_process_id,
+            edge.object_name.clone().unwrap_or_default(),
+            edge.lock_type.clone().unwrap_or_default(),
+            edge.waiting_lock_mode.clone().unwrap_or_default(),
+            edge.blocking_lock_mode.clone().unwrap_or_default()
+        );
+
+        deduped
+            .entry(dedup_key)
+            .and_modify(|existing| {
+                existing.wait_seconds = existing.wait_seconds.max(edge.wait_seconds);
+                if existing.waiting_query.is_none() {
+                    existing.waiting_query = edge.waiting_query.clone();
+                }
+                if existing.blocking_query.is_none() {
+                    existing.blocking_query = edge.blocking_query.clone();
+                }
+            })
+            .or_insert(edge);
+    }
+
+    let mut edges: Vec<LockGraphEdge> = deduped.into_values().collect();
+    edges.sort_by(|a, b| {
+        b.wait_seconds
+            .cmp(&a.wait_seconds)
+            .then_with(|| a.blocking_process_id.cmp(&b.blocking_process_id))
+            .then_with(|| a.waiting_process_id.cmp(&b.waiting_process_id))
+    });
+
+    let mut blocked_targets: HashMap<i64, HashSet<i64>> = HashMap::new();
+    let mut blockers_by_waiter: HashMap<i64, HashSet<i64>> = HashMap::new();
+    let mut max_wait_by_waiter: HashMap<i64, i64> = HashMap::new();
+    let mut query_samples: HashMap<i64, String> = HashMap::new();
+    let mut node_ids = HashSet::new();
+
+    for edge in &edges {
+        node_ids.insert(edge.waiting_process_id);
+        node_ids.insert(edge.blocking_process_id);
+
+        blocked_targets
+            .entry(edge.blocking_process_id)
+            .or_default()
+            .insert(edge.waiting_process_id);
+        blockers_by_waiter
+            .entry(edge.waiting_process_id)
+            .or_default()
+            .insert(edge.blocking_process_id);
+
+        max_wait_by_waiter
+            .entry(edge.waiting_process_id)
+            .and_modify(|current| *current = (*current).max(edge.wait_seconds))
+            .or_insert(edge.wait_seconds);
+
+        if let Some(query) = &edge.waiting_query {
+            query_samples
+                .entry(edge.waiting_process_id)
+                .or_insert_with(|| query.clone());
+        }
+        if let Some(query) = &edge.blocking_query {
+            query_samples
+                .entry(edge.blocking_process_id)
+                .or_insert_with(|| query.clone());
+        }
+    }
+
+    let mut sorted_node_ids: Vec<i64> = node_ids.into_iter().collect();
+    sorted_node_ids.sort_unstable();
+
+    let nodes: Vec<LockGraphNode> = sorted_node_ids
+        .into_iter()
+        .map(|process_id| {
+            let blocked_count = blocked_targets
+                .get(&process_id)
+                .map(|s| s.len() as i64)
+                .unwrap_or(0);
+            let waiting_on_count = blockers_by_waiter
+                .get(&process_id)
+                .map(|s| s.len() as i64)
+                .unwrap_or(0);
+
+            let role = if blocked_count > 0 && waiting_on_count > 0 {
+                "both"
+            } else if blocked_count > 0 {
+                "blocking"
+            } else {
+                "waiting"
+            };
+
+            LockGraphNode {
+                process_id,
+                role: role.to_string(),
+                blocked_count,
+                waiting_on_count,
+                max_wait_seconds: max_wait_by_waiter.get(&process_id).copied().unwrap_or(0),
+                sample_query: query_samples.get(&process_id).cloned(),
+            }
+        })
+        .collect();
+
+    let chains = extract_blocking_chains(&edges);
+    let deadlock_cycles = chains.iter().filter(|chain| chain.contains_cycle).count() as i64;
+    let has_deadlock = deadlock_cycles > 0;
+
+    let summary = LockAnalysisSummary {
+        total_edges: edges.len() as i64,
+        waiting_sessions: blockers_by_waiter.len() as i64,
+        blocking_sessions: blocked_targets.len() as i64,
+        max_wait_seconds: edges
+            .iter()
+            .map(|edge| edge.wait_seconds)
+            .max()
+            .unwrap_or(0),
+        max_chain_depth: chains.iter().map(|chain| chain.depth).max().unwrap_or(0),
+        deadlock_cycles,
+    };
+
+    let recommendations =
+        build_lock_recommendations(db_type, &nodes, &edges, &chains, has_deadlock);
+
+    LockAnalysis {
+        db_type: match db_type {
+            DatabaseType::MySQL => "mysql".to_string(),
+            DatabaseType::PostgreSQL => "postgresql".to_string(),
+            DatabaseType::Disconnected => "disconnected".to_string(),
+        },
+        generated_at: chrono::Utc::now().to_rfc3339(),
+        has_deadlock,
+        summary,
+        nodes,
+        edges,
+        chains,
+        recommendations,
+    }
+}
+
+#[tauri::command]
+pub async fn get_lock_analysis(app_state: State<'_, AppState>) -> Result<LockAnalysis, String> {
+    let db_type = {
+        let guard = app_state.active_db_type.lock().await;
+        guard.clone()
+    };
+
+    let edges = match db_type {
+        DatabaseType::PostgreSQL => {
+            let guard = app_state.postgres_pool.lock().await;
+            let pool = guard
+                .as_ref()
+                .ok_or("No PostgreSQL connection established")?;
+            postgres::get_lock_graph_edges(pool).await?
+        }
+        DatabaseType::MySQL => {
+            let guard = app_state.mysql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
+            mysql::get_lock_graph_edges(pool).await?
+        }
+        DatabaseType::Disconnected => return Err("No connection established".into()),
+    };
+
+    Ok(build_lock_analysis(&db_type, edges))
 }
 
 #[tauri::command]
 pub async fn get_slow_queries(
     app_state: State<'_, AppState>,
-    limit: i32
+    limit: i32,
 ) -> Result<Vec<SlowQuery>, String> {
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
@@ -1458,16 +1990,16 @@ pub async fn get_slow_queries(
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_slow_queries(pool, limit).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_slow_queries(pool, limit).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -1479,7 +2011,7 @@ pub async fn get_slow_queries(
 #[tauri::command]
 pub async fn analyze_query(
     app_state: State<'_, AppState>,
-    query: String
+    query: String,
 ) -> Result<QueryAnalysis, String> {
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
@@ -1489,16 +2021,16 @@ pub async fn analyze_query(
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::analyze_query(pool, &query).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::analyze_query(pool, &query).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -1507,7 +2039,7 @@ pub async fn analyze_query(
 pub async fn get_index_suggestions(
     app_state: State<'_, AppState>,
     database: String,
-    table: String
+    table: String,
 ) -> Result<Vec<IndexSuggestion>, String> {
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
@@ -1517,16 +2049,16 @@ pub async fn get_index_suggestions(
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_index_suggestions(pool, &database, &table).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_index_suggestions(pool, &database, &table).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -1535,7 +2067,7 @@ pub async fn get_index_suggestions(
 pub async fn get_index_usage(
     app_state: State<'_, AppState>,
     database: String,
-    table: String
+    table: String,
 ) -> Result<Vec<IndexUsage>, String> {
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
@@ -1545,16 +2077,16 @@ pub async fn get_index_usage(
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_index_usage(pool, &database, &table).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_index_usage(pool, &database, &table).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -1563,7 +2095,7 @@ pub async fn get_index_usage(
 pub async fn get_index_sizes(
     app_state: State<'_, AppState>,
     database: String,
-    table: String
+    table: String,
 ) -> Result<Vec<IndexSize>, String> {
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
@@ -1573,16 +2105,16 @@ pub async fn get_index_sizes(
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_index_sizes(pool, &database, &table).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_index_sizes(pool, &database, &table).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -1614,7 +2146,9 @@ pub async fn simulate_index_drop(
 
     let mut notes: Vec<String> = Vec::new();
     if matched_total == 0 {
-        notes.push("No table-related SELECT query history found. Confidence will be low.".to_string());
+        notes.push(
+            "No table-related SELECT query history found. Confidence will be low.".to_string(),
+        );
     }
     if candidate_build.skipped_multi_statement > 0 {
         notes.push(format!(
@@ -1629,57 +2163,75 @@ pub async fn simulate_index_drop(
         ));
     }
 
-    let (mode, drop_sql, rollback_sql, mut query_diffs, mut engine_notes) = match db_type {
-        DatabaseType::PostgreSQL => {
-            let guard = app_state.postgres_pool.lock().await;
-            let pool = guard
-                .as_ref()
-                .ok_or("No PostgreSQL connection established")?;
+    let (mode, drop_sql, rollback_sql, mut query_diffs, mut engine_notes) =
+        match db_type {
+            DatabaseType::PostgreSQL => {
+                let guard = app_state.postgres_pool.lock().await;
+                let pool = guard
+                    .as_ref()
+                    .ok_or("No PostgreSQL connection established")?;
 
-            let rollback_sql = match postgres::get_index_rollback_sql(pool, &database, &table, &index_name).await {
-                Ok(sql) => sql,
-                Err(e) => {
-                    notes.push(format!("Rollback SQL could not be generated: {}", e));
-                    String::new()
-                }
-            };
+                let rollback_sql =
+                    match postgres::get_index_rollback_sql(pool, &database, &table, &index_name)
+                        .await
+                    {
+                        Ok(sql) => sql,
+                        Err(e) => {
+                            notes.push(format!("Rollback SQL could not be generated: {}", e));
+                            String::new()
+                        }
+                    };
 
-            let (query_diffs, engine_notes) =
-                postgres::simulate_index_drop(pool, &database, &table, &index_name, &simulation_queries).await?;
+                let (query_diffs, engine_notes) = postgres::simulate_index_drop(
+                    pool,
+                    &database,
+                    &table,
+                    &index_name,
+                    &simulation_queries,
+                )
+                .await?;
 
-            (
-                "what_if".to_string(),
-                postgres::build_drop_index_sql(&database, &index_name),
-                rollback_sql,
-                query_diffs,
-                engine_notes,
-            )
-        }
-        DatabaseType::MySQL => {
-            let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
+                (
+                    "what_if".to_string(),
+                    postgres::build_drop_index_sql(&database, &index_name),
+                    rollback_sql,
+                    query_diffs,
+                    engine_notes,
+                )
+            }
+            DatabaseType::MySQL => {
+                let guard = app_state.mysql_pool.lock().await;
+                let pool = guard.as_ref().ok_or("No MySQL connection established")?;
 
-            let rollback_sql = match mysql::get_index_rollback_sql(pool, &database, &table, &index_name).await {
-                Ok(sql) => sql,
-                Err(e) => {
-                    notes.push(format!("Rollback SQL could not be generated: {}", e));
-                    String::new()
-                }
-            };
+                let rollback_sql =
+                    match mysql::get_index_rollback_sql(pool, &database, &table, &index_name).await
+                    {
+                        Ok(sql) => sql,
+                        Err(e) => {
+                            notes.push(format!("Rollback SQL could not be generated: {}", e));
+                            String::new()
+                        }
+                    };
 
-            let (query_diffs, engine_notes) =
-                mysql::simulate_index_drop(pool, &database, &table, &index_name, &simulation_queries).await?;
+                let (query_diffs, engine_notes) = mysql::simulate_index_drop(
+                    pool,
+                    &database,
+                    &table,
+                    &index_name,
+                    &simulation_queries,
+                )
+                .await?;
 
-            (
-                "heuristic".to_string(),
-                mysql::build_drop_index_sql(&table, &index_name),
-                rollback_sql,
-                query_diffs,
-                engine_notes,
-            )
-        }
-        DatabaseType::Disconnected => return Err("No connection established".into()),
-    };
+                (
+                    "heuristic".to_string(),
+                    mysql::build_drop_index_sql(&table, &index_name),
+                    rollback_sql,
+                    query_diffs,
+                    engine_notes,
+                )
+            }
+            DatabaseType::Disconnected => return Err("No connection established".into()),
+        };
 
     notes.append(&mut engine_notes);
 
@@ -1757,7 +2309,7 @@ pub async fn simulate_index_drop(
 #[tauri::command]
 pub async fn get_capacity_metrics(
     app_state: State<'_, AppState>,
-    database: String
+    database: String,
 ) -> Result<CapacityMetrics, String> {
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
@@ -1767,16 +2319,16 @@ pub async fn get_capacity_metrics(
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_capacity_metrics(pool, &database).await
-        },
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_capacity_metrics(pool, &database).await
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -1788,7 +2340,7 @@ pub async fn get_capacity_metrics(
 #[tauri::command]
 pub async fn get_sequences(
     app_state: State<'_, AppState>,
-    schema: String
+    schema: String,
 ) -> Result<Vec<String>, String> {
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
@@ -1798,14 +2350,15 @@ pub async fn get_sequences(
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_sequences(pool, &schema).await
-        },
+        }
         DatabaseType::MySQL => {
             // MySQL doesn't have sequences
             Ok(Vec::new())
-        },
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -1813,7 +2366,7 @@ pub async fn get_sequences(
 #[tauri::command]
 pub async fn get_custom_types(
     app_state: State<'_, AppState>,
-    schema: String
+    schema: String,
 ) -> Result<Vec<String>, String> {
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
@@ -1823,13 +2376,12 @@ pub async fn get_custom_types(
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_custom_types(pool, &schema).await
-        },
-        DatabaseType::MySQL => {
-            Ok(Vec::new())
-        },
+        }
+        DatabaseType::MySQL => Ok(Vec::new()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -1844,13 +2396,12 @@ pub async fn get_extensions(app_state: State<'_, AppState>) -> Result<Vec<String
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_extensions(pool).await
-        },
-        DatabaseType::MySQL => {
-            Ok(Vec::new())
-        },
+        }
+        DatabaseType::MySQL => Ok(Vec::new()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -1865,13 +2416,12 @@ pub async fn get_tablespaces(app_state: State<'_, AppState>) -> Result<Vec<Strin
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_tablespaces(pool).await
-        },
-        DatabaseType::MySQL => {
-            Ok(Vec::new())
-        },
+        }
+        DatabaseType::MySQL => Ok(Vec::new()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -1880,7 +2430,7 @@ pub async fn get_tablespaces(app_state: State<'_, AppState>) -> Result<Vec<Strin
 pub async fn compare_queries(
     app_state: State<'_, AppState>,
     query_a: String,
-    query_b: String
+    query_b: String,
 ) -> Result<crate::awareness::comparator::ComparisonResult, String> {
     // 1. Syntax Diff
     let syntax_diff = crate::awareness::comparator::Comparator::compare_syntax(&query_a, &query_b);
@@ -1889,28 +2439,34 @@ pub async fn compare_queries(
     // Fetch profiles for both queries
     let store_guard = app_state.awareness_store.lock().await;
     let metrics = if let Some(store) = store_guard.as_ref() {
-        let hash_a = crate::awareness::profiler::calculate_query_hash(&crate::awareness::profiler::normalize_query(&query_a));
-        let hash_b = crate::awareness::profiler::calculate_query_hash(&crate::awareness::profiler::normalize_query(&query_b));
+        let hash_a = crate::awareness::profiler::calculate_query_hash(
+            &crate::awareness::profiler::normalize_query(&query_a),
+        );
+        let hash_b = crate::awareness::profiler::calculate_query_hash(
+            &crate::awareness::profiler::normalize_query(&query_b),
+        );
 
-        let profile_a = store.get_baseline_profile(&hash_a).await?
-            .unwrap_or(crate::awareness::profiler::BaselineProfile {
+        let profile_a = store.get_baseline_profile(&hash_a).await?.unwrap_or(
+            crate::awareness::profiler::BaselineProfile {
                 query_hash: hash_a,
                 query_pattern: "".to_string(),
                 avg_duration_ms: 0.0,
                 std_dev_duration_ms: 0.0,
                 total_executions: 0,
                 last_updated: chrono::Utc::now(),
-            });
-        
-        let profile_b = store.get_baseline_profile(&hash_b).await?
-            .unwrap_or(crate::awareness::profiler::BaselineProfile {
+            },
+        );
+
+        let profile_b = store.get_baseline_profile(&hash_b).await?.unwrap_or(
+            crate::awareness::profiler::BaselineProfile {
                 query_hash: hash_b,
                 query_pattern: "".to_string(),
                 avg_duration_ms: 0.0,
                 std_dev_duration_ms: 0.0,
                 total_executions: 0,
                 last_updated: chrono::Utc::now(),
-            });
+            },
+        );
 
         crate::awareness::comparator::Comparator::compare_metrics(&profile_a, &profile_b)
     } else {
@@ -1926,7 +2482,7 @@ pub async fn compare_queries(
 #[tauri::command]
 pub async fn get_anomaly_history(
     app_state: State<'_, AppState>,
-    limit: i64
+    limit: i64,
 ) -> Result<Vec<crate::awareness::anomaly::Anomaly>, String> {
     let guard = app_state.awareness_store.lock().await;
     if let Some(store) = guard.as_ref() {
@@ -1962,7 +2518,7 @@ pub async fn get_anomaly_cause(
 #[tauri::command]
 pub async fn get_query_history(
     app_state: State<'_, AppState>,
-    limit: i64
+    limit: i64,
 ) -> Result<Vec<crate::awareness::profiler::QueryExecution>, String> {
     let guard = app_state.awareness_store.lock().await;
     if let Some(store) = guard.as_ref() {
@@ -2022,7 +2578,10 @@ fn build_simulation_query_candidates(
 
     for q in history {
         let raw = q.exact_query.trim().to_string();
-        if raw.is_empty() || !is_explainable_read_query(&raw) || !matches_table_reference(&raw, table) {
+        if raw.is_empty()
+            || !is_explainable_read_query(&raw)
+            || !matches_table_reference(&raw, table)
+        {
             continue;
         }
 
@@ -2043,12 +2602,14 @@ fn build_simulation_query_candidates(
             q.query_hash.clone()
         };
 
-        let entry = aggregate_map.entry(query_hash.clone()).or_insert(SimulationQueryAggregate {
-            query_hash,
-            sample_query: raw.clone(),
-            executions: 0,
-            total_duration_ms: 0.0,
-        });
+        let entry = aggregate_map
+            .entry(query_hash.clone())
+            .or_insert(SimulationQueryAggregate {
+                query_hash,
+                sample_query: raw.clone(),
+                executions: 0,
+                total_duration_ms: 0.0,
+            });
         entry.executions += 1;
         entry.total_duration_ms += q.resources.execution_time_ms.max(0.0);
     }
@@ -2140,7 +2701,10 @@ mod simulation_tests {
 
     #[test]
     fn candidate_builder_applies_guardrails() {
-        let long_sql = format!("SELECT * FROM orders WHERE payload = '{}'", "x".repeat(13_000));
+        let long_sql = format!(
+            "SELECT * FROM orders WHERE payload = '{}'",
+            "x".repeat(13_000)
+        );
         let history = vec![
             make_exec("SELECT * FROM orders WHERE id = 1", 120.0),
             make_exec("SELECT * FROM orders; SELECT * FROM users;", 50.0),
@@ -2182,14 +2746,15 @@ pub async fn get_ai_index_recommendations(
     };
 
     // Filter queries related to this table
-    let table_queries: Vec<_> = query_history.into_iter()
+    let table_queries: Vec<_> = query_history
+        .into_iter()
         .filter(|q| {
             let normalized = q.exact_query.to_lowercase();
-            normalized.contains(&table.to_lowercase()) ||
-            normalized.contains(&format!("from {}", table).to_lowercase()) ||
-            normalized.contains(&format!("join {}", table).to_lowercase()) ||
-            normalized.contains(&format!("into {}", table).to_lowercase()) ||
-            normalized.contains(&format!("update {}", table).to_lowercase())
+            normalized.contains(&table.to_lowercase())
+                || normalized.contains(&format!("from {}", table).to_lowercase())
+                || normalized.contains(&format!("join {}", table).to_lowercase())
+                || normalized.contains(&format!("into {}", table).to_lowercase())
+                || normalized.contains(&format!("update {}", table).to_lowercase())
         })
         .collect();
 
@@ -2197,16 +2762,20 @@ pub async fn get_ai_index_recommendations(
     let existing_indexes = match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
-            postgres::get_table_indexes(pool, &database, &table).await.unwrap_or_default()
-        },
+            postgres::get_table_indexes(pool, &database, &table)
+                .await
+                .unwrap_or_default()
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
-            mysql::get_table_indexes(pool, &database, &table).await.unwrap_or_default()
-        },
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
+            mysql::get_table_indexes(pool, &database, &table)
+                .await
+                .unwrap_or_default()
+        }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     };
 
@@ -2214,27 +2783,33 @@ pub async fn get_ai_index_recommendations(
     let columns = match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
-            let pool = guard.as_ref()
+            let pool = guard
+                .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
-            postgres::get_table_schema(pool, &database, &table).await.unwrap_or_default()
-        },
+            postgres::get_table_schema(pool, &database, &table)
+                .await
+                .unwrap_or_default()
+        }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref()
-                .ok_or("No MySQL connection established")?;
-            mysql::get_table_schema(pool, &database, &table).await.unwrap_or_default()
-        },
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
+            mysql::get_table_schema(pool, &database, &table)
+                .await
+                .unwrap_or_default()
+        }
         DatabaseType::Disconnected => Vec::new(),
     };
 
     // Analyze query patterns
-    let mut column_usage: std::collections::HashMap<String, (i32, f64)> = std::collections::HashMap::new();
-    let mut affected_queries: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+    let mut column_usage: std::collections::HashMap<String, (i32, f64)> =
+        std::collections::HashMap::new();
+    let mut affected_queries: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
 
     for query in &table_queries {
         let sql = &query.exact_query;
         let normalized = crate::awareness::profiler::normalize_query(sql);
-        
+
         // Extract WHERE columns
         if let Some(where_pos) = normalized.to_uppercase().find("WHERE") {
             let where_clause = &normalized[where_pos + 5..];
@@ -2243,8 +2818,10 @@ pub async fn get_ai_index_recommendations(
                     let entry = column_usage.entry(col.name.clone()).or_insert((0, 0.0));
                     entry.0 += 1;
                     entry.1 += query.resources.execution_time_ms;
-                    
-                    let queries = affected_queries.entry(col.name.clone()).or_insert_with(Vec::new);
+
+                    let queries = affected_queries
+                        .entry(col.name.clone())
+                        .or_insert_with(Vec::new);
                     if queries.len() < 3 {
                         queries.push(sql.clone());
                     }
@@ -2260,8 +2837,10 @@ pub async fn get_ai_index_recommendations(
                     let entry = column_usage.entry(col.name.clone()).or_insert((0, 0.0));
                     entry.0 += 1;
                     entry.1 += query.resources.execution_time_ms;
-                    
-                    let queries = affected_queries.entry(format!("ORDER_BY_{}", col.name)).or_insert_with(Vec::new);
+
+                    let queries = affected_queries
+                        .entry(format!("ORDER_BY_{}", col.name))
+                        .or_insert_with(Vec::new);
                     if queries.len() < 3 {
                         queries.push(sql.clone());
                     }
@@ -2289,7 +2868,7 @@ pub async fn get_ai_index_recommendations(
 
     // Sort columns by usage frequency
     let mut sorted_columns: Vec<_> = column_usage.iter().collect();
-    sorted_columns.sort_by(|a, b| b.1.0.cmp(&a.1.0));
+    sorted_columns.sort_by(|a, b| b.1 .0.cmp(&a.1 .0));
 
     // Generate single-column recommendations
     for (col_name, (frequency, avg_duration)) in sorted_columns.iter().take(5) {
@@ -2304,28 +2883,37 @@ pub async fn get_ai_index_recommendations(
 
         let col_queries = affected_queries.get(*col_name).cloned().unwrap_or_default();
         let estimated_benefit = if *avg_duration > 100.0 {
-            format!("~{}% faster", std::cmp::min(80, (*avg_duration / 10.0) as i32))
+            format!(
+                "~{}% faster",
+                std::cmp::min(80, (*avg_duration / 10.0) as i32)
+            )
         } else {
             "Moderate improvement".to_string()
         };
 
         let create_sql = match db_type {
             DatabaseType::PostgreSQL => {
-                format!("CREATE INDEX idx_{}_{} ON {}.{} ({});",
-                    table, col_name, database, table, col_name)
-            },
+                format!(
+                    "CREATE INDEX idx_{}_{} ON {}.{} ({});",
+                    table, col_name, database, table, col_name
+                )
+            }
             DatabaseType::MySQL => {
-                format!("CREATE INDEX idx_{}_{} ON {}.{} ({});",
-                    table, col_name, database, table, col_name)
-            },
+                format!(
+                    "CREATE INDEX idx_{}_{} ON {}.{} ({});",
+                    table, col_name, database, table, col_name
+                )
+            }
             DatabaseType::Disconnected => String::new(),
         };
 
         recommendations.push(AiIndexRecommendation {
             columns: vec![(*col_name).clone()],
             index_type: "BTREE".to_string(),
-            reason: format!("Column '{}' appears in {} queries with avg duration {:.1}ms", 
-                col_name, frequency, avg_duration),
+            reason: format!(
+                "Column '{}' appears in {} queries with avg duration {:.1}ms",
+                col_name, frequency, avg_duration
+            ),
             impact_score,
             affected_queries: col_queries,
             estimated_benefit,
@@ -2335,13 +2923,19 @@ pub async fn get_ai_index_recommendations(
 
     // Generate composite index recommendations for frequently used together columns
     if sorted_columns.len() >= 2 {
-        let top_cols: Vec<String> = sorted_columns.iter().take(3).map(|(name, _)| (*name).clone()).collect();
-        
+        let top_cols: Vec<String> = sorted_columns
+            .iter()
+            .take(3)
+            .map(|(name, _)| (*name).clone())
+            .collect();
+
         // Check if these columns are used together in WHERE clauses
         let mut composite_score = 0;
         for query in &table_queries {
             let normalized = query.exact_query.to_lowercase();
-            let has_all_cols = top_cols.iter().all(|col| normalized.contains(&col.to_lowercase()));
+            let has_all_cols = top_cols
+                .iter()
+                .all(|col| normalized.contains(&col.to_lowercase()));
             if has_all_cols && normalized.contains("where") {
                 composite_score += 1;
             }
@@ -2350,20 +2944,33 @@ pub async fn get_ai_index_recommendations(
         if composite_score >= 3 {
             let create_sql = match db_type {
                 DatabaseType::PostgreSQL => {
-                    format!("CREATE INDEX idx_{}_composite ON {}.{} ({});",
-                        table, database, table, top_cols.join(", "))
-                },
+                    format!(
+                        "CREATE INDEX idx_{}_composite ON {}.{} ({});",
+                        table,
+                        database,
+                        table,
+                        top_cols.join(", ")
+                    )
+                }
                 DatabaseType::MySQL => {
-                    format!("CREATE INDEX idx_{}_composite ON {}.{} ({});",
-                        table, database, table, top_cols.join(", "))
-                },
+                    format!(
+                        "CREATE INDEX idx_{}_composite ON {}.{} ({});",
+                        table,
+                        database,
+                        table,
+                        top_cols.join(", ")
+                    )
+                }
                 DatabaseType::Disconnected => String::new(),
             };
 
             recommendations.push(AiIndexRecommendation {
                 columns: top_cols.clone(),
                 index_type: "BTREE".to_string(),
-                reason: format!("These {} columns frequently appear together in WHERE clauses", top_cols.len()),
+                reason: format!(
+                    "These {} columns frequently appear together in WHERE clauses",
+                    top_cols.len()
+                ),
                 impact_score: std::cmp::min(100, composite_score * 15),
                 affected_queries: vec![format!("Used together in {} queries", composite_score)],
                 estimated_benefit: "High - Multi-column filtering".to_string(),
@@ -2378,8 +2985,11 @@ pub async fn get_ai_index_recommendations(
     let summary = if recommendations.is_empty() {
         "No significant index opportunities found based on query history.".to_string()
     } else {
-        format!("Found {} potential index optimizations based on {} analyzed queries.",
-            recommendations.len(), table_queries.len())
+        format!(
+            "Found {} potential index optimizations based on {} analyzed queries.",
+            recommendations.len(),
+            table_queries.len()
+        )
     };
 
     Ok(AiIndexRecommendations {
