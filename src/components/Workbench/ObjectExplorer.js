@@ -21,6 +21,16 @@ export function ObjectExplorer() {
     };
     explorer.className = getExplorerClass(theme);
 
+    // --- DOM Structure ---
+    const overlay = document.createElement('div');
+    overlay.id = 'search-overlay-container';
+    explorer.appendChild(overlay);
+
+    const container = document.createElement('div');
+    container.id = 'explorer-content-container';
+    container.className = 'flex-1 flex flex-col h-full overflow-hidden';
+    explorer.appendChild(container);
+
     // --- State ---
     let connections = [];
     let activeConnectionId = null; // ID of the currently active connection
@@ -115,6 +125,7 @@ export function ObjectExplorer() {
     let searchContext = null; // normalized lookup maps for filtering & auto-expand
     let highlightedId = null; // persistent highlight after search clear
     let highlightTimeout = null;
+    let didStateChangeSinceLastTreeRender = true; // flag to force tree re-render
 
     // Drag and Drop state (persisted outside render)
     let draggedConnId = null;
@@ -590,7 +601,7 @@ export function ObjectExplorer() {
             }
         };
 
-        const searchSummary = (() => {
+        const searchHtml = (() => {
             if (!searchQuery.trim()) return '';
 
             // Group matches by type
@@ -609,7 +620,10 @@ export function ObjectExplorer() {
                 if (groups[m.type]) groups[m.type].push(m);
             });
 
-            const hasMatches = searchMatches.length > 0;
+            const totalResults = searchMatches.length;
+            const hasMatches = totalResults > 0;
+            let renderedCount = 0;
+            const MAX_DISPLAY = 20;
 
             const renderGroup = (type, label, icon, color) => {
                 const items = groups[type];
@@ -622,7 +636,8 @@ export function ObjectExplorer() {
                             ${label.toUpperCase()}
                         </div>
                         <div class="space-y-0.5 px-1">
-                            ${items.map(m => {
+                            ${items.slice(0, Math.max(0, MAX_DISPLAY - renderedCount)).map(m => {
+                    renderedCount++;
                     const idx = searchMatches.indexOf(m);
                     const isCurrent = idx === currentMatchIndex;
                     const path = [m.db, m.table, m.column].filter(Boolean).join(' • ');
@@ -653,7 +668,8 @@ export function ObjectExplorer() {
                     <div class="flex-1 overflow-y-auto custom-scrollbar rounded-2xl border ${glassBorder} ${glassBg} backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.3)] p-2 pointer-events-auto animate-search-in">
                         <div class="flex items-center justify-between px-3 mb-3 sticky top-0 ${glassBg} py-2 border-b ${glassBorder} z-10 rounded-t-xl">
                             <div class="flex items-center gap-2">
-                                <span class="text-[10px] font-bold ${isLight ? 'text-gray-800' : 'text-white'} tracking-tight">${searchMatches.length} matching objects</span>
+                                <span class="text-[10px] font-bold ${isLight ? 'text-gray-800' : 'text-white'} tracking-tight">${totalResults} matching objects</span>
+                                ${totalResults > MAX_DISPLAY ? `<span class="text-[8px] px-1.5 py-0.5 rounded bg-white/5 border border-white/10 ${headerText}">Showing top ${MAX_DISPLAY}</span>` : ''}
                             </div>
                             <div class="flex items-center gap-3">
                                 <span class="text-[9px] ${headerText} opacity-60">↑↓ to navigate</span>
@@ -683,7 +699,7 @@ export function ObjectExplorer() {
             `;
         })();
 
-        explorer.innerHTML = `
+        const layout = `
             <div class="flex items-center justify-between px-2">
                 <h2 class="text-[10px] font-bold tracking-[0.15em] ${headerText}">Explorer</h2>
                 <div class="flex gap-2">
@@ -698,18 +714,16 @@ export function ObjectExplorer() {
                         class="w-full ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#fcf9f2] border-[#f2e9e1]' : 'bg-white/5 border-white/10')} border rounded px-7 py-1.5 text-[10px] focus:outline-none ${isDawn ? 'focus:border-[#ea9d34]/50' : 'focus:border-mysql-teal/50'} transition-colors"
                         value="${escapeHtml(searchQuery)}">
                     <span class="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-[14px] ${iconColor}">search</span>
-                    ${searchQuery ? `
-                        <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                    <div id="search-controls-container" class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                        ${searchQuery ? `
                             <span class="text-[9px] ${headerText} mr-1 whitespace-nowrap">${searchMatches.length > 0 ? `${currentMatchIndex + 1}/${searchMatches.length}` : '0/0'}</span>
                             <button id="search-prev" class="material-symbols-outlined text-[14px] ${iconColor} hover:text-white cursor-pointer" title="Previous match">keyboard_arrow_up</button>
                             <button id="search-next" class="material-symbols-outlined text-[14px] ${iconColor} hover:text-white cursor-pointer" title="Next match">keyboard_arrow_down</button>
                             <button id="search-clear" class="material-symbols-outlined text-[14px] ${iconColor} hover:text-white cursor-pointer" title="Clear search">close</button>
-                        </div>
-                    ` : ''}
+                        ` : ''}
+                    </div>
                 </div>
             </div>
-            ${searchSummary}
-            
             <div id="explorer-tree" class="flex-1 overflow-y-auto custom-scrollbar font-mono text-[11px] space-y-2 mt-2">
                 ${connections.length === 0 ?
                 `<div class="p-4 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-600')} italic text-center">
@@ -719,388 +733,302 @@ export function ObjectExplorer() {
                 : ''}
                 ${connections.map(conn => renderConnectionNode(conn)).join('')}
             </div>
+            <div id="search-results-container">
+                ${searchHtml}
+            </div>
         `;
 
-        // Connection Interaction
+        // UPDATE UI
+        overlay.innerHTML = searchHtml;
 
-        // Setup drag and drop on connection nodes
-        explorer.querySelectorAll('.connection-node').forEach(connNode => {
-            const connItem = connNode.querySelector('.conn-item');
+        // Update Tree Container (conditionally)
+        if (didStateChangeSinceLastTreeRender || !container.querySelector('#explorer-tree')) {
+            container.innerHTML = layout;
 
-            // Click handler on conn-item
-            connItem.addEventListener('click', async (e) => {
-                // Ignore if clicked on the connect button or drag handle
-                if (e.target.closest('.conn-connect-btn') || e.target.closest('.drag-handle')) return;
-
-                const id = connItem.dataset.id;
-                if (id === activeConnectionId) {
-                    // Toggle fold/unfold for active connection
-                    connectionExpanded = !connectionExpanded;
-                    getConnectionState(activeConnectionId).connectionExpanded = connectionExpanded;
-                    persistStates();
-                    render();
-                } else {
-                    // Connect to new connection
-                    connectionExpanded = true; // Expand when connecting
-                    await switchConnection(id);
-                }
-            });
-
-            connItem.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
-                showConnectionContextMenu(e.clientX, e.clientY, connItem.dataset.id);
-            });
-
-            // Drag handlers on connection-node
-            connNode.addEventListener('dragstart', (e) => {
-                draggedConnId = connNode.dataset.connId;
-                draggedNode = connNode;
-                connNode.style.opacity = '0.5';
-                e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData('text/plain', draggedConnId);
-
-                // For some browsers, we need to explicitly set the drag image or at least ensure it's not selecting text
-                if (e.dataTransfer.setDragImage && e.currentTarget.querySelector('.conn-item')) {
-                    // This can help ensure the whole item is dragged visually
-                }
-            });
-
-            connNode.addEventListener('dragend', (e) => {
-                connNode.style.opacity = '1';
-                draggedConnId = null;
-                draggedNode = null;
-                // Remove all drag-over visual indicators
-                explorer.querySelectorAll('.connection-node').forEach(node => {
-                    node.style.borderTop = '';
-                    node.style.borderBottom = '';
+            // Re-attach tree-dependent listeners only after full render
+            // Connection Interaction (Drag and Drop)
+            explorer.querySelectorAll('.connection-node').forEach(connNode => {
+                const connId = connNode.dataset.connId;
+                connNode.addEventListener('dragstart', (e) => {
+                    draggedConnId = connId; draggedNode = connNode;
+                    connNode.style.opacity = '0.5';
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', connId);
                 });
-            });
-        });
-
-        // Handle drag over, drop on connection nodes
-        explorer.querySelectorAll('.connection-node').forEach(connNode => {
-            connNode.addEventListener('dragenter', (e) => {
-                e.preventDefault();
-                if (draggedConnId && draggedConnId !== connNode.dataset.connId) {
+                connNode.addEventListener('dragend', () => {
+                    connNode.style.opacity = '1'; draggedConnId = null; draggedNode = null;
+                    explorer.querySelectorAll('.connection-node').forEach(node => {
+                        node.style.borderTop = ''; node.style.borderBottom = '';
+                    });
+                });
+                connNode.addEventListener('dragenter', (e) => {
+                    e.preventDefault();
+                    if (draggedConnId && draggedConnId !== connId) e.dataTransfer.dropEffect = 'move';
+                });
+                connNode.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    if (!draggedConnId || draggedConnId === connId) return;
                     e.dataTransfer.dropEffect = 'move';
-                }
-            });
-
-            connNode.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                if (!draggedConnId) return;
-
-                const targetConnId = connNode.dataset.connId;
-                if (draggedConnId === targetConnId) return;
-
-                e.dataTransfer.dropEffect = 'move';
-
-                // Visual feedback
-                const rect = connNode.getBoundingClientRect();
-                const midpoint = rect.top + rect.height / 2;
-
-                // Remove previous indicators
-                explorer.querySelectorAll('.connection-node').forEach(node => {
-                    node.style.borderTop = '';
-                    node.style.borderBottom = '';
+                    const rect = connNode.getBoundingClientRect();
+                    const midpoint = rect.top + rect.height / 2;
+                    explorer.querySelectorAll('.connection-node').forEach(node => { node.style.borderTop = ''; node.style.borderBottom = ''; });
+                    const highlightColor = isDawn ? '#ea9d34' : (isLight ? '#0ea5e9' : '#06b6d4');
+                    if (e.clientY < midpoint) connNode.style.borderTop = `2px solid ${highlightColor}`;
+                    else connNode.style.borderBottom = `2px solid ${highlightColor}`;
                 });
-
-                const highlightColor = isDawn ? '#ea9d34' : (isLight ? '#0ea5e9' : '#06b6d4');
-                if (e.clientY < midpoint) {
-                    connNode.style.borderTop = `2px solid ${highlightColor}`;
-                    connNode.style.borderBottom = '';
-                } else {
-                    connNode.style.borderBottom = `2px solid ${highlightColor}`;
-                    connNode.style.borderTop = '';
-                }
-            });
-
-            connNode.addEventListener('dragleave', (e) => {
-                if (!connNode.contains(e.relatedTarget)) {
-                    connNode.style.borderTop = '';
-                    connNode.style.borderBottom = '';
-                }
-            });
-
-            connNode.addEventListener('drop', async (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-
-                // Remove visual indicators
-                explorer.querySelectorAll('.connection-node').forEach(node => {
-                    node.style.borderTop = '';
-                    node.style.borderBottom = '';
+                connNode.addEventListener('dragleave', (e) => {
+                    if (!connNode.contains(e.relatedTarget)) { connNode.style.borderTop = ''; connNode.style.borderBottom = ''; }
                 });
-
-                const targetConnId = connNode.dataset.connId;
-
-                if (draggedConnId && targetConnId && draggedConnId !== targetConnId) {
-                    // Find indices
-                    const draggedIndex = connections.findIndex(c => c.id === draggedConnId);
-                    const targetIndex = connections.findIndex(c => c.id === targetConnId);
-
-                    if (draggedIndex !== -1 && targetIndex !== -1) {
-                        // Determine if we should insert before or after
-                        const rect = connNode.getBoundingClientRect();
-                        const midpoint = rect.top + rect.height / 2;
-                        const insertBefore = e.clientY < midpoint;
-
-                        // Reorder array
-                        const [removed] = connections.splice(draggedIndex, 1);
-                        let newIndex = connections.findIndex(c => c.id === targetConnId);
-                        if (!insertBefore) newIndex++;
-                        connections.splice(newIndex, 0, removed);
-
-                        // Save to backend
-                        try {
-                            await invoke('save_connections', { connections });
-                            render();
-                        } catch (error) {
-                            console.error('❌ Failed to save connection order:', error);
-                            // Revert on error
-                            await loadConnections();
+                connNode.addEventListener('drop', async (e) => {
+                    e.preventDefault(); e.stopPropagation();
+                    explorer.querySelectorAll('.connection-node').forEach(node => { node.style.borderTop = ''; node.style.borderBottom = ''; });
+                    const targetConnId = connId;
+                    if (draggedConnId && targetConnId && draggedConnId !== targetConnId) {
+                        const draggedIndex = connections.findIndex(c => c.id === draggedConnId);
+                        const targetIndex = connections.findIndex(c => c.id === targetConnId);
+                        if (draggedIndex !== -1 && targetIndex !== -1) {
+                            const rect = connNode.getBoundingClientRect();
+                            const midpoint = rect.top + rect.height / 2;
+                            const insertBefore = e.clientY < midpoint;
+                            const [removed] = connections.splice(draggedIndex, 1);
+                            let nIdx = connections.findIndex(c => c.id === targetConnId);
+                            if (!insertBefore) nIdx++;
+                            connections.splice(nIdx, 0, removed);
+                            try {
+                                await invoke('save_connections', { connections });
+                                didStateChangeSinceLastTreeRender = true; render();
+                            } catch (error) { console.error('Failed to save order:', error); await loadConnections(); }
                         }
                     }
-                }
-
-                draggedConnId = null;
-                draggedNode = null;
+                    draggedConnId = null; draggedNode = null;
+                });
             });
-        });
 
-        explorer.querySelectorAll('.conn-connect-btn').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                e.stopPropagation();
-                await switchConnection(btn.dataset.id);
+            // Table drag and drop
+            explorer.querySelectorAll('.table-item').forEach(item => {
+                item.addEventListener('dragstart', (e) => {
+                    const q = getQuote();
+                    const tableName = `${q}${item.dataset.db}${q}.${q}${item.dataset.table}${q}`;
+                    e.dataTransfer.setData('text/plain', tableName);
+                    e.dataTransfer.effectAllowed = 'copy';
+                    item.style.opacity = '0.5';
+                });
+                item.addEventListener('dragend', () => item.style.opacity = '1');
             });
-        });
 
-        // Database expand/collapse
-        explorer.querySelectorAll('.db-item').forEach(item => {
-            item.addEventListener('click', async () => {
-                const connId = item.dataset.connId;
+            didStateChangeSinceLastTreeRender = false;
+        } else {
+            // Partial update for controls
+            const controlsContainer = container.querySelector('#search-controls-container');
+            if (controlsContainer) {
+                controlsContainer.innerHTML = searchQuery ? `
+                    <span class="text-[9px] ${headerText} mr-1 whitespace-nowrap">${searchMatches.length > 0 ? `${currentMatchIndex + 1}/${searchMatches.length}` : '0/0'}</span>
+                    <button id="search-prev" class="material-symbols-outlined text-[14px] ${iconColor} hover:text-mysql-teal cursor-pointer" title="Previous match">keyboard_arrow_up</button>
+                    <button id="search-next" class="material-symbols-outlined text-[14px] ${iconColor} hover:text-mysql-teal cursor-pointer" title="Next match">keyboard_arrow_down</button>
+                    <button id="search-clear" class="material-symbols-outlined text-[14px] ${iconColor} hover:text-mysql-teal cursor-pointer" title="Clear search">close</button>
+                 ` : '';
+            }
+            const searchInput = container.querySelector('#explorer-search');
+            if (searchInput && searchInput.value !== searchQuery) {
+                searchInput.value = searchQuery;
+            }
+        }
+
+        // Restore Focus
+        const searchInput = container.querySelector('#explorer-search');
+        if (searchInput && wasSearchFocused) {
+            searchInput.focus();
+            searchInput.setSelectionRange(selectionStart, selectionStart);
+        }
+    };
+
+    // --- Interaction Setup (One-time) ---
+    const setupListeners = () => {
+        explorer.addEventListener('click', async (e) => {
+            const searchItem = e.target.closest('.search-result-item');
+            if (searchItem) {
+                e.preventDefault();
+                const idx = Number(searchItem.dataset.index);
+                await gotoMatch(idx);
+                clearSearch();
+                return;
+            }
+
+            const dbItem = e.target.closest('.db-item');
+            if (dbItem) {
+                const connId = dbItem.dataset.connId;
+                const db = dbItem.dataset.db;
                 const stateKey = connectionKeyById.get(connId) || deriveStateKey(connections.find(c => c.id === connId));
                 const state = getConnectionState(stateKey);
                 const isActiveConn = connId === activeConnectionId;
-                const db = item.dataset.db;
-                const targetExpanded = state.expandedDbs;
-                if (targetExpanded.has(db)) {
-                    targetExpanded.delete(db);
+
+                if (state.expandedDbs.has(db)) {
+                    state.expandedDbs.delete(db);
                 } else {
-                    targetExpanded.add(db);
+                    state.expandedDbs.add(db);
                     if (!state.dbObjects[db]) {
-                        // try cache
                         const hydrated = withCacheConnection(connId, () => {
                             const cached = DatabaseCache.get(CacheTypes.SCHEMAS, db);
-                            if (cached) {
-                                state.dbObjects[db] = cached;
-                                return true;
-                            }
+                            if (cached) { state.dbObjects[db] = cached; return true; }
                             return false;
                         });
-                        if (!hydrated && isActiveConn) {
-                            await loadDatabaseObjects(db);
-                            state.dbObjects[db] = dbObjects[db];
-                        }
+                        if (!hydrated && isActiveConn) await loadDatabaseObjects(db);
                     }
                 }
-                // sync globals if active
-                if (isActiveConn) {
-                    expandedDbs = state.expandedDbs;
-                    dbObjects = state.dbObjects;
-                }
+                if (isActiveConn) expandedDbs = state.expandedDbs;
                 persistStates();
+                didStateChangeSinceLastTreeRender = true;
                 render();
-            });
+                return;
+            }
 
-            item.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
+            const tableItem = e.target.closest('.table-item');
+            if (tableItem) {
                 e.stopPropagation();
-                showDatabaseContextMenu(e.clientX, e.clientY, item.dataset.db);
-            });
-        });
-
-        // Table expand/collapse
-        explorer.querySelectorAll('.table-item').forEach(item => {
-            item.addEventListener('click', async (e) => {
-                const connNode = item.closest('.connection-node');
+                const connNode = tableItem.closest('.connection-node');
                 const connId = connNode?.dataset.connId;
-                const isActiveConn = connId === activeConnectionId;
-                e.stopPropagation();
-                const db = item.dataset.db;
-                const table = item.dataset.table;
+                const db = tableItem.dataset.db;
+                const table = tableItem.dataset.table;
                 const key = `${db}.${table}`;
                 const stateKey = connectionKeyById.get(connId) || deriveStateKey(connections.find(c => c.id === connId));
                 const state = getConnectionState(stateKey);
-                const targetExpanded = state.expandedTables;
-                const targetDetails = state.tableDetails;
-                if (targetExpanded.has(key)) {
-                    targetExpanded.delete(key);
+                const isActiveConn = connId === activeConnectionId;
+
+                if (state.expandedTables.has(key)) {
+                    state.expandedTables.delete(key);
                 } else {
-                    targetExpanded.add(key);
-                    if (!targetDetails[key]) {
-                        // try cache
+                    state.expandedTables.add(key);
+                    if (!state.tableDetails[key]) {
                         const hydrated = withCacheConnection(connId, () => {
                             const cachedCols = DatabaseCache.get(CacheTypes.COLUMNS, key);
-                            const cachedIdx = DatabaseCache.get(CacheTypes.INDEXES, key);
-                            const cachedFks = DatabaseCache.get(CacheTypes.FOREIGN_KEYS, key);
-                            if (cachedCols || cachedIdx || cachedFks) {
-                                targetDetails[key] = {
-                                    columns: cachedCols || [],
-                                    indexes: cachedIdx || [],
-                                    fks: cachedFks || [],
-                                    constraints: []
-                                };
+                            if (cachedCols) {
+                                state.tableDetails[key] = { columns: cachedCols, indexes: [], fks: [], constraints: [] };
                                 return true;
                             }
                             return false;
                         });
-                        if (!hydrated && isActiveConn) {
-                            await loadTableDetails(db, table);
-                            targetDetails[key] = tableDetails[key];
-                        }
+                        if (!hydrated && isActiveConn) await loadTableDetails(db, table);
                     }
                 }
+                if (isActiveConn) expandedTables = state.expandedTables;
                 persistStates();
-                if (isActiveConn) {
-                    expandedTables = targetExpanded;
-                    tableDetails = targetDetails;
-                }
+                didStateChangeSinceLastTreeRender = true;
                 render();
-            });
+                return;
+            }
 
-            item.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
+            const connItem = e.target.closest('.conn-item');
+            if (connItem && !e.target.closest('.conn-connect-btn') && !e.target.closest('.drag-handle')) {
+                const id = connItem.dataset.id;
+                if (id === activeConnectionId) {
+                    connectionExpanded = !connectionExpanded;
+                    getConnectionState(activeConnectionId).connectionExpanded = connectionExpanded;
+                    persistStates();
+                    didStateChangeSinceLastTreeRender = true;
+                    render();
+                } else {
+                    connectionExpanded = true;
+                    await switchConnection(id);
+                }
+                return;
+            }
+
+            const connectBtn = e.target.closest('.conn-connect-btn');
+            if (connectBtn) {
                 e.stopPropagation();
-                showContextMenu(e.clientX, e.clientY, item.dataset.table, item.dataset.db);
-            });
+                await switchConnection(connectBtn.dataset.id);
+                return;
+            }
 
-            // Drag and drop
-            item.addEventListener('dragstart', (e) => {
-                const q = getQuote();
-                const tableName = `${q}${item.dataset.db}${q}.${q}${item.dataset.table}${q}`;
-                e.dataTransfer.setData('text/plain', tableName);
-                e.dataTransfer.effectAllowed = 'copy';
-                item.style.opacity = '0.5';
-            });
-            item.addEventListener('dragend', () => {
-                item.style.opacity = '1';
-            });
-        });
-
-        // View context menu
-        explorer.querySelectorAll('.view-item').forEach(item => {
-            item.addEventListener('contextmenu', (e) => {
-                const connNode = item.closest('.connection-node');
-                if (!connNode || connNode.dataset.connId !== activeConnectionId) return;
-                e.preventDefault();
-                e.stopPropagation();
-                showViewContextMenu(e.clientX, e.clientY, item.dataset.view, item.dataset.db);
-            });
-        });
-
-        const refreshBtn = explorer.querySelector('#refresh-btn');
-        if (refreshBtn) {
-            refreshBtn.addEventListener('click', () => {
-                // Invalidate all caches on global refresh
+            const refreshBtn = e.target.closest('#refresh-btn');
+            if (refreshBtn) {
                 DatabaseCache.invalidateAll();
                 loadConnections();
                 toastSuccess('All caches refreshed');
-            });
-        }
-
-        // User Databases fold toggle
-        explorer.querySelectorAll('.user-dbs-toggle').forEach(toggle => {
-            toggle.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const connId = toggle.dataset.connId;
-                const stateKey = connectionKeyById.get(connId) || deriveStateKey(connections.find(c => c.id === connId));
-                const state = getConnectionState(stateKey);
-                state.userDbsExpanded = !state.userDbsExpanded;
-                if (connId === activeConnectionId) {
-                    userDbsExpanded = state.userDbsExpanded;
-                }
-                persistStates();
-                render();
-            });
-        });
-
-        // System Databases fold toggle
-        explorer.querySelectorAll('.system-dbs-toggle').forEach(toggle => {
-            toggle.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const connId = toggle.dataset.connId;
-                const stateKey = connectionKeyById.get(connId) || deriveStateKey(connections.find(c => c.id === connId));
-                const state = getConnectionState(stateKey);
-                state.systemDbsExpanded = !state.systemDbsExpanded;
-                if (connId === activeConnectionId) {
-                    systemDbsExpanded = state.systemDbsExpanded;
-                }
-                persistStates();
-                render();
-            });
-        });
-
-        // Search Interaction
-        const searchInput = explorer.querySelector('#explorer-search');
-        if (searchInput) {
-            if (wasSearchFocused) {
-                searchInput.focus();
-                searchInput.setSelectionRange(selectionStart, selectionStart);
+                return;
             }
-            // Actually, focusing every render is bad. Let's see.
 
-            searchInput.addEventListener('input', (e) => {
+            const clearBtn = e.target.closest('#search-clear');
+            if (clearBtn) { clearSearch(); return; }
+
+            const prevBtn = e.target.closest('#search-prev');
+            if (prevBtn) { await gotoMatch(currentMatchIndex - 1); return; }
+
+            const nextBtn = e.target.closest('#search-next');
+            if (nextBtn) { await gotoMatch(currentMatchIndex + 1); return; }
+
+            const userToggle = e.target.closest('.user-dbs-toggle');
+            if (userToggle) {
+                e.stopPropagation();
+                const connId = userToggle.dataset.connId;
+                const state = getConnectionState(connectionKeyById.get(connId));
+                state.userDbsExpanded = !state.userDbsExpanded;
+                if (connId === activeConnectionId) userDbsExpanded = state.userDbsExpanded;
+                persistStates();
+                didStateChangeSinceLastTreeRender = true;
+                render();
+                return;
+            }
+
+            const systemToggle = e.target.closest('.system-dbs-toggle');
+            if (systemToggle) {
+                e.stopPropagation();
+                const connId = systemToggle.dataset.connId;
+                const state = getConnectionState(connectionKeyById.get(connId));
+                state.systemDbsExpanded = !state.systemDbsExpanded;
+                if (connId === activeConnectionId) systemDbsExpanded = state.systemDbsExpanded;
+                persistStates();
+                didStateChangeSinceLastTreeRender = true;
+                render();
+                return;
+            }
+        });
+
+        explorer.addEventListener('input', (e) => {
+            if (e.target.id === 'explorer-search') {
                 searchQuery = e.target.value;
                 if (searchInputTimeout) clearTimeout(searchInputTimeout);
-                searchInputTimeout = setTimeout(() => {
-                    performSearch();
-                }, 300);
-            });
+                searchInputTimeout = setTimeout(() => { performSearch(); }, 300);
+            }
+        });
 
-            searchInput.addEventListener('keydown', async (e) => {
+        explorer.addEventListener('keydown', async (e) => {
+            if (e.target.id === 'explorer-search') {
                 if (e.key === 'Enter') {
-                    if (currentMatchIndex !== -1) {
-                        await gotoMatch(currentMatchIndex);
-                        clearSearch();
-                    }
+                    if (currentMatchIndex !== -1) { await gotoMatch(currentMatchIndex); clearSearch(); }
                 } else if (e.key === 'ArrowDown') {
-                    e.preventDefault();
-                    await gotoMatch(currentMatchIndex + 1);
+                    e.preventDefault(); await gotoMatch(currentMatchIndex + 1);
                 } else if (e.key === 'ArrowUp') {
-                    e.preventDefault();
-                    await gotoMatch(currentMatchIndex - 1);
+                    e.preventDefault(); await gotoMatch(currentMatchIndex - 1);
                 } else if (e.key === 'Escape') {
                     clearSearch();
                 }
-            });
-        }
-
-        const btnPrev = explorer.querySelector('#search-prev');
-        if (btnPrev) btnPrev.onclick = async () => { await gotoMatch(currentMatchIndex - 1); };
-
-        const btnNext = explorer.querySelector('#search-next');
-        if (btnNext) btnNext.onclick = async () => { await gotoMatch(currentMatchIndex + 1); };
-
-        const clearSearch = () => {
-            searchQuery = '';
-            searchMatches = [];
-            currentMatchIndex = -1;
-            searchContext = null;
-            render();
-        };
-
-        const btnClear = explorer.querySelector('#search-clear');
-        if (btnClear) btnClear.onclick = clearSearch;
-
-        explorer.querySelectorAll('.search-result-item').forEach(item => {
-            item.addEventListener('click', async (e) => {
-                e.preventDefault();
-                const idx = Number(item.dataset.index);
-                await gotoMatch(idx);
-                clearSearch();
-            });
+            }
         });
+
+        explorer.addEventListener('contextmenu', (e) => {
+            const dbItem = e.target.closest('.db-item');
+            if (dbItem) { e.preventDefault(); e.stopPropagation(); showDatabaseContextMenu(e.clientX, e.clientY, dbItem.dataset.db); return; }
+            const tableItem = e.target.closest('.table-item');
+            if (tableItem) { e.preventDefault(); e.stopPropagation(); showContextMenu(e.clientX, e.clientY, tableItem.dataset.table, tableItem.dataset.db); return; }
+            const viewItem = e.target.closest('.view-item');
+            if (viewItem) {
+                const connNode = viewItem.closest('.connection-node');
+                if (!connNode || connNode.dataset.connId !== activeConnectionId) return; // Only show for active connection
+                e.preventDefault(); e.stopPropagation(); showViewContextMenu(e.clientX, e.clientY, viewItem.dataset.view, viewItem.dataset.db); return;
+            }
+            const connItem = e.target.closest('.conn-item');
+            if (connItem) { e.preventDefault(); showConnectionContextMenu(e.clientX, e.clientY, connItem.dataset.id); return; }
+        });
+    };
+
+    const clearSearch = () => {
+        searchQuery = '';
+        searchMatches = [];
+        currentMatchIndex = -1;
+        searchContext = null;
+        didStateChangeSinceLastTreeRender = true;
+        render();
     };
 
     // --- Search Helper Logic ---
@@ -1260,22 +1188,43 @@ export function ObjectExplorer() {
             }
             if (first.table && !tableDetails[`${first.db}.${first.table}`]) {
                 const cachedCols = DatabaseCache.get(CacheTypes.COLUMNS, `${first.db}.${first.table}`);
-                if (!cachedCols) loadTableDetails(first.db, first.table);
+                if (!cachedCols) loadTableDetails(first.db, first.table, true);
             }
         }
 
         // Expand all parents containing matches so results are visible
+        let expansionChanged = false;
         if (searchContext) {
-            searchContext.databases.forEach(db => expandedDbs.add(db));
+            searchContext.databases.forEach(db => {
+                if (!expandedDbs.has(db)) {
+                    expandedDbs.add(db);
+                    expansionChanged = true;
+                }
+            });
             searchContext.tables.forEach((tables, db) => {
-                expandedDbs.add(db);
-                tables.forEach(t => expandedTables.add(`${db}.${t}`));
+                if (!expandedDbs.has(db)) {
+                    expandedDbs.add(db);
+                    expansionChanged = true;
+                }
+                tables.forEach(t => {
+                    const key = `${db}.${t}`;
+                    if (!expandedTables.has(key)) {
+                        expandedTables.add(key);
+                        expansionChanged = true;
+                    }
+                });
             });
             [searchContext.views, searchContext.triggers, searchContext.procedures, searchContext.functions, searchContext.events].forEach(map => {
-                map.forEach((_, db) => expandedDbs.add(db));
+                map.forEach((_, db) => {
+                    if (!expandedDbs.has(db)) {
+                        expandedDbs.add(db);
+                        expansionChanged = true;
+                    }
+                });
             });
         }
 
+        didStateChangeSinceLastTreeRender = expansionChanged;
         render();
 
         if (searchMatches.length > 0) {
@@ -1317,6 +1266,7 @@ export function ObjectExplorer() {
             render();
         }, 5000); // Highlight for 5 seconds
 
+        didStateChangeSinceLastTreeRender = true;
         render();
 
         // Wait for render to finish and elements to be in DOM
@@ -1363,6 +1313,7 @@ export function ObjectExplorer() {
             localStorage.setItem('activeConnection', JSON.stringify(connConfig));
             localStorage.setItem('activeDbType', connConfig.dbType || 'mysql');
             activeConnectionId = id;
+            didStateChangeSinceLastTreeRender = true;
             activeStateKey = nextStateKey;
             activeDbType = connConfig.dbType || 'mysql';
             DatabaseCache.setConnectionId(activeConnectionId);
@@ -2109,10 +2060,15 @@ export function ObjectExplorer() {
         }
         const cacheKey = dbName;
         const cached = DatabaseCache.get(CacheTypes.SCHEMAS, cacheKey);
-        if (cached && !isBackground) {
+
+        // If we have cached data, populate it immediately
+        if (cached) {
             dbObjects[dbName] = cached;
-            render();
-            return;
+            if (!isBackground) {
+                didStateChangeSinceLastTreeRender = true;
+                render();
+                return;
+            }
         }
 
         try {
@@ -2121,11 +2077,15 @@ export function ObjectExplorer() {
             DatabaseCache.set(CacheTypes.SCHEMAS, cacheKey, results, 24 * 60 * 60 * 1000);
 
             if (!isBackground) {
+                didStateChangeSinceLastTreeRender = true;
                 render();
-            } else {
-                if (expandedDbs.has(dbName)) render();
+            } else if (expandedDbs.has(dbName)) {
+                // Background load finished and it's visible in tree
+                didStateChangeSinceLastTreeRender = true;
+                render();
             }
-        } catch (error) {
+        }
+        catch (error) {
             console.error(`Failed to load objects for ${dbName}:`, error);
             if (!isBackground) {
                 dbObjects[dbName] = { tables: [], views: [], triggers: [], procedures: [], functions: [], events: [] };
@@ -2149,11 +2109,13 @@ export function ObjectExplorer() {
         await Promise.all([...dbPromises, ...tablePromises]);
     };
 
-    const loadTableDetails = async (dbName, tableName) => {
+    const loadTableDetails = async (dbName, tableName, isBackground = false) => {
         const key = `${dbName}.${tableName}`;
 
-        cancelPreload = true;
-        await ensureActiveBackend();
+        if (!isBackground) {
+            cancelPreload = true;
+            await ensureActiveBackend();
+        }
 
         // Prevent duplicate fetches
         if (loadingTables.has(key)) return;
@@ -2166,7 +2128,11 @@ export function ObjectExplorer() {
 
         if (cachedCols && cachedIdx && cachedFks) {
             tableDetails[key] = { columns: cachedCols, indexes: cachedIdx, fks: cachedFks, constraints: [] };
-            render();
+            if (!isBackground) {
+                didStateChangeSinceLastTreeRender = true;
+                render();
+            }
+            loadingTables.delete(key);
             return;
         }
 
@@ -2185,11 +2151,14 @@ export function ObjectExplorer() {
             DatabaseCache.set(CacheTypes.INDEXES, key, indexes);
             DatabaseCache.set(CacheTypes.FOREIGN_KEYS, key, fks);
 
-            render();
+            if (!isBackground || expandedTables.has(key)) {
+                didStateChangeSinceLastTreeRender = true;
+                render();
+            }
         } catch (error) {
             console.error(`Failed to load details for ${key}:`, error);
             tableDetails[key] = { columns: [], indexes: [], fks: [], constraints: [] };
-            render();
+            if (!isBackground) render();
         } finally {
             loadingTables.delete(key);
         }
@@ -2221,6 +2190,7 @@ export function ObjectExplorer() {
         window.removeEventListener('tactilesql:connection-changed', onConnectionChanged);
     };
 
+    setupListeners();
     render();
     loadConnections(); // Initialize by loading connections
 
