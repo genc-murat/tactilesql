@@ -28,6 +28,18 @@
     background-color: rgba(255, 255, 255, 0.15);
 }
 
+.graph-edge-filter-btn:hover {
+    filter: brightness(1.05);
+}
+
+.graph-edge-filter-btn[data-active="false"] {
+    opacity: 0.55;
+}
+
+.graph-edge-filter-group {
+    user-select: none;
+}
+
 .graph-minimap-canvas {
     width: 220px;
     height: 140px;

@@ -47,16 +47,54 @@ export function GraphViewer(graphData, theme, qualityMap) {
     const BLAST_DISTANCE_CUTOFF = isDenseGraph ? 5 : 7;
     const BLAST_SEVERITY_HIGH = 78;
     const BLAST_SEVERITY_MEDIUM = 52;
+    const EDGE_FILTERS = [
+        { key: 'ForeignKey', label: 'FK' },
+        { key: 'Select', label: 'Select' },
+        { key: 'Insert', label: 'Insert' },
+        { key: 'Update', label: 'Update' },
+        { key: 'Delete', label: 'Delete' }
+    ];
+    const FILTERABLE_EDGE_TYPES = new Set(EDGE_FILTERS.map(item => item.key));
+    const activeEdgeTypeSet = new Set(EDGE_FILTERS.map(item => item.key));
+    const edgeFilterButtons = new Map();
+    let edgeFilterMeta = null;
+    let edgeFilterAllBtn = null;
+
+    const normalizeEdgeType = (edgeType) => {
+        const raw = String(edgeType || '').trim();
+        if (!raw) return 'Unknown';
+
+        const lowered = raw.toLowerCase();
+        if (lowered === 'foreignkey' || lowered === 'foreign_key') return 'ForeignKey';
+        if (lowered === 'select') return 'Select';
+        if (lowered === 'insert') return 'Insert';
+        if (lowered === 'update') return 'Update';
+        if (lowered === 'delete') return 'Delete';
+        if (lowered === 'call') return 'Call';
+        if (lowered === 'unknown') return 'Unknown';
+        return raw;
+    };
 
     const elements = [];
     const nodeCatalog = new Map();
     const outgoingIndex = new Map();
     const incomingIndex = new Map();
+    const outgoingTypedIndex = new Map();
+    const incomingTypedIndex = new Map();
 
     const ensureNeighborSet = (indexMap, key) => {
         let bucket = indexMap.get(key);
         if (!bucket) {
             bucket = new Set();
+            indexMap.set(key, bucket);
+        }
+        return bucket;
+    };
+
+    const ensureTypedBucket = (indexMap, key) => {
+        let bucket = indexMap.get(key);
+        if (!bucket) {
+            bucket = [];
             indexMap.set(key, bucket);
         }
         return bucket;
@@ -92,22 +130,27 @@ export function GraphViewer(graphData, theme, qualityMap) {
             });
             ensureNeighborSet(outgoingIndex, node.id);
             ensureNeighborSet(incomingIndex, node.id);
+            ensureTypedBucket(outgoingTypedIndex, node.id);
+            ensureTypedBucket(incomingTypedIndex, node.id);
         });
     }
 
     if (graphData.edges) {
         graphData.edges.forEach((edge, idx) => {
+            const edgeType = normalizeEdgeType(edge.edge_type);
             elements.push({
                 data: {
                     id: `e${idx}`,
                     source: edge.source,
                     target: edge.target,
-                    type: edge.edge_type
+                    type: edgeType
                 }
             });
 
             ensureNeighborSet(outgoingIndex, edge.source).add(edge.target);
             ensureNeighborSet(incomingIndex, edge.target).add(edge.source);
+            ensureTypedBucket(outgoingTypedIndex, edge.source).push({ nodeId: edge.target, type: edgeType });
+            ensureTypedBucket(incomingTypedIndex, edge.target).push({ nodeId: edge.source, type: edgeType });
         });
     }
 
@@ -122,7 +165,7 @@ export function GraphViewer(graphData, theme, qualityMap) {
     container.appendChild(loadingOverlay);
 
     const controls = document.createElement('div');
-    controls.className = 'absolute top-3 right-3 z-30 flex items-center gap-2 rounded-xl border px-2 py-2 shadow-lg backdrop-blur-md';
+    controls.className = 'absolute top-3 right-3 z-30 flex flex-col items-end gap-2 rounded-xl border px-2 py-2 shadow-lg backdrop-blur-md';
     controls.style.background = colors.panelBg;
     controls.style.borderColor = colors.panelBorder;
     controls.style.color = colors.panelText;
@@ -166,7 +209,55 @@ export function GraphViewer(graphData, theme, qualityMap) {
     densityBadge.textContent = denseGraphLabel;
 
     statusGroup.append(zoomIndicator, graphMeta, densityBadge);
-    controls.append(actionGroup, statusGroup);
+    const topRow = document.createElement('div');
+    topRow.className = 'flex items-center gap-2';
+    topRow.append(actionGroup, statusGroup);
+
+    const edgeFilterRow = document.createElement('div');
+    edgeFilterRow.className = 'graph-edge-filter-group flex items-center justify-end flex-wrap gap-1.5 max-w-[420px]';
+
+    const edgeFilterLabel = document.createElement('span');
+    edgeFilterLabel.className = 'text-[10px] font-bold uppercase tracking-wider opacity-70';
+    edgeFilterLabel.textContent = 'Edges';
+
+    edgeFilterMeta = document.createElement('span');
+    edgeFilterMeta.className = 'text-[10px] uppercase tracking-wider opacity-55';
+
+    edgeFilterAllBtn = document.createElement('button');
+    edgeFilterAllBtn.type = 'button';
+    edgeFilterAllBtn.className = 'graph-edge-filter-btn px-2 py-1 rounded-md border text-[10px] font-bold uppercase tracking-wide transition-colors';
+    edgeFilterAllBtn.textContent = 'All';
+    edgeFilterAllBtn.title = 'Enable all filterable edge types';
+    edgeFilterAllBtn.addEventListener('click', () => {
+        activeEdgeTypeSet.clear();
+        EDGE_FILTERS.forEach(item => activeEdgeTypeSet.add(item.key));
+        refreshEdgeFilterButtons();
+        applyEdgeTypeFilters();
+    });
+
+    edgeFilterRow.append(edgeFilterLabel, edgeFilterMeta, edgeFilterAllBtn);
+
+    EDGE_FILTERS.forEach(item => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'graph-edge-filter-btn px-2 py-1 rounded-md border text-[10px] font-bold uppercase tracking-wide transition-colors';
+        button.dataset.edgeType = item.key;
+        button.textContent = item.label;
+        button.addEventListener('click', () => {
+            if (activeEdgeTypeSet.has(item.key)) {
+                activeEdgeTypeSet.delete(item.key);
+            } else {
+                activeEdgeTypeSet.add(item.key);
+            }
+            refreshEdgeFilterButtons();
+            applyEdgeTypeFilters();
+        });
+        edgeFilterButtons.set(item.key, button);
+        edgeFilterRow.appendChild(button);
+    });
+
+    controls.append(topRow, edgeFilterRow);
+    refreshEdgeFilterButtons();
     container.appendChild(controls);
 
     const miniMap = document.createElement('div');
@@ -251,6 +342,90 @@ export function GraphViewer(graphData, theme, qualityMap) {
         }
     };
 
+    const isEdgeTypeEnabled = (edgeType) => {
+        const normalizedType = normalizeEdgeType(edgeType);
+        if (!FILTERABLE_EDGE_TYPES.has(normalizedType)) return true;
+        return activeEdgeTypeSet.has(normalizedType);
+    };
+
+    function refreshEdgeFilterButtons() {
+        const total = EDGE_FILTERS.length;
+        const active = activeEdgeTypeSet.size;
+        const allActive = active === total;
+        const activeBg = isLight ? '#ffffff' : 'rgba(255,255,255,0.10)';
+        const inactiveBg = isLight ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.03)';
+        const activeBorder = isLight ? '#9ca3af' : 'rgba(255,255,255,0.25)';
+        const inactiveBorder = isLight ? '#d1d5db' : 'rgba(255,255,255,0.12)';
+
+        if (edgeFilterMeta) {
+            edgeFilterMeta.textContent = `${active}/${total}`;
+            edgeFilterMeta.title = `${active} of ${total} edge type filters enabled`;
+        }
+
+        if (edgeFilterAllBtn) {
+            edgeFilterAllBtn.dataset.active = allActive ? 'true' : 'false';
+            edgeFilterAllBtn.style.background = allActive ? activeBg : inactiveBg;
+            edgeFilterAllBtn.style.borderColor = allActive ? activeBorder : inactiveBorder;
+            edgeFilterAllBtn.style.color = colors.panelText;
+        }
+
+        EDGE_FILTERS.forEach(item => {
+            const button = edgeFilterButtons.get(item.key);
+            if (!button) return;
+            const enabled = activeEdgeTypeSet.has(item.key);
+            button.dataset.active = enabled ? 'true' : 'false';
+            button.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+            button.title = `${enabled ? 'Hide' : 'Show'} ${item.key} edges`;
+            button.style.background = enabled ? activeBg : inactiveBg;
+            button.style.borderColor = enabled ? activeBorder : inactiveBorder;
+            button.style.color = colors.panelText;
+        });
+    }
+
+    function applyEdgeTypeFilters(options = {}) {
+        const { silent = false } = options;
+        if (!cy) return;
+
+        const connectedVisibleNodes = new Set();
+
+        cy.batch(() => {
+            cy.edges().forEach(edge => {
+                const edgeType = normalizeEdgeType(edge.data('type'));
+                if (isEdgeTypeEnabled(edgeType)) {
+                    edge.removeClass('edge-filter-hidden');
+                } else {
+                    edge.addClass('edge-filter-hidden');
+                }
+            });
+
+            cy.edges().forEach(edge => {
+                if (edge.hasClass('edge-filter-hidden')) return;
+                connectedVisibleNodes.add(edge.data('source'));
+                connectedVisibleNodes.add(edge.data('target'));
+            });
+
+            cy.nodes().forEach(node => {
+                const hasConnections = node.connectedEdges().length > 0;
+                if (hasConnections && !connectedVisibleNodes.has(node.id())) {
+                    node.addClass('node-filter-hidden');
+                } else {
+                    node.removeClass('node-filter-hidden');
+                }
+            });
+        });
+
+        buildSearchIndex();
+        clearSelection(silent);
+        scheduleMiniMapDraw();
+
+        emitMetric('edge_type_filter', {
+            activeEdgeTypes: Array.from(activeEdgeTypeSet),
+            activeEdgeTypeCount: activeEdgeTypeSet.size,
+            hiddenEdgeCount: cy.edges('.edge-filter-hidden').size(),
+            hiddenNodeCount: cy.nodes('.node-filter-hidden').size()
+        });
+    }
+
     const collectLineageNodes = (collection, limit = null) => {
         const total = collection.size();
         const cap = Number.isFinite(limit) ? Math.max(0, Math.min(limit, total)) : total;
@@ -307,10 +482,12 @@ export function GraphViewer(graphData, theme, qualityMap) {
 
         for (let cursor = 0; cursor < queue.length; cursor += 1) {
             const current = queue[cursor];
-            const nextNodes = outgoingIndex.get(current.id);
-            if (!nextNodes || nextNodes.size === 0) continue;
+            const nextNodes = outgoingTypedIndex.get(current.id);
+            if (!nextNodes || nextNodes.length === 0) continue;
 
-            for (const nextId of nextNodes) {
+            for (const link of nextNodes) {
+                if (!isEdgeTypeEnabled(link.type)) continue;
+                const nextId = link.nodeId;
                 if (visited.has(nextId)) continue;
                 const distance = current.distance + 1;
                 if (distance > BLAST_DISTANCE_CUTOFF) continue;
@@ -321,8 +498,12 @@ export function GraphViewer(graphData, theme, qualityMap) {
                 const meta = nodeCatalog.get(nextId);
                 if (!meta) continue;
 
-                const downstreamFanout = outgoingIndex.get(nextId)?.size || 0;
-                const dependencyDegree = incomingIndex.get(nextId)?.size || 0;
+                const downstreamFanout = (outgoingTypedIndex.get(nextId) || [])
+                    .filter(nextLink => isEdgeTypeEnabled(nextLink.type))
+                    .length;
+                const dependencyDegree = (incomingTypedIndex.get(nextId) || [])
+                    .filter(prevLink => isEdgeTypeEnabled(prevLink.type))
+                    .length;
                 const distanceWeight = Math.max(0, 52 - ((distance - 1) * 11));
                 const fanoutWeight = Math.min(24, downstreamFanout * 4);
                 const dependencyWeight = Math.min(16, dependencyDegree * 2);
@@ -393,6 +574,7 @@ export function GraphViewer(graphData, theme, qualityMap) {
         const matchesArray = [];
         for (let i = 0; i < searchIndex.length; i += 1) {
             const entry = searchIndex[i];
+            if (entry.node.hasClass('node-filter-hidden')) continue;
             if (entry.label.includes(normalized)) {
                 matchesArray.push(entry.node);
             }
@@ -579,10 +761,12 @@ export function GraphViewer(graphData, theme, qualityMap) {
         }
     };
 
-    const clearSelection = () => {
+    const clearSelection = (silent = false) => {
         if (!cy) return;
         cy.elements().removeClass('faded upstream downstream highlighted');
-        container.dispatchEvent(new CustomEvent('selection-cleared'));
+        if (!silent) {
+            container.dispatchEvent(new CustomEvent('selection-cleared'));
+        }
         scheduleMiniMapDraw();
     };
 
@@ -782,6 +966,18 @@ export function GraphViewer(graphData, theme, qualityMap) {
                     }
                 },
                 {
+                    selector: 'edge.edge-filter-hidden',
+                    style: {
+                        display: 'none'
+                    }
+                },
+                {
+                    selector: 'node.node-filter-hidden',
+                    style: {
+                        display: 'none'
+                    }
+                },
+                {
                     selector: '.faded',
                     style: {
                         opacity: 0.1,
@@ -826,6 +1022,7 @@ export function GraphViewer(graphData, theme, qualityMap) {
 
         setNodesLocked(nodesLocked);
         buildSearchIndex();
+        applyEdgeTypeFilters({ silent: true });
 
         cy.on('zoom pan resize', () => {
             updateZoomIndicator();
@@ -835,8 +1032,7 @@ export function GraphViewer(graphData, theme, qualityMap) {
 
         cy.on('position', scheduleMiniMapDraw);
         cy.on('add remove data', () => {
-            buildSearchIndex();
-            scheduleMiniMapDraw();
+            applyEdgeTypeFilters({ silent: true });
         });
 
         layoutTimeoutId = setTimeout(() => {
@@ -881,10 +1077,10 @@ export function GraphViewer(graphData, theme, qualityMap) {
 
             cy.elements().removeClass('faded upstream downstream highlighted');
 
-            const predecessors = node.predecessors();
-            const successors = node.successors();
-            const predecessorNodes = predecessors.nodes();
-            const successorNodes = successors.nodes();
+            const predecessors = node.predecessors().filter(ele => !ele.hasClass('edge-filter-hidden') && !ele.hasClass('node-filter-hidden'));
+            const successors = node.successors().filter(ele => !ele.hasClass('edge-filter-hidden') && !ele.hasClass('node-filter-hidden'));
+            const predecessorNodes = predecessors.nodes().filter(n => !n.hasClass('node-filter-hidden'));
+            const successorNodes = successors.nodes().filter(n => !n.hasClass('node-filter-hidden'));
             const upstreamPreview = collectLineageNodes(predecessorNodes, LINEAGE_PREVIEW_LIMIT);
             const downstreamPreview = collectLineageNodes(successorNodes, LINEAGE_PREVIEW_LIMIT);
             const blastRadius = calculateBlastRadius(node.id(), BLAST_RADIUS_PREVIEW_LIMIT);
@@ -968,8 +1164,18 @@ export function GraphViewer(graphData, theme, qualityMap) {
         const node = cy.getElementById(nodeId);
         if (!node || node.empty()) return null;
 
-        const upstream = collectLineageNodes(node.predecessors().nodes(), limit);
-        const downstream = collectLineageNodes(node.successors().nodes(), limit);
+        const upstreamCollection = node
+            .predecessors()
+            .filter(ele => !ele.hasClass('edge-filter-hidden') && !ele.hasClass('node-filter-hidden'))
+            .nodes()
+            .filter(n => !n.hasClass('node-filter-hidden'));
+        const downstreamCollection = node
+            .successors()
+            .filter(ele => !ele.hasClass('edge-filter-hidden') && !ele.hasClass('node-filter-hidden'))
+            .nodes()
+            .filter(n => !n.hasClass('node-filter-hidden'));
+        const upstream = collectLineageNodes(upstreamCollection, limit);
+        const downstream = collectLineageNodes(downstreamCollection, limit);
 
         return {
             id: node.id(),
@@ -989,6 +1195,7 @@ export function GraphViewer(graphData, theme, qualityMap) {
         cy.resize();
         updateZoomIndicator();
         applyLod();
+        applyEdgeTypeFilters({ silent: true });
         if (pendingSearchTerm) {
             runSearch(pendingSearchTerm);
         }

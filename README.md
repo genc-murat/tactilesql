@@ -32,6 +32,7 @@ TactileSQL is a modern, desktop-first MySQL workbench built with Tauri 2 and van
 - **Dependency Engine**: Visualize lineage between tables, views, and procedures with impact analysis for schema changes.
 - **Density-aware Dependency Graph** with advanced zoom/pan controls, keyboard shortcuts, and a responsive mini-map for navigating large node/edge sets.
 - **Blast Radius Mode**: Score and rank critical downstream objects for a selected node with hop-aware impact severity.
+- **Edge Type Filters**: Toggle dependency links by `ForeignKey`, `Select`, `Insert`, `Update`, and `Delete` to isolate change paths.
 - **Optimized Dependency Graph UX**: Debounced indexed search, preview-first lineage loading, and viewer reuse for smoother large-graph navigation.
 - **Faster Dependency Rebuilds**: Backend graph cache and duplicate-edge deduplication to reduce repeated extraction cost.
 - **Connection Manager** with encrypted credential storage, connection testing, and SSH tunnel configuration.
@@ -197,6 +198,7 @@ npx tauri build
 - **Visual Graph**: Interactive node-link diagram of database dependencies.
 - **Impact Analysis**: Identify downstream objects affected by a proposed change.
 - **Blast Radius Scoring**: Rank impacted downstream nodes by distance, fanout, dependency degree, object type, and quality risk.
+- **Edge Type Filters**: Filter graph links by `ForeignKey`, `Select`, `Insert`, `Update`, and `Delete`; lineage, search, and blast radius stay filter-aware.
 - **Quality Overlay**: Color-coded graph nodes based on data quality scores.
 - **Scalable Interaction**: Debounced indexed search, lazy lineage payloads, and viewer reuse for dense graphs.
 - **Backend Acceleration**: In-memory graph cache and duplicate-edge deduplication for faster rebuilds.
