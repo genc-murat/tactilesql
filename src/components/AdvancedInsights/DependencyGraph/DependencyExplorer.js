@@ -383,6 +383,16 @@ export function DependencyExplorer() {
                 return;
             }
 
+            const blastRadius = data.blastRadius || {
+                totalImpacted: data.downstreamCount || 0,
+                criticalNodes: [],
+                hasMore: false,
+                previewLimit: 0,
+                distanceCutoff: null,
+                topScore: 0
+            };
+            const blastLoadMoreLimit = Math.min(120, Math.max(40, (blastRadius.previewLimit || 0) * 3));
+
             sidebar.classList.remove('translate-x-full');
             sidebar.innerHTML = `
                 <div class="h-full flex flex-col">
@@ -441,11 +451,40 @@ export function DependencyExplorer() {
                     : `<div class="text-xs italic opacity-50 ${classes.text.primary}">No impact</div>`
                 }
                         </div>
+
+                        <!-- Blast Radius -->
+                        <div>
+                             <h3 class="text-xs font-bold uppercase tracking-wider text-orange-400 mb-2 flex items-center gap-2">
+                                <span class="material-symbols-outlined text-sm">crisis_alert</span>
+                                Blast Radius (${blastRadius.totalImpacted})
+                             </h3>
+                             ${blastRadius.distanceCutoff ? `<div class="mb-2 text-[10px] opacity-60 ${classes.text.primary}">Scored within ${blastRadius.distanceCutoff}-hop impact window</div>` : ''}
+                             ${blastRadius.criticalNodes.length > 0
+                    ? `<ul class="text-sm space-y-1 ${classes.text.primary}">
+                                    ${blastRadius.criticalNodes.map(n => `
+                                        <li class="py-1.5 px-2 rounded ${isLight ? 'bg-amber-50 border border-amber-100' : 'bg-amber-500/10 border border-amber-500/20'}">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <span class="truncate">${n.label}</span>
+                                                <span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold ${n.severity === 'high' ? 'bg-red-500/15 text-red-500' : (n.severity === 'medium' ? 'bg-amber-500/15 text-amber-500' : 'bg-emerald-500/15 text-emerald-500')}">${n.criticalityScore}</span>
+                                            </div>
+                                            <div class="mt-1 text-[10px] opacity-70">Distance ${n.distance} | Fanout ${n.downstreamFanout}</div>
+                                        </li>
+                                    `).join('')}
+                                   </ul>`
+                    : `<div class="text-xs italic opacity-50 ${classes.text.primary}">No downstream blast radius</div>`
+                }
+                        </div>
                     </div>
 
                     ${data.lineageTruncated ? `
                         <button id="load-full-lineage" class="mx-4 mt-4 py-2 border rounded-lg text-xs font-bold uppercase tracking-wider transition-colors ${isLight ? 'bg-amber-50 border-amber-100 text-amber-700 hover:bg-amber-100' : 'bg-amber-500/10 border-amber-500/20 text-amber-300 hover:bg-amber-500/20'}">
                             Load Full Lineage
+                        </button>
+                    ` : ''}
+
+                    ${blastRadius.hasMore ? `
+                        <button id="load-more-blast" class="mx-4 mt-3 py-2 border rounded-lg text-xs font-bold uppercase tracking-wider transition-colors ${isLight ? 'bg-orange-50 border-orange-100 text-orange-700 hover:bg-orange-100' : 'bg-orange-500/10 border-orange-500/20 text-orange-300 hover:bg-orange-500/20'}">
+                            Load More Blast Radius (${blastLoadMoreLimit})
                         </button>
                     ` : ''}
 
@@ -529,6 +568,20 @@ export function DependencyExplorer() {
                         upstreamHasMore: fullLineage.upstreamHasMore,
                         downstreamHasMore: fullLineage.downstreamHasMore,
                         lineageTruncated: fullLineage.upstreamHasMore || fullLineage.downstreamHasMore
+                    });
+                };
+            }
+
+            const loadMoreBlastBtn = sidebar.querySelector('#load-more-blast');
+            if (loadMoreBlastBtn) {
+                loadMoreBlastBtn.onclick = () => {
+                    if (!activeViewer || typeof activeViewer.getBlastRadius !== 'function') return;
+                    const fullBlastRadius = activeViewer.getBlastRadius(data.id, blastLoadMoreLimit);
+                    if (!fullBlastRadius) return;
+
+                    renderSidebar({
+                        ...data,
+                        blastRadius: fullBlastRadius
                     });
                 };
             }

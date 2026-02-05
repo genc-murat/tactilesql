@@ -31,6 +31,9 @@ TactileSQL is a modern, desktop-first MySQL workbench built with Tauri 2 and van
 - **Data Quality Analyzer**: Track data health scores, detect anomalies (NULLs, duplicates), and visualize quality trends.
 - **Dependency Engine**: Visualize lineage between tables, views, and procedures with impact analysis for schema changes.
 - **Density-aware Dependency Graph** with advanced zoom/pan controls, keyboard shortcuts, and a responsive mini-map for navigating large node/edge sets.
+- **Blast Radius Mode**: Score and rank critical downstream objects for a selected node with hop-aware impact severity.
+- **Optimized Dependency Graph UX**: Debounced indexed search, preview-first lineage loading, and viewer reuse for smoother large-graph navigation.
+- **Faster Dependency Rebuilds**: Backend graph cache and duplicate-edge deduplication to reduce repeated extraction cost.
 - **Connection Manager** with encrypted credential storage, connection testing, and SSH tunnel configuration.
 - **Access Control** viewer for MySQL users and privileges.
 - **Themes**: Dark, Light, and Oceanic.
@@ -193,7 +196,11 @@ npx tauri build
 ### Dependency Engine
 - **Visual Graph**: Interactive node-link diagram of database dependencies.
 - **Impact Analysis**: Identify downstream objects affected by a proposed change.
+- **Blast Radius Scoring**: Rank impacted downstream nodes by distance, fanout, dependency degree, object type, and quality risk.
 - **Quality Overlay**: Color-coded graph nodes based on data quality scores.
+- **Scalable Interaction**: Debounced indexed search, lazy lineage payloads, and viewer reuse for dense graphs.
+- **Backend Acceleration**: In-memory graph cache and duplicate-edge deduplication for faster rebuilds.
+- **Telemetry Hooks**: Emits `tactilesql:graph-metric` events (search latency, payload size, viewer reuse) for diagnostics.
 - **Mermaid Export**: Export the dependency graph as a mermaid diagram for external documentation.
 
 ## Backend Commands (Tauri)

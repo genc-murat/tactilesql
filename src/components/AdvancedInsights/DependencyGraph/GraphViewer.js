@@ -42,8 +42,25 @@ export function GraphViewer(graphData, theme, qualityMap) {
     const fitPadding = isDenseGraph ? 100 : 70;
     const wheelSensitivity = isDenseGraph ? 0.08 : 0.14;
     const denseGraphLabel = isDenseGraph ? 'Dense Mode' : 'Standard Mode';
+    const BLAST_RADIUS_PREVIEW_LIMIT = isDenseGraph ? 8 : 12;
+    const BLAST_RADIUS_MAX_LIMIT = 120;
+    const BLAST_DISTANCE_CUTOFF = isDenseGraph ? 5 : 7;
+    const BLAST_SEVERITY_HIGH = 78;
+    const BLAST_SEVERITY_MEDIUM = 52;
 
     const elements = [];
+    const nodeCatalog = new Map();
+    const outgoingIndex = new Map();
+    const incomingIndex = new Map();
+
+    const ensureNeighborSet = (indexMap, key) => {
+        let bucket = indexMap.get(key);
+        if (!bucket) {
+            bucket = new Set();
+            indexMap.set(key, bucket);
+        }
+        return bucket;
+    };
 
     if (graphData.nodes) {
         graphData.nodes.forEach(node => {
@@ -66,6 +83,15 @@ export function GraphViewer(graphData, theme, qualityMap) {
                     qualityScore: score
                 }
             });
+
+            nodeCatalog.set(node.id, {
+                id: node.id,
+                label,
+                type: node.node_type,
+                qualityScore: score
+            });
+            ensureNeighborSet(outgoingIndex, node.id);
+            ensureNeighborSet(incomingIndex, node.id);
         });
     }
 
@@ -79,6 +105,9 @@ export function GraphViewer(graphData, theme, qualityMap) {
                     type: edge.edge_type
                 }
             });
+
+            ensureNeighborSet(outgoingIndex, edge.source).add(edge.target);
+            ensureNeighborSet(incomingIndex, edge.target).add(edge.source);
         });
     }
 
@@ -241,6 +270,97 @@ export function GraphViewer(graphData, theme, qualityMap) {
             total,
             hasMore: cap < total,
             items
+        };
+    };
+
+    const getBlastTypeWeight = (type) => {
+        if (type === 'Table') return 24;
+        if (type === 'View') return 14;
+        if (type === 'Procedure' || type === 'Function') return 10;
+        return 8;
+    };
+
+    const getBlastQualityRiskWeight = (score) => {
+        if (score === undefined || score === null || Number.isNaN(Number(score))) return 8;
+        return Math.min(24, Math.max(0, Math.round((100 - Number(score)) * 0.2)));
+    };
+
+    const calculateBlastRadius = (sourceId, limit = BLAST_RADIUS_PREVIEW_LIMIT) => {
+        if (!sourceId || !nodeCatalog.has(sourceId)) {
+            return {
+                sourceId,
+                totalImpacted: 0,
+                criticalNodes: [],
+                hasMore: false,
+                previewLimit: 0,
+                distanceCutoff: BLAST_DISTANCE_CUTOFF,
+                topScore: 0
+            };
+        }
+
+        const boundedLimit = Number.isFinite(limit)
+            ? Math.max(0, Math.min(Math.floor(limit), BLAST_RADIUS_MAX_LIMIT))
+            : BLAST_RADIUS_PREVIEW_LIMIT;
+        const visited = new Set([sourceId]);
+        const queue = [{ id: sourceId, distance: 0 }];
+        const impactedNodes = [];
+
+        for (let cursor = 0; cursor < queue.length; cursor += 1) {
+            const current = queue[cursor];
+            const nextNodes = outgoingIndex.get(current.id);
+            if (!nextNodes || nextNodes.size === 0) continue;
+
+            for (const nextId of nextNodes) {
+                if (visited.has(nextId)) continue;
+                const distance = current.distance + 1;
+                if (distance > BLAST_DISTANCE_CUTOFF) continue;
+
+                visited.add(nextId);
+                queue.push({ id: nextId, distance });
+
+                const meta = nodeCatalog.get(nextId);
+                if (!meta) continue;
+
+                const downstreamFanout = outgoingIndex.get(nextId)?.size || 0;
+                const dependencyDegree = incomingIndex.get(nextId)?.size || 0;
+                const distanceWeight = Math.max(0, 52 - ((distance - 1) * 11));
+                const fanoutWeight = Math.min(24, downstreamFanout * 4);
+                const dependencyWeight = Math.min(16, dependencyDegree * 2);
+                const typeWeight = getBlastTypeWeight(meta.type);
+                const qualityRiskWeight = getBlastQualityRiskWeight(meta.qualityScore);
+                const criticalityScore = Math.round(
+                    distanceWeight + fanoutWeight + dependencyWeight + typeWeight + qualityRiskWeight
+                );
+                const severity = criticalityScore >= BLAST_SEVERITY_HIGH ? 'high' : (criticalityScore >= BLAST_SEVERITY_MEDIUM ? 'medium' : 'low');
+
+                impactedNodes.push({
+                    id: meta.id,
+                    label: meta.label,
+                    type: meta.type,
+                    distance,
+                    criticalityScore,
+                    severity,
+                    downstreamFanout,
+                    dependencyDegree,
+                    qualityScore: meta.qualityScore
+                });
+            }
+        }
+
+        impactedNodes.sort((a, b) => {
+            if (b.criticalityScore !== a.criticalityScore) return b.criticalityScore - a.criticalityScore;
+            if (a.distance !== b.distance) return a.distance - b.distance;
+            return a.label.localeCompare(b.label);
+        });
+
+        return {
+            sourceId,
+            totalImpacted: impactedNodes.length,
+            criticalNodes: impactedNodes.slice(0, boundedLimit),
+            hasMore: impactedNodes.length > boundedLimit,
+            previewLimit: boundedLimit,
+            distanceCutoff: BLAST_DISTANCE_CUTOFF,
+            topScore: impactedNodes[0]?.criticalityScore || 0
         };
     };
 
@@ -767,6 +887,7 @@ export function GraphViewer(graphData, theme, qualityMap) {
             const successorNodes = successors.nodes();
             const upstreamPreview = collectLineageNodes(predecessorNodes, LINEAGE_PREVIEW_LIMIT);
             const downstreamPreview = collectLineageNodes(successorNodes, LINEAGE_PREVIEW_LIMIT);
+            const blastRadius = calculateBlastRadius(node.id(), BLAST_RADIUS_PREVIEW_LIMIT);
 
             predecessors.addClass('upstream');
             successors.addClass('downstream');
@@ -787,6 +908,7 @@ export function GraphViewer(graphData, theme, qualityMap) {
                 downstreamHasMore: downstreamPreview.hasMore,
                 previewLimit: LINEAGE_PREVIEW_LIMIT,
                 lineageTruncated: upstreamPreview.hasMore || downstreamPreview.hasMore,
+                blastRadius,
                 qualityScore: node.data('qualityScore')
             };
 
@@ -803,7 +925,11 @@ export function GraphViewer(graphData, theme, qualityMap) {
                 downstreamCount: downstreamPreview.total,
                 upstreamPreviewCount: upstreamPreview.items.length,
                 downstreamPreviewCount: downstreamPreview.items.length,
-                truncated: selectionDetail.lineageTruncated
+                truncated: selectionDetail.lineageTruncated,
+                blastRadiusImpacted: blastRadius.totalImpacted,
+                blastRadiusPreviewCount: blastRadius.criticalNodes.length,
+                blastRadiusTopScore: blastRadius.topScore,
+                blastDistanceCutoff: blastRadius.distanceCutoff
             });
 
             container.dispatchEvent(new CustomEvent('node-selected', {
@@ -855,6 +981,8 @@ export function GraphViewer(graphData, theme, qualityMap) {
             downstreamHasMore: downstream.hasMore
         };
     };
+
+    container.getBlastRadius = (nodeId, limit = 30) => calculateBlastRadius(nodeId, limit);
 
     container.onAttach = () => {
         if (!cy) return;
