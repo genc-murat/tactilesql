@@ -45,6 +45,8 @@ export function ObjectExplorer() {
     let loadingTables = new Set(); // track in-flight table detail fetches
     let userDbsExpanded = true; // State for user databases fold
     let systemDbsExpanded = true; // State for system databases fold
+    let userDbsLimit = 150; // Initial limit for user databases
+    let objectsLimit = 100; // Initial limit for tables/views per database
 
     // Per-connection UI/cache state
     const connectionStates = new Map();
@@ -115,6 +117,8 @@ export function ObjectExplorer() {
         userDbsExpanded = state.userDbsExpanded;
         systemDbsExpanded = state.systemDbsExpanded;
         connectionExpanded = state.connectionExpanded;
+        userDbsLimit = 150;
+        objectsLimit = 100;
     };
 
     // --- Search State ---
@@ -288,7 +292,13 @@ export function ObjectExplorer() {
                     <span class="${isLight ? 'text-gray-300' : (isDawn ? 'text-[#ea9d34]' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-700'))}">(${items.length})</span>
                 </div>
                 <div class="pl-5 space-y-0.5 mt-0.5">
-                    ${items.map(item => renderItem(db, item)).join('')}
+                    ${items.slice(0, objectsLimit).map(item => renderItem(db, item)).join('')}
+                    ${items.length > objectsLimit ? `
+                        <button class="show-more-objects w-full text-left px-5 py-1 text-[9px] font-bold ${isDawn ? 'text-[#ea9d34] hover:text-[#c48c2b]' : 'text-mysql-teal hover:text-mysql-teal-light'} opacity-80 hover:opacity-100 transition-all flex items-center gap-1" data-db="${db}" data-type="${type}">
+                            <span class="material-symbols-outlined text-[12px]">add_circle</span>
+                            Show ${items.length - objectsLimit} more...
+                        </button>
+                    ` : ''}
                 </div>
             </div>
         `;
@@ -410,10 +420,13 @@ export function ObjectExplorer() {
 
         const currentConnId = renderingConnectionId || activeConnectionId;
         // Labels based on database type (fallback to active db type)
-        const isPgConn = activeDbType === 'postgresql'; // approximation for inactive; acceptable for UI labels
+        const isPgConn = activeDbType === 'postgresql';
         const userLabel = isPgConn ? 'User Schemas' : 'User Databases';
         const systemLabel = isPgConn ? 'System Schemas' : 'System Databases';
         const schemaIcon = isPgConn ? 'schema' : 'database';
+
+        const truncatedUserDbs = userDbs.slice(0, userDbsLimit);
+        const hasMoreUserDbs = userDbs.length > userDbsLimit;
 
         return `
             <div class="pl-3 border-l ${borderClass} ml-3 space-y-1 mt-1">
@@ -425,7 +438,17 @@ export function ObjectExplorer() {
                             ${userLabel}
                             <span class="${countText}"> (${userDbs.length})</span>
                         </div>
-                        ${userDbsExpanded ? `<div class="space-y-0.5 pl-1">${userDbs.map(db => renderDatabase(db)).join('')}</div>` : ''}
+                        ${userDbsExpanded ? `
+                            <div class="space-y-0.5 pl-1">
+                                ${truncatedUserDbs.map(db => renderDatabase(db)).join('')}
+                                ${hasMoreUserDbs ? `
+                                    <button class="show-more-dbs w-full text-left px-7 py-1.5 text-[9px] font-bold ${isDawn ? 'text-[#ea9d34] hover:text-[#c48c2b]' : 'text-mysql-teal hover:text-mysql-teal-light'} opacity-80 hover:opacity-100 transition-all flex items-center gap-1" data-conn-id="${currentConnId || ''}">
+                                        <span class="material-symbols-outlined text-[12px]">add_circle</span>
+                                        Show ${userDbs.length - userDbsLimit} more...
+                                    </button>
+                                ` : ''}
+                            </div>
+                        ` : ''}
                     </div>
                 ` : ''}
                 ${systemDbs.length > 0 ? `
@@ -476,9 +499,10 @@ export function ObjectExplorer() {
             dbObjects,
             tableDetails,
             loadingTables,
-            userDbsExpanded,
             systemDbsExpanded,
-            connectionExpanded
+            connectionExpanded,
+            userDbsLimit,
+            objectsLimit
         };
         // Swap in state
         databases = state.databases;
@@ -490,6 +514,8 @@ export function ObjectExplorer() {
         userDbsExpanded = state.userDbsExpanded;
         systemDbsExpanded = state.systemDbsExpanded;
         connectionExpanded = state.connectionExpanded;
+        userDbsLimit = state.userDbsLimit || 150;
+        objectsLimit = state.objectsLimit || 100;
         const prevRendering = renderingConnectionId;
         const prevCacheConn = activeConnectionId;
         if (connId) DatabaseCache.setConnectionId(connId);
@@ -507,6 +533,8 @@ export function ObjectExplorer() {
         userDbsExpanded = prev.userDbsExpanded;
         systemDbsExpanded = prev.systemDbsExpanded;
         connectionExpanded = prev.connectionExpanded;
+        userDbsLimit = prev.userDbsLimit;
+        objectsLimit = prev.objectsLimit;
         renderingConnectionId = prevRendering;
         if (prevCacheConn) DatabaseCache.setConnectionId(prevCacheConn);
         return result;
@@ -851,6 +879,24 @@ export function ObjectExplorer() {
                 const idx = Number(searchItem.dataset.index);
                 await gotoMatch(idx);
                 clearSearch();
+                return;
+            }
+
+            const showMoreDbs = e.target.closest('.show-more-dbs');
+            if (showMoreDbs) {
+                e.stopPropagation();
+                userDbsLimit += 200;
+                didStateChangeSinceLastTreeRender = true;
+                render();
+                return;
+            }
+
+            const showMoreObjs = e.target.closest('.show-more-objects');
+            if (showMoreObjs) {
+                e.stopPropagation();
+                objectsLimit += 200;
+                didStateChangeSinceLastTreeRender = true;
+                render();
                 return;
             }
 
@@ -1906,9 +1952,14 @@ export function ObjectExplorer() {
 
                 // Fetch user databases sequentially in background to avoid overwhelming the connection
                 (async () => {
-                    for (const db of userDbs) {
+                    const prefetchLimit = 50;
+                    const toPrefetch = userDbs.slice(0, prefetchLimit);
+                    for (const db of toPrefetch) {
                         try {
+                            if (cancelPreload) break;
                             await loadDatabaseObjects(db, true);
+                            // Add a small delay between fetches to keep UI responsive
+                            await new Promise(r => setTimeout(r, 50));
                         } catch (err) {
                             console.warn(`Background fetch failed for ${db}:`, err);
                         }
