@@ -17,7 +17,7 @@ export function ObjectExplorer() {
         const isL = t === 'light';
         const isD = t === 'dawn';
         const isO = t === 'oceanic' || t === 'ember' || t === 'aurora';
-        return `h-full border-r ${isL ? 'bg-white border-gray-200' : (isD ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isO ? 'bg-ocean-panel border-ocean-border' : 'bg-[#0f1115] border-white/5'))} flex flex-col p-3 gap-4 overflow-hidden`;
+        return `h-full border-r ${isL ? 'bg-white border-gray-200' : (isD ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isO ? 'bg-ocean-panel border-ocean-border' : 'bg-[#0f1115] border-white/5'))} flex flex-col p-3 gap-4 overflow-hidden relative`;
     };
     explorer.className = getExplorerClass(theme);
 
@@ -113,6 +113,8 @@ export function ObjectExplorer() {
     let currentMatchIndex = -1;
     let searchInputTimeout = null;
     let searchContext = null; // normalized lookup maps for filtering & auto-expand
+    let highlightedId = null; // persistent highlight after search clear
+    let highlightTimeout = null;
 
     // Drag and Drop state (persisted outside render)
     let draggedConnId = null;
@@ -566,6 +568,7 @@ export function ObjectExplorer() {
     // --- Render ---
     const render = () => {
         const headerText = isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'));
+        const subText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-700'));
         const iconColor = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-600'));
         const hoverIcon = isDawn ? 'hover:text-[#ea9d34]' : 'hover:text-mysql-teal';
 
@@ -589,28 +592,92 @@ export function ObjectExplorer() {
 
         const searchSummary = (() => {
             if (!searchQuery.trim()) return '';
-            const summaryText = searchMatches.length > 0
-                ? `${searchMatches.length} result${searchMatches.length > 1 ? 's' : ''}`
-                : 'No matches';
 
-            const items = searchMatches.slice(0, 10).map((m, idx) => {
-                const path = [m.db, m.table, m.column].filter(Boolean).join(' • ');
+            // Group matches by type
+            const groups = {
+                database: [],
+                table: [],
+                view: [],
+                column: [],
+                procedure: [],
+                function: [],
+                trigger: [],
+                event: []
+            };
+
+            searchMatches.forEach(m => {
+                if (groups[m.type]) groups[m.type].push(m);
+            });
+
+            const hasMatches = searchMatches.length > 0;
+
+            const renderGroup = (type, label, icon, color) => {
+                const items = groups[type];
+                if (!items || items.length === 0) return '';
+
                 return `
-                    <button class="search-result-item w-full text-left px-2 py-1 rounded ${isLight ? 'hover:bg-gray-100' : (isDawn ? 'hover:bg-[#f2e9e1]' : 'hover:bg-white/5')} flex items-center gap-2" data-index="${idx}">
-                        ${renderTypeBadge(m.type)}
-                        <span class="text-[10px] ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-gray-300')} truncate">${escapeHtml(path || m.id)}</span>
-                    </button>
+                    <div class="mb-3">
+                        <div class="flex items-center gap-1.5 px-3 py-1 text-[9px] font-bold tracking-widest ${headerText} opacity-50">
+                            <span class="material-symbols-outlined text-[14px] ${color}">${icon}</span>
+                            ${label.toUpperCase()}
+                        </div>
+                        <div class="space-y-0.5 px-1">
+                            ${items.map(m => {
+                    const idx = searchMatches.indexOf(m);
+                    const isCurrent = idx === currentMatchIndex;
+                    const path = [m.db, m.table, m.column].filter(Boolean).join(' • ');
+                    const activeItemBg = isCurrent
+                        ? (isDawn ? 'bg-[#ea9d34]/20 ring-1 ring-[#ea9d34]/30' : 'bg-mysql-teal/20 ring-1 ring-mysql-teal/30')
+                        : (isLight ? 'hover:bg-gray-100' : (isDawn ? 'hover:bg-[#f2e9e1]' : 'hover:bg-white/5'));
+
+                    return `
+                                    <button class="search-result-item w-full text-left px-3 py-2 rounded-lg transition-all flex items-center justify-between group ${activeItemBg}" data-index="${idx}">
+                                        <div class="flex flex-col min-w-0 pr-4">
+                                            <span class="text-[11px] ${isCurrent ? (isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal font-bold') : (isLight ? 'text-gray-700' : 'text-gray-200')} truncate font-mono">${escapeHtml(m.column || m.table || m.view || m.procedure || m.function || m.trigger || m.event || m.db)}</span>
+                                            ${path && (m.column || m.table) ? `<span class="text-[9px] ${subText} opacity-50 truncate">${escapeHtml(path)}</span>` : ''}
+                                        </div>
+                                        ${isCurrent ? `<span class="material-symbols-outlined text-[14px] ${isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal'} animate-bounce-x">keyboard_return</span>` : ''}
+                                    </button>
+                                `;
+                }).join('')}
+                        </div>
+                    </div>
                 `;
-            }).join('');
+            };
+
+            const glassBg = isLight ? 'bg-white/95' : (isDawn ? 'bg-[#fffaf3]/95' : 'bg-[#1a1d23]/95');
+            const glassBorder = isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/10');
 
             return `
-                <div class="px-2 mt-2">
-                    <div class="flex items-center justify-between text-[9px] ${headerText} mb-1">
-                        <span>${summaryText}</span>
-                        <span class="${headerText}">Enter / ↑↓ to jump</span>
-                    </div>
-                    <div class="flex flex-col gap-1" id="search-results">
-                        ${items || `<div class="text-[10px] ${headerText} italic px-1 py-1">No matching objects</div>`}
+                <div id="floating-search-results" class="absolute left-2 right-2 top-24 bottom-4 z-[100] flex flex-col pointer-events-none group/floating">
+                    <div class="flex-1 overflow-y-auto custom-scrollbar rounded-2xl border ${glassBorder} ${glassBg} backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.3)] p-2 pointer-events-auto animate-search-in">
+                        <div class="flex items-center justify-between px-3 mb-3 sticky top-0 ${glassBg} py-2 border-b ${glassBorder} z-10 rounded-t-xl">
+                            <div class="flex items-center gap-2">
+                                <span class="text-[10px] font-bold ${isLight ? 'text-gray-800' : 'text-white'} tracking-tight">${searchMatches.length} matching objects</span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span class="text-[9px] ${headerText} opacity-60">↑↓ to navigate</span>
+                                <span class="text-[9px] ${headerText} opacity-60 bg-white/5 px-1.5 py-0.5 rounded border border-white/10">ESC</span>
+                            </div>
+                        </div>
+                        
+                        ${hasMatches ? `
+                            <div class="pb-2">
+                                ${renderGroup('database', 'Databases', 'database', isDawn ? 'text-[#f6c177]' : 'text-amber-500')}
+                                ${renderGroup('table', 'Tables', 'table_rows', isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal')}
+                                ${renderGroup('view', 'Views', 'visibility', isDawn ? 'text-[#3e8fb0]' : 'text-blue-400')}
+                                ${renderGroup('column', 'Columns', 'view_column', isDawn ? 'text-[#c6a0f6]' : 'text-purple-400')}
+                                ${renderGroup('procedure', 'Procedures', 'code_blocks', isDawn ? 'text-[#9ccfd8]' : 'text-green-400')}
+                                ${renderGroup('function', 'Functions', 'function', isDawn ? 'text-[#eb6f92]' : 'text-pink-400')}
+                                ${renderGroup('trigger', 'Triggers', 'bolt', isDawn ? 'text-[#f6c177]' : 'text-yellow-400')}
+                                ${renderGroup('event', 'Events', 'schedule', isDawn ? 'text-[#ea9d34]' : 'text-orange-400')}
+                            </div>
+                        ` : `
+                            <div class="flex flex-col items-center justify-center py-16 opacity-30">
+                                <span class="material-symbols-outlined text-5xl mb-3">search_off</span>
+                                <span class="text-[12px] font-medium tracking-tight">No matching objects found</span>
+                            </div>
+                        `}
                     </div>
                 </div>
             `;
@@ -993,14 +1060,18 @@ export function ObjectExplorer() {
 
             searchInput.addEventListener('keydown', async (e) => {
                 if (e.key === 'Enter') {
-                    if (e.shiftKey) await gotoMatch(currentMatchIndex - 1);
-                    else await gotoMatch(currentMatchIndex + 1);
+                    if (currentMatchIndex !== -1) {
+                        await gotoMatch(currentMatchIndex);
+                        clearSearch();
+                    }
                 } else if (e.key === 'ArrowDown') {
                     e.preventDefault();
                     await gotoMatch(currentMatchIndex + 1);
                 } else if (e.key === 'ArrowUp') {
                     e.preventDefault();
                     await gotoMatch(currentMatchIndex - 1);
+                } else if (e.key === 'Escape') {
+                    clearSearch();
                 }
             });
         }
@@ -1011,8 +1082,7 @@ export function ObjectExplorer() {
         const btnNext = explorer.querySelector('#search-next');
         if (btnNext) btnNext.onclick = async () => { await gotoMatch(currentMatchIndex + 1); };
 
-        const btnClear = explorer.querySelector('#search-clear');
-        if (btnClear) btnClear.onclick = () => {
+        const clearSearch = () => {
             searchQuery = '';
             searchMatches = [];
             currentMatchIndex = -1;
@@ -1020,11 +1090,15 @@ export function ObjectExplorer() {
             render();
         };
 
+        const btnClear = explorer.querySelector('#search-clear');
+        if (btnClear) btnClear.onclick = clearSearch;
+
         explorer.querySelectorAll('.search-result-item').forEach(item => {
             item.addEventListener('click', async (e) => {
                 e.preventDefault();
                 const idx = Number(item.dataset.index);
                 await gotoMatch(idx);
+                clearSearch();
             });
         });
     };
@@ -1038,6 +1112,9 @@ export function ObjectExplorer() {
     };
 
     const highlightClass = (id) => {
+        if (id === highlightedId) {
+            return isDawn ? 'bg-[#ea9d34]/30 ring-1 ring-[#ea9d34]/50 rounded px-1' : 'bg-mysql-teal/30 ring-1 ring-mysql-teal/50 rounded px-1';
+        }
         if (currentMatchIndex === -1 || !searchMatches[currentMatchIndex]) return '';
         const isCurrent = searchMatches[currentMatchIndex].id === id;
         if (isCurrent) {
@@ -1231,6 +1308,14 @@ export function ObjectExplorer() {
         // Ensure path is expanded
         if (match.db) expandedDbs.add(match.db);
         if (match.table) expandedTables.add(`${match.db}.${match.table}`);
+
+        // Set persistent highlight
+        highlightedId = match.id;
+        if (highlightTimeout) clearTimeout(highlightTimeout);
+        highlightTimeout = setTimeout(() => {
+            highlightedId = null;
+            render();
+        }, 5000); // Highlight for 5 seconds
 
         render();
 
