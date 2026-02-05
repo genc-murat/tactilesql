@@ -16,6 +16,20 @@ pub struct TableQualityReport {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct QualityAiReport {
+    pub id: Option<i64>,
+    pub quality_report_id: i64,
+    pub connection_id: String,
+    pub table_name: String,
+    pub schema_name: Option<String>,
+    pub provider: String,
+    pub model: String,
+    pub analysis_text: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ColumnQualityMetrics {
     pub column_name: String,
     pub null_count: u64,

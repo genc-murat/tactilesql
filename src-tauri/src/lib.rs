@@ -224,6 +224,8 @@ pub fn run() {
             schema_tracker::commands::generate_story_command,
             quality_analyzer::commands::run_quality_analysis,
             quality_analyzer::commands::get_quality_reports,
+            quality_analyzer::commands::save_quality_ai_report,
+            quality_analyzer::commands::get_quality_ai_report,
             // Dependency Engine
             dependency_engine::commands::get_dependency_graph,
             integration::commands::check_impact,

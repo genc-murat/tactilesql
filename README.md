@@ -186,6 +186,7 @@ npx tauri build
 - **Health Score**: 0-100 score based on NULL rates, duplicates, and constraints.
 - **Issue Tracking**: Detailed list of quality violations per table.
 - **Timeline Integration**: View quality scores historically alongside schema changes.
+- **AI Quality Insights**: AI-generated risk summaries, root-cause hypotheses, remediation plans, and validation checks stored alongside each table report.
 
 ### Dependency Engine
 - **Visual Graph**: Interactive node-link diagram of database dependencies.
@@ -218,6 +219,7 @@ The Rust backend exposes the following commands (used by the UI):
 - `get_triggers`, `get_table_triggers`
 - `get_procedures`, `get_functions`, `get_events`
 - `save_ai_impact_report`, `get_ai_impact_report`
+- `save_quality_ai_report`, `get_quality_ai_report`
 
 ### Data Tools
 - `import_csv` — Import CSV files with field mapping

@@ -1,6 +1,6 @@
 use tauri::{State, command};
 use crate::db::AppState;
-use crate::quality_analyzer::models::TableQualityReport;
+use crate::quality_analyzer::models::{QualityAiReport, TableQualityReport};
 
 #[command]
 
@@ -73,7 +73,8 @@ pub async fn run_quality_analysis(
     {
         let store_guard = app_state.quality_analyzer_store.lock().await;
         if let Some(store) = store_guard.as_ref() {
-             store.save_report(&report).await?;
+             let report_id = store.save_report(&report).await?;
+             report.id = Some(report_id);
         }
     }
 
@@ -88,6 +89,51 @@ pub async fn get_quality_reports(
     let store_guard = app_state.quality_analyzer_store.lock().await;
     if let Some(store) = store_guard.as_ref() {
         store.get_reports(&connection_id).await
+    } else {
+        Err("Quality Analyzer Store not initialized".to_string())
+    }
+}
+
+#[command]
+pub async fn save_quality_ai_report(
+    app_state: State<'_, AppState>,
+    connection_id: String,
+    quality_report_id: i64,
+    table_name: String,
+    schema_name: Option<String>,
+    provider: String,
+    model: String,
+    analysis_text: String,
+) -> Result<QualityAiReport, String> {
+    if analysis_text.trim().is_empty() {
+        return Err("Analysis text cannot be empty".to_string());
+    }
+
+    let store_guard = app_state.quality_analyzer_store.lock().await;
+    if let Some(store) = store_guard.as_ref() {
+        store.save_ai_report(
+            &connection_id,
+            quality_report_id,
+            &table_name,
+            schema_name.as_deref(),
+            &provider,
+            &model,
+            &analysis_text,
+        ).await
+    } else {
+        Err("Quality Analyzer Store not initialized".to_string())
+    }
+}
+
+#[command]
+pub async fn get_quality_ai_report(
+    app_state: State<'_, AppState>,
+    connection_id: String,
+    quality_report_id: i64,
+) -> Result<Option<QualityAiReport>, String> {
+    let store_guard = app_state.quality_analyzer_store.lock().await;
+    if let Some(store) = store_guard.as_ref() {
+        store.get_ai_report(&connection_id, quality_report_id).await
     } else {
         Err("Quality Analyzer Store not initialized".to_string())
     }

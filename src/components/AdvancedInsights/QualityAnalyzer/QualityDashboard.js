@@ -130,6 +130,11 @@ export function QualityDashboard() {
         ].join('|');
     };
 
+    const parseReportId = (value) => {
+        const parsed = Number(value);
+        return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+    };
+
     const getConnectionContext = () => {
         const activeConnection = JSON.parse(localStorage.getItem('activeConnection') || '{}');
         const selectedConnection = state.connections.find((c) => c.id === state.selectedConnectionId);
@@ -143,6 +148,38 @@ export function QualityDashboard() {
         }
 
         return activeConnection;
+    };
+
+    const loadSavedAiAnalysisForReport = async (report) => {
+        const reportKey = getReportKey(report);
+        state.aiReportKey = reportKey;
+        state.aiAnalysis = '';
+        state.aiError = null;
+        state.aiProvider = null;
+        state.aiModel = null;
+
+        const reportId = parseReportId(report?.id);
+        if (!reportId || !state.selectedConnectionId) {
+            render();
+            return;
+        }
+
+        try {
+            const savedReport = await QualityAnalyzerApi.getAiReport(state.selectedConnectionId, reportId);
+            if (getReportKey(state.currentReport) !== reportKey) return;
+
+            if (savedReport?.analysis_text) {
+                state.aiAnalysis = savedReport.analysis_text;
+                state.aiProvider = savedReport.provider || null;
+                state.aiModel = savedReport.model || null;
+            }
+        } catch (err) {
+            console.error('Failed to load saved quality AI report:', err);
+        } finally {
+            if (getReportKey(state.currentReport) === reportKey) {
+                render();
+            }
+        }
     };
 
     // Initialize
@@ -235,6 +272,8 @@ export function QualityDashboard() {
 
             if (state.trends.length > 0 && !state.currentReport) {
                 state.currentReport = state.trends[state.trends.length - 1];
+                await loadSavedAiAnalysisForReport(state.currentReport);
+                return;
             }
             render();
         } catch (err) {
@@ -255,6 +294,7 @@ export function QualityDashboard() {
             state.activeTab = 'overview';
 
             await fetchTrends(state.selectedTable);
+            await loadSavedAiAnalysisForReport(state.currentReport);
 
         } catch (err) {
             console.error(err);
@@ -269,6 +309,7 @@ export function QualityDashboard() {
         if (!state.currentReport || state.isAiLoading) return;
 
         const reportKey = getReportKey(state.currentReport);
+        const qualityReportId = parseReportId(state.currentReport.id);
         const { provider, apiKey, model } = getAiSettings();
 
         if (provider !== 'local' && !apiKey) {
@@ -300,7 +341,31 @@ export function QualityDashboard() {
             state.aiAnalysis = analysis;
             state.aiError = null;
             state.aiReportKey = reportKey;
-            toastSuccess('AI quality analysis completed.');
+
+            if (qualityReportId && state.selectedConnectionId) {
+                try {
+                    const saved = await QualityAnalyzerApi.saveAiReport({
+                        connectionId: state.selectedConnectionId,
+                        qualityReportId,
+                        tableName: state.currentReport.table_name || state.selectedTable || '',
+                        schemaName: state.currentReport.schema_name || state.selectedDatabase || null,
+                        provider,
+                        model,
+                        analysisText: analysis
+                    });
+
+                    if (getReportKey(state.currentReport) !== reportKey) return;
+                    state.aiAnalysis = saved?.analysis_text || state.aiAnalysis;
+                    state.aiProvider = saved?.provider || provider;
+                    state.aiModel = saved?.model || model;
+                    toastSuccess('AI quality analysis completed and saved.');
+                } catch (saveError) {
+                    console.error('Failed to save quality AI report:', saveError);
+                    toastError(`AI analysis generated but could not be saved: ${saveError?.message || saveError}`);
+                }
+            } else {
+                toastSuccess('AI quality analysis completed.');
+            }
         } catch (error) {
             if (getReportKey(state.currentReport) !== reportKey) return;
             state.aiAnalysis = '';

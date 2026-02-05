@@ -1,5 +1,5 @@
-use sqlx::{Pool, Sqlite, Row};
-use crate::quality_analyzer::models::TableQualityReport;
+use sqlx::{sqlite::SqliteRow, Pool, Row, Sqlite};
+use crate::quality_analyzer::models::{QualityAiReport, TableQualityReport};
 
 pub struct QualityAnalyzerStore {
     pool: Pool<Sqlite>,
@@ -25,8 +25,22 @@ impl QualityAnalyzerStore {
                 schema_snapshot_id INTEGER,
                 schema_name TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS quality_ai_reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                quality_report_id INTEGER NOT NULL UNIQUE,
+                connection_id TEXT NOT NULL,
+                table_name TEXT NOT NULL,
+                schema_name TEXT,
+                provider TEXT NOT NULL,
+                model TEXT NOT NULL,
+                analysis_text TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
             
             CREATE INDEX IF NOT EXISTS idx_quality_conn_table ON quality_reports(connection_id, table_name);
+            CREATE INDEX IF NOT EXISTS idx_quality_ai_conn_report ON quality_ai_reports(connection_id, quality_report_id);
             "#
         )
         .execute(&self.pool)
@@ -118,5 +132,125 @@ impl QualityAnalyzerStore {
         }
         
         Ok(reports)
+    }
+
+    pub async fn save_ai_report(
+        &self,
+        connection_id: &str,
+        quality_report_id: i64,
+        table_name: &str,
+        schema_name: Option<&str>,
+        provider: &str,
+        model: &str,
+        analysis_text: &str,
+    ) -> Result<QualityAiReport, String> {
+        let now = chrono::Utc::now().timestamp();
+
+        let row = sqlx::query(
+            r#"
+            INSERT INTO quality_ai_reports (
+                quality_report_id,
+                connection_id,
+                table_name,
+                schema_name,
+                provider,
+                model,
+                analysis_text,
+                created_at,
+                updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(quality_report_id)
+            DO UPDATE SET
+                connection_id = excluded.connection_id,
+                table_name = excluded.table_name,
+                schema_name = excluded.schema_name,
+                provider = excluded.provider,
+                model = excluded.model,
+                analysis_text = excluded.analysis_text,
+                updated_at = excluded.updated_at
+            RETURNING
+                id,
+                quality_report_id,
+                connection_id,
+                table_name,
+                schema_name,
+                provider,
+                model,
+                analysis_text,
+                created_at,
+                updated_at
+            "#
+        )
+        .bind(quality_report_id)
+        .bind(connection_id)
+        .bind(table_name)
+        .bind(schema_name)
+        .bind(provider)
+        .bind(model)
+        .bind(analysis_text)
+        .bind(now)
+        .bind(now)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| format!("Failed to save quality AI report: {}", e))?;
+
+        Self::row_to_ai_report(&row)
+    }
+
+    pub async fn get_ai_report(
+        &self,
+        connection_id: &str,
+        quality_report_id: i64,
+    ) -> Result<Option<QualityAiReport>, String> {
+        let row = sqlx::query(
+            r#"
+            SELECT
+                id,
+                quality_report_id,
+                connection_id,
+                table_name,
+                schema_name,
+                provider,
+                model,
+                analysis_text,
+                created_at,
+                updated_at
+            FROM quality_ai_reports
+            WHERE connection_id = ? AND quality_report_id = ?
+            "#
+        )
+        .bind(connection_id)
+        .bind(quality_report_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| format!("Failed to fetch quality AI report: {}", e))?;
+
+        match row {
+            Some(row) => Ok(Some(Self::row_to_ai_report(&row)?)),
+            None => Ok(None),
+        }
+    }
+
+    fn row_to_ai_report(row: &SqliteRow) -> Result<QualityAiReport, String> {
+        let created_at_ts: i64 = row.try_get("created_at").map_err(|e| e.to_string())?;
+        let updated_at_ts: i64 = row.try_get("updated_at").map_err(|e| e.to_string())?;
+
+        Ok(QualityAiReport {
+            id: Some(row.try_get("id").map_err(|e| e.to_string())?),
+            quality_report_id: row.try_get("quality_report_id").map_err(|e| e.to_string())?,
+            connection_id: row.try_get("connection_id").map_err(|e| e.to_string())?,
+            table_name: row.try_get("table_name").map_err(|e| e.to_string())?,
+            schema_name: row.try_get("schema_name").map_err(|e| e.to_string())?,
+            provider: row.try_get("provider").map_err(|e| e.to_string())?,
+            model: row.try_get("model").map_err(|e| e.to_string())?,
+            analysis_text: row.try_get("analysis_text").map_err(|e| e.to_string())?,
+            created_at: Self::timestamp_to_datetime(created_at_ts),
+            updated_at: Self::timestamp_to_datetime(updated_at_ts),
+        })
+    }
+
+    fn timestamp_to_datetime(ts: i64) -> chrono::DateTime<chrono::Utc> {
+        chrono::DateTime::<chrono::Utc>::from_timestamp(ts, 0).unwrap_or_else(chrono::Utc::now)
     }
 }
