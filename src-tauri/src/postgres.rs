@@ -2,13 +2,16 @@
 // POSTGRESQL SPECIFIC DATABASE OPERATIONS
 // =====================================================
 
-use sqlx::{Pool, Postgres, Row, Column};
+use sqlx::{Pool, Postgres, Row, Column, Executor};
 use sqlx::postgres::PgConnectOptions;
 use sqlx::ConnectOptions;
 use crate::db_types::*;
 use futures::StreamExt;
 use std::collections::HashMap;
 use serde_json::Value;
+use tokio::time::{timeout, Duration};
+
+const SIM_EXPLAIN_TIMEOUT_MS: u64 = 2500;
 
 // --- Connection ---
 
@@ -1152,6 +1155,264 @@ pub async fn get_index_sizes(pool: &Pool<Postgres>, schema: &str, table: &str) -
     }
 
     Ok(sizes)
+}
+
+fn quote_ident_pg(ident: &str) -> String {
+    format!("\"{}\"", ident.replace('\"', "\"\""))
+}
+
+fn normalize_sim_query(query: &str) -> String {
+    query.trim().trim_end_matches(';').trim().to_string()
+}
+
+fn preview_query(query: &str, max_chars: usize) -> String {
+    let chars: Vec<char> = query.chars().collect();
+    if chars.len() <= max_chars {
+        return query.to_string();
+    }
+    let prefix: String = chars.into_iter().take(max_chars).collect();
+    format!("{prefix}...")
+}
+
+fn extract_pg_total_cost(explain_json: &Value) -> Option<f64> {
+    let root = if explain_json.is_array() {
+        explain_json.get(0)?
+    } else {
+        explain_json
+    };
+
+    root.get("Plan")
+        .and_then(|plan| plan.get("Total Cost"))
+        .and_then(|v| v.as_f64())
+}
+
+async fn explain_total_cost_pg<'e, E>(executor: E, query: &str) -> Result<f64, String>
+where
+    E: Executor<'e, Database = Postgres>,
+{
+    let explain_query = format!("EXPLAIN (FORMAT JSON, ANALYZE false) {}", query);
+    let row = sqlx::query(&explain_query)
+        .fetch_one(executor)
+        .await
+        .map_err(|e| format!("EXPLAIN failed: {}", e))?;
+
+    let parsed_json = row
+        .try_get::<Value, _>(0)
+        .ok()
+        .or_else(|| {
+            row.try_get::<String, _>(0)
+                .ok()
+                .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+        })
+        .ok_or_else(|| "Could not parse PostgreSQL EXPLAIN JSON result".to_string())?;
+
+    extract_pg_total_cost(&parsed_json)
+        .ok_or_else(|| "Total Cost not found in PostgreSQL EXPLAIN JSON".to_string())
+}
+
+async fn explain_total_cost_pg_with_timeout(pool: &Pool<Postgres>, query: &str) -> Result<f64, String> {
+    timeout(
+        Duration::from_millis(SIM_EXPLAIN_TIMEOUT_MS),
+        explain_total_cost_pg(pool, query),
+    )
+    .await
+    .map_err(|_| format!("EXPLAIN timed out after {}ms", SIM_EXPLAIN_TIMEOUT_MS))?
+}
+
+pub async fn get_index_rollback_sql(
+    pool: &Pool<Postgres>,
+    schema: &str,
+    table: &str,
+    index_name: &str,
+) -> Result<String, String> {
+    let row = sqlx::query(
+        r#"
+        SELECT pg_get_indexdef(i.oid) as index_def
+        FROM pg_class i
+        JOIN pg_index ix ON i.oid = ix.indexrelid
+        JOIN pg_class t ON t.oid = ix.indrelid
+        JOIN pg_namespace n ON n.oid = t.relnamespace
+        WHERE n.nspname = $1
+          AND t.relname = $2
+          AND i.relname = $3
+        LIMIT 1
+        "#,
+    )
+    .bind(schema)
+    .bind(table)
+    .bind(index_name)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| format!("Failed to fetch PostgreSQL index definition: {}", e))?;
+
+    let Some(row) = row else {
+        return Err("Index definition not found for rollback SQL".to_string());
+    };
+
+    let index_def: String = row.try_get("index_def").unwrap_or_default();
+    if index_def.trim().is_empty() {
+        return Err("Empty index definition for rollback SQL".to_string());
+    }
+
+    Ok(format!("{};", index_def.trim_end_matches(';').trim()))
+}
+
+pub fn build_drop_index_sql(schema: &str, index_name: &str) -> String {
+    format!(
+        "DROP INDEX IF EXISTS {}.{};",
+        quote_ident_pg(schema),
+        quote_ident_pg(index_name)
+    )
+}
+
+pub async fn simulate_index_drop(
+    pool: &Pool<Postgres>,
+    schema: &str,
+    _table: &str,
+    index_name: &str,
+    queries: &[(String, String)],
+) -> Result<(Vec<IndexSimulationQueryDiff>, Vec<String>), String> {
+    let mut notes = vec![
+        "PostgreSQL simulation runs in a transaction and always rolls back.".to_string(),
+        "EXPLAIN requests are timeout-limited for simulation safety.".to_string(),
+    ];
+    let drop_sql = build_drop_index_sql(schema, index_name);
+
+    let mut diffs: Vec<IndexSimulationQueryDiff> = Vec::new();
+    let mut normalized_queries: Vec<String> = Vec::new();
+
+    for (query_hash, raw_query) in queries {
+        let query = normalize_sim_query(raw_query);
+        if query.is_empty() {
+            continue;
+        }
+
+        let preview = preview_query(&query, 180);
+        match explain_total_cost_pg_with_timeout(pool, &query).await {
+            Ok(before_cost) => {
+                diffs.push(IndexSimulationQueryDiff {
+                    query_hash: query_hash.clone(),
+                    query_preview: preview,
+                    before_cost: Some(before_cost),
+                    after_cost: None,
+                    delta_pct: None,
+                    regression: false,
+                    reason: None,
+                });
+                normalized_queries.push(query);
+            }
+            Err(err) => {
+                diffs.push(IndexSimulationQueryDiff {
+                    query_hash: query_hash.clone(),
+                    query_preview: preview,
+                    before_cost: None,
+                    after_cost: None,
+                    delta_pct: None,
+                    regression: false,
+                    reason: Some(format!("Baseline EXPLAIN failed: {}", err)),
+                });
+                normalized_queries.push(query);
+            }
+        }
+    }
+
+    if diffs.is_empty() {
+        notes.push("No explainable query candidates were found in local query history.".to_string());
+        return Ok((diffs, notes));
+    }
+
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| format!("Failed to open simulation transaction: {}", e))?;
+
+    // Guardrail: keep simulation responsive on problematic plans.
+    let _ = sqlx::query("SET LOCAL statement_timeout = '2000ms'")
+        .execute(&mut *tx)
+        .await;
+
+    if let Err(e) = sqlx::query(&drop_sql).execute(&mut *tx).await {
+        let _ = tx.rollback().await;
+        notes.push(format!(
+            "Could not apply drop statement inside simulation transaction: {}",
+            e
+        ));
+        for diff in &mut diffs {
+            if diff.reason.is_none() {
+                diff.reason = Some("Simulation skipped after-drop EXPLAIN due to drop error".to_string());
+            }
+        }
+        return Ok((diffs, notes));
+    }
+
+    for (idx, diff) in diffs.iter_mut().enumerate() {
+        if diff.before_cost.is_none() {
+            continue;
+        }
+
+        let query = &normalized_queries[idx];
+        match timeout(
+            Duration::from_millis(SIM_EXPLAIN_TIMEOUT_MS),
+            explain_total_cost_pg(&mut *tx, query),
+        )
+        .await
+        .map_err(|_| format!("EXPLAIN timed out after {}ms", SIM_EXPLAIN_TIMEOUT_MS))
+        {
+            Ok(result) => match result {
+                Ok(after_cost) => {
+                    diff.after_cost = Some(after_cost);
+                    if let Some(before_cost) = diff.before_cost {
+                        let delta = if before_cost > 0.0 {
+                            ((after_cost - before_cost) / before_cost) * 100.0
+                        } else {
+                            0.0
+                        };
+                        diff.delta_pct = Some(delta);
+                        diff.regression = delta > 5.0;
+                    }
+                }
+                Err(err) => {
+                    let next_reason = format!("After-drop EXPLAIN failed: {}", err);
+                    diff.reason = Some(match diff.reason.take() {
+                        Some(existing) => format!("{existing} | {next_reason}"),
+                        None => next_reason,
+                    });
+                }
+            },
+            Err(timeout_err) => {
+                let next_reason = format!("After-drop EXPLAIN failed: {}", timeout_err);
+                diff.reason = Some(match diff.reason.take() {
+                    Some(existing) => format!("{existing} | {next_reason}"),
+                    None => next_reason,
+                });
+            }
+        }
+    }
+
+    if let Err(e) = tx.rollback().await {
+        notes.push(format!("Simulation transaction rollback reported an error: {}", e));
+    }
+
+    Ok((diffs, notes))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_pg_total_cost_from_explain_payload() {
+        let payload = serde_json::json!([
+            {
+                "Plan": {
+                    "Node Type": "Seq Scan",
+                    "Total Cost": 128.56
+                }
+            }
+        ]);
+        let cost = extract_pg_total_cost(&payload);
+        assert_eq!(cost, Some(128.56));
+    }
 }
 
 // --- Extensions (PostgreSQL specific) ---

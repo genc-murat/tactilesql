@@ -199,6 +199,7 @@ pub fn run() {
             db::get_index_suggestions,
             db::get_index_usage,
             db::get_index_sizes,
+            db::simulate_index_drop,
             db::get_capacity_metrics,
             db::get_execution_plan,
             db::compare_queries,

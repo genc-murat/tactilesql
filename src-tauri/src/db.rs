@@ -1588,6 +1588,173 @@ pub async fn get_index_sizes(
 }
 
 #[tauri::command]
+pub async fn simulate_index_drop(
+    app_state: State<'_, AppState>,
+    database: String,
+    table: String,
+    index_name: String,
+) -> Result<IndexDropSimulation, String> {
+    let db_type = {
+        let guard = app_state.active_db_type.lock().await;
+        guard.clone()
+    };
+
+    let query_history = {
+        let guard = app_state.awareness_store.lock().await;
+        if let Some(store) = guard.as_ref() {
+            store.get_query_history(3000).await.unwrap_or_default()
+        } else {
+            Vec::new()
+        }
+    };
+
+    let candidate_build = build_simulation_query_candidates(query_history, &table, 25);
+    let matched_total = candidate_build.matched_total;
+    let simulation_queries = candidate_build.candidates;
+
+    let mut notes: Vec<String> = Vec::new();
+    if matched_total == 0 {
+        notes.push("No table-related SELECT query history found. Confidence will be low.".to_string());
+    }
+    if candidate_build.skipped_multi_statement > 0 {
+        notes.push(format!(
+            "{} multi-statement queries skipped (unsupported for safe simulation).",
+            candidate_build.skipped_multi_statement
+        ));
+    }
+    if candidate_build.skipped_too_long > 0 {
+        notes.push(format!(
+            "{} overly long queries skipped (guardrail limit).",
+            candidate_build.skipped_too_long
+        ));
+    }
+
+    let (mode, drop_sql, rollback_sql, mut query_diffs, mut engine_notes) = match db_type {
+        DatabaseType::PostgreSQL => {
+            let guard = app_state.postgres_pool.lock().await;
+            let pool = guard
+                .as_ref()
+                .ok_or("No PostgreSQL connection established")?;
+
+            let rollback_sql = match postgres::get_index_rollback_sql(pool, &database, &table, &index_name).await {
+                Ok(sql) => sql,
+                Err(e) => {
+                    notes.push(format!("Rollback SQL could not be generated: {}", e));
+                    String::new()
+                }
+            };
+
+            let (query_diffs, engine_notes) =
+                postgres::simulate_index_drop(pool, &database, &table, &index_name, &simulation_queries).await?;
+
+            (
+                "what_if".to_string(),
+                postgres::build_drop_index_sql(&database, &index_name),
+                rollback_sql,
+                query_diffs,
+                engine_notes,
+            )
+        }
+        DatabaseType::MySQL => {
+            let guard = app_state.mysql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
+
+            let rollback_sql = match mysql::get_index_rollback_sql(pool, &database, &table, &index_name).await {
+                Ok(sql) => sql,
+                Err(e) => {
+                    notes.push(format!("Rollback SQL could not be generated: {}", e));
+                    String::new()
+                }
+            };
+
+            let (query_diffs, engine_notes) =
+                mysql::simulate_index_drop(pool, &database, &table, &index_name, &simulation_queries).await?;
+
+            (
+                "heuristic".to_string(),
+                mysql::build_drop_index_sql(&table, &index_name),
+                rollback_sql,
+                query_diffs,
+                engine_notes,
+            )
+        }
+        DatabaseType::Disconnected => return Err("No connection established".into()),
+    };
+
+    notes.append(&mut engine_notes);
+
+    let analyzed_queries = query_diffs
+        .iter()
+        .filter(|d| d.before_cost.is_some() && d.after_cost.is_some())
+        .count() as i32;
+    let failed_queries = query_diffs
+        .iter()
+        .filter(|d| d.before_cost.is_none() || d.after_cost.is_none())
+        .count() as i32;
+    let regressions = query_diffs.iter().filter(|d| d.regression).count() as i32;
+
+    let regression_values: Vec<f64> = query_diffs
+        .iter()
+        .filter(|d| d.regression)
+        .filter_map(|d| d.delta_pct)
+        .collect();
+
+    let avg_regression_pct = if regression_values.is_empty() {
+        0.0
+    } else {
+        regression_values.iter().sum::<f64>() / regression_values.len() as f64
+    };
+    let worst_regression_pct = regression_values
+        .iter()
+        .copied()
+        .reduce(f64::max)
+        .unwrap_or(0.0);
+
+    let sampled_queries = simulation_queries.len() as i32;
+    let matched_queries = matched_total as i32;
+    let coverage_ratio = if matched_queries > 0 {
+        sampled_queries as f64 / matched_queries as f64
+    } else {
+        0.0
+    };
+
+    let confidence_score = compute_simulation_confidence(
+        &mode,
+        matched_queries,
+        sampled_queries,
+        analyzed_queries,
+        failed_queries,
+    );
+
+    query_diffs.sort_by(|a, b| {
+        let a_delta = a.delta_pct.unwrap_or(0.0);
+        let b_delta = b.delta_pct.unwrap_or(0.0);
+        b_delta
+            .partial_cmp(&a_delta)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    Ok(IndexDropSimulation {
+        database,
+        table,
+        index_name,
+        mode,
+        drop_sql,
+        rollback_sql,
+        analyzed_queries,
+        matched_queries,
+        failed_queries,
+        regressions,
+        avg_regression_pct: round2(avg_regression_pct),
+        worst_regression_pct: round2(worst_regression_pct),
+        coverage_ratio: round2(coverage_ratio),
+        confidence_score,
+        query_diffs,
+        notes,
+    })
+}
+
+#[tauri::command]
 pub async fn get_capacity_metrics(
     app_state: State<'_, AppState>,
     database: String
@@ -1805,6 +1972,190 @@ pub async fn get_query_history(
     }
 }
 
+#[derive(Debug)]
+struct SimulationQueryAggregate {
+    query_hash: String,
+    sample_query: String,
+    executions: i32,
+    total_duration_ms: f64,
+}
+
+#[derive(Debug)]
+struct SimulationCandidateBuildResult {
+    matched_total: usize,
+    candidates: Vec<(String, String)>,
+    skipped_multi_statement: i32,
+    skipped_too_long: i32,
+}
+
+fn matches_table_reference(query: &str, table: &str) -> bool {
+    let q = query.to_lowercase();
+    let t = table.to_lowercase();
+    q.contains(&format!("from {}", t))
+        || q.contains(&format!("join {}", t))
+        || q.contains(&format!("update {}", t))
+        || q.contains(&format!("into {}", t))
+        || q.contains(&format!(" {} ", t))
+        || q.contains(&format!("`{}`", t))
+        || q.contains(&format!("\"{}\"", t))
+}
+
+fn is_explainable_read_query(query: &str) -> bool {
+    let normalized = query.trim_start().to_lowercase();
+    normalized.starts_with("select ") || normalized.starts_with("with ")
+}
+
+fn is_single_statement_sql(query: &str) -> bool {
+    let trimmed = query.trim().trim_end_matches(';').trim();
+    !trimmed.contains(';')
+}
+
+fn build_simulation_query_candidates(
+    history: Vec<crate::awareness::profiler::QueryExecution>,
+    table: &str,
+    limit: usize,
+) -> SimulationCandidateBuildResult {
+    const MAX_SIM_QUERY_CHARS: usize = 12_000;
+    let mut aggregate_map: HashMap<String, SimulationQueryAggregate> = HashMap::new();
+    let mut skipped_multi_statement = 0;
+    let mut skipped_too_long = 0;
+
+    for q in history {
+        let raw = q.exact_query.trim().to_string();
+        if raw.is_empty() || !is_explainable_read_query(&raw) || !matches_table_reference(&raw, table) {
+            continue;
+        }
+
+        if !is_single_statement_sql(&raw) {
+            skipped_multi_statement += 1;
+            continue;
+        }
+
+        if raw.chars().count() > MAX_SIM_QUERY_CHARS {
+            skipped_too_long += 1;
+            continue;
+        }
+
+        let normalized = crate::awareness::profiler::normalize_query(&raw);
+        let query_hash = if q.query_hash.trim().is_empty() {
+            crate::awareness::profiler::calculate_query_hash(&normalized)
+        } else {
+            q.query_hash.clone()
+        };
+
+        let entry = aggregate_map.entry(query_hash.clone()).or_insert(SimulationQueryAggregate {
+            query_hash,
+            sample_query: raw.clone(),
+            executions: 0,
+            total_duration_ms: 0.0,
+        });
+        entry.executions += 1;
+        entry.total_duration_ms += q.resources.execution_time_ms.max(0.0);
+    }
+
+    let matched_total = aggregate_map.len();
+    let mut ranked: Vec<SimulationQueryAggregate> = aggregate_map.into_values().collect();
+    ranked.sort_by(|a, b| {
+        let score_a = a.total_duration_ms * (a.executions as f64).max(1.0);
+        let score_b = b.total_duration_ms * (b.executions as f64).max(1.0);
+        score_b
+            .partial_cmp(&score_a)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let selected = ranked
+        .into_iter()
+        .take(limit)
+        .map(|q| (q.query_hash, q.sample_query))
+        .collect();
+
+    SimulationCandidateBuildResult {
+        matched_total,
+        candidates: selected,
+        skipped_multi_statement,
+        skipped_too_long,
+    }
+}
+
+fn clamp_i32(value: i32, min: i32, max: i32) -> i32 {
+    value.max(min).min(max)
+}
+
+fn round2(value: f64) -> f64 {
+    (value * 100.0).round() / 100.0
+}
+
+fn compute_simulation_confidence(
+    mode: &str,
+    matched_queries: i32,
+    sampled_queries: i32,
+    analyzed_queries: i32,
+    failed_queries: i32,
+) -> i32 {
+    let mut score = if mode == "what_if" { 55 } else { 28 };
+
+    if matched_queries > 0 {
+        let coverage = sampled_queries as f64 / matched_queries as f64;
+        score += (coverage * 22.0).round() as i32;
+    }
+
+    score += (((analyzed_queries.min(30)) as f64 / 30.0) * 20.0).round() as i32;
+    score -= (failed_queries * 3).min(25);
+
+    clamp_i32(score, 5, 98)
+}
+
+#[cfg(test)]
+mod simulation_tests {
+    use super::*;
+    use crate::awareness::profiler::{QueryExecution, ResourceUsage};
+    use chrono::Utc;
+
+    fn make_exec(query: &str, duration_ms: f64) -> QueryExecution {
+        QueryExecution {
+            query_hash: String::new(),
+            exact_query: query.to_string(),
+            timestamp: Utc::now(),
+            resources: ResourceUsage {
+                execution_time_ms: duration_ms,
+                rows_affected: 0,
+            },
+        }
+    }
+
+    #[test]
+    fn confidence_score_is_clamped() {
+        let low = compute_simulation_confidence("heuristic", 0, 0, 0, 50);
+        let high = compute_simulation_confidence("what_if", 10_000, 10_000, 10_000, 0);
+        assert!(low >= 5 && low <= 98);
+        assert!(high >= 5 && high <= 98);
+    }
+
+    #[test]
+    fn what_if_scores_higher_than_heuristic() {
+        let what_if = compute_simulation_confidence("what_if", 20, 15, 15, 1);
+        let heuristic = compute_simulation_confidence("heuristic", 20, 15, 15, 1);
+        assert!(what_if > heuristic);
+    }
+
+    #[test]
+    fn candidate_builder_applies_guardrails() {
+        let long_sql = format!("SELECT * FROM orders WHERE payload = '{}'", "x".repeat(13_000));
+        let history = vec![
+            make_exec("SELECT * FROM orders WHERE id = 1", 120.0),
+            make_exec("SELECT * FROM orders; SELECT * FROM users;", 50.0),
+            make_exec(&long_sql, 300.0),
+            make_exec("UPDATE orders SET status='done' WHERE id=1", 10.0),
+        ];
+
+        let result = build_simulation_query_candidates(history, "orders", 25);
+        assert_eq!(result.matched_total, 1);
+        assert_eq!(result.candidates.len(), 1);
+        assert_eq!(result.skipped_multi_statement, 1);
+        assert_eq!(result.skipped_too_long, 1);
+    }
+}
+
 // =====================================================
 // TAURI COMMANDS - AI INDEX RECOMMENDATIONS
 // =====================================================
@@ -1997,7 +2348,6 @@ pub async fn get_ai_index_recommendations(
         }
 
         if composite_score >= 3 {
-            let composite_name = top_cols.join("_");
             let create_sql = match db_type {
                 DatabaseType::PostgreSQL => {
                     format!("CREATE INDEX idx_{}_composite ON {}.{} ({});",

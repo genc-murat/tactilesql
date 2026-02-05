@@ -219,6 +219,12 @@ export function IndexLifecycle() {
         return 'text-gray-500 bg-gray-500/10 border-gray-500/20';
     };
 
+    const confidenceBadge = (score) => {
+        if (score >= 75) return 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20';
+        if (score >= 45) return 'text-amber-500 bg-amber-500/10 border-amber-500/20';
+        return 'text-red-500 bg-red-500/10 border-red-500/20';
+    };
+
     const signalBadge = (signal) => {
         switch (signal.label) {
             case 'unused':
@@ -265,6 +271,9 @@ export function IndexLifecycle() {
         error: null,
         activeDbType: 'mysql',
         scoringConfig: loadScoringConfig(),
+        simulationResults: [],
+        isSimulating: false,
+        simulationError: null,
         // AI Recommendations
         aiRecommendations: [],
         aiAnalysisSummary: '',
@@ -286,6 +295,8 @@ export function IndexLifecycle() {
         state.tableStats = null;
         state.suggestions = [];
         state.selectedIndexes = new Set();
+        state.simulationResults = [];
+        state.simulationError = null;
         state.error = null;
 
         if (!connId) {
@@ -333,6 +344,8 @@ export function IndexLifecycle() {
         state.tableStats = null;
         state.suggestions = [];
         state.selectedIndexes = new Set();
+        state.simulationResults = [];
+        state.simulationError = null;
         state.error = null;
 
         if (!dbName) {
@@ -362,6 +375,8 @@ export function IndexLifecycle() {
         state.tableStats = null;
         state.suggestions = [];
         state.selectedIndexes = new Set();
+        state.simulationResults = [];
+        state.simulationError = null;
         state.error = null;
 
         if (tableName) {
@@ -392,10 +407,60 @@ export function IndexLifecycle() {
             state.tableStats = stats || null;
             state.indexUsage = Array.isArray(usage) ? usage : [];
             state.indexSizes = Array.isArray(sizes) ? sizes : [];
+            state.simulationResults = [];
+            state.simulationError = null;
         } catch (err) {
             state.error = `Analysis failed: ${err}`;
         } finally {
             state.isLoading = false;
+            render();
+        }
+    };
+
+    const runDropSimulation = async () => {
+        if (!state.selectedDatabase || !state.selectedTable) return;
+        const targets = Array.from(state.selectedIndexes);
+        if (targets.length === 0) return;
+
+        state.isSimulating = true;
+        state.simulationError = null;
+        render();
+
+        try {
+            const results = await Promise.all(targets.map(async (indexName) => {
+                try {
+                    return await invoke('simulate_index_drop', {
+                        database: state.selectedDatabase,
+                        table: state.selectedTable,
+                        indexName,
+                    });
+                } catch (err) {
+                    return {
+                        database: state.selectedDatabase,
+                        table: state.selectedTable,
+                        index_name: indexName,
+                        mode: 'failed',
+                        drop_sql: buildDropStatement(indexName, state.activeDbType, state.selectedDatabase),
+                        rollback_sql: '',
+                        analyzed_queries: 0,
+                        matched_queries: 0,
+                        failed_queries: 0,
+                        regressions: 0,
+                        avg_regression_pct: 0,
+                        worst_regression_pct: 0,
+                        coverage_ratio: 0,
+                        confidence_score: 0,
+                        query_diffs: [],
+                        notes: [`Simulation failed: ${err}`],
+                    };
+                }
+            }));
+
+            state.simulationResults = results;
+        } catch (err) {
+            state.simulationError = `Simulation failed: ${err}`;
+        } finally {
+            state.isSimulating = false;
             render();
         }
     };
@@ -460,12 +525,20 @@ export function IndexLifecycle() {
         const unusedCandidates = indexModels.filter(idx => idx.signal.label === 'unused' || idx.signal.label === 'low-utility');
         const selectedList = indexModels.filter(idx => state.selectedIndexes.has(idx.name) && idx.signal.label !== 'protected');
         const selectedCount = selectedList.length;
+        const simulationByIndex = new Map((state.simulationResults || []).map(sim => [sim.index_name, sim]));
+        const selectedSimulations = selectedList
+            .map(idx => simulationByIndex.get(idx.name))
+            .filter(Boolean);
         const totalIndexes = indexModels.length;
         const estimatedStorage = selectedCount
             ? selectedList.reduce((sum, idx) => sum + (sizeMap.get(idx.name) ?? perIndexSize ?? 0), 0)
             : null;
         const avgRisk = selectedCount ? Math.round(selectedList.reduce((sum, item) => sum + item.scores.risk, 0) / selectedCount) : 0;
         const avgImpact = selectedCount ? Math.round(selectedList.reduce((sum, item) => sum + item.scores.impact, 0) / selectedCount) : 0;
+        const avgConfidence = selectedSimulations.length
+            ? Math.round(selectedSimulations.reduce((sum, sim) => sum + (sim.confidence_score || 0), 0) / selectedSimulations.length)
+            : 0;
+        const worstSimulationRegression = selectedSimulations.reduce((max, sim) => Math.max(max, sim.worst_regression_pct || 0), 0);
         const writeGain = totalIndexes > 0 ? Math.min(60, Math.round((selectedCount / totalIndexes) * 60)) : 0;
         const tableBorder = theme === 'light' ? 'border-gray-200' : (theme === 'dawn' ? 'border-[#f2e9e1]' : 'border-white/10');
         const tableHeader = theme === 'light' ? 'bg-gray-50 text-gray-500' : (theme === 'dawn' ? 'bg-[#faf4ed] text-[#797593]' : 'bg-white/5 text-gray-400');
@@ -600,6 +673,7 @@ export function IndexLifecycle() {
                                             <tr><td colspan="5" class="p-4 text-center text-xs ${classes.text.secondary}">No indexes to show.</td></tr>
                                         ` : filteredIndexes.map((idx, i) => {
                                             const usage = usageMap.get(idx.name);
+                                            const sim = simulationByIndex.get(idx.name);
                                             const usageLabel = usage ? `${(usage.total_ops ?? 0).toLocaleString()} ops` : 'usage n/a';
                                             const sizeBytes = sizeMap.get(idx.name);
                                             const sizeLabel = sizeBytes ? formatBytes(sizeBytes) : (perIndexSize ? `~${formatBytes(perIndexSize)}` : '-');
@@ -629,6 +703,12 @@ export function IndexLifecycle() {
                                                         <span class="text-[9px] ${classes.text.subtle} uppercase tracking-widest">Impact</span>
                                                         <span class="px-2 py-0.5 rounded border text-[10px] font-mono ${scoreBadge(idx.scores.impact, 'impact')}">${idx.scores.impact}</span>
                                                     </div>
+                                                    ${sim ? `
+                                                        <div class="flex items-center gap-2 mt-1">
+                                                            <span class="text-[9px] ${classes.text.subtle} uppercase tracking-widest">Confidence</span>
+                                                            <span class="px-2 py-0.5 rounded border text-[10px] font-mono ${confidenceBadge(sim.confidence_score || 0)}">${sim.confidence_score || 0}</span>
+                                                        </div>
+                                                    ` : ''}
                                                 </td>
                                             </tr>
                                         `;
@@ -660,14 +740,67 @@ export function IndexLifecycle() {
                                     <span class="${classes.text.secondary}">Avg Risk / Impact</span>
                                     <span class="font-mono ${classes.text.primary}">${selectedCount ? `${avgRisk} / ${avgImpact}` : '-'}</span>
                                 </div>
+                                <div class="flex items-center justify-between text-xs">
+                                    <span class="${classes.text.secondary}">Confidence / Worst Regression</span>
+                                    <span class="font-mono ${classes.text.primary}">${selectedSimulations.length ? `${avgConfidence} / ${Number(worstSimulationRegression || 0).toFixed(1)}%` : '-'}</span>
+                                </div>
                             </div>
                             <div class="mt-4">
                                 <div class="text-[10px] uppercase tracking-widest ${classes.text.subtle} mb-2">Drop Plan (Simulation)</div>
                                 <pre class="text-[10px] font-mono p-3 rounded-lg border ${classes.text.primary} ${theme === 'light' ? 'bg-gray-50 border-gray-200' : (theme === 'dawn' ? 'bg-[#faf4ed] border-[#f2e9e1]' : 'bg-black/20 border-white/10')} overflow-auto max-h-40">${escapeHtml(selectedCount ? selectedList.map(idx => buildDropStatement(idx.name, state.activeDbType, state.selectedDatabase)).join('\n') : '-- Select indexes to generate a drop plan')}</pre>
                             </div>
                             <div class="flex items-center gap-2 mt-3">
+                                <button id="btn-run-simulation" class="${classes.buttonPrimary}" ${selectedCount && !state.isSimulating ? '' : 'disabled'}>${state.isSimulating ? 'Simulating...' : 'Run What-if'}</button>
                                 <button id="btn-copy-plan" class="${classes.buttonGhost}" ${selectedCount ? '' : 'disabled'}>Copy SQL</button>
                                 <button id="btn-clear-selection" class="${classes.buttonGhost}" ${selectedCount ? '' : 'disabled'}>Clear</button>
+                            </div>
+                            ${state.simulationError ? `<div class="mt-3 p-3 rounded-lg border border-red-500/20 bg-red-500/10 text-[10px] text-red-500">${escapeHtml(state.simulationError)}</div>` : ''}
+                            <div class="mt-4">
+                                <div class="text-[10px] uppercase tracking-widest ${classes.text.subtle} mb-2">What-if Results</div>
+                                ${state.simulationResults.length === 0 ? `
+                                    <div class="text-[11px] ${classes.text.secondary} italic">Run simulation to compare estimated plan impact and confidence.</div>
+                                ` : `
+                                    <div class="space-y-3">
+                                        ${state.simulationResults.map((sim) => `
+                                            <div class="p-3 rounded-lg border ${tableBorder} ${theme === 'light' ? 'bg-gray-50' : (theme === 'dawn' ? 'bg-[#faf4ed]' : 'bg-black/20')}">
+                                                <div class="flex items-center justify-between gap-2">
+                                                    <div>
+                                                        <div class="text-xs font-bold ${classes.text.primary}">${escapeHtml(sim.index_name || 'index')}</div>
+                                                        <div class="text-[10px] ${classes.text.secondary} mt-1">
+                                                            mode: ${escapeHtml(sim.mode || 'unknown')} · analyzed: ${sim.analyzed_queries || 0}/${sim.matched_queries || 0} · failed: ${sim.failed_queries || 0}
+                                                        </div>
+                                                    </div>
+                                                    <span class="px-2 py-1 rounded border text-[10px] font-mono ${confidenceBadge(sim.confidence_score || 0)}">
+                                                        confidence ${sim.confidence_score || 0}
+                                                    </span>
+                                                </div>
+                                                <div class="grid grid-cols-2 gap-2 mt-2 text-[10px] ${classes.text.secondary}">
+                                                    <div>coverage: ${Number(((sim.coverage_ratio || 0) * 100)).toFixed(0)}%</div>
+                                                    <div>regressions: ${sim.regressions || 0}</div>
+                                                    <div>avg regression: ${Number(sim.avg_regression_pct || 0).toFixed(1)}%</div>
+                                                    <div>worst regression: ${Number(sim.worst_regression_pct || 0).toFixed(1)}%</div>
+                                                </div>
+                                                ${Array.isArray(sim.notes) && sim.notes.length ? `
+                                                    <div class="text-[10px] ${classes.text.subtle} mt-2">${escapeHtml(sim.notes.join(' | '))}</div>
+                                                ` : ''}
+                                                ${Array.isArray(sim.query_diffs) && sim.query_diffs.length ? `
+                                                    <div class="mt-2 space-y-1">
+                                                        ${sim.query_diffs.slice(0, 3).map((q) => `
+                                                            <div class="text-[10px] ${classes.text.secondary} flex items-center justify-between gap-2">
+                                                                <span class="truncate">${escapeHtml((q.query_preview || '').slice(0, 80))}</span>
+                                                                <span class="font-mono ${classes.text.primary}">${q.delta_pct !== null && q.delta_pct !== undefined ? `${Number(q.delta_pct).toFixed(1)}%` : '-'}</span>
+                                                            </div>
+                                                        `).join('')}
+                                                    </div>
+                                                ` : ''}
+                                                <div class="flex items-center gap-2 mt-2">
+                                                    <button class="btn-copy-sim-drop ${classes.buttonGhost} text-[10px] py-1 px-2" data-sql="${escapeHtml(sim.drop_sql || '')}" ${sim.drop_sql ? '' : 'disabled'}>Copy Drop SQL</button>
+                                                    <button class="btn-copy-sim-rollback ${classes.buttonGhost} text-[10px] py-1 px-2" data-sql="${escapeHtml(sim.rollback_sql || '')}" ${sim.rollback_sql ? '' : 'disabled'}>Copy Rollback SQL</button>
+                                                </div>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                `}
                             </div>
                             <div class="text-[10px] ${classes.text.subtle} mt-3">Simulation only. No changes are applied.</div>
                         </div>
@@ -724,6 +857,11 @@ export function IndexLifecycle() {
             runBtn.onclick = () => loadAnalysis();
         }
 
+        const runSimulationBtn = container.querySelector('#btn-run-simulation');
+        if (runSimulationBtn) {
+            runSimulationBtn.onclick = () => runDropSimulation();
+        }
+
         const searchInput = container.querySelector('#search-indexes');
         if (searchInput) {
             searchInput.oninput = (e) => {
@@ -771,6 +909,32 @@ export function IndexLifecycle() {
                 render();
             };
         }
+
+        container.querySelectorAll('.btn-copy-sim-drop').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const sql = e.currentTarget.dataset.sql;
+                if (!sql) return;
+                try {
+                    await navigator.clipboard.writeText(sql);
+                    Dialog.alert('Drop SQL copied to clipboard.');
+                } catch (err) {
+                    Dialog.alert(`Copy failed: ${err}`);
+                }
+            });
+        });
+
+        container.querySelectorAll('.btn-copy-sim-rollback').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const sql = e.currentTarget.dataset.sql;
+                if (!sql) return;
+                try {
+                    await navigator.clipboard.writeText(sql);
+                    Dialog.alert('Rollback SQL copied to clipboard.');
+                } catch (err) {
+                    Dialog.alert(`Copy failed: ${err}`);
+                }
+            });
+        });
 
         const sliderEls = container.querySelectorAll('[data-score-slider="true"]');
         sliderEls.forEach(slider => {

@@ -14,6 +14,7 @@ TactileSQL is a modern, desktop-first MySQL workbench built with Tauri 2 and van
 - **Latency prediction & slow-query early warning** based on historical execution patterns.
 - **Parameter suggestions** using historical value distributions.
 - **What‑If Optimizer** to compare query variants with estimated cost.
+- **Index Lifecycle V2**: Detect unused indexes, run drop what-if simulations, compute confidence scores, and generate rollback SQL.
 - **Similarity & workload profiling** to group duplicate query patterns.
 - **SSH Tunnel Support** for secure database connections through SSH servers.
 - **Editable Results Grid** with virtual scrolling, column visibility, CSV export, and clipboard copy.
@@ -164,6 +165,14 @@ npx tauri build
 - Compare source/target databases or single tables
 - Generate sync SQL for create/alter/drop
 
+### Index Lifecycle
+
+- Detect unused / low-utility indexes from usage stats and cardinality signals
+- Generate non-destructive drop plans for selected indexes
+- Run what-if drop simulation against historical query workload
+- Review query-level regression deltas, coverage ratio, and confidence score
+- Copy rollback SQL for safer rollback planning
+
 ### Connection Manager
 
 - Create, edit, delete, and reorder connections
@@ -223,6 +232,7 @@ The Rust backend exposes the following commands (used by the UI):
 ### Query Execution
 - `execute_query` — Execute SQL statements
 - `analyze_query` — Analyze query performance and get optimization suggestions
+- `simulate_index_drop` — Run index drop what-if simulation and return rollback SQL + confidence metrics
 
 ### Awareness Features
 - `compare_queries` — Compare syntax and performance of two queries

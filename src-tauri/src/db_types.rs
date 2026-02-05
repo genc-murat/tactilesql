@@ -309,6 +309,38 @@ pub struct IndexSize {
     pub size_bytes: i64,
 }
 
+// --- Index Drop Simulation ---
+#[derive(Serialize, Debug, Clone)]
+pub struct IndexSimulationQueryDiff {
+    pub query_hash: String,
+    pub query_preview: String,
+    pub before_cost: Option<f64>,
+    pub after_cost: Option<f64>,
+    pub delta_pct: Option<f64>,
+    pub regression: bool,
+    pub reason: Option<String>,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct IndexDropSimulation {
+    pub database: String,
+    pub table: String,
+    pub index_name: String,
+    pub mode: String,
+    pub drop_sql: String,
+    pub rollback_sql: String,
+    pub analyzed_queries: i32,
+    pub matched_queries: i32,
+    pub failed_queries: i32,
+    pub regressions: i32,
+    pub avg_regression_pct: f64,
+    pub worst_regression_pct: f64,
+    pub coverage_ratio: f64,
+    pub confidence_score: i32,
+    pub query_diffs: Vec<IndexSimulationQueryDiff>,
+    pub notes: Vec<String>,
+}
+
 // --- Capacity Metrics ---
 #[derive(Serialize, Debug)]
 pub struct CapacityMetrics {

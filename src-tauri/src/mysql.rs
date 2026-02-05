@@ -8,6 +8,10 @@ use sqlx::ConnectOptions;
 use crate::db_types::*;
 use futures::StreamExt;
 use std::collections::{HashMap, HashSet};
+use serde_json::Value;
+use tokio::time::{timeout, Duration};
+
+const SIM_EXPLAIN_TIMEOUT_MS: u64 = 2500;
 
 // --- Connection ---
 
@@ -1216,6 +1220,282 @@ pub async fn get_index_sizes(pool: &Pool<MySql>, database: &str, table: &str) ->
             eprintln!("InnoDB index stats unavailable: {}", e);
             Ok(vec![])
         }
+    }
+}
+
+fn quote_ident_mysql(ident: &str) -> String {
+    format!("`{}`", ident.replace('`', "``"))
+}
+
+fn normalize_sim_query(query: &str) -> String {
+    query.trim().trim_end_matches(';').trim().to_string()
+}
+
+fn preview_query(query: &str, max_chars: usize) -> String {
+    let chars: Vec<char> = query.chars().collect();
+    if chars.len() <= max_chars {
+        return query.to_string();
+    }
+    let prefix: String = chars.into_iter().take(max_chars).collect();
+    format!("{prefix}...")
+}
+
+fn parse_mysql_query_cost(value: &Value) -> Option<f64> {
+    match value {
+        Value::Object(map) => {
+            for (key, child) in map {
+                if key.eq_ignore_ascii_case("query_cost") {
+                    if let Some(n) = child.as_f64() {
+                        return Some(n);
+                    }
+                    if let Some(s) = child.as_str() {
+                        if let Ok(parsed) = s.parse::<f64>() {
+                            return Some(parsed);
+                        }
+                    }
+                }
+                if let Some(cost) = parse_mysql_query_cost(child) {
+                    return Some(cost);
+                }
+            }
+            None
+        }
+        Value::Array(arr) => arr.iter().find_map(parse_mysql_query_cost),
+        _ => None,
+    }
+}
+
+fn has_index_usage_signal(value: &Value, index_name: &str) -> bool {
+    let target = index_name.to_lowercase();
+    match value {
+        Value::Object(map) => map.iter().any(|(key, child)| {
+            let key_matches = key.eq_ignore_ascii_case("key")
+                || key.eq_ignore_ascii_case("index_name")
+                || key.eq_ignore_ascii_case("used_key_parts");
+            if key_matches {
+                if let Some(s) = child.as_str() {
+                    if s.to_lowercase().contains(&target) {
+                        return true;
+                    }
+                }
+                if let Some(arr) = child.as_array() {
+                    for part in arr {
+                        if part
+                            .as_str()
+                            .map(|s| s.to_lowercase().contains(&target))
+                            .unwrap_or(false)
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+            has_index_usage_signal(child, index_name)
+        }),
+        Value::Array(arr) => arr.iter().any(|child| has_index_usage_signal(child, index_name)),
+        _ => false,
+    }
+}
+
+async fn explain_json_mysql(pool: &Pool<MySql>, query: &str) -> Result<Value, String> {
+    // Best-effort guardrail (available in most MySQL 5.7+/8.x builds).
+    let _ = sqlx::query("SET SESSION MAX_EXECUTION_TIME = 2000")
+        .execute(pool)
+        .await;
+
+    let explain_query = format!("EXPLAIN FORMAT=JSON {}", query);
+    let row = timeout(
+        Duration::from_millis(SIM_EXPLAIN_TIMEOUT_MS),
+        sqlx::query(&explain_query).fetch_one(pool),
+    )
+    .await
+    .map_err(|_| format!("EXPLAIN timed out after {}ms", SIM_EXPLAIN_TIMEOUT_MS))?
+        .map_err(|e| format!("EXPLAIN failed: {}", e))?;
+
+    let explain_json = row
+        .try_get::<String, _>("EXPLAIN")
+        .or_else(|_| row.try_get::<String, _>(0))
+        .map_err(|e| format!("Could not read EXPLAIN JSON payload: {}", e))?;
+
+    serde_json::from_str::<Value>(&explain_json)
+        .map_err(|e| format!("Could not parse EXPLAIN JSON payload: {}", e))
+}
+
+pub fn build_drop_index_sql(table: &str, index_name: &str) -> String {
+    format!(
+        "DROP INDEX {} ON {};",
+        quote_ident_mysql(index_name),
+        quote_ident_mysql(table)
+    )
+}
+
+pub async fn get_index_rollback_sql(
+    pool: &Pool<MySql>,
+    database: &str,
+    table: &str,
+    index_name: &str,
+) -> Result<String, String> {
+    let rows = sqlx::query(
+        r#"
+        SELECT COLUMN_NAME, NON_UNIQUE, INDEX_TYPE
+        FROM information_schema.STATISTICS
+        WHERE TABLE_SCHEMA = ?
+          AND TABLE_NAME = ?
+          AND INDEX_NAME = ?
+        ORDER BY SEQ_IN_INDEX
+        "#,
+    )
+    .bind(database)
+    .bind(table)
+    .bind(index_name)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| format!("Failed to fetch MySQL index metadata: {}", e))?;
+
+    if rows.is_empty() {
+        return Err("Index metadata not found for rollback SQL".to_string());
+    }
+
+    let non_unique: i64 = rows[0].try_get("NON_UNIQUE").unwrap_or(1);
+    let index_type: String = rows[0]
+        .try_get("INDEX_TYPE")
+        .unwrap_or_else(|_| "BTREE".to_string());
+
+    let columns: Vec<String> = rows
+        .iter()
+        .map(|row| row.try_get::<String, _>("COLUMN_NAME").unwrap_or_default())
+        .filter(|c| !c.is_empty())
+        .map(|c| quote_ident_mysql(&c))
+        .collect();
+
+    if columns.is_empty() {
+        return Err("Index column metadata is empty for rollback SQL".to_string());
+    }
+
+    let unique_prefix = if non_unique == 0 { "UNIQUE " } else { "" };
+    let using_clause = if index_type.trim().is_empty() {
+        String::new()
+    } else {
+        format!(" USING {}", index_type.trim())
+    };
+
+    Ok(format!(
+        "CREATE {}INDEX {}{} ON {}.{} ({});",
+        unique_prefix,
+        quote_ident_mysql(index_name),
+        using_clause,
+        quote_ident_mysql(database),
+        quote_ident_mysql(table),
+        columns.join(", ")
+    ))
+}
+
+pub async fn simulate_index_drop(
+    pool: &Pool<MySql>,
+    _database: &str,
+    _table: &str,
+    index_name: &str,
+    queries: &[(String, String)],
+) -> Result<(Vec<IndexSimulationQueryDiff>, Vec<String>), String> {
+    let mut notes = vec![
+        "MySQL simulation is heuristic in this build (no transactional index invisibility toggle).".to_string(),
+        "EXPLAIN requests are timeout-limited and use MAX_EXECUTION_TIME when available.".to_string(),
+    ];
+    let mut diffs: Vec<IndexSimulationQueryDiff> = Vec::new();
+
+    for (query_hash, raw_query) in queries {
+        let query = normalize_sim_query(raw_query);
+        if query.is_empty() {
+            continue;
+        }
+
+        let preview = preview_query(&query, 180);
+        match explain_json_mysql(pool, &query).await {
+            Ok(explain_json) => {
+                let before_cost = parse_mysql_query_cost(&explain_json);
+                let uses_index = has_index_usage_signal(&explain_json, index_name);
+                let estimated_after = before_cost.map(|cost| {
+                    if uses_index {
+                        // Conservative uplift when the removed index is referenced in current plan.
+                        cost * 1.35
+                    } else {
+                        cost
+                    }
+                });
+
+                let delta_pct = match (before_cost, estimated_after) {
+                    (Some(before), Some(after)) if before > 0.0 => Some(((after - before) / before) * 100.0),
+                    _ => None,
+                };
+                let regression = delta_pct.map(|d| d > 5.0).unwrap_or(false);
+
+                let reason = if uses_index {
+                    Some("Heuristic estimate: plan currently references this index".to_string())
+                } else if before_cost.is_none() {
+                    Some("EXPLAIN JSON did not provide query_cost; confidence reduced".to_string())
+                } else {
+                    Some("Heuristic estimate: index not visible in current plan".to_string())
+                };
+
+                diffs.push(IndexSimulationQueryDiff {
+                    query_hash: query_hash.clone(),
+                    query_preview: preview,
+                    before_cost,
+                    after_cost: estimated_after,
+                    delta_pct,
+                    regression,
+                    reason,
+                });
+            }
+            Err(err) => {
+                diffs.push(IndexSimulationQueryDiff {
+                    query_hash: query_hash.clone(),
+                    query_preview: preview,
+                    before_cost: None,
+                    after_cost: None,
+                    delta_pct: None,
+                    regression: false,
+                    reason: Some(format!("Baseline EXPLAIN failed: {}", err)),
+                });
+            }
+        }
+    }
+
+    if diffs.is_empty() {
+        notes.push("No explainable query candidates were found in local query history.".to_string());
+    }
+
+    Ok((diffs, notes))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_mysql_query_cost_reads_nested_json() {
+        let payload = serde_json::json!({
+            "query_block": {
+                "cost_info": {
+                    "query_cost": "42.75"
+                }
+            }
+        });
+        let cost = parse_mysql_query_cost(&payload);
+        assert_eq!(cost, Some(42.75));
+    }
+
+    #[test]
+    fn index_usage_signal_detects_index_name() {
+        let payload = serde_json::json!({
+            "query_block": {
+                "table": {
+                    "key": "idx_orders_created_at"
+                }
+            }
+        });
+        assert!(has_index_usage_signal(&payload, "idx_orders_created_at"));
+        assert!(!has_index_usage_signal(&payload, "idx_other"));
     }
 }
 
