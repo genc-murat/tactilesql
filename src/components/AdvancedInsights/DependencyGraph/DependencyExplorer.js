@@ -7,6 +7,7 @@ import './DependencyGraph.css';
 
 export function DependencyExplorer() {
     let theme = ThemeManager.getCurrentTheme();
+    let activeViewer = null;
 
 
     // Theme helpers
@@ -147,7 +148,15 @@ export function DependencyExplorer() {
         }
     };
 
+    const cleanupViewer = () => {
+        if (activeViewer && typeof activeViewer.onUnmount === 'function') {
+            activeViewer.onUnmount();
+        }
+        activeViewer = null;
+    };
+
     const render = () => {
+        cleanupViewer();
         container.innerHTML = '';
         container.className = classes.container;
         const isLight = theme === 'light';
@@ -486,6 +495,7 @@ export function DependencyExplorer() {
 
             // Viewer
             const viewer = GraphViewer(state.graphData, theme, state.qualityMap);
+            activeViewer = viewer;
 
             // Events
             searchInput.oninput = (e) => {
@@ -527,6 +537,7 @@ export function DependencyExplorer() {
     window.addEventListener('themechange', onThemeChange);
 
     container.onUnmount = () => {
+        cleanupViewer();
         window.removeEventListener('themechange', onThemeChange);
     };
 
