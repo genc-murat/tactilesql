@@ -8,6 +8,8 @@ import './DependencyGraph.css';
 export function DependencyExplorer() {
     let theme = ThemeManager.getCurrentTheme();
     let activeViewer = null;
+    let activeViewerSignature = null;
+    let searchTerm = '';
 
 
     // Theme helpers
@@ -46,10 +48,13 @@ export function DependencyExplorer() {
         availableDatabases: [],
         focusedTable: null,
         graphData: null,
+        graphVersion: 0,
         qualityMap: {}, // table.name -> score
         isLoading: false,
         error: null
     };
+
+    const getViewerSignature = () => `${theme}:${state.graphVersion}`;
 
     const init = async () => {
         try {
@@ -76,6 +81,7 @@ export function DependencyExplorer() {
         state.selectedConnectionId = connId;
         state.focusedTable = tableName;
         state.graphData = null;
+        searchTerm = '';
         state.error = null;
 
         if (isNewConnection) {
@@ -128,6 +134,7 @@ export function DependencyExplorer() {
         try {
             // Fetch graph
             state.graphData = await DependencyEngineApi.getGraph(state.selectedConnectionId, state.selectedDatabase, state.focusedTable);
+            state.graphVersion += 1;
 
             // Fetch Quality Scores (Best Effort)
             try {
@@ -153,10 +160,24 @@ export function DependencyExplorer() {
             activeViewer.onUnmount();
         }
         activeViewer = null;
+        activeViewerSignature = null;
     };
 
     const render = () => {
-        cleanupViewer();
+        const viewerSignature = getViewerSignature();
+        const shouldReuseViewer = Boolean(
+            activeViewer &&
+            state.graphData &&
+            !state.isLoading &&
+            !state.error &&
+            activeViewerSignature === viewerSignature
+        );
+        const viewerToReuse = shouldReuseViewer ? activeViewer : null;
+
+        if (!shouldReuseViewer) {
+            cleanupViewer();
+        }
+
         container.innerHTML = '';
         container.className = classes.container;
         const isLight = theme === 'light';
@@ -373,6 +394,12 @@ export function DependencyExplorer() {
                     </div>
                     
                     <div class="flex-1 overflow-y-auto p-4 space-y-6">
+                        ${data.lineageTruncated ? `
+                            <div class="text-[10px] px-2 py-1 rounded border ${isLight ? 'bg-amber-50 border-amber-100 text-amber-700' : 'bg-amber-500/10 border-amber-500/20 text-amber-300'}">
+                                Showing preview (${data.previewLimit} items max per direction). Load full lineage for complete list.
+                            </div>
+                        ` : ''}
+
                         <!-- Upstream -->
                         <div>
                              <h3 class="text-xs font-bold uppercase tracking-wider text-red-400 mb-2 flex items-center gap-2">
@@ -401,7 +428,13 @@ export function DependencyExplorer() {
                 }
                         </div>
                     </div>
-                    
+
+                    ${data.lineageTruncated ? `
+                        <button id="load-full-lineage" class="mx-4 mt-4 py-2 border rounded-lg text-xs font-bold uppercase tracking-wider transition-colors ${isLight ? 'bg-amber-50 border-amber-100 text-amber-700 hover:bg-amber-100' : 'bg-amber-500/10 border-amber-500/20 text-amber-300 hover:bg-amber-500/20'}">
+                            Load Full Lineage
+                        </button>
+                    ` : ''}
+
                     <button id="close-sidebar" class="m-4 py-2 border rounded-lg text-xs font-bold uppercase hover:bg-black/5 transition-colors ${classes.text.primary} ${isLight ? 'border-gray-200' : 'border-white/10'}">
                         Close Details
                     </button>
@@ -412,6 +445,12 @@ export function DependencyExplorer() {
             const sidebarExportBtn = sidebar.querySelector('#sidebar-export-mermaid');
             if (sidebarExportBtn) {
                 sidebarExportBtn.onclick = () => {
+                    const fullLineage = activeViewer && typeof activeViewer.getNodeLineage === 'function'
+                        ? activeViewer.getNodeLineage(data.id)
+                        : null;
+                    const upstreamNodes = fullLineage?.upstreamNodes || data.upstreamNodes;
+                    const downstreamNodes = fullLineage?.downstreamNodes || data.downstreamNodes;
+
                     let mermaid = 'graph LR\n';
                     mermaid += '    %% Styles\n';
                     mermaid += '    classDef table fill:#fff,stroke:#333,stroke-width:2px;\n';
@@ -429,7 +468,7 @@ export function DependencyExplorer() {
                     mermaid += `    class ${centralId} focus\n`;
 
                     // Upstream
-                    data.upstreamNodes.forEach(node => {
+                    upstreamNodes.forEach(node => {
                         const nodeId = sanitizeId(node.id);
                         const nodeLabel = sanitizeLabel(node.label);
                         const nodeClass = node.type === 'Table' ? 'table' : 'view';
@@ -438,7 +477,7 @@ export function DependencyExplorer() {
                     });
 
                     // Downstream
-                    data.downstreamNodes.forEach(node => {
+                    downstreamNodes.forEach(node => {
                         const nodeId = sanitizeId(node.id);
                         const nodeLabel = sanitizeLabel(node.label);
                         const nodeClass = node.type === 'Table' ? 'table' : 'view';
@@ -457,6 +496,26 @@ export function DependencyExplorer() {
                     URL.revokeObjectURL(url);
 
                     toastSuccess(`Lineage exported to Downloads as lineage_${data.name.replace(/[^a-zA-Z0-9-_]/g, '')}.mmd`);
+                };
+            }
+
+            const loadFullBtn = sidebar.querySelector('#load-full-lineage');
+            if (loadFullBtn) {
+                loadFullBtn.onclick = () => {
+                    if (!activeViewer || typeof activeViewer.getNodeLineage !== 'function') return;
+                    const fullLineage = activeViewer.getNodeLineage(data.id);
+                    if (!fullLineage) return;
+
+                    renderSidebar({
+                        ...data,
+                        upstreamCount: fullLineage.upstreamCount,
+                        downstreamCount: fullLineage.downstreamCount,
+                        upstreamNodes: fullLineage.upstreamNodes,
+                        downstreamNodes: fullLineage.downstreamNodes,
+                        upstreamHasMore: fullLineage.upstreamHasMore,
+                        downstreamHasMore: fullLineage.downstreamHasMore,
+                        lineageTruncated: fullLineage.upstreamHasMore || fullLineage.downstreamHasMore
+                    });
                 };
             }
 
@@ -491,28 +550,50 @@ export function DependencyExplorer() {
             searchInput.type = 'text';
             searchInput.placeholder = 'Search tables...';
             searchInput.className = `${classes.input} shadow-lg`;
+            searchInput.value = searchTerm;
             searchContainer.appendChild(searchInput);
 
-            // Viewer
-            const viewer = GraphViewer(state.graphData, theme, state.qualityMap);
+            // Viewer (reuse existing instance when graph/theme signature is unchanged)
+            const viewer = viewerToReuse || GraphViewer(state.graphData, theme, state.qualityMap);
             activeViewer = viewer;
+            if (!viewerToReuse) {
+                activeViewerSignature = viewerSignature;
+            }
 
             // Events
             searchInput.oninput = (e) => {
-                if (viewer.updateSearch) viewer.updateSearch(e.target.value);
+                searchTerm = e.target.value;
+                if (viewer.updateSearch) viewer.updateSearch(searchTerm);
             };
 
-            viewer.addEventListener('node-selected', (e) => {
-                renderSidebar(e.detail);
-            });
+            if (viewer.__nodeSelectedHandler) {
+                viewer.removeEventListener('node-selected', viewer.__nodeSelectedHandler);
+            }
+            if (viewer.__selectionClearedHandler) {
+                viewer.removeEventListener('selection-cleared', viewer.__selectionClearedHandler);
+            }
 
-            viewer.addEventListener('selection-cleared', () => {
+            viewer.__nodeSelectedHandler = (e) => {
+                renderSidebar(e.detail);
+            };
+            viewer.__selectionClearedHandler = () => {
                 renderSidebar(null);
-            });
+            };
+
+            viewer.addEventListener('node-selected', viewer.__nodeSelectedHandler);
+            viewer.addEventListener('selection-cleared', viewer.__selectionClearedHandler);
+
+            if (searchTerm && viewer.updateSearch) {
+                viewer.updateSearch(searchTerm);
+            }
 
             content.appendChild(searchContainer);
             content.appendChild(viewer);
             content.appendChild(sidebar);
+
+            if (viewerToReuse && typeof viewer.onAttach === 'function') {
+                viewer.onAttach();
+            }
         } else {
             content.innerHTML = `
                 <div class="h-full w-full flex flex-col items-center justify-center gap-4 opacity-50 ${classes.text.primary}">

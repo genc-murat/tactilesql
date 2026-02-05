@@ -176,6 +176,11 @@ export function GraphViewer(graphData, theme, qualityMap) {
     let currentLod = null;
     let initTimeoutId = null;
     let layoutTimeoutId = null;
+    const SEARCH_DEBOUNCE_MS = 180;
+    const LINEAGE_PREVIEW_LIMIT = isDenseGraph ? 40 : 80;
+    let searchDebounceId = null;
+    let pendingSearchTerm = '';
+    let searchIndex = [];
 
     const miniMapState = {
         graphMinX: 0,
@@ -195,6 +200,65 @@ export function GraphViewer(graphData, theme, qualityMap) {
     const updateZoomIndicator = () => {
         if (!cy) return;
         zoomIndicator.textContent = `${Math.round(cy.zoom() * 100)}%`;
+    };
+
+    const collectLineageNodes = (collection, limit = null) => {
+        const total = collection.size();
+        const cap = Number.isFinite(limit) ? Math.max(0, Math.min(limit, total)) : total;
+        const items = [];
+
+        for (let i = 0; i < cap; i += 1) {
+            const item = collection[i];
+            if (!item) continue;
+            items.push({
+                id: item.id(),
+                label: item.data('label'),
+                type: item.data('type')
+            });
+        }
+
+        return {
+            total,
+            hasMore: cap < total,
+            items
+        };
+    };
+
+    const buildSearchIndex = () => {
+        if (!cy) return;
+        searchIndex = cy.nodes().map(node => ({
+            node,
+            label: String(node.data('label') || '').toLowerCase()
+        }));
+    };
+
+    const runSearch = (term) => {
+        if (!cy) return;
+
+        const normalized = String(term || '').trim().toLowerCase();
+        cy.elements().removeClass('faded highlighted upstream downstream');
+
+        if (!normalized) {
+            scheduleMiniMapDraw();
+            return;
+        }
+
+        const matchesArray = [];
+        for (let i = 0; i < searchIndex.length; i += 1) {
+            const entry = searchIndex[i];
+            if (entry.label.includes(normalized)) {
+                matchesArray.push(entry.node);
+            }
+        }
+
+        const matches = cy.collection(matchesArray);
+        if (matches.size() > 0) {
+            matches.addClass('highlighted');
+            cy.elements().not(matches).addClass('faded');
+            cy.fit(matches, 50);
+        }
+
+        scheduleMiniMapDraw();
     };
 
     const applyLod = () => {
@@ -608,6 +672,7 @@ export function GraphViewer(graphData, theme, qualityMap) {
         });
 
         setNodesLocked(nodesLocked);
+        buildSearchIndex();
 
         cy.on('zoom pan resize', () => {
             updateZoomIndicator();
@@ -615,7 +680,11 @@ export function GraphViewer(graphData, theme, qualityMap) {
             scheduleMiniMapDraw();
         });
 
-        cy.on('position add remove', scheduleMiniMapDraw);
+        cy.on('position', scheduleMiniMapDraw);
+        cy.on('add remove data', () => {
+            buildSearchIndex();
+            scheduleMiniMapDraw();
+        });
 
         layoutTimeoutId = setTimeout(() => {
             const layout = cy.layout({
@@ -661,6 +730,10 @@ export function GraphViewer(graphData, theme, qualityMap) {
 
             const predecessors = node.predecessors();
             const successors = node.successors();
+            const predecessorNodes = predecessors.nodes();
+            const successorNodes = successors.nodes();
+            const upstreamPreview = collectLineageNodes(predecessorNodes, LINEAGE_PREVIEW_LIMIT);
+            const downstreamPreview = collectLineageNodes(successorNodes, LINEAGE_PREVIEW_LIMIT);
 
             predecessors.addClass('upstream');
             successors.addClass('downstream');
@@ -674,10 +747,14 @@ export function GraphViewer(graphData, theme, qualityMap) {
                     id: node.id(),
                     name: node.data('label'),
                     type: node.data('type'),
-                    upstreamCount: predecessors.nodes().size(),
-                    downstreamCount: successors.nodes().size(),
-                    upstreamNodes: predecessors.nodes().map(n => ({ id: n.id(), label: n.data('label'), type: n.data('type') })),
-                    downstreamNodes: successors.nodes().map(n => ({ id: n.id(), label: n.data('label'), type: n.data('type') })),
+                    upstreamCount: upstreamPreview.total,
+                    downstreamCount: downstreamPreview.total,
+                    upstreamNodes: upstreamPreview.items,
+                    downstreamNodes: downstreamPreview.items,
+                    upstreamHasMore: upstreamPreview.hasMore,
+                    downstreamHasMore: downstreamPreview.hasMore,
+                    previewLimit: LINEAGE_PREVIEW_LIMIT,
+                    lineageTruncated: upstreamPreview.hasMore || downstreamPreview.hasMore,
                     qualityScore: node.data('qualityScore')
                 }
             }));
@@ -698,23 +775,45 @@ export function GraphViewer(graphData, theme, qualityMap) {
     }, 0);
 
     container.updateSearch = (term) => {
+        pendingSearchTerm = term;
+        if (searchDebounceId) {
+            clearTimeout(searchDebounceId);
+        }
+        searchDebounceId = setTimeout(() => {
+            searchDebounceId = null;
+            runSearch(pendingSearchTerm);
+        }, SEARCH_DEBOUNCE_MS);
+    };
+
+    container.getNodeLineage = (nodeId, limit = null) => {
+        if (!cy || !nodeId) return null;
+
+        const node = cy.getElementById(nodeId);
+        if (!node || node.empty()) return null;
+
+        const upstream = collectLineageNodes(node.predecessors().nodes(), limit);
+        const downstream = collectLineageNodes(node.successors().nodes(), limit);
+
+        return {
+            id: node.id(),
+            upstreamCount: upstream.total,
+            downstreamCount: downstream.total,
+            upstreamNodes: upstream.items,
+            downstreamNodes: downstream.items,
+            upstreamHasMore: upstream.hasMore,
+            downstreamHasMore: downstream.hasMore
+        };
+    };
+
+    container.onAttach = () => {
         if (!cy) return;
-
-        cy.elements().removeClass('faded highlighted upstream downstream');
-
-        if (!term) {
-            scheduleMiniMapDraw();
-            return;
+        cy.resize();
+        updateZoomIndicator();
+        applyLod();
+        if (pendingSearchTerm) {
+            runSearch(pendingSearchTerm);
         }
-
-        const matches = cy.nodes().filter(n => n.data('label').toLowerCase().includes(term.toLowerCase()));
-
-        if (matches.size() > 0) {
-            matches.addClass('highlighted');
-            cy.elements().not(matches).addClass('faded');
-            cy.fit(matches, 50);
-            scheduleMiniMapDraw();
-        }
+        scheduleMiniMapDraw();
     };
 
     container.onUnmount = () => {
@@ -728,6 +827,11 @@ export function GraphViewer(graphData, theme, qualityMap) {
         if (layoutTimeoutId) {
             clearTimeout(layoutTimeoutId);
             layoutTimeoutId = null;
+        }
+
+        if (searchDebounceId) {
+            clearTimeout(searchDebounceId);
+            searchDebounceId = null;
         }
 
         if (miniMapState.rafId !== null) {
