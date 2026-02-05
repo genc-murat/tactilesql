@@ -316,3 +316,35 @@ pub struct CapacityMetrics {
     pub disk_read_bytes: i64,
     pub disk_write_bytes: i64,
 }
+
+// --- AI Index Recommendation ---
+#[derive(Serialize, Debug)]
+pub struct AiIndexRecommendation {
+    pub columns: Vec<String>,
+    pub index_type: String,
+    pub reason: String,
+    pub impact_score: i32,
+    pub affected_queries: Vec<String>,
+    pub estimated_benefit: String,
+    pub create_sql: String,
+}
+
+#[derive(Serialize, Debug)]
+pub struct AiIndexRecommendations {
+    pub table_name: String,
+    pub recommendations: Vec<AiIndexRecommendation>,
+    pub analyzed_queries: i32,
+    pub analysis_summary: String,
+}
+
+// --- Query Pattern for Analysis ---
+#[derive(Serialize, Debug)]
+pub struct QueryPattern {
+    pub query_pattern: String,
+    pub frequency: i32,
+    pub avg_duration_ms: f64,
+    pub where_columns: Vec<String>,
+    pub join_columns: Vec<String>,
+    pub order_by_columns: Vec<String>,
+    pub group_by_columns: Vec<String>,
+}

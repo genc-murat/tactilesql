@@ -42,6 +42,71 @@ Format your response as a short, bulleted technical analysis. Max 150 words.
         return await this.generateResponse(provider, apiKey, model, prompt, "EXPLAIN");
     }
 
+    static async recommendIndexes(provider, apiKey, model, context) {
+        const prompt = `
+You are an expert database performance engineer. Analyze the following table schema and query patterns to recommend optimal indexes.
+
+TABLE: ${context.table}
+DATABASE: ${context.database}
+
+COLUMNS:
+${JSON.stringify(context.columns, null, 2)}
+
+EXISTING INDEXES:
+${JSON.stringify(context.existingIndexes, null, 2)}
+
+QUERY PATTERNS (from query history):
+${JSON.stringify(context.queryPatterns, null, 2)}
+
+Based on this analysis, provide index recommendations in the following JSON format:
+{
+  "recommendations": [
+    {
+      "columns": ["column1", "column2"],
+      "indexType": "BTREE",
+      "reason": "Detailed explanation of why this index is needed",
+      "impactScore": 85,
+      "affectedQueries": ["Example query 1", "Example query 2"],
+      "estimatedBenefit": "~40% faster queries",
+      "createSql": "CREATE INDEX idx_name ON table (columns);"
+    }
+  ],
+  "analysisSummary": "Brief summary of the analysis"
+}
+
+Important:
+1. Only recommend indexes that don't already exist
+2. Focus on columns frequently used in WHERE, JOIN, ORDER BY clauses
+3. Consider composite indexes for multi-column filters
+4. Provide realistic impact scores (0-100)
+5. Include actual CREATE INDEX SQL statements
+6. Limit to top 5 most impactful recommendations
+
+Respond ONLY with the JSON object, no markdown formatting.`;
+
+        try {
+            const response = await this.generateResponse(provider, apiKey, model, prompt, "RECOMMEND_INDEX", context);
+            // Try to parse JSON from response
+            const jsonMatch = response.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+                return JSON.parse(jsonMatch[0]);
+            }
+            // If no JSON found, return structured error
+            return {
+                recommendations: [],
+                analysisSummary: "Failed to parse AI response",
+                error: response
+            };
+        } catch (error) {
+            console.error('AI Index Recommendation Error:', error);
+            return {
+                recommendations: [],
+                analysisSummary: "Error getting AI recommendations: " + error.message,
+                error: error.message
+            };
+        }
+    }
+
     static async explainQuery(provider, apiKey, model, sql, context) {
         const prompt = `Explain what this SQL query does in plain English. Break it down step by step if it's complex.\n\nSQL:\n${sql}`;
         return await this.generateResponse(provider, apiKey, model, prompt, "EXPLAIN", context);

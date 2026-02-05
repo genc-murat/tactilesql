@@ -1774,3 +1774,238 @@ pub async fn get_query_history(
         Err("Awareness store not initialized".to_string())
     }
 }
+
+// =====================================================
+// TAURI COMMANDS - AI INDEX RECOMMENDATIONS
+// =====================================================
+
+#[tauri::command]
+pub async fn get_ai_index_recommendations(
+    app_state: State<'_, AppState>,
+    database: String,
+    table: String,
+) -> Result<AiIndexRecommendations, String> {
+    let db_type = {
+        let guard = app_state.active_db_type.lock().await;
+        guard.clone()
+    };
+
+    // Get query history from awareness store
+    let query_history = {
+        let guard = app_state.awareness_store.lock().await;
+        if let Some(store) = guard.as_ref() {
+            store.get_query_history(1000).await.unwrap_or_default()
+        } else {
+            Vec::new()
+        }
+    };
+
+    // Filter queries related to this table
+    let table_queries: Vec<_> = query_history.into_iter()
+        .filter(|q| {
+            let normalized = q.exact_query.to_lowercase();
+            normalized.contains(&table.to_lowercase()) ||
+            normalized.contains(&format!("from {}", table).to_lowercase()) ||
+            normalized.contains(&format!("join {}", table).to_lowercase()) ||
+            normalized.contains(&format!("into {}", table).to_lowercase()) ||
+            normalized.contains(&format!("update {}", table).to_lowercase())
+        })
+        .collect();
+
+    // Get existing indexes
+    let existing_indexes = match db_type {
+        DatabaseType::PostgreSQL => {
+            let guard = app_state.postgres_pool.lock().await;
+            let pool = guard.as_ref()
+                .ok_or("No PostgreSQL connection established")?;
+            postgres::get_table_indexes(pool, &database, &table).await.unwrap_or_default()
+        },
+        DatabaseType::MySQL => {
+            let guard = app_state.mysql_pool.lock().await;
+            let pool = guard.as_ref()
+                .ok_or("No MySQL connection established")?;
+            mysql::get_table_indexes(pool, &database, &table).await.unwrap_or_default()
+        },
+        DatabaseType::Disconnected => return Err("No connection established".into()),
+    };
+
+    // Get table schema
+    let columns = match db_type {
+        DatabaseType::PostgreSQL => {
+            let guard = app_state.postgres_pool.lock().await;
+            let pool = guard.as_ref()
+                .ok_or("No PostgreSQL connection established")?;
+            postgres::get_table_schema(pool, &database, &table).await.unwrap_or_default()
+        },
+        DatabaseType::MySQL => {
+            let guard = app_state.mysql_pool.lock().await;
+            let pool = guard.as_ref()
+                .ok_or("No MySQL connection established")?;
+            mysql::get_table_schema(pool, &database, &table).await.unwrap_or_default()
+        },
+        DatabaseType::Disconnected => Vec::new(),
+    };
+
+    // Analyze query patterns
+    let mut column_usage: std::collections::HashMap<String, (i32, f64)> = std::collections::HashMap::new();
+    let mut affected_queries: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+
+    for query in &table_queries {
+        let sql = &query.exact_query;
+        let normalized = crate::awareness::profiler::normalize_query(sql);
+        
+        // Extract WHERE columns
+        if let Some(where_pos) = normalized.to_uppercase().find("WHERE") {
+            let where_clause = &normalized[where_pos + 5..];
+            for col in &columns {
+                if where_clause.contains(&col.name.to_lowercase()) {
+                    let entry = column_usage.entry(col.name.clone()).or_insert((0, 0.0));
+                    entry.0 += 1;
+                    entry.1 += query.resources.execution_time_ms;
+                    
+                    let queries = affected_queries.entry(col.name.clone()).or_insert_with(Vec::new);
+                    if queries.len() < 3 {
+                        queries.push(sql.clone());
+                    }
+                }
+            }
+        }
+
+        // Extract ORDER BY columns
+        if let Some(order_pos) = normalized.to_uppercase().find("ORDER BY") {
+            let order_clause = &normalized[order_pos + 8..];
+            for col in &columns {
+                if order_clause.contains(&col.name.to_lowercase()) {
+                    let entry = column_usage.entry(col.name.clone()).or_insert((0, 0.0));
+                    entry.0 += 1;
+                    entry.1 += query.resources.execution_time_ms;
+                    
+                    let queries = affected_queries.entry(format!("ORDER_BY_{}", col.name)).or_insert_with(Vec::new);
+                    if queries.len() < 3 {
+                        queries.push(sql.clone());
+                    }
+                }
+            }
+        }
+
+        // Extract JOIN columns
+        if normalized.to_uppercase().contains("JOIN") {
+            for col in &columns {
+                if col.column_key == "MUL" || col.column_key == "PRI" {
+                    let entry = column_usage.entry(col.name.clone()).or_insert((0, 0.0));
+                    entry.0 += 1;
+                }
+            }
+        }
+    }
+
+    // Build recommendations
+    let mut recommendations: Vec<AiIndexRecommendation> = Vec::new();
+    let existing_index_columns: std::collections::HashSet<String> = existing_indexes
+        .iter()
+        .map(|idx| idx.column_name.to_lowercase())
+        .collect();
+
+    // Sort columns by usage frequency
+    let mut sorted_columns: Vec<_> = column_usage.iter().collect();
+    sorted_columns.sort_by(|a, b| b.1.0.cmp(&a.1.0));
+
+    // Generate single-column recommendations
+    for (col_name, (frequency, avg_duration)) in sorted_columns.iter().take(5) {
+        if existing_index_columns.contains(&col_name.to_lowercase()) {
+            continue;
+        }
+
+        let impact_score = std::cmp::min(100, (*frequency * 10) as i32);
+        if impact_score < 20 {
+            continue;
+        }
+
+        let col_queries = affected_queries.get(*col_name).cloned().unwrap_or_default();
+        let estimated_benefit = if *avg_duration > 100.0 {
+            format!("~{}% faster", std::cmp::min(80, (*avg_duration / 10.0) as i32))
+        } else {
+            "Moderate improvement".to_string()
+        };
+
+        let create_sql = match db_type {
+            DatabaseType::PostgreSQL => {
+                format!("CREATE INDEX idx_{}_{} ON {}.{} ({});",
+                    table, col_name, database, table, col_name)
+            },
+            DatabaseType::MySQL => {
+                format!("CREATE INDEX idx_{}_{} ON {}.{} ({});",
+                    table, col_name, database, table, col_name)
+            },
+            DatabaseType::Disconnected => String::new(),
+        };
+
+        recommendations.push(AiIndexRecommendation {
+            columns: vec![(*col_name).clone()],
+            index_type: "BTREE".to_string(),
+            reason: format!("Column '{}' appears in {} queries with avg duration {:.1}ms", 
+                col_name, frequency, avg_duration),
+            impact_score,
+            affected_queries: col_queries,
+            estimated_benefit,
+            create_sql,
+        });
+    }
+
+    // Generate composite index recommendations for frequently used together columns
+    if sorted_columns.len() >= 2 {
+        let top_cols: Vec<String> = sorted_columns.iter().take(3).map(|(name, _)| (*name).clone()).collect();
+        
+        // Check if these columns are used together in WHERE clauses
+        let mut composite_score = 0;
+        for query in &table_queries {
+            let normalized = query.exact_query.to_lowercase();
+            let has_all_cols = top_cols.iter().all(|col| normalized.contains(&col.to_lowercase()));
+            if has_all_cols && normalized.contains("where") {
+                composite_score += 1;
+            }
+        }
+
+        if composite_score >= 3 {
+            let composite_name = top_cols.join("_");
+            let create_sql = match db_type {
+                DatabaseType::PostgreSQL => {
+                    format!("CREATE INDEX idx_{}_composite ON {}.{} ({});",
+                        table, database, table, top_cols.join(", "))
+                },
+                DatabaseType::MySQL => {
+                    format!("CREATE INDEX idx_{}_composite ON {}.{} ({});",
+                        table, database, table, top_cols.join(", "))
+                },
+                DatabaseType::Disconnected => String::new(),
+            };
+
+            recommendations.push(AiIndexRecommendation {
+                columns: top_cols.clone(),
+                index_type: "BTREE".to_string(),
+                reason: format!("These {} columns frequently appear together in WHERE clauses", top_cols.len()),
+                impact_score: std::cmp::min(100, composite_score * 15),
+                affected_queries: vec![format!("Used together in {} queries", composite_score)],
+                estimated_benefit: "High - Multi-column filtering".to_string(),
+                create_sql,
+            });
+        }
+    }
+
+    // Sort recommendations by impact score
+    recommendations.sort_by(|a, b| b.impact_score.cmp(&a.impact_score));
+
+    let summary = if recommendations.is_empty() {
+        "No significant index opportunities found based on query history.".to_string()
+    } else {
+        format!("Found {} potential index optimizations based on {} analyzed queries.",
+            recommendations.len(), table_queries.len())
+    };
+
+    Ok(AiIndexRecommendations {
+        table_name: table,
+        recommendations,
+        analyzed_queries: table_queries.len() as i32,
+        analysis_summary: summary,
+    })
+}

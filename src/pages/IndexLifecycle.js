@@ -2,6 +2,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { ThemeManager } from '../utils/ThemeManager.js';
 import { Dialog } from '../components/UI/Dialog.js';
 import { escapeHtml, formatBytes } from '../utils/helpers.js';
+import { AiService } from '../utils/AiService.js';
+import { AiAssistancePanel } from '../components/UI/AiAssistancePanel.js';
 
 export function IndexLifecycle() {
     let theme = ThemeManager.getCurrentTheme();
@@ -262,7 +264,13 @@ export function IndexLifecycle() {
         isLoading: false,
         error: null,
         activeDbType: 'mysql',
-        scoringConfig: loadScoringConfig()
+        scoringConfig: loadScoringConfig(),
+        // AI Recommendations
+        aiRecommendations: [],
+        aiAnalysisSummary: '',
+        aiAnalyzedQueries: 0,
+        isAiAnalyzing: false,
+        aiError: null
     };
 
     const selectConnection = async (connId) => {
@@ -481,6 +489,10 @@ export function IndexLifecycle() {
                         <div class="text-[11px] ${classes.text.secondary} mt-1">Detect unused indexes, simulate drops, and score risk/impact.</div>
                     </div>
                     <div class="flex items-center gap-2">
+                        <button id="btn-ai-recommend" class="${classes.buttonGhost} flex items-center gap-2" ${state.isLoading || !state.selectedTable || state.isAiAnalyzing ? 'disabled' : ''}>
+                            <span class="material-symbols-outlined text-[14px]">auto_awesome</span>
+                            ${state.isAiAnalyzing ? 'Analyzing...' : 'AI Recommendations'}
+                        </button>
                         <button id="btn-refresh" class="${classes.buttonGhost}" ${state.isLoading || !state.selectedTable ? 'disabled' : ''}>Refresh</button>
                         <button id="btn-run" class="${classes.buttonPrimary}" ${state.isLoading || !state.selectedTable ? 'disabled' : ''}>Run Analysis</button>
                     </div>
@@ -531,6 +543,8 @@ export function IndexLifecycle() {
                         <div class="text-lg font-mono ${classes.text.primary} mt-2">${totalIndexes ? Math.round(indexModels.reduce((sum, i) => sum + i.scores.risk, 0) / totalIndexes) : 0}</div>
                     </div>
                 </div>
+
+                ${renderAiRecommendations()}
 
                 <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
                     <div class="xl:col-span-2 space-y-6">
@@ -780,6 +794,290 @@ export function IndexLifecycle() {
                 render();
             };
         }
+
+        // AI Recommendations Button
+        const aiRecommendBtn = container.querySelector('#btn-ai-recommend');
+        if (aiRecommendBtn) {
+            aiRecommendBtn.onclick = () => runAiIndexAnalysis();
+        }
+
+        // Close AI Panel Button
+        const closeAiBtn = container.querySelector('#btn-close-ai');
+        if (closeAiBtn) {
+            closeAiBtn.onclick = () => {
+                state.aiRecommendations = [];
+                state.aiAnalysisSummary = '';
+                state.aiAnalyzedQueries = 0;
+                state.aiError = null;
+                render();
+            };
+        }
+
+        // Copy Index SQL Buttons
+        container.querySelectorAll('.btn-copy-index').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const sql = e.currentTarget.dataset.sql;
+                if (sql) {
+                    try {
+                        await navigator.clipboard.writeText(sql);
+                        Dialog.alert('Index SQL copied to clipboard.');
+                    } catch (err) {
+                        Dialog.alert(`Copy failed: ${err}`);
+                    }
+                }
+            });
+        });
+
+        // Apply Index Buttons
+        container.querySelectorAll('.btn-apply-index').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const sql = e.currentTarget.dataset.sql;
+                const columns = e.currentTarget.dataset.columns;
+                if (sql) {
+                    const confirmed = await Dialog.confirm(
+                        'Create Index',
+                        `Are you sure you want to create this index on columns: ${columns}?`,
+                        'Create',
+                        'Cancel'
+                    );
+                    if (confirmed) {
+                        try {
+                            await invoke('execute_query', { query: sql });
+                            Dialog.alert('Index created successfully!');
+                            // Refresh analysis
+                            await loadAnalysis();
+                        } catch (err) {
+                            Dialog.alert(`Failed to create index: ${err}`);
+                        }
+                    }
+                }
+            });
+        });
+
+        // Preview Index Buttons
+        container.querySelectorAll('.btn-preview-index').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const sql = e.currentTarget.dataset.sql;
+                if (sql) {
+                    Dialog.alert('Index Preview', sql);
+                }
+            });
+        });
+    };
+
+    const runAiIndexAnalysis = async () => {
+        if (!state.selectedDatabase || !state.selectedTable) return;
+
+        state.isAiAnalyzing = true;
+        state.aiError = null;
+        render();
+
+        try {
+            // Get AI recommendations from backend
+            const result = await invoke('get_ai_index_recommendations', {
+                database: state.selectedDatabase,
+                table: state.selectedTable
+            });
+
+            state.aiRecommendations = result.recommendations || [];
+            state.aiAnalysisSummary = result.analysis_summary || '';
+            state.aiAnalyzedQueries = result.analyzed_queries || 0;
+
+            // If AI provider is configured, enhance with AI analysis
+            const aiProvider = localStorage.getItem('ai_provider');
+            const aiApiKey = localStorage.getItem('ai_api_key');
+            const aiModel = localStorage.getItem('ai_model');
+
+            if (aiProvider && aiApiKey && state.aiRecommendations.length > 0) {
+                try {
+                    // Get table schema for context
+                    const columns = await invoke('get_table_schema', {
+                        database: state.selectedDatabase,
+                        table: state.selectedTable
+                    });
+
+                    // Get existing indexes
+                    const existingIndexes = await invoke('get_table_indexes', {
+                        database: state.selectedDatabase,
+                        table: state.selectedTable
+                    });
+
+                    // Build query patterns from recommendations
+                    const queryPatterns = state.aiRecommendations.map(rec => ({
+                        query_pattern: rec.affected_queries?.[0] || 'SELECT ...',
+                        frequency: rec.impact_score / 10,
+                        avg_duration_ms: 100,
+                        where_columns: rec.columns,
+                        join_columns: [],
+                        order_by_columns: [],
+                        group_by_columns: []
+                    }));
+
+                    const aiContext = {
+                        table: state.selectedTable,
+                        database: state.selectedDatabase,
+                        columns: columns.map(c => ({
+                            name: c.name,
+                            type: c.data_type,
+                            nullable: c.is_nullable,
+                            key: c.column_key
+                        })),
+                        existingIndexes: existingIndexes.map(idx => ({
+                            name: idx.name,
+                            column: idx.column_name,
+                            type: idx.index_type
+                        })),
+                        queryPatterns
+                    };
+
+                    const aiResult = await AiService.recommendIndexes(aiProvider, aiApiKey, aiModel, aiContext);
+
+                    if (aiResult && aiResult.recommendations && aiResult.recommendations.length > 0) {
+                        // Merge AI recommendations with backend recommendations
+                        state.aiRecommendations = aiResult.recommendations.map(rec => ({
+                            columns: rec.columns || [],
+                            index_type: rec.indexType || 'BTREE',
+                            reason: rec.reason || '',
+                            impact_score: rec.impactScore || 50,
+                            affected_queries: rec.affectedQueries || [],
+                            estimated_benefit: rec.estimatedBenefit || 'Moderate improvement',
+                            create_sql: rec.createSql || ''
+                        }));
+                        state.aiAnalysisSummary = aiResult.analysisSummary || state.aiAnalysisSummary;
+                    }
+                } catch (aiError) {
+                    console.warn('AI enhancement failed, using backend recommendations:', aiError);
+                    // Continue with backend recommendations
+                }
+            }
+        } catch (err) {
+            state.aiError = `AI analysis failed: ${err}`;
+            console.error('AI Index Analysis Error:', err);
+        } finally {
+            state.isAiAnalyzing = false;
+            render();
+        }
+    };
+
+    const renderAiRecommendations = () => {
+        if (state.aiRecommendations.length === 0 && !state.aiAnalysisSummary && !state.isAiAnalyzing) {
+            return '';
+        }
+
+        const impactColor = (score) => {
+            if (score >= 80) return 'text-emerald-500';
+            if (score >= 60) return 'text-amber-500';
+            return 'text-gray-500';
+        };
+
+        const impactBg = (score) => {
+            if (score >= 80) return 'bg-emerald-500/10 border-emerald-500/20';
+            if (score >= 60) return 'bg-amber-500/10 border-amber-500/20';
+            return 'bg-gray-500/10 border-gray-500/20';
+        };
+
+        return `
+            <div class="${classes.card} p-5 mb-6">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-2">
+                        <span class="material-symbols-outlined text-mysql-teal">auto_awesome</span>
+                        <div>
+                            <div class="text-[11px] font-bold uppercase tracking-widest ${classes.text.primary}">AI Index Recommendations</div>
+                            <div class="text-[10px] ${classes.text.secondary}">${state.aiAnalyzedQueries} queries analyzed</div>
+                        </div>
+                    </div>
+                    <button id="btn-close-ai" class="${classes.buttonGhost} p-1">
+                        <span class="material-symbols-outlined text-[16px]">close</span>
+                    </button>
+                </div>
+
+                ${state.isAiAnalyzing ? `
+                    <div class="flex items-center justify-center py-8">
+                        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-mysql-teal"></div>
+                        <span class="ml-3 text-sm ${classes.text.secondary}">AI analyzing query patterns...</span>
+                    </div>
+                ` : ''}
+
+                ${state.aiError ? `
+                    <div class="p-3 rounded-lg border border-red-500/20 bg-red-500/10 text-xs text-red-500">
+                        ${escapeHtml(state.aiError)}
+                    </div>
+                ` : ''}
+
+                ${state.aiAnalysisSummary ? `
+                    <div class="text-[11px] ${classes.text.secondary} mb-4 p-3 rounded-lg ${theme === 'light' ? 'bg-gray-50' : 'bg-white/5'}">
+                        ${escapeHtml(state.aiAnalysisSummary)}
+                    </div>
+                ` : ''}
+
+                ${state.aiRecommendations.length > 0 ? `
+                    <div class="space-y-3">
+                        ${state.aiRecommendations.map((rec, i) => `
+                            <div class="p-4 rounded-lg border ${impactBg(rec.impact_score)}">
+                                <div class="flex items-start justify-between mb-2">
+                                    <div>
+                                        <div class="text-xs font-bold ${classes.text.primary}">
+                                            ${rec.columns.length > 1 ? 'Composite Index' : 'Single Column Index'}
+                                        </div>
+                                        <div class="text-[10px] ${classes.text.secondary} mt-1">
+                                            Columns: ${escapeHtml(rec.columns.join(', '))}
+                                        </div>
+                                    </div>
+                                    <div class="text-right">
+                                        <div class="text-lg font-black ${impactColor(rec.impact_score)}">${rec.impact_score}</div>
+                                        <div class="text-[9px] ${classes.text.subtle} uppercase">Impact Score</div>
+                                    </div>
+                                </div>
+
+                                <div class="text-[11px] ${classes.text.secondary} mb-3">
+                                    ${escapeHtml(rec.reason)}
+                                </div>
+
+                                ${rec.affected_queries && rec.affected_queries.length > 0 ? `
+                                    <div class="mb-3">
+                                        <div class="text-[9px] ${classes.text.subtle} uppercase mb-1">Affected Queries</div>
+                                        <div class="space-y-1">
+                                            ${rec.affected_queries.map(q => `
+                                                <div class="text-[10px] ${classes.text.secondary} font-mono truncate" title="${escapeHtml(q)}">
+                                                    ${escapeHtml(q.length > 80 ? q.substring(0, 80) + '...' : q)}
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                ` : ''}
+
+                                <div class="flex items-center justify-between mb-3">
+                                    <span class="text-[10px] ${classes.text.subtle}">Type: ${escapeHtml(rec.index_type)}</span>
+                                    <span class="text-[10px] font-medium ${impactColor(rec.impact_score)}">${escapeHtml(rec.estimated_benefit)}</span>
+                                </div>
+
+                                <div class="relative">
+                                    <pre class="text-[10px] font-mono p-3 rounded-lg ${theme === 'light' ? 'bg-gray-100' : 'bg-black/30'} ${classes.text.primary} overflow-x-auto">${escapeHtml(rec.create_sql)}</pre>
+                                    <button class="btn-copy-index absolute top-2 right-2 p-1 rounded ${classes.buttonGhost}" data-sql="${escapeHtml(rec.create_sql)}" title="Copy SQL">
+                                        <span class="material-symbols-outlined text-[14px]">content_copy</span>
+                                    </button>
+                                </div>
+
+                                <div class="flex items-center gap-2 mt-3">
+                                    <button class="btn-apply-index ${classes.buttonPrimary} text-[10px] py-1.5 px-3" data-sql="${escapeHtml(rec.create_sql)}" data-columns="${escapeHtml(rec.columns.join(','))}">
+                                        Create Index
+                                    </button>
+                                    <button class="btn-preview-index ${classes.buttonGhost} text-[10px] py-1.5 px-3" data-sql="${escapeHtml(rec.create_sql)}">
+                                        Preview
+                                    </button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : (!state.isAiAnalyzing ? `
+                    <div class="text-center py-6">
+                        <span class="material-symbols-outlined text-4xl ${classes.text.subtle}">search_off</span>
+                        <div class="text-sm ${classes.text.secondary} mt-2">No index recommendations found</div>
+                        <div class="text-[10px] ${classes.text.subtle} mt-1">Try running more queries on this table first</div>
+                    </div>
+                ` : '')}
+            </div>
+        `;
     };
 
     const onThemeChange = (e) => {
