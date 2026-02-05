@@ -53,6 +53,8 @@ export function SchemaTracker() {
     let isStoryLoading = false;
     let activeTab = 'diff'; // 'diff' | 'story'
     let activeConnection = null;
+    let comparisonBaseSnapshotId = null;
+    let comparisonTargetSnapshotId = null;
     let qualityScores = {};
 
     // --- Logic ---
@@ -89,6 +91,8 @@ export function SchemaTracker() {
         const prevSnap = snapshots[index + 1];
 
         if (prevSnap) {
+            comparisonBaseSnapshotId = prevSnap.id ?? null;
+            comparisonTargetSnapshotId = snap.id ?? null;
             try {
                 currentDiff = await SchemaTrackerApi.compareSnapshots(prevSnap, snap);
                 currentBreakingChanges = await SchemaTrackerApi.detectBreakingChanges(currentDiff);
@@ -109,6 +113,8 @@ export function SchemaTracker() {
                 isStoryLoading = false;
             }
         } else {
+            comparisonBaseSnapshotId = null;
+            comparisonTargetSnapshotId = snap.id ?? null;
             currentDiff = { new_tables: snap.tables, dropped_tables: [], modified_tables: [] };
             currentBreakingChanges = [];
             currentMigration = "-- Initial Snapshot\n-- No previous version to compare against.";
@@ -216,7 +222,9 @@ export function SchemaTracker() {
                 diff: currentDiff,
                 migrationScript: currentMigration,
                 breakingChanges: currentBreakingChanges,
-                connectionId: activeConnection?.id
+                connectionId: activeConnection?.id,
+                baseSnapshotId: comparisonBaseSnapshotId,
+                targetSnapshotId: comparisonTargetSnapshotId
             }));
         }
 
@@ -247,4 +255,3 @@ export function SchemaTracker() {
 
     return container;
 }
-

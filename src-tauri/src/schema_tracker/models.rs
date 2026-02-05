@@ -60,3 +60,15 @@ pub enum DiffType {
     Other(String),
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SchemaImpactAiReport {
+    pub id: Option<i64>,
+    pub connection_id: String,
+    pub base_snapshot_id: i64,
+    pub target_snapshot_id: i64,
+    pub provider: String,
+    pub model: String,
+    pub analysis_text: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}

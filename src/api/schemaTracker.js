@@ -60,6 +60,26 @@ export const SchemaTrackerApi = {
     },
 
     /**
+     * Save AI impact analysis for a snapshot pair.
+     * @param {Object} payload
+     * @returns {Promise<SchemaImpactAiReport>}
+     */
+    async saveAiImpactReport(payload) {
+        return await invoke('save_ai_impact_report', payload);
+    },
+
+    /**
+     * Get latest AI impact analysis for a snapshot pair.
+     * @param {string} connectionId
+     * @param {number} baseSnapshotId
+     * @param {number} targetSnapshotId
+     * @returns {Promise<SchemaImpactAiReport | null>}
+     */
+    async getAiImpactReport(connectionId, baseSnapshotId, targetSnapshotId) {
+        return await invoke('get_ai_impact_report', { connectionId, baseSnapshotId, targetSnapshotId });
+    },
+
+    /**
      * Generates a story from a schema diff.
      * @param {SchemaSnapshot} snapshot1
      * @param {SchemaSnapshot} snapshot2

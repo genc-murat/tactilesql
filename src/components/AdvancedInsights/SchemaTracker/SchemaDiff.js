@@ -1,8 +1,11 @@
 import { ThemeManager } from '../../../utils/ThemeManager.js';
 import { highlightSQL } from '../../../utils/SqlHighlighter.js';
+import { AiService } from '../../../utils/AiService.js';
+import { toastError, toastSuccess } from '../../../utils/Toast.js';
+import { SchemaTrackerApi } from '../../../api/schemaTracker.js';
 import { invoke } from '@tauri-apps/api/core';
 
-export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGenerateMigration, connectionId }) {
+export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGenerateMigration, connectionId, baseSnapshotId = null, targetSnapshotId = null }) {
     const theme = ThemeManager.getCurrentTheme();
     const isLight = theme === 'light';
     const isDawn = theme === 'dawn';
@@ -29,6 +32,144 @@ export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGen
 
     let impactWarnings = null;
     let loadingImpact = false;
+    let aiImpactAnalysis = '';
+    let aiImpactError = '';
+    let loadingAiImpact = false;
+
+    const parseSnapshotId = (value) => {
+        const parsed = Number(value);
+        return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+    };
+
+    const baseSnapshotIdNum = parseSnapshotId(baseSnapshotId);
+    const targetSnapshotIdNum = parseSnapshotId(targetSnapshotId);
+    const hasSnapshotPair = Boolean(connectionId && baseSnapshotIdNum && targetSnapshotIdNum);
+
+    const escapeHtml = (value = '') => String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    const getAiSettings = () => {
+        const provider = localStorage.getItem('ai_provider') || 'openai';
+
+        const keyStorageKeys = {
+            openai: 'openai_api_key',
+            gemini: 'gemini_api_key',
+            anthropic: 'anthropic_api_key',
+            deepseek: 'deepseek_api_key',
+            groq: 'groq_api_key',
+            mistral: 'mistral_api_key',
+            local: 'local_api_key'
+        };
+
+        const modelStorageKeys = {
+            openai: 'openai_model',
+            gemini: 'gemini_model',
+            anthropic: 'anthropic_model',
+            deepseek: 'deepseek_model',
+            groq: 'groq_model',
+            mistral: 'mistral_model',
+            local: 'local_model'
+        };
+
+        const defaultModels = {
+            openai: 'gpt-4o',
+            gemini: 'gemini-2.5-flash',
+            anthropic: 'claude-3-5-sonnet-20241022',
+            deepseek: 'deepseek-chat',
+            groq: 'llama-3.1-8b-instant',
+            mistral: 'mistral-large-latest',
+            local: 'llama3'
+        };
+
+        const apiKey = localStorage.getItem(keyStorageKeys[provider] || 'openai_api_key') || '';
+        const model = localStorage.getItem(modelStorageKeys[provider] || 'openai_model') || defaultModels[provider] || 'gpt-4o';
+
+        return { provider, apiKey, model };
+    };
+
+    const getConnectionContext = () => {
+        const activeConnection = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+        if (!connectionId) {
+            return activeConnection;
+        }
+
+        return { ...activeConnection, id: connectionId };
+    };
+
+    const runAiImpactAnalysis = async () => {
+        if (!hasChanges || loadingAiImpact) return;
+
+        const { provider, apiKey, model } = getAiSettings();
+        if (provider !== 'local' && !apiKey) {
+            toastError(`Missing ${provider.toUpperCase()} API key. Configure it in Settings > AI Assistant.`);
+            return;
+        }
+
+        loadingAiImpact = true;
+        aiImpactError = '';
+        aiImpactAnalysis = '';
+        renderHeader();
+
+        try {
+            const analysis = await AiService.analyzeSchemaImpact(provider, apiKey, model, {
+                connection: getConnectionContext(),
+                diff,
+                breakingChanges: breakingChanges || [],
+                impactWarnings: impactWarnings || []
+            });
+
+            aiImpactAnalysis = analysis;
+            aiImpactError = '';
+
+            if (hasSnapshotPair) {
+                try {
+                    await SchemaTrackerApi.saveAiImpactReport({
+                        connectionId,
+                        baseSnapshotId: baseSnapshotIdNum,
+                        targetSnapshotId: targetSnapshotIdNum,
+                        provider,
+                        model,
+                        analysisText: analysis
+                    });
+                    toastSuccess('AI impact analysis completed and saved.');
+                } catch (saveError) {
+                    console.error('Failed to save AI impact report:', saveError);
+                    toastError(`AI analysis generated but could not be saved: ${saveError?.message || saveError}`);
+                }
+            } else {
+                toastSuccess('AI impact analysis completed.');
+            }
+        } catch (error) {
+            aiImpactError = error?.message || 'Unknown AI analysis error';
+            toastError(`AI impact analysis failed: ${aiImpactError}`);
+        } finally {
+            loadingAiImpact = false;
+            renderHeader();
+        }
+    };
+
+    const loadSavedAiImpactReport = async () => {
+        if (!hasSnapshotPair) return;
+
+        try {
+            const report = await SchemaTrackerApi.getAiImpactReport(
+                connectionId,
+                baseSnapshotIdNum,
+                targetSnapshotIdNum
+            );
+            if (report?.analysis_text) {
+                aiImpactAnalysis = report.analysis_text;
+                aiImpactError = '';
+                renderHeader();
+            }
+        } catch (error) {
+            console.error('Failed to load saved AI impact report:', error);
+        }
+    };
 
     // Header / Stats
     const header = document.createElement('div');
@@ -68,7 +209,7 @@ export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGen
                     <div>
                         <h4 class="text-xs font-bold uppercase">Impact Analysis Warning</h4>
                         <ul class="text-[10px] list-disc list-inside mt-1 opacity-80">
-                            ${impactWarnings.map(w => `<li>${w.message}</li>`).join('')}
+                            ${impactWarnings.map((w) => `<li>${escapeHtml(w.message || 'Unknown impact warning')}</li>`).join('')}
                         </ul>
                     </div>
                 </div>
@@ -84,9 +225,36 @@ export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGen
                     <div>
                         <h4 class="text-xs font-bold uppercase">Breaking Changes Detected</h4>
                         <ul class="text-[10px] list-disc list-inside mt-1 opacity-80">
-                            ${breakingChanges.map(change => `<li>${change.description}</li>`).join('')}
+                            ${breakingChanges.map((change) => `<li>${escapeHtml(change.description || 'Unknown breaking change')}</li>`).join('')}
                         </ul>
                     </div>
+                </div>
+            `;
+        }
+
+        let aiImpactHtml = '';
+        if (loadingAiImpact) {
+            aiImpactHtml = `
+                <div class="px-3 py-2 rounded bg-mysql-teal/10 border border-mysql-teal/20 text-mysql-teal flex items-center gap-2 max-w-3xl animate-pulse">
+                    <span class="material-symbols-outlined text-sm animate-spin">progress_activity</span>
+                    <span class="text-xs font-bold">AI is analyzing schema impact...</span>
+                </div>
+            `;
+        } else if (aiImpactAnalysis) {
+            aiImpactHtml = `
+                <div class="px-3 py-3 rounded ${isLight ? 'bg-slate-50 border-slate-200 text-slate-700' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-cyan-500/10 border-cyan-500/20 text-cyan-300')} border max-w-4xl">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="material-symbols-outlined text-sm">psychology</span>
+                        <h4 class="text-xs font-bold uppercase">AI Impact Analysis</h4>
+                    </div>
+                    <pre class="text-[11px] whitespace-pre-wrap leading-relaxed font-mono max-h-64 overflow-y-auto custom-scrollbar pr-2">${escapeHtml(aiImpactAnalysis)}</pre>
+                </div>
+            `;
+        } else if (aiImpactError) {
+            aiImpactHtml = `
+                <div class="px-3 py-2 rounded bg-red-500/10 border border-red-500/20 text-red-500 flex items-center gap-2 max-w-3xl">
+                    <span class="material-symbols-outlined text-sm">error</span>
+                    <span class="text-xs">${escapeHtml(aiImpactError)}</span>
                 </div>
             `;
         }
@@ -95,20 +263,26 @@ export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGen
             <div class="flex justify-between items-start">
                 ${statsHtml}
                 <div>
-                  ${migrationScript ? `
-                        <div class="flex flex-col items-end gap-2">
+                    <div class="flex flex-col items-end gap-2">
+                        <button id="analyze-impact-ai-btn" class="px-3 py-1.5 rounded transition-all font-bold flex items-center gap-1.5 ${isDawn ? 'bg-[#ea9d34]/10 text-[#ea9d34] hover:bg-[#ea9d34]/20' : 'bg-mysql-teal/10 text-mysql-teal hover:bg-mysql-teal/20'} text-xs ${(!hasChanges || loadingAiImpact) ? 'opacity-60 cursor-not-allowed' : ''}" ${(!hasChanges || loadingAiImpact) ? 'disabled' : ''}>
+                            <span class="material-symbols-outlined text-sm ${loadingAiImpact ? 'animate-spin' : ''}">${loadingAiImpact ? 'progress_activity' : 'psychology'}</span>
+                            ${loadingAiImpact ? 'Analyzing...' : 'Analyze Impact with AI'}
+                        </button>
+                        ${migrationScript ? `
                              <button id="copy-script-btn" class="px-3 py-1.5 rounded transition-all font-bold flex items-center gap-1.5 ${isDawn ? 'bg-[#ea9d34]/10 text-[#ea9d34] hover:bg-[#ea9d34]/20' : 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20'} text-xs">
                                 <span class="material-symbols-outlined text-sm">content_copy</span> Copy Migration Script
                              </button>
                             <span class="text-[10px] opacity-40">Auto-generated</span>
-                        </div>
-                   ` : ''}
+                        ` : ''}
+                    </div>
                 </div>
             </div>
             ${impactHtml}
             ${alertHtml}
+            ${aiImpactHtml}
         `;
 
+        header.querySelector('#analyze-impact-ai-btn')?.addEventListener('click', runAiImpactAnalysis);
         header.querySelector('#copy-script-btn')?.addEventListener('click', () => {
             navigator.clipboard.writeText(migrationScript);
             alert('Copied to clipboard');
@@ -176,6 +350,7 @@ export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGen
 
     container.appendChild(content);
     renderHeader();
+    loadSavedAiImpactReport();
 
     // Check Impact
     if (hasChanges) {
@@ -226,4 +401,3 @@ export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGen
 
     return container;
 }
-

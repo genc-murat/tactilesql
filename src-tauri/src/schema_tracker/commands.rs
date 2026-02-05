@@ -1,7 +1,7 @@
 use tauri::{State, command};
 use crate::db::AppState;
 use crate::db_types::DatabaseType;
-use crate::schema_tracker::models::{SchemaSnapshot, SchemaDiff};
+use crate::schema_tracker::models::{SchemaSnapshot, SchemaDiff, SchemaImpactAiReport};
 use crate::schema_tracker::diff::BreakingChange;
 
 #[command]
@@ -97,6 +97,50 @@ pub async fn get_schema_snapshots(
     let store_guard = app_state.schema_tracker_store.lock().await;
     if let Some(store) = store_guard.as_ref() {
         store.get_snapshots(&connection_id).await
+    } else {
+        Err("Schema Tracker Store not initialized".to_string())
+    }
+}
+
+#[command]
+pub async fn save_ai_impact_report(
+    app_state: State<'_, AppState>,
+    connection_id: String,
+    base_snapshot_id: i64,
+    target_snapshot_id: i64,
+    provider: String,
+    model: String,
+    analysis_text: String,
+) -> Result<SchemaImpactAiReport, String> {
+    if analysis_text.trim().is_empty() {
+        return Err("Analysis text cannot be empty".to_string());
+    }
+
+    let store_guard = app_state.schema_tracker_store.lock().await;
+    if let Some(store) = store_guard.as_ref() {
+        store.save_ai_impact_report(
+            &connection_id,
+            base_snapshot_id,
+            target_snapshot_id,
+            &provider,
+            &model,
+            &analysis_text,
+        ).await
+    } else {
+        Err("Schema Tracker Store not initialized".to_string())
+    }
+}
+
+#[command]
+pub async fn get_ai_impact_report(
+    app_state: State<'_, AppState>,
+    connection_id: String,
+    base_snapshot_id: i64,
+    target_snapshot_id: i64,
+) -> Result<Option<SchemaImpactAiReport>, String> {
+    let store_guard = app_state.schema_tracker_store.lock().await;
+    if let Some(store) = store_guard.as_ref() {
+        store.get_ai_impact_report(&connection_id, base_snapshot_id, target_snapshot_id).await
     } else {
         Err("Schema Tracker Store not initialized".to_string())
     }

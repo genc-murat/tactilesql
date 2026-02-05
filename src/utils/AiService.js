@@ -107,6 +107,55 @@ Respond ONLY with the JSON object, no markdown formatting.`;
         }
     }
 
+    static async analyzeSchemaImpact(provider, apiKey, model, impactInput = {}) {
+        const context = this.buildSchemaImpactContext(impactInput);
+        const prompt = `
+Analyze the schema change context and explain the likely downstream impact.
+
+Prioritize:
+1. Breaking risks (views, procedures, jobs, app queries)
+2. Data integrity risks (nullability, type compatibility, dropped defaults)
+3. Runtime/performance side effects
+4. A concrete mitigation and validation plan
+
+Return concise markdown in this structure:
+### Risk Summary
+- ...
+### Likely Failures
+- ...
+### Mitigation Plan
+- ...
+### Validation Checklist
+- ...
+
+Keep it practical and specific to the provided table/column names.
+Important: Complete all 4 sections fully and do not end mid-sentence.
+`;
+
+        const firstAttempt = await this.generateResponse(provider, apiKey, model, prompt, "IMPACT", context);
+        if (!this.isImpactAnalysisLikelyIncomplete(firstAttempt)) {
+            return firstAttempt;
+        }
+
+        const retryPrompt = `
+The previous response was incomplete or malformed.
+Regenerate the full schema impact analysis from scratch.
+
+Requirements:
+- Include all sections: Risk Summary, Likely Failures, Mitigation Plan, Validation Checklist.
+- Do not end mid-sentence.
+- Do not include provider names (e.g., "gemini", "openai") as checklist values.
+- Keep content specific to provided table and column names only.
+`;
+
+        const retryAttempt = await this.generateResponse(provider, apiKey, model, retryPrompt, "IMPACT", context);
+        if (!this.isImpactAnalysisLikelyIncomplete(retryAttempt)) {
+            return retryAttempt;
+        }
+
+        return retryAttempt.length > firstAttempt.length ? retryAttempt : firstAttempt;
+    }
+
     static async explainQuery(provider, apiKey, model, sql, context) {
         const prompt = `Explain what this SQL query does in plain English. Break it down step by step if it's complex.\n\nSQL:\n${sql}`;
         return await this.generateResponse(provider, apiKey, model, prompt, "EXPLAIN", context);
@@ -144,6 +193,7 @@ Respond ONLY with the JSON object, no markdown formatting.`;
     }
 
     static async callOpenAI(apiKey, model, prompt, context, mode = "GEN") {
+        const maxTokens = mode === 'IMPACT' ? 1400 : undefined;
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -162,7 +212,8 @@ Respond ONLY with the JSON object, no markdown formatting.`;
                         content: `Schema Context:\n${context}\n\nRequest: ${prompt}`
                     }
                 ],
-                temperature: mode === 'GEN' ? 0.1 : 0.3
+                max_tokens: maxTokens,
+                temperature: this.getTemperature(mode)
             })
         });
 
@@ -179,14 +230,15 @@ Respond ONLY with the JSON object, no markdown formatting.`;
     static async callGemini(apiKey, model, prompt, context, mode = "GEN") {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
         const systemPrompt = this.getSystemPrompt(context, mode);
+        const maxOutputTokens = mode === 'IMPACT' ? 3072 : 2048;
 
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 system_instruction: { parts: [{ text: systemPrompt }] },
-                contents: [{ parts: [{ text: `User Request: ${prompt}` }] }],
-                generationConfig: { temperature: mode === 'GEN' ? 0.1 : 0.3, maxOutputTokens: 2048 }
+                contents: [{ parts: [{ text: `Schema Context:\n${context}\n\nRequest: ${prompt}` }] }],
+                generationConfig: { temperature: this.getTemperature(mode), maxOutputTokens }
             })
         });
 
@@ -201,6 +253,7 @@ Respond ONLY with the JSON object, no markdown formatting.`;
     }
 
     static async callAnthropic(apiKey, model, prompt, context, mode = "GEN") {
+        const maxTokens = mode === 'IMPACT' ? 3072 : 2048;
         const response = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
             headers: {
@@ -215,8 +268,8 @@ Respond ONLY with the JSON object, no markdown formatting.`;
                     role: "user",
                     content: `${this.getSystemPrompt(context, mode)}\n\nSchema Context:\n${context}\n\nUser Request: ${prompt}`
                 }],
-                max_tokens: 2048,
-                temperature: mode === 'GEN' ? 0.1 : 0.3
+                max_tokens: maxTokens,
+                temperature: this.getTemperature(mode)
             })
         });
 
@@ -249,6 +302,7 @@ Respond ONLY with the JSON object, no markdown formatting.`;
     }
 
     static async callOpenAICompatible(apiKey, url, model, prompt, context, providerName, mode = "GEN") {
+        const maxTokens = mode === 'IMPACT' ? 1400 : undefined;
         const response = await fetch(url, {
             method: 'POST',
             headers: {
@@ -261,7 +315,8 @@ Respond ONLY with the JSON object, no markdown formatting.`;
                     { role: "system", content: this.getSystemPrompt(context, mode) },
                     { role: "user", content: `Schema Context:\n${context}\n\nRequest: ${prompt}` }
                 ],
-                temperature: mode === 'GEN' ? 0.1 : 0.3
+                max_tokens: maxTokens,
+                temperature: this.getTemperature(mode)
             })
         });
 
@@ -293,6 +348,14 @@ Analyze the existing SQL and the error message in the context of the provided ${
 Provide the corrected SQL query inside a markdown block, followed by a brief explanation of what was fixed.`;
         }
 
+        if (mode === 'IMPACT') {
+            return `You are a senior database reliability engineer.
+Analyze schema-change impact with production safety in mind.
+Use only the supplied context. Do not invent tables or columns.
+Focus on concrete failure modes, severity, mitigation SQL, and verification steps.
+Return concise markdown with short bullets.`;
+        }
+
         return `You are an expert SQL assistant. 
 Your task is to generate valid SQL queries based on the user's natural language request and the provided database schema.
 
@@ -305,5 +368,162 @@ STRICT EXECUTION RULES:
 
     static cleanSQL(sql) {
         return sql.replace(/^```sql\n/, '').replace(/^```/, '').replace(/```$/, '').trim();
+    }
+
+    static getTemperature(mode = "GEN") {
+        if (mode === 'GEN' || mode === 'IMPACT') {
+            return 0.1;
+        }
+        return 0.3;
+    }
+
+    static isImpactAnalysisLikelyIncomplete(text = '') {
+        const raw = String(text || '').trim();
+        if (raw.length < 120) {
+            return true;
+        }
+
+        const normalized = raw.replace(/\r\n/g, '\n');
+        const lower = normalized.toLowerCase();
+        const requiredHeadings = [
+            '### risk summary',
+            '### likely failures',
+            '### mitigation plan',
+            '### validation checklist'
+        ];
+
+        if (requiredHeadings.some((heading) => !lower.includes(heading))) {
+            return true;
+        }
+
+        const hasChecklistItem = /###\s*validation checklist[\s\S]*?(?:\n\s*[-*]|\n\s*\d+\.)/i.test(normalized);
+        if (!hasChecklistItem) {
+            return true;
+        }
+
+        if (/:\s*(openai|gemini|anthropic|deepseek|groq|mistral|local(?:\s*ai)?)\s*$/i.test(normalized)) {
+            return true;
+        }
+
+        if (/(openai|gemini|anthropic|deepseek|groq|mistral|local(?:\s*ai)?)\s*$/i.test(normalized)) {
+            const lastLine = normalized.split('\n').pop()?.trim().toLowerCase() || '';
+            if (['openai', 'gemini', 'anthropic', 'deepseek', 'groq', 'mistral', 'local', 'local ai'].includes(lastLine)) {
+                return true;
+            }
+        }
+
+        if (/[:;,]$/.test(normalized)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    static buildSchemaImpactContext(impactInput = {}) {
+        const connection = impactInput.connection || {};
+        const diff = impactInput.diff || {};
+        const breakingChanges = Array.isArray(impactInput.breakingChanges) ? impactInput.breakingChanges : [];
+        const impactWarnings = Array.isArray(impactInput.impactWarnings) ? impactInput.impactWarnings : [];
+
+        const newTables = Array.isArray(diff.new_tables) ? diff.new_tables : (Array.isArray(diff.newTables) ? diff.newTables : []);
+        const droppedTables = Array.isArray(diff.dropped_tables) ? diff.dropped_tables : (Array.isArray(diff.droppedTables) ? diff.droppedTables : []);
+        const modifiedTables = Array.isArray(diff.modified_tables) ? diff.modified_tables : (Array.isArray(diff.modifiedTables) ? diff.modifiedTables : []);
+
+        const lines = [
+            `Database Type: ${(connection.dbType || connection.db_type || 'unknown').toString()}`,
+            `Connection Name: ${(connection.name || 'unknown').toString()}`,
+            `Schema Changes: +${newTables.length} new tables, -${droppedTables.length} dropped tables, ~${modifiedTables.length} modified tables`,
+        ];
+
+        if (newTables.length > 0) {
+            lines.push('New Tables:');
+            newTables.slice(0, 10).forEach((table) => {
+                const name = table?.name || 'unknown_table';
+                const cols = Array.isArray(table?.columns) ? table.columns.length : 0;
+                lines.push(`- ${name} (${cols} columns)`);
+            });
+        }
+
+        if (droppedTables.length > 0) {
+            lines.push('Dropped Tables:');
+            droppedTables.slice(0, 10).forEach((table) => {
+                const name = table?.name || 'unknown_table';
+                const cols = Array.isArray(table?.columns) ? table.columns.length : 0;
+                lines.push(`- ${name} (${cols} columns removed)`);
+            });
+        }
+
+        if (modifiedTables.length > 0) {
+            lines.push('Modified Tables:');
+            modifiedTables.slice(0, 15).forEach((tableDiff) => {
+                const tableName = tableDiff?.table_name || tableDiff?.tableName || 'unknown_table';
+                const newCols = Array.isArray(tableDiff?.new_columns) ? tableDiff.new_columns : (Array.isArray(tableDiff?.newColumns) ? tableDiff.newColumns : []);
+                const droppedCols = Array.isArray(tableDiff?.dropped_columns) ? tableDiff.dropped_columns : (Array.isArray(tableDiff?.droppedColumns) ? tableDiff.droppedColumns : []);
+                const modifiedCols = Array.isArray(tableDiff?.modified_columns) ? tableDiff.modified_columns : (Array.isArray(tableDiff?.modifiedColumns) ? tableDiff.modifiedColumns : []);
+                const newIndexes = Array.isArray(tableDiff?.new_indexes) ? tableDiff.new_indexes : (Array.isArray(tableDiff?.newIndexes) ? tableDiff.newIndexes : []);
+                const droppedIndexes = Array.isArray(tableDiff?.dropped_indexes) ? tableDiff.dropped_indexes : (Array.isArray(tableDiff?.droppedIndexes) ? tableDiff.droppedIndexes : []);
+
+                lines.push(`- ${tableName}: +${newCols.length} cols, -${droppedCols.length} cols, ~${modifiedCols.length} cols, +${newIndexes.length} idx, -${droppedIndexes.length} idx`);
+
+                droppedCols.slice(0, 6).forEach((col) => {
+                    lines.push(`  - dropped column: ${col?.name || 'unknown_column'}`);
+                });
+
+                modifiedCols.slice(0, 6).forEach((colDiff) => {
+                    const columnName = colDiff?.column_name || colDiff?.columnName || 'unknown_column';
+                    const changes = Array.isArray(colDiff?.changes) ? colDiff.changes : [];
+                    const changeSummary = changes.map((change) => this.summarizeColumnChange(change)).join('; ');
+                    lines.push(`  - changed column: ${columnName}${changeSummary ? ` (${changeSummary})` : ''}`);
+                });
+            });
+        }
+
+        if (impactWarnings.length > 0) {
+            lines.push('Rule-Based Impact Warnings:');
+            impactWarnings.slice(0, 20).forEach((warning) => {
+                lines.push(`- [${warning?.severity || 'Unknown'}] ${warning?.message || 'No warning message'}`);
+            });
+        }
+
+        if (breakingChanges.length > 0) {
+            lines.push('Detected Breaking Changes:');
+            breakingChanges.slice(0, 20).forEach((change) => {
+                lines.push(`- [${change?.change_type || change?.changeType || 'Unknown'}] ${change?.description || 'No description'}`);
+            });
+        }
+
+        return lines.join('\n').trim();
+    }
+
+    static summarizeColumnChange(change) {
+        if (!change || typeof change !== 'object') {
+            return 'column definition updated';
+        }
+
+        const typeChange = change.type_changed || change.TypeChanged;
+        if (typeChange && typeof typeChange === 'object') {
+            return `type ${typeChange.old || '?'} -> ${typeChange.new || '?'}`;
+        }
+
+        const nullableChange = change.nullable_changed || change.NullableChanged;
+        if (nullableChange && typeof nullableChange === 'object') {
+            return `nullable ${nullableChange.old} -> ${nullableChange.new}`;
+        }
+
+        const defaultChange = change.default_changed || change.DefaultChanged;
+        if (defaultChange && typeof defaultChange === 'object') {
+            return `default ${defaultChange.old ?? 'NULL'} -> ${defaultChange.new ?? 'NULL'}`;
+        }
+
+        if (Object.prototype.hasOwnProperty.call(change, 'key_changed') || Object.prototype.hasOwnProperty.call(change, 'KeyChanged')) {
+            return 'key/index flag updated';
+        }
+
+        const other = change.other || change.Other;
+        if (typeof other === 'string' && other.trim()) {
+            return other;
+        }
+
+        return 'column definition updated';
     }
 }

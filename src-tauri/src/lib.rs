@@ -219,6 +219,8 @@ pub fn run() {
             schema_tracker::commands::generate_migration,
             schema_tracker::commands::add_snapshot_tag,
             schema_tracker::commands::get_schema_snapshots,
+            schema_tracker::commands::save_ai_impact_report,
+            schema_tracker::commands::get_ai_impact_report,
             schema_tracker::commands::generate_story_command,
             quality_analyzer::commands::run_quality_analysis,
             quality_analyzer::commands::get_quality_reports,
