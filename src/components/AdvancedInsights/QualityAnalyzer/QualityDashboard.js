@@ -1,6 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import { QualityAnalyzerApi } from '../../../api/qualityAnalyzer.js';
 import { ThemeManager } from '../../../utils/ThemeManager.js';
+import { AiService } from '../../../utils/AiService.js';
+import { toastError, toastSuccess } from '../../../utils/Toast.js';
 import './QualityDashboard.css';
 
 export function QualityDashboard() {
@@ -56,7 +58,91 @@ export function QualityDashboard() {
         activeTab: 'overview',
         isLoading: false,
         error: null,
-        activeDbType: 'mysql'
+        activeDbType: 'mysql',
+
+        aiAnalysis: '',
+        aiError: null,
+        isAiLoading: false,
+        aiProvider: null,
+        aiModel: null,
+        aiReportKey: null
+    };
+
+    const resetAiState = () => {
+        state.aiAnalysis = '';
+        state.aiError = null;
+        state.isAiLoading = false;
+        state.aiProvider = null;
+        state.aiModel = null;
+        state.aiReportKey = null;
+    };
+
+    const getAiSettings = () => {
+        const storedProvider = localStorage.getItem('ai_provider') || 'openai';
+        const provider = ['openai', 'gemini', 'anthropic', 'deepseek', 'groq', 'mistral', 'local'].includes(storedProvider)
+            ? storedProvider
+            : 'openai';
+
+        const keyStorageKeys = {
+            openai: 'openai_api_key',
+            gemini: 'gemini_api_key',
+            anthropic: 'anthropic_api_key',
+            deepseek: 'deepseek_api_key',
+            groq: 'groq_api_key',
+            mistral: 'mistral_api_key',
+            local: 'local_api_key'
+        };
+
+        const modelStorageKeys = {
+            openai: 'openai_model',
+            gemini: 'gemini_model',
+            anthropic: 'anthropic_model',
+            deepseek: 'deepseek_model',
+            groq: 'groq_model',
+            mistral: 'mistral_model',
+            local: 'local_model'
+        };
+
+        const defaultModels = {
+            openai: 'gpt-4o',
+            gemini: 'gemini-2.5-flash',
+            anthropic: 'claude-3-5-sonnet-20241022',
+            deepseek: 'deepseek-chat',
+            groq: 'llama-3.1-8b-instant',
+            mistral: 'mistral-large-latest',
+            local: 'llama3'
+        };
+
+        const apiKey = localStorage.getItem(keyStorageKeys[provider] || 'openai_api_key') || '';
+        const model = localStorage.getItem(modelStorageKeys[provider] || 'openai_model') || defaultModels[provider] || 'gpt-4o';
+
+        return { provider, apiKey, model };
+    };
+
+    const getReportKey = (report) => {
+        if (!report) return null;
+        return [
+            report.table_name || '',
+            report.schema_name || '',
+            report.timestamp || '',
+            Number(report.overall_score || 0).toFixed(4),
+            report.row_count || 0
+        ].join('|');
+    };
+
+    const getConnectionContext = () => {
+        const activeConnection = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+        const selectedConnection = state.connections.find((c) => c.id === state.selectedConnectionId);
+
+        if (selectedConnection) {
+            return { ...activeConnection, ...selectedConnection, id: state.selectedConnectionId, dbType: selectedConnection.dbType || state.activeDbType };
+        }
+
+        if (state.selectedConnectionId) {
+            return { ...activeConnection, id: state.selectedConnectionId, dbType: state.activeDbType };
+        }
+
+        return activeConnection;
     };
 
     // Initialize
@@ -84,6 +170,7 @@ export function QualityDashboard() {
         state.tables = [];
         state.currentReport = null;
         state.trends = [];
+        resetAiState();
 
         const conn = state.connections.find(c => c.id === connId);
         if (!conn) return;
@@ -114,6 +201,7 @@ export function QualityDashboard() {
         state.tables = [];
         state.currentReport = null;
         state.trends = [];
+        resetAiState();
 
         try {
             state.tables = await invoke('get_tables', { database: dbName });
@@ -129,6 +217,7 @@ export function QualityDashboard() {
         state.currentReport = null;
         state.activeTab = 'overview';
         state.trends = [];
+        resetAiState();
 
         if (tableName) {
             fetchTrends(tableName);
@@ -157,6 +246,7 @@ export function QualityDashboard() {
         if (!state.selectedConnectionId || !state.selectedTable || !state.selectedDatabase) return;
 
         state.isLoading = true;
+        resetAiState();
         render();
 
         try {
@@ -171,6 +261,54 @@ export function QualityDashboard() {
             state.error = err.toString();
         } finally {
             state.isLoading = false;
+            render();
+        }
+    };
+
+    const runAiQualityAnalysis = async () => {
+        if (!state.currentReport || state.isAiLoading) return;
+
+        const reportKey = getReportKey(state.currentReport);
+        const { provider, apiKey, model } = getAiSettings();
+
+        if (provider !== 'local' && !apiKey) {
+            state.aiReportKey = reportKey;
+            state.aiError = `Missing ${provider.toUpperCase()} API key. Configure it in Settings > AI Assistant.`;
+            toastError(state.aiError);
+            render();
+            return;
+        }
+
+        state.isAiLoading = true;
+        state.aiError = null;
+        state.aiAnalysis = '';
+        state.aiProvider = provider;
+        state.aiModel = model;
+        state.aiReportKey = reportKey;
+        render();
+
+        try {
+            const analysis = await AiService.analyzeQualityReport(provider, apiKey, model, {
+                connection: getConnectionContext(),
+                database: state.selectedDatabase,
+                table: state.selectedTable,
+                report: state.currentReport,
+                trends: state.trends
+            });
+
+            if (getReportKey(state.currentReport) !== reportKey) return;
+            state.aiAnalysis = analysis;
+            state.aiError = null;
+            state.aiReportKey = reportKey;
+            toastSuccess('AI quality analysis completed.');
+        } catch (error) {
+            if (getReportKey(state.currentReport) !== reportKey) return;
+            state.aiAnalysis = '';
+            state.aiError = error?.message || 'Unknown AI analysis error';
+            toastError(`AI quality analysis failed: ${state.aiError}`);
+        } finally {
+            if (getReportKey(state.currentReport) !== reportKey) return;
+            state.isAiLoading = false;
             render();
         }
     };
@@ -378,12 +516,13 @@ export function QualityDashboard() {
             list.className = 'space-y-3';
             report.issues.slice(0, 5).forEach(issue => {
                 const item = document.createElement('div');
+                const severity = formatIssueSeverity(issue.severity).toLowerCase();
                 const severityColors = {
                     critical: 'bg-red-500',
                     warning: 'bg-amber-500',
                     info: 'bg-blue-500'
                 };
-                const color = severityColors[issue.severity.toLowerCase()] || 'bg-gray-500';
+                const color = severityColors[severity] || 'bg-gray-500';
 
                 item.className = `flex gap-3 pb-3 border-b ${theme === 'light' ? 'border-gray-100' : 'border-white/5'} last:border-0`;
                 item.innerHTML = `
@@ -398,6 +537,100 @@ export function QualityDashboard() {
             issuesCard.appendChild(list);
         }
         grid.appendChild(issuesCard);
+
+        const aiReportKey = getReportKey(report);
+        const hasAiAnalysisForReport = Boolean(state.aiAnalysis && state.aiReportKey === aiReportKey);
+        const hasAiErrorForReport = Boolean(state.aiError && state.aiReportKey === aiReportKey);
+        const isAiLoadingForReport = state.isAiLoading && state.aiReportKey === aiReportKey;
+
+        const aiCard = document.createElement('div');
+        aiCard.className = `${classes.card} flex flex-col`;
+
+        const aiHeader = document.createElement('div');
+        aiHeader.className = 'flex items-center justify-between gap-3 mb-3';
+        aiHeader.innerHTML = `
+            <div class="flex items-center gap-2">
+                <span class="material-symbols-outlined text-sm ${theme === 'dawn' ? 'text-[#ea9d34]' : 'text-mysql-teal'}">auto_awesome</span>
+                <h3 class="text-sm font-bold uppercase tracking-wider ${classes.text.secondary}">AI Quality Insights</h3>
+            </div>
+            <button id="quality-ai-run-btn" class="px-3 py-1.5 rounded text-xs font-bold transition-all ${isAiLoadingForReport
+                ? 'opacity-60 cursor-not-allowed bg-gray-300 text-gray-600'
+                : (theme === 'dawn'
+                    ? 'bg-[#ea9d34]/10 text-[#ea9d34] hover:bg-[#ea9d34]/20'
+                    : 'bg-mysql-teal/10 text-mysql-teal hover:bg-mysql-teal/20')
+            }" ${isAiLoadingForReport ? 'disabled' : ''}>
+                ${isAiLoadingForReport ? 'Analyzing...' : (hasAiAnalysisForReport ? 'Re-Analyze' : 'Analyze with AI')}
+            </button>
+        `;
+        aiCard.appendChild(aiHeader);
+
+        if (state.aiProvider && state.aiModel && (hasAiAnalysisForReport || hasAiErrorForReport || isAiLoadingForReport)) {
+            const meta = document.createElement('div');
+            meta.className = `text-[10px] ${classes.text.secondary} mb-3`;
+            meta.textContent = `Provider: ${state.aiProvider} • Model: ${state.aiModel}`;
+            aiCard.appendChild(meta);
+        }
+
+        if (isAiLoadingForReport) {
+            const loading = document.createElement('div');
+            loading.className = `flex items-center gap-2 text-xs ${classes.text.secondary} py-4`;
+            loading.innerHTML = `
+                <span class="material-symbols-outlined text-sm animate-spin ${theme === 'dawn' ? 'text-[#ea9d34]' : 'text-mysql-teal'}">progress_activity</span>
+                AI is analyzing quality risks and remediation steps...
+            `;
+            aiCard.appendChild(loading);
+        } else if (hasAiErrorForReport) {
+            const err = document.createElement('div');
+            err.className = 'px-3 py-2 rounded border border-red-500/20 bg-red-500/10 text-red-500 text-xs';
+            err.textContent = state.aiError;
+            aiCard.appendChild(err);
+        } else if (hasAiAnalysisForReport) {
+            const analysisWrap = document.createElement('div');
+            analysisWrap.className = `rounded-lg border ${theme === 'light'
+                ? 'bg-gray-50 border-gray-200'
+                : (theme === 'dawn'
+                    ? 'bg-[#faf4ed] border-[#f2e9e1]'
+                    : 'bg-black/20 border-white/10')
+            }`;
+
+            const toolbar = document.createElement('div');
+            toolbar.className = `flex items-center justify-between px-3 py-2 border-b ${theme === 'light' ? 'border-gray-200' : (theme === 'dawn' ? 'border-[#f2e9e1]' : 'border-white/10')}`;
+            toolbar.innerHTML = `
+                <span class="text-[10px] font-bold uppercase tracking-wider ${classes.text.secondary}">AI Report</span>
+                <button id="quality-ai-copy-btn" class="px-2 py-1 rounded text-[10px] font-bold ${theme === 'light'
+                    ? 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
+                    : (theme === 'dawn'
+                        ? 'bg-[#fffaf3] border border-[#f2e9e1] text-[#575279] hover:bg-[#faf4ed]'
+                        : 'bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10')
+                }">
+                    Copy
+                </button>
+            `;
+            analysisWrap.appendChild(toolbar);
+
+            const pre = document.createElement('pre');
+            pre.className = `p-3 text-[11px] leading-relaxed whitespace-pre-wrap max-h-64 overflow-y-auto custom-scrollbar ${classes.text.primary} font-mono`;
+            pre.textContent = state.aiAnalysis;
+            analysisWrap.appendChild(pre);
+
+            aiCard.appendChild(analysisWrap);
+        } else {
+            const placeholder = document.createElement('div');
+            placeholder.className = `text-xs ${classes.text.secondary} py-4`;
+            placeholder.textContent = 'Run AI analysis to get risk summary, root-cause hypotheses, remediation plan, and validation queries.';
+            aiCard.appendChild(placeholder);
+        }
+
+        aiHeader.querySelector('#quality-ai-run-btn')?.addEventListener('click', runAiQualityAnalysis);
+        aiCard.querySelector('#quality-ai-copy-btn')?.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(state.aiAnalysis || '');
+                toastSuccess('AI analysis copied to clipboard.');
+            } catch (error) {
+                toastError(`Copy failed: ${error?.message || error}`);
+            }
+        });
+        grid.appendChild(aiCard);
 
         // Metrics Table
         const metricsCard = document.createElement('div');
@@ -543,7 +776,24 @@ export function QualityDashboard() {
 
     function formatIssueType(type) {
         if (typeof type === 'string') return type;
-        return type.replace(/([A-Z])/g, ' $1').trim();
+        if (type && typeof type === 'object') {
+            const entries = Object.entries(type);
+            if (entries.length > 0) {
+                const [key, value] = entries[0];
+                if (key === 'Other' && value) return `Other (${value})`;
+                return key;
+            }
+        }
+        return 'Unknown';
+    }
+
+    function formatIssueSeverity(severity) {
+        if (typeof severity === 'string') return severity;
+        if (severity && typeof severity === 'object') {
+            const keys = Object.keys(severity);
+            if (keys.length > 0) return keys[0];
+        }
+        return 'Unknown';
     }
 
     // Theme listener

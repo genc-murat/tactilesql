@@ -156,6 +156,52 @@ Requirements:
         return retryAttempt.length > firstAttempt.length ? retryAttempt : firstAttempt;
     }
 
+    static async analyzeQualityReport(provider, apiKey, model, qualityInput = {}) {
+        const context = this.buildQualityContext(qualityInput);
+        const prompt = `
+Analyze the table quality report and provide practical remediation guidance.
+
+Return concise markdown in this structure:
+### Quality Risk Summary
+- ...
+### Root Cause Analysis
+- ...
+### Remediation Plan
+- ...
+### Validation Queries
+- ...
+
+Rules:
+- Use only provided table and column names.
+- Keep recommendations safe for production rollout.
+- If issues exist, include concrete SQL checks in Validation Queries.
+- If no issues exist, provide a focused monitoring checklist instead of SQL fixes.
+`;
+
+        const firstAttempt = await this.generateResponse(provider, apiKey, model, prompt, "QUALITY", context);
+        if (!this.isQualityAnalysisLikelyIncomplete(firstAttempt)) {
+            return firstAttempt;
+        }
+
+        const retryPrompt = `
+The previous response was incomplete.
+Regenerate the full quality analysis with all sections:
+- Quality Risk Summary
+- Root Cause Analysis
+- Remediation Plan
+- Validation Queries
+
+Do not end mid-sentence and keep recommendations tied to the provided columns/issues only.
+`;
+
+        const retryAttempt = await this.generateResponse(provider, apiKey, model, retryPrompt, "QUALITY", context);
+        if (!this.isQualityAnalysisLikelyIncomplete(retryAttempt)) {
+            return retryAttempt;
+        }
+
+        return retryAttempt.length > firstAttempt.length ? retryAttempt : firstAttempt;
+    }
+
     static async explainQuery(provider, apiKey, model, sql, context) {
         const prompt = `Explain what this SQL query does in plain English. Break it down step by step if it's complex.\n\nSQL:\n${sql}`;
         return await this.generateResponse(provider, apiKey, model, prompt, "EXPLAIN", context);
@@ -193,7 +239,7 @@ Requirements:
     }
 
     static async callOpenAI(apiKey, model, prompt, context, mode = "GEN") {
-        const maxTokens = mode === 'IMPACT' ? 1400 : undefined;
+        const maxTokens = (mode === 'IMPACT' || mode === 'QUALITY') ? 1400 : undefined;
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -230,7 +276,7 @@ Requirements:
     static async callGemini(apiKey, model, prompt, context, mode = "GEN") {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
         const systemPrompt = this.getSystemPrompt(context, mode);
-        const maxOutputTokens = mode === 'IMPACT' ? 3072 : 2048;
+        const maxOutputTokens = (mode === 'IMPACT' || mode === 'QUALITY') ? 3072 : 2048;
 
         const response = await fetch(url, {
             method: 'POST',
@@ -253,7 +299,7 @@ Requirements:
     }
 
     static async callAnthropic(apiKey, model, prompt, context, mode = "GEN") {
-        const maxTokens = mode === 'IMPACT' ? 3072 : 2048;
+        const maxTokens = (mode === 'IMPACT' || mode === 'QUALITY') ? 3072 : 2048;
         const response = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
             headers: {
@@ -302,7 +348,7 @@ Requirements:
     }
 
     static async callOpenAICompatible(apiKey, url, model, prompt, context, providerName, mode = "GEN") {
-        const maxTokens = mode === 'IMPACT' ? 1400 : undefined;
+        const maxTokens = (mode === 'IMPACT' || mode === 'QUALITY') ? 1400 : undefined;
         const response = await fetch(url, {
             method: 'POST',
             headers: {
@@ -356,6 +402,14 @@ Focus on concrete failure modes, severity, mitigation SQL, and verification step
 Return concise markdown with short bullets.`;
         }
 
+        if (mode === 'QUALITY') {
+            return `You are a senior data quality engineer.
+Analyze table-quality findings with production safety in mind.
+Use only the supplied context. Do not invent tables, columns, or metrics.
+Focus on practical risk prioritization, likely root causes, and verifiable remediation steps.
+Return concise markdown with short bullets and concrete SQL checks when relevant.`;
+        }
+
         return `You are an expert SQL assistant. 
 Your task is to generate valid SQL queries based on the user's natural language request and the provided database schema.
 
@@ -371,7 +425,7 @@ STRICT EXECUTION RULES:
     }
 
     static getTemperature(mode = "GEN") {
-        if (mode === 'GEN' || mode === 'IMPACT') {
+        if (mode === 'GEN' || mode === 'IMPACT' || mode === 'QUALITY') {
             return 0.1;
         }
         return 0.3;
@@ -413,6 +467,36 @@ STRICT EXECUTION RULES:
         }
 
         if (/[:;,]$/.test(normalized)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    static isQualityAnalysisLikelyIncomplete(text = '') {
+        const raw = String(text || '').trim();
+        if (raw.length < 120) {
+            return true;
+        }
+
+        const normalized = raw.replace(/\r\n/g, '\n').toLowerCase();
+        const requiredHeadings = [
+            '### quality risk summary',
+            '### root cause analysis',
+            '### remediation plan',
+            '### validation queries'
+        ];
+
+        if (requiredHeadings.some((heading) => !normalized.includes(heading))) {
+            return true;
+        }
+
+        const hasListItem = /###\s*validation queries[\s\S]*?(?:\n\s*[-*]|\n\s*\d+\.)/i.test(raw);
+        if (!hasListItem) {
+            return true;
+        }
+
+        if (/[:;,]$/.test(raw)) {
             return true;
         }
 
@@ -495,6 +579,65 @@ STRICT EXECUTION RULES:
         return lines.join('\n').trim();
     }
 
+    static buildQualityContext(qualityInput = {}) {
+        const report = qualityInput.report || {};
+        const connection = qualityInput.connection || {};
+        const trends = Array.isArray(qualityInput.trends) ? qualityInput.trends : [];
+        const issues = Array.isArray(report.issues) ? report.issues : [];
+        const columnMetrics = Array.isArray(report.column_metrics) ? report.column_metrics : [];
+
+        const lines = [
+            `Database Type: ${(connection.dbType || connection.db_type || 'unknown').toString()}`,
+            `Connection Name: ${(connection.name || 'unknown').toString()}`,
+            `Schema/Database: ${(qualityInput.database || report.schema_name || connection.database || connection.schema || 'unknown').toString()}`,
+            `Table: ${(qualityInput.table || report.table_name || 'unknown_table').toString()}`,
+            `Overall Score: ${Number(report.overall_score ?? 0).toFixed(2)} / 100`,
+            `Row Count: ${Number(report.row_count ?? 0)}`,
+            `Issue Count: ${issues.length}`,
+        ];
+
+        if (issues.length > 0) {
+            lines.push('Detected Issues:');
+            issues.slice(0, 25).forEach((issue) => {
+                const severity = this.readIssueSeverity(issue?.severity);
+                const type = this.readIssueType(issue?.issue_type);
+                const affected = issue?.affected_row_count ?? issue?.affectedRowCount;
+                const col = issue?.column_name || issue?.columnName;
+                let detail = `- [${severity}] ${type}: ${issue?.description || 'No description'}`;
+                if (col) detail += ` | column: ${col}`;
+                if (typeof affected === 'number') detail += ` | affected_rows: ${affected}`;
+                lines.push(detail);
+            });
+        } else {
+            lines.push('Detected Issues: none');
+        }
+
+        if (columnMetrics.length > 0) {
+            lines.push('Column Quality Metrics:');
+            columnMetrics.slice(0, 40).forEach((metric) => {
+                const nullPct = Number(metric?.null_percentage ?? 0).toFixed(2);
+                const distinctPct = Number(metric?.distinct_percentage ?? 0).toFixed(2);
+                const min = metric?.min_value ?? '-';
+                const max = metric?.max_value ?? '-';
+                lines.push(`- ${metric?.column_name || 'unknown_column'}: null=${nullPct}%, distinct=${distinctPct}%, min=${min}, max=${max}`);
+            });
+        }
+
+        if (trends.length > 1) {
+            const recent = [...trends]
+                .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
+                .slice(-8);
+            lines.push('Recent Trend Scores:');
+            recent.forEach((entry) => {
+                const ts = entry?.timestamp ? new Date(entry.timestamp).toISOString() : 'unknown_time';
+                const score = Number(entry?.overall_score ?? 0).toFixed(2);
+                lines.push(`- ${ts}: ${score}`);
+            });
+        }
+
+        return lines.join('\n').trim();
+    }
+
     static summarizeColumnChange(change) {
         if (!change || typeof change !== 'object') {
             return 'column definition updated';
@@ -525,5 +668,37 @@ STRICT EXECUTION RULES:
         }
 
         return 'column definition updated';
+    }
+
+    static readIssueType(issueType) {
+        if (typeof issueType === 'string') {
+            return issueType;
+        }
+
+        if (issueType && typeof issueType === 'object') {
+            const entries = Object.entries(issueType);
+            if (entries.length > 0) {
+                const [key, value] = entries[0];
+                if (key === 'Other' && value) return `Other(${value})`;
+                return key;
+            }
+        }
+
+        return 'UnknownIssue';
+    }
+
+    static readIssueSeverity(severity) {
+        if (typeof severity === 'string') {
+            return severity;
+        }
+
+        if (severity && typeof severity === 'object') {
+            const entries = Object.keys(severity);
+            if (entries.length > 0) {
+                return entries[0];
+            }
+        }
+
+        return 'Unknown';
     }
 }
