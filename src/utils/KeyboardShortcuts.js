@@ -6,8 +6,9 @@
 // Shortcut definitions with descriptions
 const SHORTCUTS = {
     // Query execution
-    'ctrl+enter': { action: 'executeQuery', description: 'Execute query', category: 'Query' },
-    'f5': { action: 'executeQuery', description: 'Execute query', category: 'Query' },
+    'ctrl+enter': { action: 'executeQuery', description: 'Execute selection/current statement', category: 'Query' },
+    'f5': { action: 'executeQuery', description: 'Execute selection/current statement', category: 'Query' },
+    'ctrl+shift+enter': { action: 'executeAllQuery', description: 'Execute all statements', category: 'Query' },
 
     // Tab management
     'ctrl+n': { action: 'newTab', description: 'New tab', category: 'Tabs' },
@@ -116,7 +117,7 @@ function handleKeydown(e) {
     if (!shortcut) return;
 
     // Some shortcuts should only work in specific contexts
-    const globalShortcuts = ['executeQuery', 'newTab', 'closeTab', 'nextTab', 'prevTab',
+    const globalShortcuts = ['executeQuery', 'executeAllQuery', 'newTab', 'closeTab', 'nextTab', 'prevTab',
         'showHelp', 'closeModal', 'focusExplorer', 'focusQuery',
         'focusResults', 'focusSnippets', 'goToTab1', 'goToTab2',
         'goToTab3', 'goToTab4', 'goToTab5', 'toggleProfiler'];

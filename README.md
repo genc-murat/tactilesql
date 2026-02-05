@@ -242,7 +242,8 @@ The Rust backend exposes the following commands (used by the UI):
 Common shortcuts (see the in-app help with `F1`):
 
 ### Query
-- `Ctrl+Enter` / `F5` — Execute query
+- `Ctrl+Enter` / `F5` — Execute selected text or current statement
+- `Ctrl+Shift+Enter` — Execute all statements in the editor
 
 ### Tabs
 - `Ctrl+N` — New tab

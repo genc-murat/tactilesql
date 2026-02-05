@@ -130,6 +130,7 @@ export function QueryEditor() {
     let lastExecutionTime = null;
     let estimatedExecutionTime = null;
     let maxVisibleTabs = 5; // Default start
+    let isExecuting = false;
 
     // Autocomplete state
     let suggestions = [];
@@ -757,7 +758,7 @@ export function QueryEditor() {
                             <span class="text-[8px] font-black uppercase tracking-widest relative z-10">Generate SQL</span>
                         </button>
 
-                        <button id="execute-btn" class="relative flex items-center gap-1 px-2.5 py-0.5 bg-mysql-teal text-black rounded shadow-[0_0_8px_rgba(0,200,255,0.15)] hover:shadow-[0_0_15px_rgba(0,200,255,0.3)] hover:brightness-110 active:scale-95 transition-all duration-300 overflow-hidden group font-black uppercase tracking-wider text-[8px]" title="Execute Query (Ctrl+Enter)">
+                        <button id="execute-btn" class="relative flex items-center gap-1 px-2.5 py-0.5 bg-mysql-teal text-black rounded shadow-[0_0_8px_rgba(0,200,255,0.15)] hover:shadow-[0_0_15px_rgba(0,200,255,0.3)] hover:brightness-110 active:scale-95 transition-all duration-300 overflow-hidden group font-black uppercase tracking-wider text-[8px]" title="Run selection/current statement (Ctrl+Enter). Shift+Click or Ctrl+Shift+Enter runs all statements.">
                             <span class="material-symbols-outlined text-[14px] relative z-10 group-hover:scale-110 transition-transform duration-200">play_arrow</span>
                             <span class="relative z-10">Run</span>
                             <span class="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-out"></span>
@@ -879,34 +880,51 @@ export function QueryEditor() {
         return "'example'";
     };
 
-    const buildSelectQuery = (database, table, schema) => {
-        const cols = pickBestColumns(schema, 4).map(c => `\`${c}\``).join(', ');
-        return `SELECT ${cols || '*'}\nFROM \`${database}\`.\`${table}\`\nLIMIT 50;`;
+    const getActiveDbType = () => localStorage.getItem('activeDbType') || 'mysql';
+
+    const quoteIdentifier = (identifier, dbType = getActiveDbType()) => {
+        if (!identifier) return '';
+        if (dbType === 'postgresql') {
+            return `"${String(identifier).replace(/"/g, '""')}"`;
+        }
+        return `\`${String(identifier).replace(/`/g, '``')}\``;
     };
 
-    const buildFilterQuery = (database, table, schema) => {
+    const quoteQualifiedTable = (database, table, dbType = getActiveDbType()) => {
+        const quotedTable = quoteIdentifier(table, dbType);
+        if (!database) return quotedTable;
+        return `${quoteIdentifier(database, dbType)}.${quotedTable}`;
+    };
+
+    const buildSelectQuery = (database, table, schema, dbType = getActiveDbType()) => {
+        const cols = pickBestColumns(schema, 4).map(c => quoteIdentifier(c, dbType)).join(', ');
+        return `SELECT ${cols || '*'}\nFROM ${quoteQualifiedTable(database, table, dbType)}\nLIMIT 50;`;
+    };
+
+    const buildFilterQuery = (database, table, schema, dbType = getActiveDbType()) => {
         const cols = Array.isArray(schema) ? schema : [];
         const filterCol = cols.find(c => c.is_nullable === false) || cols[0];
         if (!filterCol) return null;
         const value = inferValueForColumn(filterCol);
-        return `SELECT *\nFROM \`${database}\`.\`${table}\`\nWHERE \`${filterCol.name}\` = ${value}\nLIMIT 50;`;
+        return `SELECT *\nFROM ${quoteQualifiedTable(database, table, dbType)}\nWHERE ${quoteIdentifier(filterCol.name, dbType)} = ${value}\nLIMIT 50;`;
     };
 
-    const buildJoinQuery = (database, table, refTable, fk, schema, refSchema) => {
-        const leftCols = pickBestColumns(schema, 2).map(c => `t1.\`${c}\``);
-        const rightCols = pickBestColumns(refSchema, 2).map(c => `t2.\`${c}\``);
+    const buildJoinQuery = (database, table, refTable, fk, schema, refSchema, dbType = getActiveDbType()) => {
+        const leftCols = pickBestColumns(schema, 2).map(c => `t1.${quoteIdentifier(c, dbType)}`);
+        const rightCols = pickBestColumns(refSchema, 2).map(c => `t2.${quoteIdentifier(c, dbType)}`);
         const selectCols = [...leftCols, ...rightCols].join(', ');
-        return `SELECT ${selectCols || 't1.*, t2.*'}\nFROM \`${database}\`.\`${table}\` t1\nJOIN \`${database}\`.\`${refTable}\` t2 ON t1.\`${fk.column_name}\` = t2.\`${fk.referenced_column}\`\nLIMIT 50;`;
+        return `SELECT ${selectCols || 't1.*, t2.*'}\nFROM ${quoteQualifiedTable(database, table, dbType)} t1\nJOIN ${quoteQualifiedTable(database, refTable, dbType)} t2 ON t1.${quoteIdentifier(fk.column_name, dbType)} = t2.${quoteIdentifier(fk.referenced_column, dbType)}\nLIMIT 50;`;
     };
 
-    const buildAggregateQuery = (database, table, schema) => {
+    const buildAggregateQuery = (database, table, schema, dbType = getActiveDbType()) => {
         const cols = Array.isArray(schema) ? schema : [];
         const groupCol = cols.find(c => c.column_key !== 'PRI') || cols[0];
         if (!groupCol) return null;
-        return `SELECT \`${groupCol.name}\`, COUNT(*) AS cnt\nFROM \`${database}\`.\`${table}\`\nGROUP BY \`${groupCol.name}\`\nORDER BY cnt DESC\nLIMIT 20;`;
+        return `SELECT ${quoteIdentifier(groupCol.name, dbType)}, COUNT(*) AS cnt\nFROM ${quoteQualifiedTable(database, table, dbType)}\nGROUP BY ${quoteIdentifier(groupCol.name, dbType)}\nORDER BY cnt DESC\nLIMIT 20;`;
     };
 
     const generateSampleQueries = async (database) => {
+        const dbType = getActiveDbType();
         const tables = await invoke('get_tables', { database });
         if (!tables || tables.length === 0) return '';
 
@@ -914,9 +932,9 @@ export function QueryEditor() {
         const primarySchema = await invoke('get_table_schema', { database, table: primaryTable });
         const samples = [];
 
-        samples.push(`-- Basic SELECT\n${buildSelectQuery(database, primaryTable, primarySchema)}`);
+        samples.push(`-- Basic SELECT\n${buildSelectQuery(database, primaryTable, primarySchema, dbType)}`);
 
-        const filterQuery = buildFilterQuery(database, primaryTable, primarySchema);
+        const filterQuery = buildFilterQuery(database, primaryTable, primarySchema, dbType);
         if (filterQuery) {
             samples.push(`-- Filtered SELECT\n${filterQuery}`);
         }
@@ -926,13 +944,331 @@ export function QueryEditor() {
             const fk = fks[0];
             const refTable = fk.referenced_table;
             const refSchema = await invoke('get_table_schema', { database, table: refTable });
-            samples.push(`-- JOIN using FK\n${buildJoinQuery(database, primaryTable, refTable, fk, primarySchema, refSchema)}`);
+            samples.push(`-- JOIN using FK\n${buildJoinQuery(database, primaryTable, refTable, fk, primarySchema, refSchema, dbType)}`);
         } else {
-            const aggQuery = buildAggregateQuery(database, primaryTable, primarySchema);
+            const aggQuery = buildAggregateQuery(database, primaryTable, primarySchema, dbType);
             if (aggQuery) samples.push(`-- Aggregate Example\n${aggQuery}`);
         }
 
         return samples.join('\n\n');
+    };
+
+    // Split SQL statements while ignoring delimiters in comments/strings.
+    const splitSqlStatements = (sql) => {
+        if (typeof sql !== 'string' || !sql.length) return [];
+
+        const segments = [];
+        let segmentStart = 0;
+
+        let inSingleQuote = false;
+        let inDoubleQuote = false;
+        let inBacktick = false;
+        let inLineComment = false;
+        let inBlockComment = false;
+
+        for (let i = 0; i < sql.length; i++) {
+            const char = sql[i];
+            const next = sql[i + 1];
+            const prev = sql[i - 1];
+
+            if (inLineComment) {
+                if (char === '\n') inLineComment = false;
+                continue;
+            }
+
+            if (inBlockComment) {
+                if (char === '*' && next === '/') {
+                    inBlockComment = false;
+                    i++;
+                }
+                continue;
+            }
+
+            if (inSingleQuote) {
+                if (char === "'" && prev !== '\\') {
+                    if (next === "'") {
+                        i++;
+                    } else {
+                        inSingleQuote = false;
+                    }
+                }
+                continue;
+            }
+
+            if (inDoubleQuote) {
+                if (char === '"' && prev !== '\\') {
+                    inDoubleQuote = false;
+                }
+                continue;
+            }
+
+            if (inBacktick) {
+                if (char === '`') {
+                    inBacktick = false;
+                }
+                continue;
+            }
+
+            if (char === '-' && next === '-') {
+                const nextNext = sql[i + 2];
+                const validStart = i === 0 || /[\s(;]/.test(prev);
+                const validEnd = !nextNext || /\s/.test(nextNext);
+                if (validStart && validEnd) {
+                    inLineComment = true;
+                    i++;
+                    continue;
+                }
+            }
+            if (char === '#') {
+                inLineComment = true;
+                continue;
+            }
+            if (char === '/' && next === '*') {
+                inBlockComment = true;
+                i++;
+                continue;
+            }
+
+            if (char === "'") {
+                inSingleQuote = true;
+                continue;
+            }
+            if (char === '"') {
+                inDoubleQuote = true;
+                continue;
+            }
+            if (char === '`') {
+                inBacktick = true;
+                continue;
+            }
+
+            if (char === ';') {
+                segments.push({ start: segmentStart, end: i + 1 });
+                segmentStart = i + 1;
+            }
+        }
+
+        if (segmentStart < sql.length) {
+            segments.push({ start: segmentStart, end: sql.length });
+        }
+
+        return segments
+            .map(({ start, end }) => {
+                const raw = sql.slice(start, end);
+                const trimmed = raw.trim();
+                if (!trimmed) return null;
+
+                const leadingOffset = raw.search(/\S/);
+                const trailingOffset = raw.length - raw.trimEnd().length;
+
+                return {
+                    query: trimmed,
+                    start: start + (leadingOffset >= 0 ? leadingOffset : 0),
+                    end: end - trailingOffset,
+                };
+            })
+            .filter(Boolean);
+    };
+
+    const pickExecutionQuery = (textarea, mode = 'smart') => {
+        if (!textarea) return { query: '', source: 'empty' };
+
+        const raw = textarea.value || '';
+        const fullQuery = raw.trim();
+        if (!fullQuery) return { query: '', source: 'empty' };
+
+        if (mode === 'all') {
+            return { query: fullQuery, source: 'full' };
+        }
+
+        const selectionStart = textarea.selectionStart ?? 0;
+        const selectionEnd = textarea.selectionEnd ?? selectionStart;
+        const selectedText = raw.slice(selectionStart, selectionEnd).trim();
+        if (selectedText) {
+            return { query: selectedText, source: 'selection' };
+        }
+
+        const statements = splitSqlStatements(raw);
+        if (statements.length === 0) {
+            return { query: fullQuery, source: 'full' };
+        }
+
+        const cursor = Math.max(0, Math.min(raw.length, selectionStart));
+        const exact = statements.find(statement => cursor >= statement.start && cursor <= statement.end);
+        if (exact) {
+            return { query: exact.query, source: 'statement' };
+        }
+
+        const previous = [...statements].reverse().find(statement => statement.end <= cursor);
+        if (previous) {
+            return { query: previous.query, source: 'statement' };
+        }
+
+        return { query: statements[0].query, source: 'statement' };
+    };
+
+    const convertMySqlBackticksToPgQuotes = (sql) => {
+        if (typeof sql !== 'string' || !sql.includes('`')) return sql;
+
+        let result = '';
+        let inSingleQuote = false;
+        let inDoubleQuote = false;
+        let inBacktick = false;
+        let inLineComment = false;
+        let inBlockComment = false;
+        let dollarTag = null;
+
+        for (let i = 0; i < sql.length; i++) {
+            const char = sql[i];
+            const next = sql[i + 1];
+            const prev = sql[i - 1];
+
+            if (inLineComment) {
+                result += char;
+                if (char === '\n') inLineComment = false;
+                continue;
+            }
+
+            if (inBlockComment) {
+                result += char;
+                if (char === '*' && next === '/') {
+                    result += next;
+                    i++;
+                    inBlockComment = false;
+                }
+                continue;
+            }
+
+            if (dollarTag) {
+                if (sql.startsWith(dollarTag, i)) {
+                    result += dollarTag;
+                    i += dollarTag.length - 1;
+                    dollarTag = null;
+                    continue;
+                }
+                result += char;
+                continue;
+            }
+
+            if (inSingleQuote) {
+                result += char;
+                if (char === "'") {
+                    if (next === "'") {
+                        result += next;
+                        i++;
+                    } else if (prev !== '\\') {
+                        inSingleQuote = false;
+                    }
+                }
+                continue;
+            }
+
+            if (inDoubleQuote) {
+                result += char;
+                if (char === '"') {
+                    if (next === '"') {
+                        result += next;
+                        i++;
+                    } else {
+                        inDoubleQuote = false;
+                    }
+                }
+                continue;
+            }
+
+            if (inBacktick) {
+                if (char === '`') {
+                    result += '"';
+                    inBacktick = false;
+                } else if (char === '"') {
+                    result += '""';
+                } else {
+                    result += char;
+                }
+                continue;
+            }
+
+            if (char === '-' && next === '-') {
+                result += char + next;
+                i++;
+                inLineComment = true;
+                continue;
+            }
+            if (char === '#') {
+                result += char;
+                inLineComment = true;
+                continue;
+            }
+            if (char === '/' && next === '*') {
+                result += char + next;
+                i++;
+                inBlockComment = true;
+                continue;
+            }
+
+            if (char === '$') {
+                const rest = sql.slice(i);
+                const tagMatch = rest.match(/^\$[A-Za-z_][A-Za-z0-9_]*\$/) || rest.match(/^\$\$/);
+                if (tagMatch) {
+                    dollarTag = tagMatch[0];
+                    result += dollarTag;
+                    i += dollarTag.length - 1;
+                    continue;
+                }
+            }
+
+            if (char === "'") {
+                inSingleQuote = true;
+                result += char;
+                continue;
+            }
+            if (char === '"') {
+                inDoubleQuote = true;
+                result += char;
+                continue;
+            }
+            if (char === '`') {
+                inBacktick = true;
+                result += '"';
+                continue;
+            }
+
+            result += char;
+        }
+
+        return result;
+    };
+
+    const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    const stripPostgresQualifier = (sql, qualifier) => {
+        if (!sql || !qualifier) return sql;
+        const escaped = escapeRegExp(qualifier);
+        const pattern = new RegExp(`(?:\"${escaped}\"|\\\`${escaped}\\\`|\\b${escaped}\\b)\\s*\\.\\s*`, 'g');
+        return sql.replace(pattern, '');
+    };
+
+    const buildPostgresRetryCandidates = (query, errorMessage, activeDatabase) => {
+        const candidates = [];
+        const pushCandidate = (candidateQuery, reason) => {
+            if (!candidateQuery || candidateQuery === query) return;
+            if (candidates.some(c => c.query === candidateQuery)) return;
+            candidates.push({ query: candidateQuery, reason });
+        };
+
+        const hasBackticks = query.includes('`');
+        const converted = hasBackticks ? convertMySqlBackticksToPgQuotes(query) : query;
+        if (hasBackticks && converted !== query) {
+            pushCandidate(converted, 'converted_quotes');
+        }
+
+        const relationMatch = String(errorMessage || '').match(/relation "([^"]+)\.[^"]+" does not exist/i);
+        if (relationMatch && activeDatabase && relationMatch[1] === activeDatabase) {
+            pushCandidate(stripPostgresQualifier(query, activeDatabase), 'removed_db_qualifier');
+            pushCandidate(stripPostgresQualifier(converted, activeDatabase), 'removed_db_qualifier');
+        }
+
+        return candidates;
     };
 
     const detectQueryType = (query) => {
@@ -1125,6 +1461,7 @@ export function QueryEditor() {
         const trimmed = query.trim();
         if (!trimmed) return [];
 
+        const dbType = getActiveDbType();
         const variants = [{ label: 'Original', query: trimmed }];
         const queryType = detectQueryType(trimmed);
 
@@ -1141,7 +1478,7 @@ export function QueryEditor() {
                 const table = tables[0];
                 if (table && database) {
                     const columns = await loadColumnsForAutocomplete(database, table);
-                    const cols = columns.slice(0, 5).map(c => `\`${c}\``).join(', ');
+                    const cols = columns.slice(0, 5).map(c => quoteIdentifier(c, dbType)).join(', ');
                     if (cols) {
                         variants.push({
                             label: 'Replace SELECT *',
@@ -1229,6 +1566,180 @@ export function QueryEditor() {
                 }
             });
         });
+    };
+
+    const executeEditorQuery = async (mode = 'smart') => {
+        if (isExecuting) return;
+
+        const textarea = container.querySelector('#query-input');
+        const executeBtn = container.querySelector('#execute-btn');
+        if (!textarea || !executeBtn) return;
+
+        const { query: editorContent } = pickExecutionQuery(textarea, mode);
+        if (!editorContent) {
+            Dialog.alert('Please enter a query to execute.', 'Info');
+            return;
+        }
+
+        isExecuting = true;
+
+        const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+        const database = activeConfig.database || '';
+        const activeDbType = getActiveDbType();
+        let queryForExecution = editorContent;
+
+        const estimate = estimateQueryLatency(editorContent, database);
+        estimatedExecutionTime = estimate?.estimate || null;
+
+        const startTime = performance.now();
+        const originalHTML = executeBtn.innerHTML;
+        try {
+            executeBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span>';
+            executeBtn.classList.add('opacity-70', 'cursor-wait');
+
+            // Notify results table to show loading skeleton
+            window.dispatchEvent(new CustomEvent('tactilesql:query-executing'));
+
+            // Execute query (profiled) - UI stays responsive due to async/await
+            const explainAnalyze = SettingsManager.get('profiler.explainAnalyze', true);
+            const profileOptions = { explainAnalyze };
+
+            let response;
+            let appliedFixReason = null;
+            try {
+                response = await invoke('execute_query_profiled', { query: queryForExecution, profile_options: profileOptions });
+            } catch (primaryError) {
+                if (activeDbType !== 'postgresql') throw primaryError;
+
+                const primaryMessage = String(primaryError?.message || primaryError || '');
+                const retryCandidates = buildPostgresRetryCandidates(queryForExecution, primaryMessage, database);
+                if (retryCandidates.length === 0) throw primaryError;
+
+                let lastRetryError = primaryError;
+                let hasRecovered = false;
+
+                for (const candidate of retryCandidates) {
+                    try {
+                        response = await invoke('execute_query_profiled', { query: candidate.query, profile_options: profileOptions });
+                        queryForExecution = candidate.query;
+                        appliedFixReason = candidate.reason;
+                        hasRecovered = true;
+                        break;
+                    } catch (retryError) {
+                        lastRetryError = retryError;
+                    }
+                }
+
+                if (!hasRecovered) throw lastRetryError;
+            }
+
+            if (appliedFixReason && queryForExecution !== editorContent) {
+                const activeTab = tabs.find(t => t.id === activeTabId);
+                if (activeTab) {
+                    activeTab.content = queryForExecution;
+                    saveState();
+                }
+                textarea.value = queryForExecution;
+                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+
+                if (appliedFixReason === 'removed_db_qualifier') {
+                    toastWarning('PostgreSQL detected: removed database prefix (db.table -> table) and retried.');
+                } else if (appliedFixReason === 'converted_quotes') {
+                    toastWarning('MySQL-style backticks converted to PostgreSQL identifier quotes and retried.');
+                } else {
+                    toastWarning('Query adapted for PostgreSQL compatibility and retried.');
+                }
+            }
+
+            const endTime = performance.now();
+            const safeResponse = Array.isArray(response) ? { results: response } : (response || {});
+            const durationMs = (typeof safeResponse.durationMs === 'number' && !Number.isNaN(safeResponse.durationMs))
+                ? safeResponse.durationMs
+                : Math.round(endTime - startTime);
+            lastExecutionTime = Math.round(durationMs);
+
+            // Ensure results is always an array
+            const resultsArray = Array.isArray(safeResponse.results) ? safeResponse.results : (safeResponse.results ? [safeResponse.results] : []);
+            const statusDiff = safeResponse.statusDiff || null;
+
+            // Add query to each result for context
+            resultsArray.forEach((res, idx) => {
+                res.query = queryForExecution;
+                res.duration = lastExecutionTime;
+                res.profileOptions = profileOptions;
+                if (statusDiff) {
+                    res.statusDiff = statusDiff;
+                }
+                if (resultsArray.length > 1) {
+                    res.title = `Result ${idx + 1}`;
+                }
+            });
+
+            const event = new CustomEvent('tactilesql:query-result', { detail: resultsArray });
+            window.dispatchEvent(event);
+
+            // Dispatch History Success
+            window.dispatchEvent(new CustomEvent('tactilesql:history-update', {
+                detail: {
+                    query: queryForExecution,
+                    timestamp: new Date().toISOString(),
+                    status: 'SUCCESS',
+                    duration: lastExecutionTime
+                }
+            }));
+
+            // Log to Audit Trail
+            const totalRows = resultsArray.reduce((sum, r) => sum + (r.rows?.length || 0), 0);
+            const slowSignal = detectSlowQuery(queryForExecution, lastExecutionTime, database);
+
+            auditTrail.logQuery({
+                query: queryForExecution,
+                status: 'SUCCESS',
+                duration: lastExecutionTime,
+                rowsReturned: totalRows,
+            });
+
+            if (slowSignal) {
+                Dialog.alert(
+                    `This query took ${lastExecutionTime}ms, which is unusually slow for similar queries.\nBaseline: ~${slowSignal.baseline}ms (alert threshold ${slowSignal.threshold}ms).`,
+                    'Slow Query Warning'
+                );
+            }
+        } catch (error) {
+            console.error(error);
+            const endTime = performance.now();
+            lastExecutionTime = Math.round(endTime - startTime);
+
+            // Dispatch History Error
+            window.dispatchEvent(new CustomEvent('tactilesql:history-update', {
+                detail: {
+                    query: queryForExecution,
+                    timestamp: new Date().toISOString(),
+                    status: 'ERROR',
+                    error: error.message || error.toString()
+                }
+            }));
+
+            // Log to Audit Trail
+            auditTrail.logQuery({
+                query: queryForExecution,
+                status: 'ERROR',
+                duration: lastExecutionTime,
+                error: error.message || error.toString(),
+            });
+
+            // Offering Inline AI Fix instead of Modal
+            showRepairBar(error.message || error.toString(), queryForExecution);
+
+            // Notify results table to hide loading skeleton
+            window.dispatchEvent(new CustomEvent('tactilesql:query-result', { detail: [] }));
+        } finally {
+            executeBtn.innerHTML = originalHTML;
+            executeBtn.classList.remove('opacity-70', 'cursor-wait');
+            isExecuting = false;
+            // Re-render to show updated execution time
+            render();
+        }
     };
 
     async function attachEvents() {
@@ -1827,8 +2338,6 @@ export function QueryEditor() {
         // Execute Logic
         const executeBtn = container.querySelector('#execute-btn');
         if (executeBtn) {
-            let isExecuting = false;
-
             // Add ripple effect on click
             executeBtn.addEventListener('mousedown', (e) => {
                 const ripple = document.createElement('span');
@@ -1846,124 +2355,9 @@ export function QueryEditor() {
                 setTimeout(() => ripple.remove(), 600);
             });
 
-            executeBtn.addEventListener('click', async () => {
-                if (isExecuting) return; // Prevent double-click
-                isExecuting = true;
-
-                const editorContent = container.querySelector('#query-input').value.trim();
-                const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
-                const database = activeConfig.database || '';
-                const estimate = estimateQueryLatency(editorContent, database);
-                estimatedExecutionTime = estimate?.estimate || null;
-                render();
-                const startTime = performance.now();
-                const originalHTML = executeBtn.innerHTML;
-                try {
-                    executeBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span>';
-                    executeBtn.classList.add('opacity-70', 'cursor-wait');
-
-                    // Notify results table to show loading skeleton
-                    window.dispatchEvent(new CustomEvent('tactilesql:query-executing'));
-
-                    // Execute query (profiled) - UI stays responsive due to async/await
-                    const explainAnalyze = SettingsManager.get('profiler.explainAnalyze', true);
-                    const profileOptions = { explainAnalyze };
-                    const response = await invoke('execute_query_profiled', { query: editorContent, profile_options: profileOptions });
-                    const endTime = performance.now();
-                    const safeResponse = Array.isArray(response) ? { results: response } : (response || {});
-                    const durationMs = (typeof safeResponse.durationMs === 'number' && !Number.isNaN(safeResponse.durationMs))
-                        ? safeResponse.durationMs
-                        : Math.round(endTime - startTime);
-                    lastExecutionTime = Math.round(durationMs);
-
-                    // Ensure results is always an array
-                    const resultsArray = Array.isArray(safeResponse.results) ? safeResponse.results : (safeResponse.results ? [safeResponse.results] : []);
-                    const statusDiff = safeResponse.statusDiff || null;
-
-                    // Add query to each result for context
-                    resultsArray.forEach((res, idx) => {
-                        res.query = editorContent;
-                        res.duration = lastExecutionTime;
-                        res.profileOptions = profileOptions;
-                        if (statusDiff) {
-                            res.statusDiff = statusDiff;
-                        }
-                        if (resultsArray.length > 1) {
-                            res.title = `Result ${idx + 1}`;
-                        }
-                    });
-
-                    const event = new CustomEvent('tactilesql:query-result', { detail: resultsArray });
-                    window.dispatchEvent(event);
-
-                    // Dispatch History Success
-                    window.dispatchEvent(new CustomEvent('tactilesql:history-update', {
-                        detail: {
-                            query: editorContent,
-                            timestamp: new Date().toISOString(),
-                            status: 'SUCCESS',
-                            duration: lastExecutionTime
-                        }
-                    }));
-
-                    // Log to Audit Trail
-                    const totalRows = resultsArray.reduce((sum, r) => sum + (r.rows?.length || 0), 0);
-                    const slowSignal = detectSlowQuery(editorContent, lastExecutionTime, database);
-
-                    auditTrail.logQuery({
-                        query: editorContent,
-                        status: 'SUCCESS',
-                        duration: lastExecutionTime,
-                        rowsReturned: totalRows,
-                    });
-
-                    if (slowSignal) {
-                        Dialog.alert(
-                            `This query took ${lastExecutionTime}ms, which is unusually slow for similar queries.\nBaseline: ~${slowSignal.baseline}ms (alert threshold ${slowSignal.threshold}ms).`,
-                            'Slow Query Warning'
-                        );
-                    }
-
-                    // Re-render to show execution time badge
-                    render();
-
-                } catch (error) {
-                    console.error(error);
-                    const endTime = performance.now();
-                    lastExecutionTime = Math.round(endTime - startTime);
-
-                    // Dispatch History Error
-                    window.dispatchEvent(new CustomEvent('tactilesql:history-update', {
-                        detail: {
-                            query: editorContent,
-                            timestamp: new Date().toISOString(),
-                            status: 'ERROR',
-                            error: error.message || error.toString()
-                        }
-                    }));
-
-                    // Log to Audit Trail
-                    auditTrail.logQuery({
-                        query: editorContent,
-                        status: 'ERROR',
-                        duration: lastExecutionTime,
-                        error: error.message || error.toString(),
-                    });
-
-                    // Offering Inline AI Fix instead of Modal
-                    showRepairBar(error.message || error.toString(), editorContent);
-
-                    // Notify results table to hide loading skeleton
-                    window.dispatchEvent(new CustomEvent('tactilesql:query-result', { detail: [] }));
-
-                    render(); // Show execution time even on error
-                } finally {
-                    executeBtn.innerHTML = originalHTML;
-                    executeBtn.classList.remove('opacity-70', 'cursor-wait');
-                    isExecuting = false;
-                    // Re-render to show updated execution time
-                    render();
-                }
+            executeBtn.addEventListener('click', async (e) => {
+                const mode = e.shiftKey ? 'all' : 'smart';
+                await executeEditorQuery(mode);
             });
         }
 
@@ -2364,10 +2758,14 @@ export function QueryEditor() {
 
     // --- Register Keyboard Shortcut Handlers ---
     const registerShortcutHandlers = () => {
-        // Execute query (Ctrl+Enter, F5)
+        // Execute selection/current statement (Ctrl+Enter, F5)
         registerHandler('executeQuery', () => {
-            const executeBtn = container.querySelector('#execute-btn');
-            if (executeBtn) executeBtn.click();
+            executeEditorQuery('smart');
+        });
+
+        // Execute all statements (Ctrl+Shift+Enter)
+        registerHandler('executeAllQuery', () => {
+            executeEditorQuery('all');
         });
 
         // New tab (Ctrl+N)
@@ -2514,7 +2912,7 @@ export function QueryEditor() {
         resizeObserver.disconnect();
         window.removeEventListener('themechange', onThemeChange);
         // Unregister handlers
-        ['executeQuery', 'newTab', 'closeTab', 'nextTab', 'prevTab',
+        ['executeQuery', 'executeAllQuery', 'newTab', 'closeTab', 'nextTab', 'prevTab',
             'goToTab1', 'goToTab2', 'goToTab3', 'goToTab4', 'goToTab5',
             'formatSQL', 'saveSnippet', 'focusQuery', 'selectLine', 'gotoLine'].forEach(action => {
                 unregisterHandler(action);
