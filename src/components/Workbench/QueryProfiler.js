@@ -16,16 +16,16 @@ const escapeHtml = (str) => {
         .replace(/'/g, '&#39;');
 };
 
-// --- State (Module Scoped) ---
-let isVisible = false;
-let activeTab = 'profile'; // 'profile' | 'monitor' | 'locks'
-let profileData = null;
-let monitorData = [];
-let locksData = [];
-let monitorInterval = null;
-let profilerEnabled = SettingsManager.get('profiler.enabled', true);
-
 export function QueryProfiler() {
+    // --- State (Instance Scoped) ---
+    let isVisible = false;
+    let activeTab = 'profile'; // 'profile' | 'monitor' | 'locks'
+    let profileData = null;
+    let monitorData = [];
+    let locksData = [];
+    let monitorInterval = null;
+    let profilerEnabled = SettingsManager.get('profiler.enabled', true);
+
     let theme = ThemeManager.getCurrentTheme();
     let isLight = theme === 'light';
     let isDawn = theme === 'dawn';
@@ -41,6 +41,7 @@ export function QueryProfiler() {
                 ? 'bg-ocean-panel/95 border-ocean-border'
                 : 'bg-[#1a1d23]/95 border-white/10'))
         }`;
+    container.style.display = 'none';
 
     const formatBytes = (bytes) => {
         if (!bytes || bytes === 0) return '0 B';
@@ -832,8 +833,8 @@ export function QueryProfiler() {
         if (activeTab === 'profile' && isVisible) renderProfileContent();
     };
 
-    // Listen for query execution events
-    window.addEventListener('tactilesql:query-result', (e) => {
+    // --- Event Handlers (Stored for cleanup) ---
+    const onQueryResult = (e) => {
         const detail = e.detail;
         const resultsArray = Array.isArray(detail) ? detail : (detail ? [detail] : []);
         if (resultsArray.length === 0) return;
@@ -848,10 +849,9 @@ export function QueryProfiler() {
         // Auto-show when result arrives if not already visible
         if (!isVisible) show();
         else if (activeTab === 'profile') render();
-    });
+    };
 
-    // Show profiler immediately when execution starts (even before results)
-    window.addEventListener('tactilesql:query-executing', () => {
+    const onQueryExecuting = () => {
         if (!isVisible) show();
         const contentDiv = container.querySelector('#profiler-content');
         if (contentDiv) {
@@ -863,13 +863,11 @@ export function QueryProfiler() {
                 </div>
             `;
         }
-    });
+    };
 
-    // Listen for toggle event
-    window.addEventListener('tactilesql:toggle-profiler', toggle);
+    const onToggleProfiler = () => toggle();
 
-    // Theme change
-    window.addEventListener('themechange', (e) => {
+    const onThemeChange = (e) => {
         theme = e.detail.theme;
         isLight = theme === 'light';
         isDawn = theme === 'dawn';
@@ -884,14 +882,32 @@ export function QueryProfiler() {
                     : 'bg-[#1a1d23]/95 border-white/10'))
             }`;
         render();
-    });
-    window.addEventListener('settingschange', (e) => {
-        if (e.detail?.key === 'profiler.enabled') {
+    };
+
+    const onSettingsChange = (e) => {
+        if (e.detail?.key === 'profiler.enabled' || e.detail?.path === 'profiler.enabled') {
             profilerEnabled = !!e.detail.value;
             if (!profilerEnabled) hide();
             else render();
         }
-    });
+    };
+
+    // Listen for query execution events
+    window.addEventListener('tactilesql:query-result', onQueryResult);
+    window.addEventListener('tactilesql:query-executing', onQueryExecuting);
+    window.addEventListener('tactilesql:toggle-profiler', onToggleProfiler);
+    window.addEventListener('themechange', onThemeChange);
+    window.addEventListener('tactilesql:settings-changed', onSettingsChange);
+
+    const unmount = () => {
+        stopMonitor();
+        window.removeEventListener('tactilesql:query-result', onQueryResult);
+        window.removeEventListener('tactilesql:query-executing', onQueryExecuting);
+        window.removeEventListener('tactilesql:toggle-profiler', onToggleProfiler);
+        window.removeEventListener('themechange', onThemeChange);
+        window.removeEventListener('tactilesql:settings-changed', onSettingsChange);
+        container.remove();
+    };
 
     // Initial render
     render();
@@ -901,6 +917,7 @@ export function QueryProfiler() {
         show,
         hide,
         toggle,
-        updateProfile
+        updateProfile,
+        unmount
     };
 }

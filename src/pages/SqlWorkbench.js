@@ -211,6 +211,7 @@ export function SqlWorkbench() {
         document.removeEventListener('mouseup', onMouseUp);
         window.removeEventListener('themechange', onThemeChange);
         window.removeEventListener('tactilesql:settings-changed', onSettingsChange);
+        profiler.unmount();
     };
 
     return container;

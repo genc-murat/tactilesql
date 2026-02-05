@@ -68,7 +68,7 @@ export const SettingsManager = {
         const updated = deepSet(current, path, value);
         saveSettings(updated);
         window.dispatchEvent(new CustomEvent('tactilesql:settings-changed', {
-            detail: { path, value, settings: updated },
+            detail: { path, key: path, value, settings: updated },
         }));
         return updated;
     },

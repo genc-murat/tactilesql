@@ -518,7 +518,6 @@ export function Settings() {
                 const next = !current;
                 SettingsManager.set('profiler.enabled', next);
                 setToggleState(profilerToggle, next);
-                window.dispatchEvent(new CustomEvent('settingschange', { detail: { key: 'profiler.enabled', value: next } }));
             });
             setToggleState(profilerToggle, SettingsManager.get('profiler.enabled', true));
         }
