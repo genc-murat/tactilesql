@@ -46,6 +46,8 @@ export function CapacityPlanner() {
 
     const MAX_POINTS_DEFAULT = 120;
     const DEFAULT_INTERVAL_SEC = 10;
+    const CHART_WIDTH = 100;
+    const CHART_HEIGHT = 40;
 
     let state = {
         connections: [],
@@ -67,39 +69,174 @@ export function CapacityPlanner() {
 
     const toPercent = (value) => `${Math.round(clamp(value, 0, 1) * 100)}%`;
 
+    const scaleX = (index, total) => (total <= 1 ? 0 : (index / (total - 1)) * CHART_WIDTH);
+
+    const scaleY = (value, min, max) => {
+        const range = max - min || 1;
+        return CHART_HEIGHT - ((value - min) / range) * CHART_HEIGHT;
+    };
+
     const buildPolyline = (values, min, max) => {
         if (values.length === 0) return '';
-        const width = 100;
-        const height = 40;
-        const range = max - min || 1;
         return values.map((val, idx) => {
-            const x = values.length === 1 ? 0 : (idx / (values.length - 1)) * width;
-            const y = height - ((val - min) / range) * height;
+            const x = scaleX(idx, values.length);
+            const y = scaleY(val, min, max);
             return `${x.toFixed(2)},${y.toFixed(2)}`;
         }).join(' ');
     };
 
-    const renderSparkline = (series, options) => {
-        const { color, min, max } = options;
-        const points = buildPolyline(series, min, max);
+    const renderComparisonSparkline = (chartId, seriesDefs, options = {}) => {
+        const { min = 0, max = 1, strokeWidth = 2, bgColor = 'rgba(148,163,184,0.08)', gridColor = 'rgba(148,163,184,0.25)' } = options;
+        const hasData = seriesDefs.length > 0 && (seriesDefs[0].values?.length || 0) > 0;
+        const ticks = [0.25, 0.5, 0.75]
+            .map(ratio => `<line x1="0" y1="${(CHART_HEIGHT * ratio).toFixed(2)}" x2="${CHART_WIDTH}" y2="${(CHART_HEIGHT * ratio).toFixed(2)}" stroke="${gridColor}" stroke-width="0.35" stroke-dasharray="2 2"></line>`)
+            .join('');
+        const lines = seriesDefs.map(def => {
+            const points = buildPolyline(def.values || [], min, max);
+            return `<polyline fill="none" stroke="${def.color || '#6b7280'}" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round" points="${points}"></polyline>`;
+        }).join('');
+        const markers = seriesDefs.map((def, idx) => `
+            <circle
+                class="capacity-chart-marker opacity-0 transition-opacity duration-150"
+                data-series-index="${idx}"
+                r="2.2"
+                cx="0"
+                cy="${CHART_HEIGHT}"
+                fill="${def.color || '#6b7280'}"
+                stroke="${theme === 'light' ? '#ffffff' : '#0f172a'}"
+                stroke-width="0.8"
+            ></circle>
+        `).join('');
+
         return `
-            <svg viewBox="0 0 100 40" class="w-full h-16">
-                <polyline fill="none" stroke="${color}" stroke-width="2" points="${points}"></polyline>
-            </svg>
+            <div class="capacity-chart relative rounded-lg overflow-hidden" data-chart-id="${chartId}">
+                <svg viewBox="0 0 ${CHART_WIDTH} ${CHART_HEIGHT}" class="w-full h-16 capacity-chart-svg touch-none select-none" preserveAspectRatio="none">
+                    <rect x="0" y="0" width="${CHART_WIDTH}" height="${CHART_HEIGHT}" fill="${bgColor}"></rect>
+                    ${ticks}
+                    ${lines}
+                    <line class="capacity-chart-cursor opacity-0 transition-opacity duration-150" x1="0" y1="0" x2="0" y2="${CHART_HEIGHT}" stroke="${theme === 'dawn' ? '#ea9d34' : '#0ea5e9'}" stroke-width="0.7" stroke-dasharray="2 1"></line>
+                    ${markers}
+                </svg>
+                ${!hasData ? `<div class="absolute inset-0 flex items-center justify-center text-[10px] ${classes.text.subtle}">No samples</div>` : ''}
+            </div>
         `;
     };
 
-    const renderMultiSparkline = (seriesList, options) => {
-        const { colors, min, max } = options;
-        const polylines = seriesList.map((series, idx) => {
-            const points = buildPolyline(series, min, max);
-            return `<polyline fill="none" stroke="${colors[idx] || '#6b7280'}" stroke-width="2" points="${points}"></polyline>`;
-        }).join('');
-        return `
-            <svg viewBox="0 0 100 40" class="w-full h-16">
-                ${polylines}
-            </svg>
-        `;
+    const bindSynchronizedTooltip = (context) => {
+        const { chartConfigs, samples } = context;
+        const panel = container.querySelector('#sync-tooltip-panel');
+        const timeEl = container.querySelector('#sync-tooltip-time');
+        const indexEl = container.querySelector('#sync-tooltip-index');
+        const totalEl = container.querySelector('#sync-value-total');
+        const dataEl = container.querySelector('#sync-value-data');
+        const indexBytesEl = container.querySelector('#sync-value-index');
+        const hitEl = container.querySelector('#sync-value-hit');
+        const readEl = container.querySelector('#sync-value-read');
+        const writeEl = container.querySelector('#sync-value-write');
+        const chartEls = Array.from(container.querySelectorAll('.capacity-chart[data-chart-id]'));
+
+        if (!panel || !timeEl || !chartEls.length || samples.length === 0) return;
+
+        let hideTimeout = null;
+
+        const setSeriesMarker = (chartEl, chartDef, sampleIndex) => {
+            const line = chartEl.querySelector('.capacity-chart-cursor');
+            const markers = chartEl.querySelectorAll('.capacity-chart-marker');
+            if (!line || !chartDef || !chartDef.count) return;
+
+            const idx = clamp(sampleIndex, 0, chartDef.count - 1);
+            const x = scaleX(idx, chartDef.count);
+            line.setAttribute('x1', x.toFixed(2));
+            line.setAttribute('x2', x.toFixed(2));
+            line.classList.remove('opacity-0');
+
+            markers.forEach((marker) => {
+                const seriesIndex = parseInt(marker.getAttribute('data-series-index') || '0', 10);
+                const series = chartDef.series[seriesIndex];
+                const value = series?.values?.[idx];
+                if (!Number.isFinite(value)) {
+                    marker.classList.add('opacity-0');
+                    return;
+                }
+                const y = scaleY(value, chartDef.min, chartDef.max);
+                marker.setAttribute('cx', x.toFixed(2));
+                marker.setAttribute('cy', y.toFixed(2));
+                marker.classList.remove('opacity-0');
+            });
+        };
+
+        const clearMarkers = () => {
+            chartEls.forEach((chartEl) => {
+                const line = chartEl.querySelector('.capacity-chart-cursor');
+                const markers = chartEl.querySelectorAll('.capacity-chart-marker');
+                line?.classList.add('opacity-0');
+                markers.forEach(m => m.classList.add('opacity-0'));
+            });
+            panel.classList.add('opacity-60');
+            timeEl.textContent = 'Move cursor over any chart';
+            if (indexEl) indexEl.textContent = '-';
+        };
+
+        const updatePanel = (idx) => {
+            const sample = samples[idx];
+            if (!sample) return;
+
+            panel.classList.remove('opacity-60');
+            const dt = new Date(sample.ts);
+            timeEl.textContent = `${dt.toLocaleDateString()} ${dt.toLocaleTimeString()}`;
+            if (indexEl) indexEl.textContent = `${idx + 1} / ${samples.length}`;
+            if (totalEl) totalEl.textContent = formatBytes(sample.storage_bytes || 0);
+            if (dataEl) dataEl.textContent = formatBytes(sample.data_bytes || 0);
+            if (indexBytesEl) indexBytesEl.textContent = formatBytes(sample.index_bytes || 0);
+            if (hitEl) hitEl.textContent = toPercent(sample.buffer_hit_ratio ?? 0);
+            if (readEl) readEl.textContent = `${formatBytes(sample.read_rate || 0)}/s`;
+            if (writeEl) writeEl.textContent = `${formatBytes(sample.write_rate || 0)}/s`;
+        };
+
+        const updateSync = (idx) => {
+            const index = clamp(idx, 0, samples.length - 1);
+            Object.entries(chartConfigs).forEach(([chartId, chartDef]) => {
+                const chartEl = container.querySelector(`.capacity-chart[data-chart-id="${chartId}"]`);
+                if (chartEl) setSeriesMarker(chartEl, chartDef, index);
+            });
+            updatePanel(index);
+        };
+
+        const resolveIndex = (event, chartDef, chartEl) => {
+            const svg = chartEl.querySelector('.capacity-chart-svg');
+            if (!svg || !chartDef || chartDef.count < 1) return 0;
+
+            const rect = svg.getBoundingClientRect();
+            const clientX = event.touches?.[0]?.clientX ?? event.clientX;
+            const ratio = rect.width > 0 ? clamp((clientX - rect.left) / rect.width, 0, 1) : 0;
+            return Math.round(ratio * (chartDef.count - 1));
+        };
+
+        chartEls.forEach((chartEl) => {
+            const chartId = chartEl.dataset.chartId;
+            const chartDef = chartConfigs[chartId];
+            if (!chartDef || chartDef.count < 1) return;
+
+            const onMove = (event) => {
+                if (hideTimeout) {
+                    clearTimeout(hideTimeout);
+                    hideTimeout = null;
+                }
+                const idx = resolveIndex(event, chartDef, chartEl);
+                updateSync(idx);
+            };
+
+            const onLeave = () => {
+                hideTimeout = setTimeout(clearMarkers, 80);
+            };
+
+            chartEl.addEventListener('mouseenter', onMove);
+            chartEl.addEventListener('mousemove', onMove);
+            chartEl.addEventListener('mouseleave', onLeave);
+            chartEl.addEventListener('touchstart', onMove, { passive: true });
+            chartEl.addEventListener('touchmove', onMove, { passive: true });
+            chartEl.addEventListener('touchend', onLeave);
+        });
     };
 
     const computeTrend = (samples, key) => {
@@ -264,6 +401,36 @@ export function CapacityPlanner() {
         const writeRateText = current ? `${formatBytes(current.write_rate)}/s` : '-';
         const hitRateText = current ? toPercent(current.buffer_hit_ratio) : '-';
 
+        const chartConfigs = {
+            storage: {
+                min: 0,
+                max: storageMax,
+                count: storageSeries.length,
+                series: [
+                    { label: 'Total', color: '#0ea5e9', values: storageSeries },
+                    { label: 'Data', color: '#22c55e', values: dataSeries },
+                    { label: 'Index', color: '#a855f7', values: indexSeries }
+                ]
+            },
+            hit: {
+                min: 0,
+                max: 1,
+                count: hitSeries.length,
+                series: [
+                    { label: 'Hit', color: '#22c55e', values: hitSeries }
+                ]
+            },
+            io: {
+                min: 0,
+                max: ioMax,
+                count: readSeries.length,
+                series: [
+                    { label: 'Read', color: '#38bdf8', values: readSeries },
+                    { label: 'Write', color: '#f97316', values: writeSeries }
+                ]
+            }
+        };
+
         container.innerHTML = `
             <div class="${classes.header}">
                 <div class="flex flex-wrap items-start justify-between gap-4">
@@ -330,6 +497,24 @@ export function CapacityPlanner() {
                     </div>
                 </div>
 
+                <div id="sync-tooltip-panel" class="${classes.card} p-4 mb-6 ${state.samples.length > 0 ? 'opacity-60' : 'opacity-40'} transition-opacity">
+                    <div class="flex flex-wrap items-center justify-between gap-4">
+                        <div>
+                            <div class="text-[10px] font-bold uppercase tracking-widest ${classes.text.subtle}">Synchronized Tooltip</div>
+                            <div id="sync-tooltip-time" class="text-xs font-mono ${classes.text.primary} mt-1">${state.samples.length > 0 ? 'Move cursor over any chart' : 'Waiting for samples'}</div>
+                            <div class="text-[10px] ${classes.text.secondary} mt-1">Sample <span id="sync-tooltip-index">-</span></div>
+                        </div>
+                        <div class="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1 text-[10px] ${classes.text.secondary}">
+                            <div>Total: <span id="sync-value-total" class="font-mono ${classes.text.primary}">${current ? formatBytes(current.storage_bytes) : '-'}</span></div>
+                            <div>Data: <span id="sync-value-data" class="font-mono ${classes.text.primary}">${current ? formatBytes(current.data_bytes) : '-'}</span></div>
+                            <div>Index: <span id="sync-value-index" class="font-mono ${classes.text.primary}">${current ? formatBytes(current.index_bytes) : '-'}</span></div>
+                            <div>Hit: <span id="sync-value-hit" class="font-mono ${classes.text.primary}">${hitRateText}</span></div>
+                            <div>Read: <span id="sync-value-read" class="font-mono ${classes.text.primary}">${readRateText}</span></div>
+                            <div>Write: <span id="sync-value-write" class="font-mono ${classes.text.primary}">${writeRateText}</span></div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
                     <div class="${classes.card} p-5">
                         <div class="flex items-center justify-between mb-3">
@@ -338,9 +523,10 @@ export function CapacityPlanner() {
                                 <div class="text-[10px] ${classes.text.secondary} mt-1">Total vs Data vs Index</div>
                             </div>
                         </div>
-                        ${renderMultiSparkline(
-                            [storageSeries, dataSeries, indexSeries],
-                            { colors: ['#0ea5e9', '#22c55e', '#a855f7'], min: 0, max: storageMax }
+                        ${renderComparisonSparkline(
+                            'storage',
+                            chartConfigs.storage.series,
+                            { min: chartConfigs.storage.min, max: chartConfigs.storage.max }
                         )}
                         <div class="flex items-center gap-3 text-[10px] ${classes.text.secondary} mt-2">
                             <span><span class="inline-block w-2 h-2 rounded-full bg-sky-500 mr-1"></span>Total</span>
@@ -357,7 +543,11 @@ export function CapacityPlanner() {
                             </div>
                             <div class="text-xs font-mono ${classes.text.primary}">${hitRateText}</div>
                         </div>
-                        ${renderSparkline(hitSeries, { color: '#22c55e', min: 0, max: 1 })}
+                        ${renderComparisonSparkline(
+                            'hit',
+                            chartConfigs.hit.series,
+                            { min: chartConfigs.hit.min, max: chartConfigs.hit.max }
+                        )}
                     </div>
 
                     <div class="${classes.card} p-5">
@@ -371,9 +561,10 @@ export function CapacityPlanner() {
                                 <span>W: ${writeRateText}</span>
                             </div>
                         </div>
-                        ${renderMultiSparkline(
-                            [readSeries, writeSeries],
-                            { colors: ['#38bdf8', '#f97316'], min: 0, max: ioMax }
+                        ${renderComparisonSparkline(
+                            'io',
+                            chartConfigs.io.series,
+                            { min: chartConfigs.io.min, max: chartConfigs.io.max }
                         )}
                         <div class="flex items-center gap-3 text-[10px] ${classes.text.secondary} mt-2">
                             <span><span class="inline-block w-2 h-2 rounded-full bg-sky-400 mr-1"></span>Read</span>
@@ -428,6 +619,11 @@ export function CapacityPlanner() {
                 render();
             };
         }
+
+        bindSynchronizedTooltip({
+            chartConfigs,
+            samples: state.samples
+        });
     };
 
     const onThemeChange = (e) => {
@@ -436,6 +632,11 @@ export function CapacityPlanner() {
     };
 
     window.addEventListener('themechange', onThemeChange);
+
+    container.onUnmount = () => {
+        stopSampling();
+        window.removeEventListener('themechange', onThemeChange);
+    };
 
     init();
 
