@@ -23,6 +23,7 @@ export function QueryProfiler() {
     let profileData = null;
     let monitorData = [];
     let locksData = [];
+    let lockAnalysis = null;
     let monitorInterval = null;
     let profilerEnabled = SettingsManager.get('profiler.enabled', true);
 
@@ -101,7 +102,7 @@ export function QueryProfiler() {
     };
 
     const fetchLocksData = async () => {
-        if (getDbType() !== 'mysql') return;
+        const dbType = getDbType();
         const query = `
             SELECT
               r.trx_id AS 'BekleyenIslemID',
@@ -120,20 +121,43 @@ export function QueryProfiler() {
         `;
 
         try {
-            const result = await invoke('execute_query', { query });
-            if (result && result.rows) {
-                locksData = result.rows.map(row => ({
-                    waitingTrxId: row[0],
-                    waitingThreadId: row[1],
-                    waitTime: row[2],
-                    waitingQuery: row[3],
-                    blockingTrxId: row[4],
-                    blockingThreadId: row[5],
-                    blockingQuery: row[6]
-                }));
-                if (activeTab === 'locks' && isVisible) {
-                    renderLocksContent();
+            const analysisPromise = invoke('get_lock_analysis')
+                .then((result) => result)
+                .catch((e) => {
+                    console.warn('Failed to fetch lock analysis:', e);
+                    return null;
+                });
+
+            if (dbType === 'mysql') {
+                const [analysis, result] = await Promise.all([
+                    analysisPromise,
+                    invoke('execute_query', { query }).catch((e) => {
+                        console.warn('Failed to fetch MySQL lock wait details:', e);
+                        return null;
+                    })
+                ]);
+                lockAnalysis = analysis;
+
+                if (result && result.rows) {
+                    locksData = result.rows.map(row => ({
+                        waitingTrxId: row[0],
+                        waitingThreadId: row[1],
+                        waitTime: row[2],
+                        waitingQuery: row[3],
+                        blockingTrxId: row[4],
+                        blockingThreadId: row[5],
+                        blockingQuery: row[6]
+                    }));
+                } else {
+                    locksData = [];
                 }
+            } else {
+                lockAnalysis = await analysisPromise;
+                locksData = [];
+            }
+
+            if (activeTab === 'locks' && isVisible) {
+                renderLocksContent();
             }
         } catch (e) {
             console.error('Failed to fetch locks:', e);
@@ -175,10 +199,15 @@ export function QueryProfiler() {
 
         if (confirmed) {
             try {
-                await invoke('execute_query', { query: `KILL ${id}` });
+                const numericId = Number(id);
+                if (!Number.isFinite(numericId)) {
+                    throw new Error(`Invalid process id: ${id}`);
+                }
+
+                await invoke('kill_process', { processId: numericId });
                 // Optimistic update
                 if (activeTab === 'monitor') {
-                    monitorData = monitorData.filter(p => p.id !== id);
+                    monitorData = monitorData.filter(p => p.id !== numericId);
                     renderMonitorContent();
                 } else if (activeTab === 'locks') {
                     // Force refresh
@@ -690,64 +719,216 @@ export function QueryProfiler() {
         const labelColor = (isLight || isDawn) ? 'text-gray-500' : 'text-gray-400';
         const valueColor = isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-200');
         const borderColor = isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5');
+        const analysisEdges = Array.isArray(lockAnalysis?.edges) ? lockAnalysis.edges : [];
+        const analysisChains = Array.isArray(lockAnalysis?.chains) ? lockAnalysis.chains : [];
+        const analysisNodes = Array.isArray(lockAnalysis?.nodes) ? lockAnalysis.nodes : [];
+        const analysisRecommendations = Array.isArray(lockAnalysis?.recommendations) ? lockAnalysis.recommendations : [];
+        const summary = lockAnalysis?.summary || {};
 
-        if (locksData.length === 0) {
+        if (locksData.length === 0 && analysisEdges.length === 0) {
             contentDiv.innerHTML = `
                 <div class="h-64 flex flex-col items-center justify-center text-center ${(isLight || isDawn) ? 'text-gray-400' : 'text-gray-500'}">
                     <span class="material-symbols-outlined text-3xl opacity-50 mb-2">check_circle</span>
-                    <span class="text-xs font-medium uppercase tracking-wider">No active InnoDb locks</span>
+                    <span class="text-xs font-medium uppercase tracking-wider">No active locks</span>
                 </div>
             `;
             return;
         }
 
-        // We use a card layout for locks because there's a lot of info per item
-        const listHtml = locksData.map(l => `
-            <div class="mb-3 p-3 rounded-lg border ${borderColor} ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : 'bg-white/5')}">
-                
-                <!-- Waiting Side -->
-                <div class="mb-2 pb-2 border-b ${borderColor}">
-                    <div class="flex items-center justify-between mb-1">
-                        <span class="text-[9px] font-black uppercase text-yellow-500">Waiting Transaction</span>
-                        <span class="text-[9px] font-mono ${labelColor}">ID: ${l.waitingTrxId} (Thread ${l.waitingThreadId})</span>
-                    </div>
-                    <div class="text-[10px] ${valueColor} font-mono bg-black/5 dark:bg-black/20 p-1.5 rounded mb-1">
-                        ${l.waitingQuery || 'NULL'}
-                    </div>
-                    <div class="text-[9px] ${labelColor} flex justify-end">
-                        Waited: <span class="font-bold text-yellow-500 ml-1">${l.waitTime}s</span>
-                    </div>
-                </div>
+        const generatedAt = lockAnalysis?.generated_at ? new Date(lockAnalysis.generated_at) : null;
+        const generatedAtLabel = generatedAt && !Number.isNaN(generatedAt.getTime())
+            ? generatedAt.toLocaleTimeString()
+            : '-';
 
-                <!-- Blocking Side -->
-                <div class="relative">
-                    <div class="flex items-center justify-between mb-1">
-                        <span class="text-[9px] font-black uppercase text-red-500">Blocking Transaction</span>
-                        <span class="text-[9px] font-mono ${labelColor}">ID: ${l.blockingTrxId} (Thread ${l.blockingThreadId})</span>
+        const severityClass = (severity) => {
+            switch ((severity || '').toLowerCase()) {
+                case 'critical':
+                    return 'bg-red-500/20 text-red-500 border border-red-500/30';
+                case 'high':
+                    return 'bg-orange-500/20 text-orange-500 border border-orange-500/30';
+                case 'medium':
+                    return 'bg-yellow-500/20 text-yellow-500 border border-yellow-500/30';
+                default:
+                    return (isLight || isDawn)
+                        ? 'bg-gray-100 text-gray-700 border border-gray-200'
+                        : 'bg-blue-500/20 text-blue-400 border border-blue-500/30';
+            }
+        };
+
+        const topBlockers = [...analysisNodes]
+            .filter((node) => (node.blocked_count || 0) > 0)
+            .sort((a, b) => (b.blocked_count || 0) - (a.blocked_count || 0))
+            .slice(0, 2);
+
+        const legacyLockHtml = locksData.length > 0 ? `
+            <div class="mb-3">
+                ${locksData.map(l => `
+                    <div class="mb-3 p-3 rounded-lg border ${borderColor} ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : 'bg-white/5')}">
+                        <div class="mb-2 pb-2 border-b ${borderColor}">
+                            <div class="flex items-center justify-between mb-1">
+                                <span class="text-[9px] font-black uppercase text-yellow-500">Waiting Transaction</span>
+                                <span class="text-[9px] font-mono ${labelColor}">ID: ${l.waitingTrxId} (Thread ${l.waitingThreadId})</span>
+                            </div>
+                            <div class="text-[10px] ${valueColor} font-mono bg-black/5 dark:bg-black/20 p-1.5 rounded mb-1 break-words">
+                                ${escapeHtml(l.waitingQuery || 'NULL')}
+                            </div>
+                            <div class="text-[9px] ${labelColor} flex justify-end">
+                                Waited: <span class="font-bold text-yellow-500 ml-1">${l.waitTime}s</span>
+                            </div>
+                        </div>
+
+                        <div class="relative">
+                            <div class="flex items-center justify-between mb-1">
+                                <span class="text-[9px] font-black uppercase text-red-500">Blocking Transaction</span>
+                                <span class="text-[9px] font-mono ${labelColor}">ID: ${l.blockingTrxId} (Thread ${l.blockingThreadId})</span>
+                            </div>
+                            <div class="text-[10px] ${valueColor} font-mono bg-black/5 dark:bg-black/20 p-1.5 rounded mb-1 break-words">
+                                ${escapeHtml(l.blockingQuery || 'NULL')}
+                            </div>
+
+                            <button class="kill-block-btn mt-2 w-full py-1 rounded bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white transition-all text-[10px] font-bold uppercase tracking-wider border border-red-500/20" data-id="${l.blockingThreadId}">
+                                Kill Blocking Thread (${l.blockingThreadId})
+                            </button>
+                        </div>
                     </div>
-                     <div class="text-[10px] ${valueColor} font-mono bg-black/5 dark:bg-black/20 p-1.5 rounded mb-1">
-                        ${l.blockingQuery || 'NULL'}
+                `).join('')}
+            </div>
+        ` : '';
+
+        const graphHtml = analysisEdges.length > 0 ? analysisEdges.slice(0, 12).map(edge => `
+            <div class="p-2 rounded border ${borderColor} ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : 'bg-white/5')}">
+                <div class="flex items-center justify-between gap-2 text-[10px]">
+                    <div class="flex items-center gap-1.5 min-w-0">
+                        <span class="font-mono px-1.5 py-0.5 rounded ${isLight ? 'bg-red-100 text-red-600' : 'bg-red-500/20 text-red-400'}">#${edge.blocking_process_id}</span>
+                        <span class="${labelColor}">-&gt;</span>
+                        <span class="font-mono px-1.5 py-0.5 rounded ${isLight ? 'bg-yellow-100 text-yellow-600' : 'bg-yellow-500/20 text-yellow-400'}">#${edge.waiting_process_id}</span>
+                        <span class="${labelColor}">${edge.wait_seconds || 0}s</span>
                     </div>
-                    
-                    <button class="kill-block-btn mt-2 w-full py-1 rounded bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white transition-all text-[10px] font-bold uppercase tracking-wider border border-red-500/20" data-id="${l.blockingThreadId}">
-                        Kill Blocking Thread (${l.blockingThreadId})
+                    <button class="kill-block-btn px-1.5 py-0.5 rounded text-[9px] ${isLight ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'} transition-colors" data-id="${edge.blocking_process_id}">
+                        kill
                     </button>
                 </div>
-
+                <div class="mt-1 text-[9px] ${labelColor} truncate" title="${escapeHtml(edge.object_name || '')}">
+                    ${escapeHtml(edge.object_name || edge.lock_type || '-')}
+                </div>
+                <div class="mt-1 text-[9px] ${labelColor} truncate" title="${escapeHtml(edge.blocking_query || '')}">
+                    ${escapeHtml(edge.blocking_query || '-')}
+                </div>
             </div>
-        `).join('');
+        `).join('') : `
+            <div class="p-2 rounded border ${borderColor} ${isLight ? 'bg-gray-50 text-gray-500' : 'bg-white/5 text-gray-400'} text-[10px]">
+                No blocking edges found.
+            </div>
+        `;
+
+        const chainHtml = analysisChains.length > 0 ? analysisChains.slice(0, 8).map(chain => `
+            <div class="p-2 rounded border ${borderColor} ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : 'bg-white/5')}">
+                <div class="flex items-center justify-between text-[10px] mb-1">
+                    <span class="${labelColor}">Depth ${chain.depth || 0} | Wait ${chain.total_wait_seconds || 0}s</span>
+                    ${chain.contains_cycle ? '<span class="text-red-500 font-semibold">cycle</span>' : ''}
+                </div>
+                <div class="text-[10px] ${valueColor} font-mono break-words">
+                    ${(Array.isArray(chain.process_chain) ? chain.process_chain : []).map(pid => `#${pid}`).join(' -> ')}
+                </div>
+            </div>
+        `).join('') : `
+            <div class="p-2 rounded border ${borderColor} ${isLight ? 'bg-gray-50 text-gray-500' : 'bg-white/5 text-gray-400'} text-[10px]">
+                No blocking chain found.
+            </div>
+        `;
+
+        const recommendationHtml = analysisRecommendations.length > 0
+            ? analysisRecommendations.slice(0, 5).map(rec => `
+                <div class="p-2 rounded ${severityClass(rec.severity)}">
+                    <div class="text-[9px] font-black uppercase tracking-wider mb-1">${escapeHtml(rec.severity || 'low')} | ${escapeHtml(rec.title || '')}</div>
+                    <div class="text-[10px] leading-snug">${escapeHtml(rec.action || '')}</div>
+                </div>
+            `).join('')
+            : `
+                <div class="p-2 rounded border ${borderColor} ${isLight ? 'bg-gray-50 text-gray-500' : 'bg-white/5 text-gray-400'} text-[10px]">
+                    Automatic recommendations are unavailable.
+                </div>
+            `;
 
         contentDiv.innerHTML = `
-            <div class="space-y-1">
-                ${listHtml}
-            </div>
+            ${legacyLockHtml}
+
+            ${lockAnalysis ? `
+                <div class="mb-2 p-2 rounded-lg border ${lockAnalysis.has_deadlock ? 'border-red-500/40 bg-red-500/10' : borderColor} ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : 'bg-white/5')}">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-[10px] font-black uppercase tracking-wider ${lockAnalysis.has_deadlock ? 'text-red-500' : valueColor}">
+                            Blocking Analysis
+                        </span>
+                        <span class="text-[9px] ${labelColor}">
+                            ${generatedAtLabel}
+                        </span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 text-[10px]">
+                        <div class="p-1.5 rounded ${isLight ? 'bg-white border border-gray-200' : 'bg-black/20 border border-white/10'}">
+                            <span class="${labelColor}">waiting:</span> <span class="${valueColor} font-bold">${formatNumber(summary.waiting_sessions || 0)}</span>
+                        </div>
+                        <div class="p-1.5 rounded ${isLight ? 'bg-white border border-gray-200' : 'bg-black/20 border border-white/10'}">
+                            <span class="${labelColor}">blocking:</span> <span class="${valueColor} font-bold">${formatNumber(summary.blocking_sessions || 0)}</span>
+                        </div>
+                        <div class="p-1.5 rounded ${isLight ? 'bg-white border border-gray-200' : 'bg-black/20 border border-white/10'}">
+                            <span class="${labelColor}">max wait:</span> <span class="${valueColor} font-bold">${formatNumber(summary.max_wait_seconds || 0)}s</span>
+                        </div>
+                        <div class="p-1.5 rounded ${isLight ? 'bg-white border border-gray-200' : 'bg-black/20 border border-white/10'}">
+                            <span class="${labelColor}">deadlock:</span> <span class="${lockAnalysis.has_deadlock ? 'text-red-500 font-bold' : valueColor}">${lockAnalysis.has_deadlock ? 'yes' : 'no'}</span>
+                        </div>
+                    </div>
+                </div>
+
+                ${topBlockers.length > 0 ? `
+                    <div class="mb-2">
+                        <div class="text-[10px] font-black uppercase tracking-wider ${labelColor} mb-1">Root Blockers</div>
+                        <div class="space-y-2">
+                            ${topBlockers.map(node => `
+                                <div class="p-2 rounded border ${borderColor} ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : 'bg-white/5')}">
+                                    <div class="flex items-center justify-between text-[10px] mb-1">
+                                        <span class="font-mono ${valueColor}">#${node.process_id}</span>
+                                        <button class="kill-block-btn px-1.5 py-0.5 rounded ${isLight ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'}" data-id="${node.process_id}">kill</button>
+                                    </div>
+                                    <div class="text-[9px] ${labelColor} mb-1">${node.blocked_count || 0} blocked</div>
+                                    <div class="text-[9px] ${valueColor} break-words">${escapeHtml(node.sample_query || '-')}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                ` : ''}
+
+                <div class="mb-2">
+                    <div class="text-[10px] font-black uppercase tracking-wider ${labelColor} mb-1">Lock Graph</div>
+                    <div class="space-y-1.5">
+                        ${graphHtml}
+                    </div>
+                </div>
+
+                <div class="mb-2">
+                    <div class="text-[10px] font-black uppercase tracking-wider ${labelColor} mb-1">Blocking Chains</div>
+                    <div class="space-y-1.5">
+                        ${chainHtml}
+                    </div>
+                </div>
+
+                <div>
+                    <div class="text-[10px] font-black uppercase tracking-wider ${labelColor} mb-1">Auto Recommendations</div>
+                    <div class="space-y-1.5">
+                        ${recommendationHtml}
+                    </div>
+                </div>
+            ` : `
+                <div class="p-2 rounded border ${borderColor} ${isLight ? 'bg-gray-50 text-gray-500' : 'bg-white/5 text-gray-400'} text-[10px]">
+                    Lock analysis is unavailable for this connection or permissions.
+                </div>
+            `}
         `;
 
         // Bind Kill Buttons
         contentDiv.querySelectorAll('.kill-block-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
+            btn.addEventListener('click', () => {
                 const id = btn.dataset.id;
-                handleKillProcess(id, 'Blocking Thread');
+                handleKillProcess(id, 'Blocking Process');
             });
         });
     };

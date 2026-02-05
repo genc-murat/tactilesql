@@ -26,6 +26,7 @@ TactileSQL is a modern, desktop-first MySQL workbench built with Tauri 2 and van
 - **Data Import/Export Wizard** supporting CSV, SQL, and JSON formats with progress tracking.
 - **Backup & Restore** with scheduled backups, compression, and full/incremental backup modes.
 - **Real-time Server Monitor** with live metrics for CPU, memory, connections, queries, and InnoDB status.
+- **Lock/Deadlock Root-Cause Analysis**: Live lock graph, blocking chains, deadlock-cycle detection, and automatic mitigation suggestions with blocker-termination shortcuts.
 - **Capacity Planner** charts now sync total/data/index storage, cache hit, and disk I/O series under one tooltip with hover-linked markers.
 - **Schema Evolution Tracker**: Capture snapshots, detect drifts, and auto-generate migration scripts.
 - **AI Schema Impact Analysis**: LLM-based downstream risk analysis for schema diffs with persistent snapshot-pair history.
@@ -112,6 +113,7 @@ npx tauri build
 - Multi-tab SQL editor with autocomplete and syntax highlighting
 - **AI Assistant (Ctrl+I)**: Generate SQL from natural language or edit existing queries.
 - **AI Profiler Analysis**: Interpretation of performance metrics (Tmp tables, lock waits, etc.) with AI-driven recommendations.
+- **Lock Graph + Blocking Chain View**: Query Profiler Locks tab now includes root blocker ranking, chain depth, deadlock flags, and automatic remediation guidance.
 - Format SQL and explain plan with visual query analyzer
 - Query optimization suggestions with index recommendations and index impact estimates
 - Slow query early warning and latency estimates
@@ -152,6 +154,9 @@ npx tauri build
 - **Connection Stats**: Active connections, threads running, and connection pool status
 - **Query Performance**: Queries per second, slow query tracking, and execution stats
 - **InnoDB Status**: Buffer pool, transaction logs, and storage engine metrics
+- **Blocking Analysis**: Lock graph (`blocking -> waiting` edges), chain decomposition, and deadlock cycle detection
+- **Root-Cause Guidance**: Session-level root blocker prioritization plus severity-based automatic recommendations
+- **Safe Mitigation Actions**: One-click termination of blocking backends directly from lock analysis cards
 - **Auto-refresh**: Configurable refresh intervals (1s, 5s, 10s, 30s, 60s)
 
 ### Schema Designer
@@ -259,8 +264,13 @@ The Rust backend exposes the following commands (used by the UI):
 - `schedule_backup` — Schedule automated backups
 
 ### Monitoring
-- `get_server_metrics` — Real-time CPU, memory, and connection stats
-- `get_query_stats` — Query performance metrics
+- `get_server_status` — Server status counters and runtime metrics
+- `get_process_list` — Active backend/session list
+- `kill_process` — Terminate blocking or runaway sessions
+- `get_locks` — Raw lock inventory (engine lock metadata)
+- `get_lock_analysis` — Blocking graph, chain/deadlock analysis, and automatic recommendations
+- `get_slow_queries` — Slow query samples with timing stats
+- `get_replication_status` — Replication health/status snapshot
 - `get_innodb_status` — InnoDB storage engine status
 
 ### User Management
