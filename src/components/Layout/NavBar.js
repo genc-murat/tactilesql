@@ -133,6 +133,9 @@ export function NavBar() {
 
             <div class="flex items-center gap-3 border-l ${isLight ? 'border-gray-200' : 'border-white/10'} pl-3">
                 <!-- Awareness Tools -->
+                <button id="btn-query-story" class="flex items-center justify-center w-8 h-8 rounded-md transition-all duration-300 ${(isLight || isDawn) ? 'text-gray-400 hover:text-purple-600 hover:bg-purple-50' : 'text-gray-500 hover:text-purple-400 hover:bg-white/5'}" title="Query Story">
+                    <span class="material-symbols-outlined text-lg">history_edu</span>
+                </button>
                 <button id="btn-query-comparator" class="flex items-center justify-center w-8 h-8 rounded-md transition-all duration-300 ${(isLight || isDawn) ? 'text-gray-400 hover:text-gray-700 hover:bg-gray-100' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'}" title="Query Comparator">
                     <span class="material-symbols-outlined text-lg">compare_arrows</span>
                 </button>
@@ -164,6 +167,10 @@ export function NavBar() {
         `;
 
         // Bind Awareness Events
+        nav.querySelector('#btn-query-story').addEventListener('click', () => {
+            window.dispatchEvent(new CustomEvent('tactilesql:toggle-story-panel'));
+        });
+
         nav.querySelector('#btn-query-comparator').addEventListener('click', () => {
             window.dispatchEvent(new CustomEvent('tactilesql:toggle-comparator'));
         });

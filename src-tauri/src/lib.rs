@@ -35,6 +35,7 @@ pub mod quality_analyzer;
 pub mod dependency_engine;
 pub mod integration;
 pub mod scheduler;
+pub mod query_story;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -119,6 +120,16 @@ pub fn run() {
                                  println!("Dependency Engine Store initialized.");
                             },
                             Err(e) => eprintln!("Failed to init Dependency Engine Store: {}", e),
+                        }
+
+                        // Query Story Store
+                        match crate::query_story::storage::QueryStoryStore::new(pool.clone()).await {
+                            Ok(store) => {
+                                 let mut guard = state.query_story_store.lock().await;
+                                 *guard = Some(store);
+                                 println!("Query Story Store initialized.");
+                            },
+                            Err(e) => eprintln!("Failed to init Query Story Store: {}", e),
                         }
                     },
                     Err(e) => eprintln!("Failed to initialize Local Storage: {}", e),
@@ -214,6 +225,18 @@ pub fn run() {
             // Dependency Engine
             dependency_engine::commands::get_dependency_graph,
             integration::commands::check_impact,
+            // Query Story
+            query_story::commands::create_query_story,
+            query_story::commands::get_query_story,
+            query_story::commands::get_all_query_stories,
+            query_story::commands::add_query_version,
+            query_story::commands::add_query_comment,
+            query_story::commands::update_query_context,
+            query_story::commands::toggle_query_favorite,
+            query_story::commands::increment_query_execution,
+            query_story::commands::compare_query_versions,
+            query_story::commands::delete_query_story,
+            query_story::commands::calculate_query_hash,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

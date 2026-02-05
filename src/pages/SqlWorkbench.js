@@ -2,10 +2,12 @@ import { QueryEditor } from '../components/Workbench/QueryEditor.js';
 import { ResultsTable } from '../components/Workbench/ResultsTable.js';
 import { ObjectExplorer } from '../components/Workbench/ObjectExplorer.js';
 import { SnippetLibrary } from '../components/Workbench/SnippetLibrary.js';
+import { QueryStoryPanel } from '../components/Workbench/QueryStoryPanel.js';
 
 import { QueryProfiler } from '../components/Workbench/QueryProfiler.js';
 import { ThemeManager } from '../utils/ThemeManager.js';
 import { SettingsManager } from '../utils/SettingsManager.js';
+import { debounce } from '../utils/helpers.js';
 
 export function SqlWorkbench() {
     const theme = ThemeManager.getCurrentTheme();
@@ -95,6 +97,11 @@ export function SqlWorkbench() {
             const newWidth = Math.max(180, Math.min(sidebarStartWidth + delta, 500));
             sidebar.style.width = `${newWidth}px`;
         }
+        if (isStoryResizing) {
+            const delta = storyStartX - e.clientX;
+            const newWidth = Math.max(300, Math.min(storyStartWidth + delta, 500));
+            storyPanelElement.style.width = `${newWidth}px`;
+        }
         if (isSnippetResizing) {
             const delta = snippetStartX - e.clientX;
             const newWidth = Math.max(200, Math.min(snippetStartWidth + delta, 450));
@@ -103,9 +110,10 @@ export function SqlWorkbench() {
     };
 
     const onMouseUp = () => {
-        if (isVerticalResizing || isSidebarResizing || isSnippetResizing) {
+        if (isVerticalResizing || isSidebarResizing || isStoryResizing || isSnippetResizing) {
             isVerticalResizing = false;
             isSidebarResizing = false;
+            isStoryResizing = false;
             isSnippetResizing = false;
             document.body.style.cursor = '';
             document.body.style.userSelect = '';
@@ -116,6 +124,35 @@ export function SqlWorkbench() {
     document.addEventListener('mouseup', onMouseUp);
 
     mainContent.appendChild(queryResults);
+
+    // Query Story Panel (hidden by default)
+    const storyPanel = new QueryStoryPanel();
+    const storyPanelElement = storyPanel.render();
+    // Panel starts with 'hidden' class from QueryStoryPanel.js
+    mainContent.appendChild(storyPanelElement);
+
+    // Story Panel Resizer (horizontal)
+    const storyResizer = document.createElement('div');
+    storyResizer.className = `w-1.5 ${isLight ? 'bg-gray-200 hover:bg-mysql-teal/30' : (isDawn ? 'bg-[#f2e9e1] hover:bg-mysql-teal/30' : 'bg-[#0b0d11] hover:bg-mysql-teal/50')} cursor-col-resize flex items-center justify-center group transition-colors`;
+    storyResizer.style.display = 'none'; // Initially hidden
+    storyResizer.innerHTML = `
+        <div class="h-12 w-0.5 ${isLight || isDawn ? 'bg-gray-400' : 'bg-white/10'} group-hover:bg-mysql-teal/70 rounded-full transition-colors"></div>
+    `;
+    mainContent.appendChild(storyResizer);
+
+    // Story Panel Resizer Logic
+    let isStoryResizing = false;
+    let storyStartX = 0;
+    let storyStartWidth = 0;
+
+    storyResizer.addEventListener('mousedown', (e) => {
+        isStoryResizing = true;
+        storyStartX = e.clientX;
+        storyStartWidth = storyPanelElement.offsetWidth;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        e.preventDefault();
+    });
 
     // Snippet Library Resizer (horizontal)
     const snippetResizer = document.createElement('div');
@@ -205,12 +242,57 @@ export function SqlWorkbench() {
     };
     window.addEventListener('tactilesql:settings-changed', onSettingsChange);
 
+    // --- Query Story Panel Event Listeners ---
+    
+    // Toggle story panel visibility
+    const onToggleStoryPanel = (e) => {
+        const isVisible = !storyPanelElement.classList.contains('hidden');
+        if (isVisible) {
+            storyPanelElement.classList.add('hidden');
+            storyResizer.style.display = 'none';
+        } else {
+            storyPanelElement.classList.remove('hidden');
+            storyResizer.style.display = 'flex';
+            storyPanelElement.style.width = '350px';
+            // Load current query's story
+            const textarea = queryEditor.querySelector('#query-input');
+            if (textarea) {
+                storyPanel.loadStory(textarea.value);
+            }
+        }
+    };
+    window.addEventListener('tactilesql:toggle-story-panel', onToggleStoryPanel);
+
+    // Update story panel when query changes
+    const onQueryChanged = debounce((e) => {
+        if (!storyPanelElement.classList.contains('hidden') && e.detail?.query) {
+            storyPanel.loadStory(e.detail.query);
+        }
+    }, 500);
+    window.addEventListener('tactilesql:query-changed', onQueryChanged);
+
+    // Listen for query execution to update execution count
+    const onQueryExecuted = (e) => {
+        if (e.detail?.query) {
+            // Calculate hash and increment execution count
+            import('../api/queryStory.js').then(({ QueryStoryAPI }) => {
+                QueryStoryAPI.calculateQueryHash(e.detail.query).then(hash => {
+                    QueryStoryAPI.incrementExecution(hash).catch(() => {}); // Silently fail if no story
+                });
+            });
+        }
+    };
+    window.addEventListener('tactilesql:query-executed', onQueryExecuted);
+
     // Cleanup logic
     container.onUnmount = () => {
         document.removeEventListener('mousemove', onMouseMove);
         document.removeEventListener('mouseup', onMouseUp);
         window.removeEventListener('themechange', onThemeChange);
         window.removeEventListener('tactilesql:settings-changed', onSettingsChange);
+        window.removeEventListener('tactilesql:toggle-story-panel', onToggleStoryPanel);
+        window.removeEventListener('tactilesql:query-changed', onQueryChanged);
+        window.removeEventListener('tactilesql:query-executed', onQueryExecuted);
         profiler.unmount();
     };
 
