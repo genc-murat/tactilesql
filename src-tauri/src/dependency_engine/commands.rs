@@ -10,6 +10,7 @@ pub async fn get_dependency_graph(
     connection_id: String,
     database: Option<String>,
     table_name: Option<String>,
+    hop_depth: Option<u8>,
 ) -> Result<DependencyGraphData, String> {
     
     let db_type = {
@@ -28,6 +29,7 @@ pub async fn get_dependency_graph(
         connection_id: connection_id.clone(),
         database: database.clone(),
         table_name: table_name.clone(),
+        hop_depth,
     };
 
     let dependency_store = {
@@ -42,16 +44,31 @@ pub async fn get_dependency_graph(
     }
     
     let graph_future = async {
+        let hop_depth_usize = hop_depth.map(|value| value as usize);
         match db_type {
             DatabaseType::MySQL => {
                 let pool_guard = app_state.mysql_pool.lock().await;
                 let pool = pool_guard.as_ref().ok_or("No active MySQL connection")?;
-                super::extractor::build_dependency_graph_mysql(pool, &connection_id, database, table_name).await
+                super::extractor::build_dependency_graph_mysql(
+                    pool,
+                    &connection_id,
+                    database,
+                    table_name,
+                    hop_depth_usize,
+                )
+                .await
             },
             DatabaseType::PostgreSQL => {
                 let pool_guard = app_state.postgres_pool.lock().await;
                 let pool = pool_guard.as_ref().ok_or("No active PostgreSQL connection")?;
-                super::extractor::build_dependency_graph_postgres(pool, &connection_id, database, table_name).await
+                super::extractor::build_dependency_graph_postgres(
+                    pool,
+                    &connection_id,
+                    database,
+                    table_name,
+                    hop_depth_usize,
+                )
+                .await
             },
             DatabaseType::Disconnected => Err("No connection established".into()),
         }

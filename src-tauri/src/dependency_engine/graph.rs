@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::algo;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum NodeType {
@@ -178,32 +178,119 @@ impl DependencyGraph {
         cycle_groups
     }
 
-    pub fn filter_neighborhood(&mut self, center_id: &str) {
-        
-        let center_idx = match self.node_indices.get(center_id) {
-            Some(idx) => *idx,
+    fn resolve_center_index(&self, center_id: &str, preferred_schema: Option<&str>) -> Option<NodeIndex> {
+        let normalized = center_id.trim();
+        if normalized.is_empty() {
+            return None;
+        }
+
+        if let Some(idx) = self.node_indices.get(normalized) {
+            return Some(*idx);
+        }
+
+        // Try case-insensitive full-id match first.
+        for (id, idx) in &self.node_indices {
+            if id.eq_ignore_ascii_case(normalized) {
+                return Some(*idx);
+            }
+        }
+
+        let mut schema_hint = preferred_schema
+            .map(str::trim)
+            .filter(|schema| !schema.is_empty());
+        let mut name_hint = normalized;
+
+        if let Some((schema, name)) = normalized.rsplit_once('.') {
+            if !name.trim().is_empty() {
+                schema_hint = Some(schema.trim());
+                name_hint = name.trim();
+            }
+        }
+
+        if let Some(schema) = schema_hint {
+            for idx in self.graph.node_indices() {
+                let Some(node) = self.graph.node_weight(idx) else {
+                    continue;
+                };
+                if node.name.eq_ignore_ascii_case(name_hint)
+                    && node
+                        .schema
+                        .as_deref()
+                        .is_some_and(|node_schema| node_schema.eq_ignore_ascii_case(schema))
+                {
+                    return Some(idx);
+                }
+            }
+        }
+
+        // Fallback to unique name match when schema is missing or unavailable.
+        let mut matches = Vec::new();
+        for idx in self.graph.node_indices() {
+            let Some(node) = self.graph.node_weight(idx) else {
+                continue;
+            };
+            if node.name.eq_ignore_ascii_case(name_hint) {
+                matches.push(idx);
+            }
+        }
+
+        if matches.len() == 1 {
+            matches.into_iter().next()
+        } else {
+            None
+        }
+    }
+
+    fn rebuild_node_index_cache(&mut self) {
+        self.node_indices.clear();
+        for idx in self.graph.node_indices() {
+            if let Some(node) = self.graph.node_weight(idx) {
+                self.node_indices.insert(node.id.clone(), idx);
+            }
+        }
+    }
+
+    fn rebuild_edge_key_cache(&mut self) {
+        use petgraph::visit::EdgeRef;
+
+        self.edge_keys.clear();
+        for edge in self.graph.edge_references() {
+            self.edge_keys.insert((
+                edge.source(),
+                edge.target(),
+                edge.weight().edge_type.clone(),
+            ));
+        }
+    }
+
+    pub fn filter_neighborhood(&mut self, center_id: &str, preferred_schema: Option<&str>, max_hops: usize) {
+        let center_idx = match self.resolve_center_index(center_id, preferred_schema) {
+            Some(idx) => idx,
             None => return,
         };
 
-        let mut neighbors = std::collections::HashSet::new();
+        let hop_budget = max_hops.max(1);
+        let mut neighbors = HashSet::new();
+        let mut queue = VecDeque::new();
         neighbors.insert(center_idx);
+        queue.push_back((center_idx, 0usize));
 
-        // Direct predecessors
-        for idx in self.graph.neighbors_directed(center_idx, petgraph::Direction::Incoming) {
-            neighbors.insert(idx);
+        while let Some((current, depth)) = queue.pop_front() {
+            if depth >= hop_budget {
+                continue;
+            }
+
+            for direction in [petgraph::Direction::Incoming, petgraph::Direction::Outgoing] {
+                for next in self.graph.neighbors_directed(current, direction) {
+                    if neighbors.insert(next) {
+                        queue.push_back((next, depth + 1));
+                    }
+                }
+            }
         }
 
-        // Direct successors
-        for idx in self.graph.neighbors_directed(center_idx, petgraph::Direction::Outgoing) {
-            neighbors.insert(idx);
-        }
-
-        // Filter the graph
         self.graph.retain_nodes(|_, idx| neighbors.contains(&idx));
-        self.edge_keys
-            .retain(|(source, target, _)| neighbors.contains(source) && neighbors.contains(target));
-        
-        // Update node_indices hashmap
-        self.node_indices.retain(|_, &mut idx| neighbors.contains(&idx));
+        self.rebuild_node_index_cache();
+        self.rebuild_edge_key_cache();
     }
 }

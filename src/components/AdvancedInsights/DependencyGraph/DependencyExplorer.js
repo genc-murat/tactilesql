@@ -48,12 +48,21 @@ export function DependencyExplorer() {
         selectedDatabase: null,
         availableDatabases: [],
         focusedTable: null,
+        focusHopDepth: 2,
         graphData: null,
         graphVersion: 0,
         qualityMap: {}, // table.name -> score
         isLoading: false,
         error: null
     };
+
+    const normalizeConnId = (value) => (value === undefined || value === null ? '' : String(value));
+    const escapeHtml = (value) => String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 
     const getViewerSignature = () => `${theme}:${state.graphVersion}`;
 
@@ -74,14 +83,17 @@ export function DependencyExplorer() {
         try {
             state.connections = await invoke('load_connections');
 
-            // Get table from URL if present
+            // Route hints: dependencies?conn=...&db=...&table=...
             const params = new URLSearchParams(window.location.hash.split('?')[1] || "");
             state.focusedTable = params.get('table');
+            const routeConnectionId = params.get('conn');
+            const routeDatabase = params.get('db');
 
-            // Check local storage 
+            // Route connection has priority, then local storage fallback.
             const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || 'null');
-            if (activeConfig && activeConfig.id) {
-                await selectConnection(activeConfig.id, state.focusedTable);
+            const preferredConnectionId = routeConnectionId || activeConfig?.id;
+            if (preferredConnectionId) {
+                await selectConnection(preferredConnectionId, state.focusedTable, routeDatabase);
             }
         } catch (err) {
             console.error('Init failed:', err);
@@ -91,8 +103,9 @@ export function DependencyExplorer() {
     };
 
     const selectConnection = async (connId, tableName = null, database = null) => {
-        const isNewConnection = state.selectedConnectionId !== connId;
-        state.selectedConnectionId = connId;
+        const normalizedConnId = normalizeConnId(connId);
+        const isNewConnection = normalizeConnId(state.selectedConnectionId) !== normalizedConnId;
+        state.selectedConnectionId = normalizedConnId;
         state.focusedTable = tableName;
         state.graphData = null;
         searchTerm = '';
@@ -102,7 +115,7 @@ export function DependencyExplorer() {
             state.availableDatabases = [];
         }
 
-        const conn = state.connections.find(c => c.id === connId);
+        const conn = state.connections.find(c => normalizeConnId(c.id) === normalizedConnId);
         if (!conn) { render(); return; }
 
         // Default database/schema selection
@@ -147,7 +160,13 @@ export function DependencyExplorer() {
 
         try {
             // Fetch graph
-            state.graphData = await DependencyEngineApi.getGraph(state.selectedConnectionId, state.selectedDatabase, state.focusedTable);
+            const hopDepth = state.focusedTable ? state.focusHopDepth : null;
+            state.graphData = await DependencyEngineApi.getGraph(
+                state.selectedConnectionId,
+                state.selectedDatabase,
+                state.focusedTable,
+                hopDepth
+            );
             state.graphVersion += 1;
 
             // Fetch Quality Scores (Best Effort)
@@ -222,9 +241,9 @@ export function DependencyExplorer() {
 
         state.connections.forEach(c => {
             const opt = document.createElement('option');
-            opt.value = c.id;
+            opt.value = normalizeConnId(c.id);
             opt.textContent = c.name;
-            if (c.id === state.selectedConnectionId) opt.selected = true;
+            if (normalizeConnId(c.id) === normalizeConnId(state.selectedConnectionId)) opt.selected = true;
             select.appendChild(opt);
         });
 
@@ -363,6 +382,27 @@ export function DependencyExplorer() {
                 render();
             };
             controls.appendChild(focusDiv);
+
+            const hopDiv = document.createElement('div');
+            hopDiv.className = `flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs ${isLight ? 'bg-amber-50 border-amber-100 text-amber-700' : 'bg-amber-500/10 border-amber-500/20 text-amber-300'}`;
+            hopDiv.innerHTML = `
+                <span class="font-bold uppercase tracking-wider">Focus Hops</span>
+                <select id="focus-hop-depth" class="px-2 py-1 rounded border text-xs ${isLight ? 'bg-white border-amber-200 text-amber-700' : 'bg-black/20 border-amber-500/25 text-amber-200'}">
+                    ${[1, 2, 3, 4, 5, 6].map(hop => `<option value="${hop}" ${hop === state.focusHopDepth ? 'selected' : ''}>${hop}</option>`).join('')}
+                </select>
+            `;
+            const hopSelect = hopDiv.querySelector('#focus-hop-depth');
+            hopSelect.onchange = () => {
+                const nextHop = Number.parseInt(hopSelect.value, 10);
+                if (Number.isNaN(nextHop)) return;
+                state.focusHopDepth = Math.max(1, Math.min(6, nextHop));
+                if (state.graphData && !state.isLoading) {
+                    fetchGraph();
+                } else {
+                    render();
+                }
+            };
+            controls.appendChild(hopDiv);
         }
 
         header.appendChild(controls);
@@ -391,7 +431,60 @@ export function DependencyExplorer() {
                 distanceCutoff: null,
                 topScore: 0
             };
+            const blastDistanceCutoff = Number.parseInt(
+                data.blastDistanceCutoff ?? blastRadius.distanceCutoff ?? 5,
+                10
+            );
+            const safeBlastCutoff = Number.isNaN(blastDistanceCutoff) ? 5 : Math.max(1, Math.min(12, blastDistanceCutoff));
             const blastLoadMoreLimit = Math.min(120, Math.max(40, (blastRadius.previewLimit || 0) * 3));
+
+            const pathFinder = data.pathFinder || {
+                query: '',
+                maxHops: 6,
+                result: null,
+                error: null
+            };
+            const safePathHopLimit = Number.isNaN(Number(pathFinder.maxHops))
+                ? 6
+                : Math.max(1, Math.min(20, Number(pathFinder.maxHops)));
+            const pathResult = pathFinder.result;
+            const pathResultHtml = (() => {
+                if (pathFinder.error) {
+                    return `<div class="mt-2 text-[11px] ${isLight ? 'text-red-600' : 'text-red-300'}">${escapeHtml(pathFinder.error)}</div>`;
+                }
+
+                if (!pathResult) {
+                    return `<div class="mt-2 text-[11px] opacity-60 ${classes.text.primary}">Enter a target node label or id and run path search.</div>`;
+                }
+
+                if (!pathResult.found) {
+                    return `<div class="mt-2 text-[11px] ${isLight ? 'text-amber-700' : 'text-amber-300'}">${escapeHtml(pathResult.reason || 'No path found within selected hop budget.')}</div>`;
+                }
+
+                const nodeItems = pathResult.path.map((node, idx) => `
+                    <li class="py-1 px-2 rounded ${isLight ? 'bg-sky-50 border border-sky-100' : 'bg-sky-500/10 border border-sky-500/20'}">
+                        <span class="font-bold mr-1">${idx + 1}.</span>
+                        <span class="break-all">${escapeHtml(node.label)}</span>
+                        <span class="ml-1 text-[10px] opacity-65">(${escapeHtml(node.type)})</span>
+                    </li>
+                `).join('');
+                const edgeTypes = Array.isArray(pathResult.edgeTypes) ? pathResult.edgeTypes : [];
+                const edgeTypeBadges = edgeTypes.map(type => `
+                    <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${isLight ? 'bg-gray-100 text-gray-700' : 'bg-white/10 text-white/80'}">${escapeHtml(type)}</span>
+                `).join('');
+
+                return `
+                    <div class="mt-2 space-y-2">
+                        <div class="text-[10px] opacity-70 ${classes.text.primary}">
+                            Found path in ${pathResult.hops} hop(s).
+                        </div>
+                        ${edgeTypeBadges ? `<div class="flex flex-wrap gap-1">${edgeTypeBadges}</div>` : ''}
+                        <ul class="text-sm space-y-1 ${classes.text.primary}">
+                            ${nodeItems}
+                        </ul>
+                    </div>
+                `;
+            })();
 
             sidebar.classList.remove('translate-x-full');
             sidebar.innerHTML = `
@@ -458,7 +551,13 @@ export function DependencyExplorer() {
                                 <span class="material-symbols-outlined text-sm">crisis_alert</span>
                                 Blast Radius (${blastRadius.totalImpacted})
                              </h3>
-                             ${blastRadius.distanceCutoff ? `<div class="mb-2 text-[10px] opacity-60 ${classes.text.primary}">Scored within ${blastRadius.distanceCutoff}-hop impact window</div>` : ''}
+                             <div class="mb-2 flex items-center justify-between gap-2">
+                                <span class="text-[10px] opacity-60 ${classes.text.primary}">Max hop depth</span>
+                                <select id="blast-hop-cutoff" class="px-2 py-1 rounded border text-[11px] ${isLight ? 'bg-white border-orange-200 text-orange-700' : 'bg-black/20 border-orange-500/30 text-orange-300'}">
+                                    ${[1, 2, 3, 4, 5, 6, 7, 8, 10, 12].map(hop => `<option value="${hop}" ${hop === safeBlastCutoff ? 'selected' : ''}>${hop}</option>`).join('')}
+                                </select>
+                             </div>
+                             <div class="mb-2 text-[10px] opacity-60 ${classes.text.primary}">Scored within ${safeBlastCutoff}-hop impact window</div>
                              ${blastRadius.criticalNodes.length > 0
                     ? `<ul class="text-sm space-y-1 ${classes.text.primary}">
                                     ${blastRadius.criticalNodes.map(n => `
@@ -473,6 +572,25 @@ export function DependencyExplorer() {
                                    </ul>`
                     : `<div class="text-xs italic opacity-50 ${classes.text.primary}">No downstream blast radius</div>`
                 }
+                        </div>
+
+                        <!-- Path Explorer -->
+                        <div>
+                             <h3 class="text-xs font-bold uppercase tracking-wider text-sky-400 mb-2 flex items-center gap-2">
+                                <span class="material-symbols-outlined text-sm">route</span>
+                                Impact Path Finder
+                             </h3>
+                             <div class="text-[10px] opacity-65 mb-2 ${classes.text.primary}">
+                                Find shortest downstream path from selected node to target node.
+                             </div>
+                             <input id="impact-path-target" type="text" class="w-full px-2 py-1.5 rounded border text-xs ${isLight ? 'bg-white border-gray-300 text-gray-900' : 'bg-black/20 border-white/15 text-white'}" placeholder="schema.table or label" value="${escapeHtml(pathFinder.query)}" />
+                             <div class="mt-2 flex items-center gap-2">
+                                <input id="impact-path-hops" type="number" min="1" max="20" class="w-20 px-2 py-1 rounded border text-xs ${isLight ? 'bg-white border-gray-300 text-gray-900' : 'bg-black/20 border-white/15 text-white'}" value="${safePathHopLimit}" />
+                                <button id="find-impact-path" class="flex-1 py-1.5 border rounded text-xs font-bold uppercase tracking-wider transition-colors ${isLight ? 'bg-sky-50 border-sky-100 text-sky-700 hover:bg-sky-100' : 'bg-sky-500/10 border-sky-500/25 text-sky-300 hover:bg-sky-500/20'}">
+                                    Find Path
+                                </button>
+                             </div>
+                             ${pathResultHtml}
                         </div>
                     </div>
 
@@ -508,19 +626,18 @@ export function DependencyExplorer() {
                     mermaid += '    %% Styles\n';
                     mermaid += '    classDef table fill:#fff,stroke:#333,stroke-width:2px;\n';
                     mermaid += '    classDef view fill:#f9f,stroke:#333,stroke-width:2px;\n';
-                    mermaid += '    classDef focus stroke:#3b82f6,stroke-width:3px;\n'; // Highlight central node
+                    mermaid += '    classDef focus stroke:#3b82f6,stroke-width:3px;\n';
 
                     const sanitizeId = (id) => id.replace(/[^a-zA-Z0-9]/g, '_');
                     const sanitizeLabel = (label) => label.replace(/"/g, '#quot;');
 
                     const centralId = sanitizeId(data.id);
-                    const centralLabel = sanitizeLabel(data.name); // data.name is passed as label from GraphViewer
+                    const centralLabel = sanitizeLabel(data.name);
                     const centralClass = data.type === 'Table' ? 'table' : 'view';
 
                     mermaid += `    ${centralId}("${centralLabel}"):::${centralClass}\n`;
                     mermaid += `    class ${centralId} focus\n`;
 
-                    // Upstream
                     upstreamNodes.forEach(node => {
                         const nodeId = sanitizeId(node.id);
                         const nodeLabel = sanitizeLabel(node.label);
@@ -529,7 +646,6 @@ export function DependencyExplorer() {
                         mermaid += `    ${nodeId} --> ${centralId}\n`;
                     });
 
-                    // Downstream
                     downstreamNodes.forEach(node => {
                         const nodeId = sanitizeId(node.id);
                         const nodeLabel = sanitizeLabel(node.label);
@@ -567,7 +683,30 @@ export function DependencyExplorer() {
                         downstreamNodes: fullLineage.downstreamNodes,
                         upstreamHasMore: fullLineage.upstreamHasMore,
                         downstreamHasMore: fullLineage.downstreamHasMore,
-                        lineageTruncated: fullLineage.upstreamHasMore || fullLineage.downstreamHasMore
+                        lineageTruncated: fullLineage.upstreamHasMore || fullLineage.downstreamHasMore,
+                        blastDistanceCutoff: safeBlastCutoff,
+                        pathFinder
+                    });
+                };
+            }
+
+            const blastHopSelect = sidebar.querySelector('#blast-hop-cutoff');
+            if (blastHopSelect) {
+                blastHopSelect.onchange = () => {
+                    if (!activeViewer || typeof activeViewer.getBlastRadius !== 'function') return;
+                    const selectedHop = Number.parseInt(blastHopSelect.value, 10);
+                    if (Number.isNaN(selectedHop)) return;
+
+                    const nextBlastRadius = activeViewer.getBlastRadius(
+                        data.id,
+                        Math.max(12, blastRadius.previewLimit || blastRadius.criticalNodes.length || 30),
+                        selectedHop
+                    );
+                    renderSidebar({
+                        ...data,
+                        blastRadius: nextBlastRadius,
+                        blastDistanceCutoff: selectedHop,
+                        pathFinder
                     });
                 };
             }
@@ -576,17 +715,61 @@ export function DependencyExplorer() {
             if (loadMoreBlastBtn) {
                 loadMoreBlastBtn.onclick = () => {
                     if (!activeViewer || typeof activeViewer.getBlastRadius !== 'function') return;
-                    const fullBlastRadius = activeViewer.getBlastRadius(data.id, blastLoadMoreLimit);
+                    const selectedHop = Number.parseInt(
+                        sidebar.querySelector('#blast-hop-cutoff')?.value || `${safeBlastCutoff}`,
+                        10
+                    );
+                    const hopForQuery = Number.isNaN(selectedHop) ? safeBlastCutoff : selectedHop;
+                    const fullBlastRadius = activeViewer.getBlastRadius(data.id, blastLoadMoreLimit, hopForQuery);
                     if (!fullBlastRadius) return;
 
                     renderSidebar({
                         ...data,
-                        blastRadius: fullBlastRadius
+                        blastRadius: fullBlastRadius,
+                        blastDistanceCutoff: hopForQuery,
+                        pathFinder
                     });
                 };
             }
 
-            // Add close button listener
+            const findPathBtn = sidebar.querySelector('#find-impact-path');
+            if (findPathBtn) {
+                findPathBtn.onclick = () => {
+                    if (!activeViewer || typeof activeViewer.findImpactPath !== 'function') return;
+                    const targetInput = sidebar.querySelector('#impact-path-target');
+                    const hopsInput = sidebar.querySelector('#impact-path-hops');
+                    const targetRaw = targetInput?.value?.trim() || '';
+                    const maxHopsRaw = Number.parseInt(hopsInput?.value || `${safePathHopLimit}`, 10);
+                    const maxHops = Number.isNaN(maxHopsRaw) ? safePathHopLimit : Math.max(1, Math.min(20, maxHopsRaw));
+
+                    if (!targetRaw) {
+                        renderSidebar({
+                            ...data,
+                            blastDistanceCutoff: safeBlastCutoff,
+                            pathFinder: {
+                                query: '',
+                                maxHops,
+                                result: null,
+                                error: 'Target node is required.'
+                            }
+                        });
+                        return;
+                    }
+
+                    const result = activeViewer.findImpactPath(data.id, targetRaw, { maxHops });
+                    renderSidebar({
+                        ...data,
+                        blastDistanceCutoff: safeBlastCutoff,
+                        pathFinder: {
+                            query: targetRaw,
+                            maxHops,
+                            result,
+                            error: result?.found ? null : (result?.reason || 'No path found.')
+                        }
+                    });
+                };
+            }
+
             const closeBtn = sidebar.querySelector('#close-sidebar');
             if (closeBtn) {
                 closeBtn.onclick = () => {

@@ -1,18 +1,37 @@
-use sqlx::{Pool, Row, MySql, Postgres};
-use super::graph::{DependencyGraph, NodeType, EdgeType};
+use super::graph::{DependencyGraph, EdgeType, NodeType, SchemaQualifiedName};
 use super::parser::{extract_dependencies, DbDialect};
+use sqlx::{MySql, Pool, Postgres, Row};
 use std::time::Duration;
 use tokio::time::timeout;
 
-/// Helper to safely get a string from a MySQL row column, handling both String and Vec<u8> (VARBINARY)
+/// Helper to safely get a string from a MySQL row column, handling both String and Vec<u8>.
 fn get_mysql_string(row: &sqlx::mysql::MySqlRow, index: usize) -> String {
-    row.try_get::<String, _>(index)
-        .unwrap_or_else(|_| {
-            match row.try_get::<Vec<u8>, _>(index) {
-                Ok(bytes) => String::from_utf8_lossy(&bytes).to_string(),
-                Err(_) => String::new(),
-            }
-        })
+    row.try_get::<String, _>(index).unwrap_or_else(|_| {
+        match row.try_get::<Vec<u8>, _>(index) {
+            Ok(bytes) => String::from_utf8_lossy(&bytes).to_string(),
+            Err(_) => String::new(),
+        }
+    })
+}
+
+fn target_id_from_dependency(dep: SchemaQualifiedName, default_schema: &str) -> String {
+    let schema = dep
+        .schema
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| default_schema.to_string());
+    format!("{}.{}", schema, dep.name)
+}
+
+fn add_dependency_edges(
+    graph: &mut DependencyGraph,
+    source_id: &str,
+    source_schema: &str,
+    dependencies: Vec<(SchemaQualifiedName, EdgeType)>,
+) {
+    for (dep, edge_type) in dependencies {
+        let target_id = target_id_from_dependency(dep, source_schema);
+        graph.add_edge(source_id, &target_id, edge_type);
+    }
 }
 
 pub async fn build_dependency_graph_mysql(
@@ -20,19 +39,26 @@ pub async fn build_dependency_graph_mysql(
     _connection_id: &str,
     database: Option<String>,
     table_name: Option<String>,
+    hop_depth: Option<usize>,
 ) -> Result<DependencyGraph, String> {
-    println!("DEBUG: [MySQL Extractor] Starting build for db: {:?}", database);
+    println!(
+        "DEBUG: [MySQL Extractor] Starting build for db: {:?}",
+        database
+    );
     let mut graph = DependencyGraph::new();
-    
+
     let db_filter = match &database {
         Some(db) if !db.is_empty() => format!(" = '{}'", db),
         _ => " NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys')".to_string(),
     };
 
-    // 1. Fetch Tables
+    // 1) Tables
     println!("DEBUG: [MySQL Extractor] Fetching tables...");
-    let tables_query = format!("SELECT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA {}", db_filter);
-    
+    let tables_query = format!(
+        "SELECT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA {}",
+        db_filter
+    );
+
     let tables_rows = timeout(Duration::from_secs(15), sqlx::query(&tables_query).fetch_all(pool))
         .await
         .map_err(|_| "Fetching tables timed out after 15s".to_string())?
@@ -41,19 +67,20 @@ pub async fn build_dependency_graph_mysql(
             e.to_string()
         })?;
 
-    println!("DEBUG: [MySQL Extractor] Processing {} tables", tables_rows.len());
-
-    for r in tables_rows {
+    for row in tables_rows {
         tokio::task::yield_now().await;
-        let schema = get_mysql_string(&r, 0);
-        let name = get_mysql_string(&r, 1);
+        let schema = get_mysql_string(&row, 0);
+        let name = get_mysql_string(&row, 1);
         graph.add_node(Some(schema), name, NodeType::Table);
     }
 
-    // 2. Fetch Views
+    // 2) Views
     println!("DEBUG: [MySQL Extractor] Fetching views...");
-    let views_query = format!("SELECT TABLE_SCHEMA, TABLE_NAME, VIEW_DEFINITION FROM INFORMATION_SCHEMA.VIEWS WHERE TABLE_SCHEMA {}", db_filter);
-    
+    let views_query = format!(
+        "SELECT TABLE_SCHEMA, TABLE_NAME, VIEW_DEFINITION FROM INFORMATION_SCHEMA.VIEWS WHERE TABLE_SCHEMA {}",
+        db_filter
+    );
+
     let views_rows = timeout(Duration::from_secs(15), sqlx::query(&views_query).fetch_all(pool))
         .await
         .map_err(|_| "Fetching views timed out after 15s".to_string())?
@@ -62,42 +89,101 @@ pub async fn build_dependency_graph_mysql(
             e.to_string()
         })?;
 
-    println!("DEBUG: [MySQL Extractor] Extracting dependencies from {} views", views_rows.len());
-    for r in views_rows {
+    for row in views_rows {
         tokio::task::yield_now().await;
-        let schema = get_mysql_string(&r, 0);
-        let name = get_mysql_string(&r, 1);
-        let def = get_mysql_string(&r, 2);
-        
+        let schema = get_mysql_string(&row, 0);
+        let name = get_mysql_string(&row, 1);
+        let definition = get_mysql_string(&row, 2);
+
         let view_id = graph.add_node(Some(schema.clone()), name.clone(), NodeType::View);
-        
-        // Timeout views parsing just in case regex explodes
-        let parser_result = match timeout(Duration::from_millis(500), async {
-            extract_dependencies(&def, DbDialect::MySQL)
-        }).await {
-            Ok(d) => d,
+        if definition.trim().is_empty() {
+            continue;
+        }
+
+        let parser_result = match timeout(Duration::from_millis(700), async {
+            extract_dependencies(&definition, DbDialect::MySQL)
+        })
+        .await
+        {
+            Ok(result) => result,
             Err(_) => {
-                println!("DEBUG WARNING: Skipping complex view parsing for {}", name);
+                println!(
+                    "DEBUG WARNING: [MySQL Extractor] Skipping complex view parsing for {}",
+                    name
+                );
                 continue;
             }
         };
-        
-        for (dep_table, edge_type) in parser_result.dependencies {
-             let target_schema = dep_table.schema.or(Some(schema.clone()));
-             let target_id = format!("{}.{}", target_schema.clone().unwrap_or_default(), dep_table.name);
-             graph.add_edge(&view_id, &target_id, edge_type);
-        }
+
+        add_dependency_edges(&mut graph, &view_id, &schema, parser_result.dependencies);
     }
-    
-    // 3. Foreign Keys
+
+    // 3) Routines (Procedures + Functions)
+    println!("DEBUG: [MySQL Extractor] Fetching routines...");
+    let routines_query = format!(
+        "SELECT ROUTINE_SCHEMA, ROUTINE_NAME, ROUTINE_TYPE, ROUTINE_DEFINITION FROM INFORMATION_SCHEMA.ROUTINES WHERE ROUTINE_SCHEMA {}",
+        db_filter
+    );
+
+    let routines_rows = timeout(Duration::from_secs(20), sqlx::query(&routines_query).fetch_all(pool))
+        .await
+        .map_err(|_| "Fetching routines timed out after 20s".to_string())?
+        .map_err(|e| {
+            println!(
+                "DEBUG ERROR: [MySQL Extractor] Fetching routines failed: {}",
+                e
+            );
+            e.to_string()
+        })?;
+
+    let mut routines = Vec::new();
+    for row in routines_rows {
+        tokio::task::yield_now().await;
+        let schema = get_mysql_string(&row, 0);
+        let name = get_mysql_string(&row, 1);
+        let routine_type = get_mysql_string(&row, 2).to_uppercase();
+        let definition = get_mysql_string(&row, 3);
+
+        let node_type = if routine_type == "PROCEDURE" {
+            NodeType::Procedure
+        } else {
+            NodeType::Function
+        };
+
+        let routine_id = graph.add_node(Some(schema.clone()), name, node_type);
+        routines.push((schema, routine_id, definition));
+    }
+
+    for (schema, routine_id, definition) in routines {
+        tokio::task::yield_now().await;
+        if definition.trim().is_empty() {
+            continue;
+        }
+
+        let parser_result = match timeout(Duration::from_millis(900), async {
+            extract_dependencies(&definition, DbDialect::MySQL)
+        })
+        .await
+        {
+            Ok(result) => result,
+            Err(_) => continue,
+        };
+
+        add_dependency_edges(&mut graph, &routine_id, &schema, parser_result.dependencies);
+    }
+
+    // 4) Foreign keys
     println!("DEBUG: [MySQL Extractor] Fetching foreign keys...");
-    let fks_query = format!(r#"
-            SELECT 
+    let fks_query = format!(
+        r#"
+            SELECT
                 TABLE_SCHEMA, TABLE_NAME, REFERENCED_TABLE_SCHEMA, REFERENCED_TABLE_NAME
             FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
-            WHERE TABLE_SCHEMA {} 
+            WHERE TABLE_SCHEMA {}
             AND REFERENCED_TABLE_SCHEMA IS NOT NULL
-        "#, db_filter);
+        "#,
+        db_filter
+    );
 
     let fks_rows = timeout(Duration::from_secs(30), sqlx::query(&fks_query).fetch_all(pool))
         .await
@@ -107,23 +193,26 @@ pub async fn build_dependency_graph_mysql(
             e.to_string()
         })?;
 
-    println!("DEBUG: [MySQL Extractor] Found {} foreign keys", fks_rows.len());
-    for r in fks_rows {
+    for row in fks_rows {
         tokio::task::yield_now().await;
-        let schema = get_mysql_string(&r, 0);
-        let table = get_mysql_string(&r, 1);
-        let f_schema = get_mysql_string(&r, 2);
-        let f_table = get_mysql_string(&r, 3);
-        
+        let schema = get_mysql_string(&row, 0);
+        let table = get_mysql_string(&row, 1);
+        let referenced_schema = get_mysql_string(&row, 2);
+        let referenced_table = get_mysql_string(&row, 3);
+
         let source_id = format!("{}.{}", schema, table);
-        let target_id = format!("{}.{}", f_schema, f_table);
+        let target_id = format!("{}.{}", referenced_schema, referenced_table);
         graph.add_edge(&source_id, &target_id, EdgeType::ForeignKey);
     }
 
-    // 4. Filtering if requested
+    // 5) Optional focused neighborhood
     if let Some(target) = table_name {
-        println!("DEBUG: [MySQL Extractor] Filtering for neighborhood of {}", target);
-        graph.filter_neighborhood(&target);
+        let hops = hop_depth.unwrap_or(2).max(1);
+        println!(
+            "DEBUG: [MySQL Extractor] Filtering neighborhood for {} with {} hops",
+            target, hops
+        );
+        graph.filter_neighborhood(&target, database.as_deref(), hops);
     }
 
     println!("DEBUG: [MySQL Extractor] Build complete");
@@ -135,88 +224,132 @@ pub async fn build_dependency_graph_postgres(
     _connection_id: &str,
     database: Option<String>,
     table_name: Option<String>,
+    hop_depth: Option<usize>,
 ) -> Result<DependencyGraph, String> {
     let mut graph = DependencyGraph::new();
 
-    // 1. Fetch Tables
+    // 1) Tables
     let mut tables_query = "SELECT table_schema, table_name FROM information_schema.tables WHERE table_schema NOT IN ('information_schema', 'pg_catalog')".to_string();
     if let Some(ref db) = database {
         tables_query.push_str(&format!(" AND table_schema = '{}'", db));
     }
 
-    let tables: Vec<(String, String)> = sqlx::query(&tables_query)
+    let table_rows = sqlx::query(&tables_query)
         .fetch_all(pool)
         .await
-        .map_err(|e| e.to_string())?
-        .iter()
-        .map(|r| (r.get("table_schema"), r.get("table_name")))
-        .collect();
+        .map_err(|e| e.to_string())?;
 
-    for (schema, name) in tables {
+    for row in table_rows {
         tokio::task::yield_now().await;
+        let schema: String = row.get("table_schema");
+        let name: String = row.get("table_name");
         graph.add_node(Some(schema), name, NodeType::Table);
     }
 
-    // 2. Fetch Views
+    // 2) Views
     let mut views_query = "SELECT table_schema, table_name, view_definition FROM information_schema.views WHERE table_schema NOT IN ('information_schema', 'pg_catalog')".to_string();
     if let Some(ref db) = database {
         views_query.push_str(&format!(" AND table_schema = '{}'", db));
     }
 
-    let views: Vec<(String, String, String)> = sqlx::query(&views_query)
+    let view_rows = sqlx::query(&views_query)
         .fetch_all(pool)
         .await
-        .map_err(|e| e.to_string())?
-        .iter()
-        .map(|r| (r.get("table_schema"), r.get("table_name"), r.get("view_definition")))
-        .collect();
+        .map_err(|e| e.to_string())?;
 
-    for (schema, name, def) in views {
+    for row in view_rows {
         tokio::task::yield_now().await;
-        let view_id = graph.add_node(Some(schema.clone()), name.clone(), NodeType::View);
-        let deps = extract_dependencies(&def, DbDialect::PostgreSQL);
-        for (dep_table, edge_type) in deps.dependencies {
-             let target_schema = dep_table.schema.or(Some(schema.clone()));
-             let target_id = format!("{}.{}", target_schema.clone().unwrap_or_default(), dep_table.name);
-             graph.add_edge(&view_id, &target_id, edge_type);
+        let schema: String = row.get("table_schema");
+        let name: String = row.get("table_name");
+        let definition: String = row.get("view_definition");
+
+        let view_id = graph.add_node(Some(schema.clone()), name, NodeType::View);
+        if definition.trim().is_empty() {
+            continue;
         }
+
+        let parser_result = extract_dependencies(&definition, DbDialect::PostgreSQL);
+        add_dependency_edges(&mut graph, &view_id, &schema, parser_result.dependencies);
     }
-    
-    // 3. Foreign Keys
+
+    // 3) Routines
+    let mut routines_query = "SELECT routine_schema, routine_name, routine_type, routine_definition FROM information_schema.routines WHERE routine_schema NOT IN ('information_schema', 'pg_catalog')".to_string();
+    if let Some(ref db) = database {
+        routines_query.push_str(&format!(" AND routine_schema = '{}'", db));
+    }
+
+    let routine_rows = sqlx::query(&routines_query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut routines = Vec::new();
+    for row in routine_rows {
+        tokio::task::yield_now().await;
+        let schema: String = row.get("routine_schema");
+        let name: String = row.get("routine_name");
+        let routine_type: String = row.get("routine_type");
+        let definition: Option<String> = row.try_get("routine_definition").unwrap_or(None);
+
+        let node_type = if routine_type.eq_ignore_ascii_case("PROCEDURE") {
+            NodeType::Procedure
+        } else {
+            NodeType::Function
+        };
+
+        let routine_id = graph.add_node(Some(schema.clone()), name, node_type);
+        routines.push((schema, routine_id, definition.unwrap_or_default()));
+    }
+
+    for (schema, routine_id, definition) in routines {
+        tokio::task::yield_now().await;
+        if definition.trim().is_empty() {
+            continue;
+        }
+
+        let parser_result = extract_dependencies(&definition, DbDialect::PostgreSQL);
+        add_dependency_edges(&mut graph, &routine_id, &schema, parser_result.dependencies);
+    }
+
+    // 4) Foreign keys
     let mut fks_query = r#"
             SELECT
                 tc.table_schema, tc.table_name, ccu.table_schema, ccu.table_name
-            FROM 
-                information_schema.table_constraints AS tc 
+            FROM
+                information_schema.table_constraints AS tc
                 JOIN information_schema.key_column_usage AS kcu
                   ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
                 JOIN information_schema.constraint_column_usage AS ccu
                   ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
             WHERE tc.constraint_type = 'FOREIGN KEY'
-        "#.to_string();
+        "#
+    .to_string();
+
     if let Some(ref db) = database {
         fks_query.push_str(&format!(" AND tc.table_schema = '{}'", db));
     }
 
-    let fks_rows = sqlx::query(&fks_query)
+    let fk_rows = sqlx::query(&fks_query)
         .fetch_all(pool)
         .await
         .map_err(|e| e.to_string())?;
 
-    let fks: Vec<(String, String, String, String)> = fks_rows.iter()
-        .map(|r| (r.get(0), r.get(1), r.get(2), r.get(3)))
-        .collect();
-            
-    for (schema, table, f_schema, f_table) in fks {
+    for row in fk_rows {
         tokio::task::yield_now().await;
+        let schema: String = row.get(0);
+        let table: String = row.get(1);
+        let referenced_schema: String = row.get(2);
+        let referenced_table: String = row.get(3);
+
         let source_id = format!("{}.{}", schema, table);
-        let target_id = format!("{}.{}", f_schema, f_table);
+        let target_id = format!("{}.{}", referenced_schema, referenced_table);
         graph.add_edge(&source_id, &target_id, EdgeType::ForeignKey);
     }
 
-    // 4. Filtering if requested
+    // 5) Optional focused neighborhood
     if let Some(target) = table_name {
-        graph.filter_neighborhood(&target);
+        let hops = hop_depth.unwrap_or(2).max(1);
+        graph.filter_neighborhood(&target, database.as_deref(), hops);
     }
 
     Ok(graph)

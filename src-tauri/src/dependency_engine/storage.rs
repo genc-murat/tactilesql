@@ -13,6 +13,7 @@ pub struct GraphCacheKey {
     pub connection_id: String,
     pub database: Option<String>,
     pub table_name: Option<String>,
+    pub hop_depth: Option<u8>,
 }
 
 #[derive(Debug, Clone)]

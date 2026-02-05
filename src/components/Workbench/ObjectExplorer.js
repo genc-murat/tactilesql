@@ -1943,7 +1943,8 @@ export function ObjectExplorer() {
         menu.querySelector('#ctx-dependencies').onclick = () => {
             menu.remove();
             const conn = JSON.parse(localStorage.getItem('activeConnection') || '{}');
-            window.location.hash = `#/dependencies?conn=${conn.id}&table=${encodeURIComponent(tableName)}`;
+            const connId = conn?.id !== undefined && conn?.id !== null ? String(conn.id) : '';
+            window.location.hash = `#/dependencies?conn=${encodeURIComponent(connId)}&db=${encodeURIComponent(dbName)}&table=${encodeURIComponent(tableName)}`;
         };
         menu.querySelector('#ctx-copy').onclick = () => {
             navigator.clipboard.writeText(tableName);

@@ -460,7 +460,15 @@ export function GraphViewer(graphData, theme, qualityMap) {
         return Math.min(24, Math.max(0, Math.round((100 - Number(score)) * 0.2)));
     };
 
-    const calculateBlastRadius = (sourceId, limit = BLAST_RADIUS_PREVIEW_LIMIT) => {
+    const calculateBlastRadius = (
+        sourceId,
+        limit = BLAST_RADIUS_PREVIEW_LIMIT,
+        distanceCutoff = BLAST_DISTANCE_CUTOFF
+    ) => {
+        const boundedDistanceCutoff = Number.isFinite(distanceCutoff)
+            ? Math.max(1, Math.min(Math.floor(distanceCutoff), 12))
+            : BLAST_DISTANCE_CUTOFF;
+
         if (!sourceId || !nodeCatalog.has(sourceId)) {
             return {
                 sourceId,
@@ -468,7 +476,7 @@ export function GraphViewer(graphData, theme, qualityMap) {
                 criticalNodes: [],
                 hasMore: false,
                 previewLimit: 0,
-                distanceCutoff: BLAST_DISTANCE_CUTOFF,
+                distanceCutoff: boundedDistanceCutoff,
                 topScore: 0
             };
         }
@@ -490,7 +498,7 @@ export function GraphViewer(graphData, theme, qualityMap) {
                 const nextId = link.nodeId;
                 if (visited.has(nextId)) continue;
                 const distance = current.distance + 1;
-                if (distance > BLAST_DISTANCE_CUTOFF) continue;
+                if (distance > boundedDistanceCutoff) continue;
 
                 visited.add(nextId);
                 queue.push({ id: nextId, distance });
@@ -540,7 +548,7 @@ export function GraphViewer(graphData, theme, qualityMap) {
             criticalNodes: impactedNodes.slice(0, boundedLimit),
             hasMore: impactedNodes.length > boundedLimit,
             previewLimit: boundedLimit,
-            distanceCutoff: BLAST_DISTANCE_CUTOFF,
+            distanceCutoff: boundedDistanceCutoff,
             topScore: impactedNodes[0]?.criticalityScore || 0
         };
     };
@@ -594,6 +602,221 @@ export function GraphViewer(graphData, theme, qualityMap) {
             nodeCount: searchIndex.length,
             durationMs: Math.round((performance.now() - startedAt) * 100) / 100
         });
+    };
+
+    const getVisibleNodeById = (nodeId) => {
+        if (!cy || !nodeId) return null;
+        const node = cy.getElementById(nodeId);
+        if (!node || node.empty() || node.hasClass('node-filter-hidden')) return null;
+        return node;
+    };
+
+    const getVisibleNodeCatalog = (limit = 400) => {
+        if (!cy) return [];
+        const boundedLimit = Number.isFinite(limit)
+            ? Math.max(1, Math.min(Math.floor(limit), 2000))
+            : 400;
+
+        const nodes = [];
+        cy.nodes().forEach(node => {
+            if (node.hasClass('node-filter-hidden')) return;
+            nodes.push({
+                id: node.id(),
+                label: node.data('label'),
+                type: node.data('type')
+            });
+        });
+
+        nodes.sort((a, b) => a.label.localeCompare(b.label));
+        return nodes.slice(0, boundedLimit);
+    };
+
+    const resolveTargetNodeId = (targetQuery) => {
+        if (!cy) return null;
+        const normalized = String(targetQuery || '').trim();
+        if (!normalized) return null;
+
+        if (nodeCatalog.has(normalized) && getVisibleNodeById(normalized)) {
+            return normalized;
+        }
+
+        const lowered = normalized.toLowerCase();
+
+        let idMatch = null;
+        cy.nodes().forEach(node => {
+            if (idMatch || node.hasClass('node-filter-hidden')) return;
+            if (node.id().toLowerCase() === lowered) {
+                idMatch = node.id();
+            }
+        });
+        if (idMatch) return idMatch;
+
+        const exactLabelMatches = [];
+        cy.nodes().forEach(node => {
+            if (node.hasClass('node-filter-hidden')) return;
+            const label = String(node.data('label') || '').toLowerCase();
+            if (label === lowered) {
+                exactLabelMatches.push(node.id());
+            }
+        });
+        if (exactLabelMatches.length === 1) {
+            return exactLabelMatches[0];
+        }
+
+        const partialMatches = [];
+        cy.nodes().forEach(node => {
+            if (node.hasClass('node-filter-hidden')) return;
+            const label = String(node.data('label') || '').toLowerCase();
+            if (label.includes(lowered)) {
+                partialMatches.push(node.id());
+            }
+        });
+        if (partialMatches.length === 1) {
+            return partialMatches[0];
+        }
+
+        return null;
+    };
+
+    const findImpactPath = (sourceId, targetQuery, maxHops = 8) => {
+        const boundedMaxHops = Number.isFinite(maxHops)
+            ? Math.max(1, Math.min(Math.floor(maxHops), 20))
+            : 8;
+        const sourceMeta = nodeCatalog.get(sourceId);
+        if (!sourceMeta) {
+            return {
+                found: false,
+                sourceId,
+                targetQuery: String(targetQuery || ''),
+                maxHops: boundedMaxHops,
+                reason: 'Source node not found.'
+            };
+        }
+
+        if (!getVisibleNodeById(sourceId)) {
+            return {
+                found: false,
+                sourceId,
+                targetQuery: String(targetQuery || ''),
+                maxHops: boundedMaxHops,
+                reason: 'Source node is currently hidden by filters.'
+            };
+        }
+
+        const targetId = resolveTargetNodeId(targetQuery);
+        if (!targetId) {
+            return {
+                found: false,
+                sourceId,
+                targetQuery: String(targetQuery || ''),
+                maxHops: boundedMaxHops,
+                reason: 'Target node not found (or ambiguous).'
+            };
+        }
+
+        if (!getVisibleNodeById(targetId)) {
+            return {
+                found: false,
+                sourceId,
+                targetId,
+                targetQuery: String(targetQuery || ''),
+                maxHops: boundedMaxHops,
+                reason: 'Target node is currently hidden by filters.'
+            };
+        }
+
+        if (sourceId === targetId) {
+            return {
+                found: true,
+                sourceId,
+                targetId,
+                targetLabel: sourceMeta.label,
+                maxHops: boundedMaxHops,
+                hops: 0,
+                path: [sourceMeta],
+                edgeTypes: [],
+                visitedCount: 1
+            };
+        }
+
+        const queue = [sourceId];
+        const depthByNode = new Map([[sourceId, 0]]);
+        const previousNode = new Map();
+        const edgeTypeByNode = new Map();
+        let found = false;
+
+        for (let cursor = 0; cursor < queue.length; cursor += 1) {
+            const currentId = queue[cursor];
+            const currentDepth = depthByNode.get(currentId) || 0;
+            if (currentDepth >= boundedMaxHops) continue;
+
+            const links = outgoingTypedIndex.get(currentId) || [];
+            for (const link of links) {
+                if (!isEdgeTypeEnabled(link.type)) continue;
+                const nextId = link.nodeId;
+                if (depthByNode.has(nextId)) continue;
+                if (!getVisibleNodeById(nextId)) continue;
+
+                depthByNode.set(nextId, currentDepth + 1);
+                previousNode.set(nextId, currentId);
+                edgeTypeByNode.set(nextId, link.type);
+
+                if (nextId === targetId) {
+                    found = true;
+                    break;
+                }
+
+                queue.push(nextId);
+            }
+
+            if (found) break;
+        }
+
+        if (!found) {
+            return {
+                found: false,
+                sourceId,
+                targetId,
+                targetQuery: String(targetQuery || ''),
+                maxHops: boundedMaxHops,
+                visitedCount: depthByNode.size,
+                reason: `No downstream path within ${boundedMaxHops} hops.`
+            };
+        }
+
+        const pathIds = [];
+        let cursorId = targetId;
+        while (cursorId) {
+            pathIds.push(cursorId);
+            if (cursorId === sourceId) break;
+            cursorId = previousNode.get(cursorId);
+        }
+        pathIds.reverse();
+
+        const edgeTypes = [];
+        const path = pathIds.map((nodeId, index) => {
+            if (index > 0) {
+                edgeTypes.push(edgeTypeByNode.get(nodeId) || 'Unknown');
+            }
+            const meta = nodeCatalog.get(nodeId);
+            return {
+                id: nodeId,
+                label: meta?.label || nodeId,
+                type: meta?.type || 'Unknown'
+            };
+        });
+
+        return {
+            found: true,
+            sourceId,
+            targetId,
+            targetLabel: path[path.length - 1]?.label || targetId,
+            maxHops: boundedMaxHops,
+            hops: Math.max(0, path.length - 1),
+            path,
+            edgeTypes,
+            visitedCount: depthByNode.size
+        };
     };
 
     const applyLod = () => {
@@ -1188,7 +1411,13 @@ export function GraphViewer(graphData, theme, qualityMap) {
         };
     };
 
-    container.getBlastRadius = (nodeId, limit = 30) => calculateBlastRadius(nodeId, limit);
+    container.getBlastRadius = (nodeId, limit = 30, distanceCutoff = BLAST_DISTANCE_CUTOFF) => (
+        calculateBlastRadius(nodeId, limit, distanceCutoff)
+    );
+    container.getNodeCatalog = (limit = 400) => getVisibleNodeCatalog(limit);
+    container.findImpactPath = (sourceId, targetQuery, options = {}) => (
+        findImpactPath(sourceId, targetQuery, options.maxHops)
+    );
 
     container.onAttach = () => {
         if (!cy) return;
