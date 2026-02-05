@@ -261,6 +261,8 @@ pub async fn establish_connection(
     app_state: State<'_, AppState>,
     config: ConnectionConfig
 ) -> Result<String, String> {
+    let connection_id = config.id.clone();
+
     match config.db_type {
         DatabaseType::PostgreSQL => {
             let pool = postgres::create_pool(&config).await?;
@@ -270,6 +272,16 @@ pub async fn establish_connection(
             
             let mut db_type_guard = app_state.active_db_type.lock().await;
             *db_type_guard = DatabaseType::PostgreSQL;
+
+            if let Some(id) = connection_id.as_deref() {
+                let store = {
+                    let guard = app_state.dependency_engine_store.lock().await;
+                    guard.clone()
+                };
+                if let Some(store) = store {
+                    store.invalidate_connection_cache(id);
+                }
+            }
             
             Ok("PostgreSQL connection established successfully".to_string())
         },
@@ -281,6 +293,16 @@ pub async fn establish_connection(
             
             let mut db_type_guard = app_state.active_db_type.lock().await;
             *db_type_guard = DatabaseType::MySQL;
+
+            if let Some(id) = connection_id.as_deref() {
+                let store = {
+                    let guard = app_state.dependency_engine_store.lock().await;
+                    guard.clone()
+                };
+                if let Some(store) = store {
+                    store.invalidate_connection_cache(id);
+                }
+            }
             
             Ok("MySQL connection established successfully".to_string())
         },
@@ -313,6 +335,14 @@ pub async fn disconnect(app_state: State<'_, AppState>) -> Result<String, String
 
     let mut db_type_guard = app_state.active_db_type.lock().await;
     *db_type_guard = DatabaseType::Disconnected;
+
+    let store = {
+        let guard = app_state.dependency_engine_store.lock().await;
+        guard.clone()
+    };
+    if let Some(store) = store {
+        store.clear_cache();
+    }
 
     Ok("Disconnected successfully".to_string())
 }

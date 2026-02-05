@@ -10,6 +10,7 @@ export function DependencyExplorer() {
     let activeViewer = null;
     let activeViewerSignature = null;
     let searchTerm = '';
+    const GRAPH_METRIC_EVENT = 'tactilesql:graph-metric';
 
 
     // Theme helpers
@@ -55,6 +56,19 @@ export function DependencyExplorer() {
     };
 
     const getViewerSignature = () => `${theme}:${state.graphVersion}`;
+
+    const emitGraphMetric = (metric, payload = {}) => {
+        if (typeof window === 'undefined') return;
+        const detail = { metric, ts: Date.now(), ...payload };
+        try {
+            window.dispatchEvent(new CustomEvent(GRAPH_METRIC_EVENT, { detail }));
+        } catch (_) {
+            // Metric emission is best effort only.
+        }
+        if (window.__TACTILESQL_GRAPH_DEBUG__) {
+            console.debug('[GraphMetric]', detail);
+        }
+    };
 
     const init = async () => {
         try {
@@ -559,6 +573,10 @@ export function DependencyExplorer() {
             if (!viewerToReuse) {
                 activeViewerSignature = viewerSignature;
             }
+            emitGraphMetric('graph_viewer_mount', {
+                reused: Boolean(viewerToReuse),
+                signature: viewerSignature
+            });
 
             // Events
             searchInput.oninput = (e) => {

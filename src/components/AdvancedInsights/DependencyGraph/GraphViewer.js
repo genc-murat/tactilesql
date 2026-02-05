@@ -178,6 +178,7 @@ export function GraphViewer(graphData, theme, qualityMap) {
     let layoutTimeoutId = null;
     const SEARCH_DEBOUNCE_MS = 180;
     const LINEAGE_PREVIEW_LIMIT = isDenseGraph ? 40 : 80;
+    const GRAPH_METRIC_EVENT = 'tactilesql:graph-metric';
     let searchDebounceId = null;
     let pendingSearchTerm = '';
     let searchIndex = [];
@@ -200,6 +201,25 @@ export function GraphViewer(graphData, theme, qualityMap) {
     const updateZoomIndicator = () => {
         if (!cy) return;
         zoomIndicator.textContent = `${Math.round(cy.zoom() * 100)}%`;
+    };
+
+    const emitMetric = (metric, payload = {}) => {
+        if (typeof window === 'undefined') return;
+        const detail = {
+            metric,
+            ts: Date.now(),
+            ...payload
+        };
+
+        try {
+            window.dispatchEvent(new CustomEvent(GRAPH_METRIC_EVENT, { detail }));
+        } catch (_) {
+            // Best effort only; metrics must not affect graph behavior.
+        }
+
+        if (window.__TACTILESQL_GRAPH_DEBUG__) {
+            console.debug('[GraphMetric]', detail);
+        }
     };
 
     const collectLineageNodes = (collection, limit = null) => {
@@ -234,12 +254,19 @@ export function GraphViewer(graphData, theme, qualityMap) {
 
     const runSearch = (term) => {
         if (!cy) return;
+        const startedAt = performance.now();
 
         const normalized = String(term || '').trim().toLowerCase();
         cy.elements().removeClass('faded highlighted upstream downstream');
 
         if (!normalized) {
             scheduleMiniMapDraw();
+            emitMetric('graph_search', {
+                termLength: 0,
+                matches: 0,
+                nodeCount: searchIndex.length,
+                durationMs: Math.round((performance.now() - startedAt) * 100) / 100
+            });
             return;
         }
 
@@ -259,6 +286,12 @@ export function GraphViewer(graphData, theme, qualityMap) {
         }
 
         scheduleMiniMapDraw();
+        emitMetric('graph_search', {
+            termLength: normalized.length,
+            matches: matches.size(),
+            nodeCount: searchIndex.length,
+            durationMs: Math.round((performance.now() - startedAt) * 100) / 100
+        });
     };
 
     const applyLod = () => {
@@ -742,21 +775,39 @@ export function GraphViewer(graphData, theme, qualityMap) {
             const others = cy.elements().not(predecessors).not(successors).not(node);
             others.addClass('faded');
 
+            const selectionDetail = {
+                id: node.id(),
+                name: node.data('label'),
+                type: node.data('type'),
+                upstreamCount: upstreamPreview.total,
+                downstreamCount: downstreamPreview.total,
+                upstreamNodes: upstreamPreview.items,
+                downstreamNodes: downstreamPreview.items,
+                upstreamHasMore: upstreamPreview.hasMore,
+                downstreamHasMore: downstreamPreview.hasMore,
+                previewLimit: LINEAGE_PREVIEW_LIMIT,
+                lineageTruncated: upstreamPreview.hasMore || downstreamPreview.hasMore,
+                qualityScore: node.data('qualityScore')
+            };
+
+            let payloadBytes = 0;
+            try {
+                payloadBytes = new TextEncoder().encode(JSON.stringify(selectionDetail)).length;
+            } catch (_) {
+                // Payload size telemetry is optional.
+            }
+
+            emitMetric('node_selected_payload', {
+                payloadBytes,
+                upstreamCount: upstreamPreview.total,
+                downstreamCount: downstreamPreview.total,
+                upstreamPreviewCount: upstreamPreview.items.length,
+                downstreamPreviewCount: downstreamPreview.items.length,
+                truncated: selectionDetail.lineageTruncated
+            });
+
             container.dispatchEvent(new CustomEvent('node-selected', {
-                detail: {
-                    id: node.id(),
-                    name: node.data('label'),
-                    type: node.data('type'),
-                    upstreamCount: upstreamPreview.total,
-                    downstreamCount: downstreamPreview.total,
-                    upstreamNodes: upstreamPreview.items,
-                    downstreamNodes: downstreamPreview.items,
-                    upstreamHasMore: upstreamPreview.hasMore,
-                    downstreamHasMore: downstreamPreview.hasMore,
-                    previewLimit: LINEAGE_PREVIEW_LIMIT,
-                    lineageTruncated: upstreamPreview.hasMore || downstreamPreview.hasMore,
-                    qualityScore: node.data('qualityScore')
-                }
+                detail: selectionDetail
             }));
 
             scheduleMiniMapDraw();

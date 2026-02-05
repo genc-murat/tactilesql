@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::algo;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum NodeType {
@@ -38,7 +38,7 @@ pub struct GraphNode {
     pub node_type: NodeType,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum EdgeType {
     Select,     // View depends on Table
     Insert,     // Procedure inserts into Table
@@ -54,14 +54,14 @@ pub struct GraphEdge {
     pub edge_type: EdgeType,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DependencyGraphData {
     pub nodes: Vec<GraphNode>,
     pub edges: Vec<DependencyLink>,
     pub cycles: Vec<Vec<String>>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DependencyLink {
     pub source: String,
     pub target: String,
@@ -71,6 +71,7 @@ pub struct DependencyLink {
 pub struct DependencyGraph {
     pub graph: DiGraph<GraphNode, GraphEdge>,
     node_indices: HashMap<String, NodeIndex>,
+    edge_keys: HashSet<(NodeIndex, NodeIndex, EdgeType)>,
 }
 
 impl DependencyGraph {
@@ -78,6 +79,7 @@ impl DependencyGraph {
         Self {
             graph: DiGraph::new(),
             node_indices: HashMap::new(),
+            edge_keys: HashSet::new(),
         }
     }
 
@@ -110,6 +112,11 @@ impl DependencyGraph {
             Some(idx) => *idx,
             None => return,
         };
+
+        let edge_key = (source_idx, target_idx, edge_type.clone());
+        if !self.edge_keys.insert(edge_key) {
+            return;
+        }
         
         self.graph.add_edge(source_idx, target_idx, GraphEdge { edge_type });
     }
@@ -193,6 +200,8 @@ impl DependencyGraph {
 
         // Filter the graph
         self.graph.retain_nodes(|_, idx| neighbors.contains(&idx));
+        self.edge_keys
+            .retain(|(source, target, _)| neighbors.contains(source) && neighbors.contains(target));
         
         // Update node_indices hashmap
         self.node_indices.retain(|_, &mut idx| neighbors.contains(&idx));
