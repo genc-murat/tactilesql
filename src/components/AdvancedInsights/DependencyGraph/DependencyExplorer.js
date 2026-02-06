@@ -3,6 +3,7 @@ import { DependencyEngineApi } from '../../../api/dependencyEngine.js';
 import { ThemeManager } from '../../../utils/ThemeManager.js';
 import { GraphViewer } from './GraphViewer.js';
 import { toastSuccess } from '../../../utils/Toast.js';
+import { CustomDropdown } from '../../UI/CustomDropdown.js';
 import './DependencyGraph.css';
 
 export function DependencyExplorer() {
@@ -223,35 +224,31 @@ export function DependencyExplorer() {
         const controls = document.createElement('div');
         controls.className = 'flex items-end gap-3';
 
-        // Connection Select
-        const div = document.createElement('div');
-        div.className = 'flex flex-col gap-1.5 min-w-[250px]';
+        // Connection Dropdown
+        const connDiv = document.createElement('div');
+        connDiv.className = 'flex flex-col gap-1.5 min-w-[250px]';
 
-        const labelEl = document.createElement('label');
-        labelEl.className = `text-[10px] font-bold uppercase tracking-wider ${classes.text.label}`;
-        labelEl.textContent = 'Connection';
-        div.appendChild(labelEl);
+        const connLabel = document.createElement('label');
+        connLabel.className = `text-[10px] font-bold uppercase tracking-wider ${classes.text.label}`;
+        connLabel.textContent = 'Connection';
+        connDiv.appendChild(connLabel);
 
-        const select = document.createElement('select');
-        select.className = classes.input;
-        const defaultOpt = document.createElement('option');
-        defaultOpt.value = "";
-        defaultOpt.textContent = "Select Connection...";
-        select.appendChild(defaultOpt);
+        const connDropdownContainer = document.createElement('div');
+        connDropdownContainer.className = 'mt-1';
+        connDiv.appendChild(connDropdownContainer);
 
-        state.connections.forEach(c => {
-            const opt = document.createElement('option');
-            opt.value = normalizeConnId(c.id);
-            opt.textContent = c.name;
-            if (normalizeConnId(c.id) === normalizeConnId(state.selectedConnectionId)) opt.selected = true;
-            select.appendChild(opt);
+        const connItems = state.connections.map(c => ({ value: normalizeConnId(c.id), label: c.name, icon: 'database' }));
+        const connDropdown = new CustomDropdown({
+            items: connItems,
+            value: state.selectedConnectionId,
+            placeholder: 'Select Connection...',
+            className: 'w-full',
+            onSelect: (val) => selectConnection(val, state.focusedTable)
         });
+        connDropdownContainer.appendChild(connDropdown.getElement());
+        controls.appendChild(connDiv);
 
-        select.onchange = (e) => selectConnection(e.target.value, state.focusedTable);
-        div.appendChild(select);
-        controls.appendChild(div);
-
-        // Database selector
+        // Database/Scope Dropdown
         if (state.selectedConnectionId) {
             const dbDiv = document.createElement('div');
             dbDiv.className = `flex flex-col gap-1.5 min-w-[200px]`;
@@ -261,23 +258,22 @@ export function DependencyExplorer() {
             dbLabel.textContent = 'Scope';
             dbDiv.appendChild(dbLabel);
 
-            const dbSelect = document.createElement('select');
-            dbSelect.className = classes.input;
+            const dbDropdownContainer = document.createElement('div');
+            dbDropdownContainer.className = 'mt-1';
+            dbDiv.appendChild(dbDropdownContainer);
 
-            state.availableDatabases.forEach(db => {
-                const opt = document.createElement('option');
-                opt.value = db;
-                opt.textContent = db;
-                if (db === state.selectedDatabase) opt.selected = true;
-                dbSelect.appendChild(opt);
+            const dbItems = state.availableDatabases.map(db => ({ value: db, label: db, icon: 'storage' }));
+            const dbDropdown = new CustomDropdown({
+                items: dbItems,
+                value: state.selectedDatabase,
+                placeholder: 'Select database...',
+                className: 'w-full',
+                onSelect: (val) => {
+                    state.selectedDatabase = val;
+                    render();
+                }
             });
-
-            dbSelect.onchange = (e) => {
-                state.selectedDatabase = e.target.value;
-                render();
-            };
-
-            dbDiv.appendChild(dbSelect);
+            dbDropdownContainer.appendChild(dbDropdown.getElement());
             controls.appendChild(dbDiv);
         }
 
