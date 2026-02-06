@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Dialog } from '../components/UI/Dialog.js';
 import { ThemeManager } from '../utils/ThemeManager.js';
 import { CustomDropdown } from '../components/UI/CustomDropdown.js';
+import { DataCompareApi } from '../api/dataCompare.js';
 
 export function DataTools() {
     let theme = ThemeManager.getCurrentTheme();
@@ -15,7 +16,7 @@ export function DataTools() {
     container.className = getContainerClass(theme);
 
     // State
-    let activeTab = 'export'; // 'export' | 'import' | 'backup' | 'mock'
+    let activeTab = 'export'; // 'export' | 'import' | 'backup' | 'mock' | 'compare'
     let databases = [];
     let tables = [];
     let selectedDb = '';
@@ -30,12 +31,36 @@ export function DataTools() {
     let mockStatusPollInterval = null;
     let mockLastFinalizedOpId = null;
     let mockJobHistory = [];
+    let compareSourceDb = '';
+    let compareSourceTable = '';
+    let compareTargetDb = '';
+    let compareTargetTable = '';
+    let compareSourceTables = [];
+    let compareTargetTables = [];
+    let compareSourceSchema = [];
+    let compareTargetSchema = [];
+    let compareSharedColumns = [];
+    let compareSharedPkColumns = [];
+    let compareSelectedKeyColumns = [];
+    let compareSelectedCompareColumns = [];
+    let compareResult = null;
+    let comparePlan = null;
+    let compareError = '';
     const mockSettings = {
         rowCount: 100,
         seed: '',
         includeNullableColumns: true,
         dryRun: false,
         columnRules: {}
+    };
+    const compareSettings = {
+        sampleLimit: 50,
+        maxRows: 20000,
+        includeInserts: true,
+        includeUpdates: true,
+        includeDeletes: false,
+        wrapInTransaction: true,
+        statementLimit: 10000
     };
 
     // Dropdown Instances
@@ -50,6 +75,254 @@ export function DataTools() {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
+
+    const normalizeColumnToken = (value) => String(value || '').trim().toLowerCase();
+
+    const uniqueTokens = (items) => {
+        const seen = new Set();
+        const out = [];
+        items.forEach((item) => {
+            const token = normalizeColumnToken(item);
+            if (!token || seen.has(token)) return;
+            seen.add(token);
+            out.push(token);
+        });
+        return out;
+    };
+
+    const orderTokensBySharedColumns = (tokens) => {
+        const index = new Map(compareSharedColumns.map((col, idx) => [col.token, idx]));
+        return uniqueTokens(tokens)
+            .filter((token) => index.has(token))
+            .sort((a, b) => index.get(a) - index.get(b));
+    };
+
+    const tokenToSourceColumnName = (token) => {
+        const entry = compareSharedColumns.find((column) => column.token === token);
+        return entry?.sourceName || token;
+    };
+
+    const resetCompareColumnState = () => {
+        compareSourceSchema = [];
+        compareTargetSchema = [];
+        compareSharedColumns = [];
+        compareSharedPkColumns = [];
+        compareSelectedKeyColumns = [];
+        compareSelectedCompareColumns = [];
+    };
+
+    const resetCompareOutputs = () => {
+        compareResult = null;
+        comparePlan = null;
+        compareError = '';
+    };
+
+    const loadCompareTables = async (side, database) => {
+        if (!database) {
+            if (side === 'source') compareSourceTables = [];
+            else compareTargetTables = [];
+            render();
+            return;
+        }
+
+        try {
+            const rows = await invoke('get_tables', { database });
+            if (side === 'source') {
+                compareSourceTables = Array.isArray(rows) ? rows : [];
+                if (compareSourceTable && !compareSourceTables.includes(compareSourceTable)) {
+                    compareSourceTable = '';
+                }
+            } else {
+                compareTargetTables = Array.isArray(rows) ? rows : [];
+                if (compareTargetTable && !compareTargetTables.includes(compareTargetTable)) {
+                    compareTargetTable = '';
+                }
+            }
+        } catch (error) {
+            console.error(`Failed to load compare tables for ${database}:`, error);
+            if (side === 'source') compareSourceTables = [];
+            else compareTargetTables = [];
+        } finally {
+            render();
+        }
+    };
+
+    const loadCompareMetadata = async () => {
+        if (!compareSourceDb || !compareSourceTable || !compareTargetDb || !compareTargetTable) {
+            resetCompareColumnState();
+            render();
+            return;
+        }
+
+        try {
+            const [sourceSchema, targetSchema, sourcePks, targetPks] = await Promise.all([
+                invoke('get_table_schema', { database: compareSourceDb, table: compareSourceTable }),
+                invoke('get_table_schema', { database: compareTargetDb, table: compareTargetTable }),
+                invoke('get_table_primary_keys', { database: compareSourceDb, table: compareSourceTable }),
+                invoke('get_table_primary_keys', { database: compareTargetDb, table: compareTargetTable })
+            ]);
+            compareSourceSchema = Array.isArray(sourceSchema) ? sourceSchema : [];
+            compareTargetSchema = Array.isArray(targetSchema) ? targetSchema : [];
+
+            const targetByToken = new Map();
+            compareTargetSchema.forEach((column) => {
+                const token = normalizeColumnToken(column.name);
+                if (!token || targetByToken.has(token)) return;
+                targetByToken.set(token, column);
+            });
+
+            compareSharedColumns = compareSourceSchema
+                .map((sourceColumn) => {
+                    const token = normalizeColumnToken(sourceColumn.name);
+                    const targetColumn = targetByToken.get(token);
+                    if (!token || !targetColumn) return null;
+                    return {
+                        token,
+                        sourceName: sourceColumn.name,
+                        targetName: targetColumn.name,
+                        sourceType: sourceColumn.column_type || sourceColumn.data_type || '-',
+                        targetType: targetColumn.column_type || targetColumn.data_type || '-'
+                    };
+                })
+                .filter(Boolean);
+
+            const sharedSet = new Set(compareSharedColumns.map((column) => column.token));
+            const sourcePkTokens = uniqueTokens(
+                (Array.isArray(sourcePks) ? sourcePks : [])
+                    .map((pk) => pk.columnName || pk.column_name)
+            );
+            const targetPkSet = new Set(uniqueTokens(
+                (Array.isArray(targetPks) ? targetPks : [])
+                    .map((pk) => pk.columnName || pk.column_name)
+            ));
+            compareSharedPkColumns = sourcePkTokens.filter((token) => sharedSet.has(token) && targetPkSet.has(token));
+
+            const keptKeys = orderTokensBySharedColumns(compareSelectedKeyColumns);
+            compareSelectedKeyColumns = keptKeys.length > 0
+                ? keptKeys
+                : orderTokensBySharedColumns(compareSharedPkColumns);
+
+            const keySet = new Set(compareSelectedKeyColumns);
+            const keptCompare = orderTokensBySharedColumns(
+                compareSelectedCompareColumns.filter((token) => !keySet.has(token))
+            );
+            compareSelectedCompareColumns = keptCompare.length > 0
+                ? keptCompare
+                : orderTokensBySharedColumns(
+                    compareSharedColumns
+                        .map((column) => column.token)
+                        .filter((token) => !keySet.has(token))
+                );
+        } catch (error) {
+            resetCompareColumnState();
+            console.error('Failed to load compare metadata:', error);
+        } finally {
+            render();
+        }
+    };
+
+    const setCompareKeyColumn = (columnToken, checked) => {
+        const token = normalizeColumnToken(columnToken);
+        if (!token) return;
+
+        let nextKeys = checked
+            ? [...compareSelectedKeyColumns, token]
+            : compareSelectedKeyColumns.filter((item) => item !== token);
+        nextKeys = orderTokensBySharedColumns(nextKeys);
+        compareSelectedKeyColumns = nextKeys;
+
+        if (checked) {
+            compareSelectedCompareColumns = compareSelectedCompareColumns.filter((item) => item !== token);
+        }
+        compareSelectedCompareColumns = orderTokensBySharedColumns(compareSelectedCompareColumns);
+    };
+
+    const setCompareCompareColumn = (columnToken, checked) => {
+        const token = normalizeColumnToken(columnToken);
+        if (!token) return;
+        if (compareSelectedKeyColumns.includes(token)) return;
+
+        const nextCompare = checked
+            ? [...compareSelectedCompareColumns, token]
+            : compareSelectedCompareColumns.filter((item) => item !== token);
+        compareSelectedCompareColumns = orderTokensBySharedColumns(nextCompare);
+    };
+
+    const buildComparePayload = () => {
+        const keyColumns = compareSelectedKeyColumns.map(tokenToSourceColumnName);
+        const compareColumns = compareSelectedCompareColumns.map(tokenToSourceColumnName);
+        return {
+            sourceDatabase: compareSourceDb,
+            sourceTable: compareSourceTable,
+            targetDatabase: compareTargetDb,
+            targetTable: compareTargetTable,
+            keyColumns,
+            compareColumns,
+            sampleLimit: ensurePositiveInt(compareSettings.sampleLimit, 50),
+            maxRows: ensurePositiveInt(compareSettings.maxRows, 20000),
+            includeInserts: !!compareSettings.includeInserts,
+            includeUpdates: !!compareSettings.includeUpdates,
+            includeDeletes: !!compareSettings.includeDeletes,
+            wrapInTransaction: !!compareSettings.wrapInTransaction,
+            statementLimit: ensurePositiveInt(compareSettings.statementLimit, 10000)
+        };
+    };
+
+    const ensureCompareReady = () => {
+        if (!compareSourceDb || !compareSourceTable || !compareTargetDb || !compareTargetTable) {
+            Dialog.alert('Please select source and target database/table.', 'Selection Required');
+            return false;
+        }
+        if (compareSelectedKeyColumns.length === 0) {
+            Dialog.alert('Please select at least one key column.', 'Selection Required');
+            return false;
+        }
+        return true;
+    };
+
+    const handleCompareRun = async () => {
+        if (!ensureCompareReady()) return;
+        resetCompareOutputs();
+        isProcessing = true;
+        render();
+
+        try {
+            compareResult = await DataCompareApi.compareTableData(buildComparePayload());
+        } catch (error) {
+            compareError = String(error || 'Data compare failed');
+            Dialog.alert(`Data compare failed: ${compareError}`, 'Data Compare');
+        } finally {
+            isProcessing = false;
+            render();
+        }
+    };
+
+    const handleCompareGenerateScript = async () => {
+        if (!ensureCompareReady()) return;
+        if (!compareResult) {
+            const shouldRun = await Dialog.confirm(
+                'Compare result is empty. Run compare first?',
+                'Data Compare'
+            );
+            if (shouldRun) {
+                await handleCompareRun();
+            }
+            if (!compareResult) return;
+        }
+
+        isProcessing = true;
+        render();
+
+        try {
+            comparePlan = await DataCompareApi.generateDataSyncScript(buildComparePayload());
+        } catch (error) {
+            compareError = String(error || 'Sync script generation failed');
+            Dialog.alert(`Sync script generation failed: ${compareError}`, 'Data Compare');
+        } finally {
+            isProcessing = false;
+            render();
+        }
+    };
 
     const resetMockOutputs = () => {
         stopMockStatusPolling();
@@ -842,9 +1115,14 @@ export function DataTools() {
                         <span class="material-symbols-outlined text-base mr-1 align-middle">science</span>
                         Mock Data
                     </button>
+                    <button id="tab-compare" class="px-6 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'compare' ? (isDawn ? 'bg-[#ea9d34] text-[#fffaf3] shadow-lg' : 'bg-mysql-teal text-white shadow-lg') : (isLight ? 'text-gray-600 hover:text-gray-900' : (isDawn ? 'text-[#575279] hover:text-[#286983]' : 'text-gray-400 hover:text-white'))}">
+                        <span class="material-symbols-outlined text-base mr-1 align-middle">compare_arrows</span>
+                        Compare
+                    </button>
                 </div>
 
                 <!-- Selection Panel -->
+                ${activeTab === 'compare' ? '' : `
                 <div class="grid grid-cols-2 gap-4 mb-6">
                     <div class="space-y-2">
                         <label class="text-[10px] font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Database</label>
@@ -857,6 +1135,7 @@ export function DataTools() {
                     </div>
                     ` : '<div></div>'}
                 </div>
+                `}
 
                 <!-- Content Panel -->
                 <div class="rounded-xl ${isLight ? 'bg-white border border-gray-200 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))} p-6">
@@ -1099,6 +1378,242 @@ export function DataTools() {
             `;
         }
 
+        if (activeTab === 'compare') {
+            const dbOptions = (placeholder, selectedValue) => `
+                <option value="">${placeholder}</option>
+                ${databases.map((db) => `<option value="${escapeHtml(db)}" ${selectedValue === db ? 'selected' : ''}>${escapeHtml(db)}</option>`).join('')}
+            `;
+            const sourceTableOptions = `
+                <option value="">Select source table</option>
+                ${compareSourceTables.map((table) => `<option value="${escapeHtml(table)}" ${compareSourceTable === table ? 'selected' : ''}>${escapeHtml(table)}</option>`).join('')}
+            `;
+            const targetTableOptions = `
+                <option value="">Select target table</option>
+                ${compareTargetTables.map((table) => `<option value="${escapeHtml(table)}" ${compareTargetTable === table ? 'selected' : ''}>${escapeHtml(table)}</option>`).join('')}
+            `;
+            const summary = compareResult?.summary || null;
+            const sampleRows = Array.isArray(compareResult?.samples)
+                ? compareResult.samples.map((sample, idx) => {
+                    const diffType = sample.diffType || sample.diff_type || '-';
+                    const keyJson = JSON.stringify(sample.key || {}, null, 0);
+                    const changedCols = Array.isArray(sample.changedColumns || sample.changed_columns)
+                        ? (sample.changedColumns || sample.changed_columns).join(', ')
+                        : '-';
+                    return `
+                        <tr class="${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')} border-b last:border-b-0">
+                            <td class="px-2 py-2 text-[11px] font-semibold ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-gray-200')}">${idx + 1}</td>
+                            <td class="px-2 py-2 text-[11px] font-semibold ${diffType === 'changed' ? (isDawn ? 'text-[#ea9d34]' : 'text-amber-400') : (diffType === 'missing_in_target' ? (isDawn ? 'text-[#286983]' : 'text-emerald-400') : (isDawn ? 'text-[#b4637a]' : 'text-red-400'))}">${escapeHtml(diffType)}</td>
+                            <td class="px-2 py-2 text-[11px] ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-300')} font-mono">${escapeHtml(keyJson)}</td>
+                            <td class="px-2 py-2 text-[11px] ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-300')}">${escapeHtml(changedCols || '-')}</td>
+                        </tr>
+                    `;
+                }).join('')
+                : '';
+            const compareWarnings = Array.isArray(compareResult?.warnings) ? compareResult.warnings : [];
+            const planWarnings = Array.isArray(comparePlan?.warnings) ? comparePlan.warnings : [];
+            const combinedWarnings = [...compareWarnings, ...planWarnings];
+            const selectedKeySet = new Set(compareSelectedKeyColumns);
+            const selectedCompareSet = new Set(compareSelectedCompareColumns);
+            const columnSelectionRows = compareSharedColumns.map((column, idx) => {
+                const isKey = selectedKeySet.has(column.token);
+                const isCompare = selectedCompareSet.has(column.token);
+                return `
+                    <tr class="${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')} border-b last:border-b-0">
+                        <td class="px-2 py-2 text-[11px] ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-gray-200')}">${idx + 1}</td>
+                        <td class="px-2 py-2 text-[11px] font-semibold ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-gray-200')}">${escapeHtml(column.sourceName)}</td>
+                        <td class="px-2 py-2 text-[10px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">${escapeHtml(column.sourceType)}</td>
+                        <td class="px-2 py-2 text-[10px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">${escapeHtml(column.targetType)}</td>
+                        <td class="px-2 py-2 text-center">
+                            <input type="checkbox" class="compare-key-checkbox w-4 h-4" data-column-token="${escapeHtml(column.token)}" ${isKey ? 'checked' : ''} />
+                        </td>
+                        <td class="px-2 py-2 text-center">
+                            <input type="checkbox" class="compare-column-checkbox w-4 h-4" data-column-token="${escapeHtml(column.token)}" ${isCompare ? 'checked' : ''} ${isKey ? 'disabled' : ''} />
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            return `
+                <div class="space-y-5">
+                    <div>
+                        <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} mb-2">Data Compare & Sync</h3>
+                        <p class="text-sm ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">
+                            Compare source and target tables by key columns, then generate sync SQL script safely.
+                        </p>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border bg-ocean-bg' : 'border-white/10 bg-white/5'))} p-4 space-y-3">
+                            <div class="text-[10px] font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Source</div>
+                            <select id="compare-source-db" class="w-full tactile-input text-sm py-1.5">
+                                ${dbOptions('Select source database', compareSourceDb)}
+                            </select>
+                            <select id="compare-source-table" class="w-full tactile-input text-sm py-1.5" ${!compareSourceDb ? 'disabled' : ''}>
+                                ${sourceTableOptions}
+                            </select>
+                        </div>
+                        <div class="rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border bg-ocean-bg' : 'border-white/10 bg-white/5'))} p-4 space-y-3">
+                            <div class="text-[10px] font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Target</div>
+                            <select id="compare-target-db" class="w-full tactile-input text-sm py-1.5">
+                                ${dbOptions('Select target database', compareTargetDb)}
+                            </select>
+                            <select id="compare-target-table" class="w-full tactile-input text-sm py-1.5" ${!compareTargetDb ? 'disabled' : ''}>
+                                ${targetTableOptions}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="rounded-lg border ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/10')} overflow-hidden">
+                        <div class="px-3 py-2 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.18em] ${isLight ? 'bg-gray-50 text-gray-500' : (isDawn ? 'bg-[#faf4ed] text-[#9893a5]' : 'bg-white/5 text-gray-400')}">
+                            <span>Column Selection</span>
+                            <div class="flex items-center gap-2">
+                                <button id="compare-use-pk-btn" class="px-2 py-1 rounded text-[10px] font-bold ${isDawn ? 'bg-[#31748f] text-white' : 'bg-mysql-teal text-white'} hover:brightness-110 transition-all">Use Shared PK</button>
+                                <button id="compare-select-all-cols-btn" class="px-2 py-1 rounded text-[10px] font-bold ${isDawn ? 'bg-[#ea9d34] text-[#fffaf3]' : 'bg-blue-500 text-white'} hover:brightness-110 transition-all">All Compare</button>
+                                <button id="compare-clear-cols-btn" class="px-2 py-1 rounded text-[10px] font-bold ${isDawn ? 'bg-[#b4637a] text-white' : 'bg-gray-500 text-white'} hover:brightness-110 transition-all">Clear Compare</button>
+                            </div>
+                        </div>
+                        <div class="px-3 py-2 text-[11px] ${isLight ? 'text-gray-600 bg-gray-50' : (isDawn ? 'text-[#797593] bg-[#faf4ed]' : 'text-gray-300 bg-black/20')}">
+                            Key: <b>${compareSelectedKeyColumns.map(tokenToSourceColumnName).map(escapeHtml).join(', ') || '-'}</b> | Compare: <b>${compareSelectedCompareColumns.map(tokenToSourceColumnName).map(escapeHtml).join(', ') || '-'}</b>
+                        </div>
+                        <div class="max-h-[260px] overflow-auto custom-scrollbar">
+                            <table class="w-full">
+                                <thead class="${isLight ? 'bg-gray-50 text-gray-500' : (isDawn ? 'bg-[#faf4ed] text-[#9893a5]' : 'bg-white/5 text-gray-400')}">
+                                    <tr>
+                                        <th class="px-2 py-2 text-left text-[10px] uppercase tracking-widest">#</th>
+                                        <th class="px-2 py-2 text-left text-[10px] uppercase tracking-widest">Column</th>
+                                        <th class="px-2 py-2 text-left text-[10px] uppercase tracking-widest">Source Type</th>
+                                        <th class="px-2 py-2 text-left text-[10px] uppercase tracking-widest">Target Type</th>
+                                        <th class="px-2 py-2 text-center text-[10px] uppercase tracking-widest">Key</th>
+                                        <th class="px-2 py-2 text-center text-[10px] uppercase tracking-widest">Compare</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${columnSelectionRows || `
+                                        <tr>
+                                            <td colspan="6" class="px-3 py-3 text-[11px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">
+                                                Select source/target tables to load shared columns.
+                                            </td>
+                                        </tr>
+                                    `}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-4 gap-4">
+                        <div>
+                            <label class="block text-[10px] font-black uppercase tracking-[0.18em] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')} mb-1">Sample Limit</label>
+                            <input id="compare-sample-limit" type="number" min="1" max="500" value="${compareSettings.sampleLimit}" class="w-full tactile-input text-sm py-1.5" />
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-black uppercase tracking-[0.18em] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')} mb-1">Max Rows</label>
+                            <input id="compare-max-rows" type="number" min="1" max="500000" value="${compareSettings.maxRows}" class="w-full tactile-input text-sm py-1.5" />
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-black uppercase tracking-[0.18em] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')} mb-1">Statement Limit</label>
+                            <input id="compare-statement-limit" type="number" min="1" max="200000" value="${compareSettings.statementLimit}" class="w-full tactile-input text-sm py-1.5" />
+                        </div>
+                        <div class="flex items-end">
+                            <div class="w-full flex gap-2">
+                                <button id="compare-run-btn" class="flex-1 px-3 py-2 rounded-lg text-xs font-bold ${isDawn ? 'bg-[#31748f] text-white hover:brightness-110' : 'bg-mysql-teal text-white hover:brightness-110'} transition-all">Compare</button>
+                                <button id="compare-script-btn" class="flex-1 px-3 py-2 rounded-lg text-xs font-bold ${isDawn ? 'bg-[#ea9d34] text-[#fffaf3] hover:brightness-110' : 'bg-emerald-500 text-white hover:brightness-110'} transition-all">Generate SQL</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-wrap gap-4">
+                        <label class="flex items-center gap-2 text-xs ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">
+                            <input id="compare-include-inserts" type="checkbox" class="w-4 h-4" ${compareSettings.includeInserts ? 'checked' : ''} />
+                            Include INSERT
+                        </label>
+                        <label class="flex items-center gap-2 text-xs ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">
+                            <input id="compare-include-updates" type="checkbox" class="w-4 h-4" ${compareSettings.includeUpdates ? 'checked' : ''} />
+                            Include UPDATE
+                        </label>
+                        <label class="flex items-center gap-2 text-xs ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">
+                            <input id="compare-include-deletes" type="checkbox" class="w-4 h-4" ${compareSettings.includeDeletes ? 'checked' : ''} />
+                            Include DELETE
+                        </label>
+                        <label class="flex items-center gap-2 text-xs ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">
+                            <input id="compare-wrap-tx" type="checkbox" class="w-4 h-4" ${compareSettings.wrapInTransaction ? 'checked' : ''} />
+                            Wrap in transaction
+                        </label>
+                    </div>
+
+                    ${compareError ? `
+                        <div class="rounded-lg border ${isLight ? 'border-red-200 bg-red-50 text-red-700' : (isDawn ? 'border-[#b4637a]/40 bg-[#b4637a]/10 text-[#b4637a]' : 'border-red-400/30 bg-red-500/10 text-red-400')} px-3 py-2 text-sm">
+                            ${escapeHtml(compareError)}
+                        </div>
+                    ` : ''}
+
+                    ${combinedWarnings.length > 0 ? `
+                        <div class="rounded-lg border ${isLight ? 'border-amber-200 bg-amber-50 text-amber-700' : (isDawn ? 'border-[#ea9d34]/40 bg-[#ea9d34]/10 text-[#ea9d34]' : 'border-amber-400/30 bg-amber-500/10 text-amber-300')} px-3 py-2 text-xs">
+                            ${combinedWarnings.map((warning) => `<div>• ${escapeHtml(warning)}</div>`).join('')}
+                        </div>
+                    ` : ''}
+
+                    ${summary ? `
+                        <div class="grid grid-cols-6 gap-3">
+                            <div class="rounded-lg p-3 ${isLight ? 'bg-gray-50 border border-gray-200' : (isDawn ? 'bg-[#faf4ed] border border-[#f2e9e1]' : 'bg-white/5 border border-white/10')}">
+                                <div class="text-[10px] uppercase tracking-widest ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Source</div>
+                                <div class="text-lg font-bold ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-white')}">${summary.sourceRows}</div>
+                            </div>
+                            <div class="rounded-lg p-3 ${isLight ? 'bg-gray-50 border border-gray-200' : (isDawn ? 'bg-[#faf4ed] border border-[#f2e9e1]' : 'bg-white/5 border border-white/10')}">
+                                <div class="text-[10px] uppercase tracking-widest ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Target</div>
+                                <div class="text-lg font-bold ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-white')}">${summary.targetRows}</div>
+                            </div>
+                            <div class="rounded-lg p-3 ${isLight ? 'bg-emerald-50 border border-emerald-200' : (isDawn ? 'bg-[#286983]/10 border border-[#286983]/30' : 'bg-emerald-500/10 border border-emerald-400/30')}">
+                                <div class="text-[10px] uppercase tracking-widest ${isLight ? 'text-emerald-700' : (isDawn ? 'text-[#286983]' : 'text-emerald-300')}">Missing</div>
+                                <div class="text-lg font-bold ${isLight ? 'text-emerald-700' : (isDawn ? 'text-[#286983]' : 'text-emerald-300')}">${summary.missingInTarget}</div>
+                            </div>
+                            <div class="rounded-lg p-3 ${isLight ? 'bg-red-50 border border-red-200' : (isDawn ? 'bg-[#b4637a]/10 border border-[#b4637a]/30' : 'bg-red-500/10 border border-red-400/30')}">
+                                <div class="text-[10px] uppercase tracking-widest ${isLight ? 'text-red-700' : (isDawn ? 'text-[#b4637a]' : 'text-red-300')}">Extra</div>
+                                <div class="text-lg font-bold ${isLight ? 'text-red-700' : (isDawn ? 'text-[#b4637a]' : 'text-red-300')}">${summary.extraInTarget}</div>
+                            </div>
+                            <div class="rounded-lg p-3 ${isLight ? 'bg-amber-50 border border-amber-200' : (isDawn ? 'bg-[#ea9d34]/10 border border-[#ea9d34]/30' : 'bg-amber-500/10 border border-amber-400/30')}">
+                                <div class="text-[10px] uppercase tracking-widest ${isLight ? 'text-amber-700' : (isDawn ? 'text-[#ea9d34]' : 'text-amber-300')}">Changed</div>
+                                <div class="text-lg font-bold ${isLight ? 'text-amber-700' : (isDawn ? 'text-[#ea9d34]' : 'text-amber-300')}">${summary.changed}</div>
+                            </div>
+                            <div class="rounded-lg p-3 ${isLight ? 'bg-blue-50 border border-blue-200' : (isDawn ? 'bg-[#31748f]/10 border border-[#31748f]/30' : 'bg-blue-500/10 border border-blue-400/30')}">
+                                <div class="text-[10px] uppercase tracking-widest ${isLight ? 'text-blue-700' : (isDawn ? 'text-[#31748f]' : 'text-blue-300')}">Unchanged</div>
+                                <div class="text-lg font-bold ${isLight ? 'text-blue-700' : (isDawn ? 'text-[#31748f]' : 'text-blue-300')}">${summary.unchanged}</div>
+                            </div>
+                        </div>
+
+                        <div class="rounded-lg border ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/10')} overflow-hidden">
+                            <div class="px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] ${isLight ? 'bg-gray-50 text-gray-500' : (isDawn ? 'bg-[#faf4ed] text-[#9893a5]' : 'bg-white/5 text-gray-400')}">Sample Diffs</div>
+                            <div class="max-h-[260px] overflow-auto custom-scrollbar">
+                                <table class="w-full">
+                                    <thead class="${isLight ? 'bg-gray-50 text-gray-500' : (isDawn ? 'bg-[#faf4ed] text-[#9893a5]' : 'bg-white/5 text-gray-400')}">
+                                        <tr>
+                                            <th class="px-2 py-2 text-left text-[10px] uppercase tracking-widest">#</th>
+                                            <th class="px-2 py-2 text-left text-[10px] uppercase tracking-widest">Type</th>
+                                            <th class="px-2 py-2 text-left text-[10px] uppercase tracking-widest">Key</th>
+                                            <th class="px-2 py-2 text-left text-[10px] uppercase tracking-widest">Changed Columns</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>${sampleRows || ''}</tbody>
+                                </table>
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    ${comparePlan ? `
+                        <div class="rounded-lg border ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/10')} overflow-hidden">
+                            <div class="px-3 py-2 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.18em] ${isLight ? 'bg-gray-50 text-gray-500' : (isDawn ? 'bg-[#faf4ed] text-[#9893a5]' : 'bg-white/5 text-gray-400')}">
+                                <span>Sync Script</span>
+                                <div class="flex items-center gap-2">
+                                    <span class="${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">Statements: ${comparePlan.statementCounts?.total ?? comparePlan.statement_counts?.total ?? 0}</span>
+                                    <button id="compare-copy-script-btn" class="px-2 py-1 rounded text-[10px] font-bold ${isDawn ? 'bg-[#31748f] text-white' : 'bg-mysql-teal text-white'} hover:brightness-110 transition-all">Copy</button>
+                                </div>
+                            </div>
+                            <pre class="p-3 text-[11px] leading-relaxed ${isLight ? 'text-gray-700 bg-white' : (isDawn ? 'text-[#575279] bg-[#fffaf3]' : 'text-gray-300 bg-black/20')} max-h-[360px] overflow-auto custom-scrollbar">${escapeHtml(comparePlan.script || '')}</pre>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
         if (activeTab === 'backup') {
             return `
                 <div class="space-y-4">
@@ -1189,6 +1704,23 @@ export function DataTools() {
                 await loadMockSchema();
             }
         });
+        container.querySelector('#tab-compare')?.addEventListener('click', async () => {
+            activeTab = 'compare';
+            resetCompareOutputs();
+            render();
+
+            if (!compareSourceDb && databases.length > 0) {
+                compareSourceDb = databases[0];
+                await loadCompareTables('source', compareSourceDb);
+            }
+            if (!compareTargetDb && databases.length > 0) {
+                compareTargetDb = databases[0];
+                await loadCompareTables('target', compareTargetDb);
+            }
+            if (compareSourceDb && compareSourceTable && compareTargetDb && compareTargetTable) {
+                await loadCompareMetadata();
+            }
+        });
 
         // Backup/Restore buttons
         container.querySelector('#export-csv')?.addEventListener('click', handleExportCSV);
@@ -1229,6 +1761,115 @@ export function DataTools() {
                 if (!columnName) return;
                 mockSettings.columnRules[columnName] = e.target.value || 'auto';
             });
+        });
+
+        // Data Compare controls
+        container.querySelector('#compare-source-db')?.addEventListener('change', async (e) => {
+            compareSourceDb = e.target.value;
+            compareSourceTable = '';
+            compareSourceTables = [];
+            resetCompareColumnState();
+            resetCompareOutputs();
+            render();
+            await loadCompareTables('source', compareSourceDb);
+        });
+        container.querySelector('#compare-target-db')?.addEventListener('change', async (e) => {
+            compareTargetDb = e.target.value;
+            compareTargetTable = '';
+            compareTargetTables = [];
+            resetCompareColumnState();
+            resetCompareOutputs();
+            render();
+            await loadCompareTables('target', compareTargetDb);
+        });
+        container.querySelector('#compare-source-table')?.addEventListener('change', async (e) => {
+            compareSourceTable = e.target.value;
+            resetCompareColumnState();
+            resetCompareOutputs();
+            render();
+            await loadCompareMetadata();
+        });
+        container.querySelector('#compare-target-table')?.addEventListener('change', async (e) => {
+            compareTargetTable = e.target.value;
+            resetCompareColumnState();
+            resetCompareOutputs();
+            render();
+            await loadCompareMetadata();
+        });
+        container.querySelector('#compare-sample-limit')?.addEventListener('change', (e) => {
+            compareSettings.sampleLimit = ensurePositiveInt(e.target.value, 50);
+            e.target.value = String(compareSettings.sampleLimit);
+        });
+        container.querySelector('#compare-max-rows')?.addEventListener('change', (e) => {
+            compareSettings.maxRows = ensurePositiveInt(e.target.value, 20000);
+            e.target.value = String(compareSettings.maxRows);
+        });
+        container.querySelector('#compare-statement-limit')?.addEventListener('change', (e) => {
+            compareSettings.statementLimit = ensurePositiveInt(e.target.value, 10000);
+            e.target.value = String(compareSettings.statementLimit);
+        });
+        container.querySelector('#compare-include-inserts')?.addEventListener('change', (e) => {
+            compareSettings.includeInserts = !!e.target.checked;
+        });
+        container.querySelector('#compare-include-updates')?.addEventListener('change', (e) => {
+            compareSettings.includeUpdates = !!e.target.checked;
+        });
+        container.querySelector('#compare-include-deletes')?.addEventListener('change', (e) => {
+            compareSettings.includeDeletes = !!e.target.checked;
+        });
+        container.querySelector('#compare-wrap-tx')?.addEventListener('change', (e) => {
+            compareSettings.wrapInTransaction = !!e.target.checked;
+        });
+        container.querySelector('#compare-use-pk-btn')?.addEventListener('click', () => {
+            compareSelectedKeyColumns = orderTokensBySharedColumns(compareSharedPkColumns);
+            const keySet = new Set(compareSelectedKeyColumns);
+            compareSelectedCompareColumns = orderTokensBySharedColumns(
+                compareSelectedCompareColumns.filter((token) => !keySet.has(token))
+            );
+            resetCompareOutputs();
+            render();
+        });
+        container.querySelector('#compare-select-all-cols-btn')?.addEventListener('click', () => {
+            const keySet = new Set(compareSelectedKeyColumns);
+            compareSelectedCompareColumns = orderTokensBySharedColumns(
+                compareSharedColumns
+                    .map((column) => column.token)
+                    .filter((token) => !keySet.has(token))
+            );
+            resetCompareOutputs();
+            render();
+        });
+        container.querySelector('#compare-clear-cols-btn')?.addEventListener('click', () => {
+            compareSelectedCompareColumns = [];
+            resetCompareOutputs();
+            render();
+        });
+        container.querySelectorAll('.compare-key-checkbox').forEach((checkbox) => {
+            checkbox.addEventListener('change', (e) => {
+                const token = e.target.dataset.columnToken;
+                setCompareKeyColumn(token, !!e.target.checked);
+                resetCompareOutputs();
+                render();
+            });
+        });
+        container.querySelectorAll('.compare-column-checkbox').forEach((checkbox) => {
+            checkbox.addEventListener('change', (e) => {
+                const token = e.target.dataset.columnToken;
+                setCompareCompareColumn(token, !!e.target.checked);
+                resetCompareOutputs();
+                render();
+            });
+        });
+        container.querySelector('#compare-run-btn')?.addEventListener('click', handleCompareRun);
+        container.querySelector('#compare-script-btn')?.addEventListener('click', handleCompareGenerateScript);
+        container.querySelector('#compare-copy-script-btn')?.addEventListener('click', async () => {
+            if (!comparePlan?.script) return;
+            try {
+                await navigator.clipboard.writeText(comparePlan.script);
+                Dialog.alert('Sync script copied to clipboard.', 'Data Compare');
+            } catch (error) {
+                Dialog.alert(`Failed to copy script: ${error}`, 'Data Compare');
+            }
         });
     };
 

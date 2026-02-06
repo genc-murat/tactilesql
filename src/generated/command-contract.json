@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-02-06T15:03:48.395Z",
+  "generatedAt": "2026-02-06T15:24:34.966Z",
   "frontendCommands": [
     "add_query_comment",
     "add_query_version",
@@ -16,6 +16,7 @@
     "compare_queries",
     "compare_query_versions",
     "compare_schema_snapshots",
+    "compare_table_data",
     "create_query_story",
     "delete_connection",
     "delete_query_story",
@@ -27,6 +28,7 @@
     "export_table_csv",
     "export_table_json",
     "export_table_sql",
+    "generate_data_sync_script",
     "generate_migration",
     "generate_migration_plan",
     "generate_story_command",
@@ -121,6 +123,7 @@
     "compare_queries",
     "compare_query_versions",
     "compare_schema_snapshots",
+    "compare_table_data",
     "create_query_story",
     "delete_connection",
     "delete_query_story",
@@ -132,6 +135,7 @@
     "export_table_csv",
     "export_table_json",
     "export_table_sql",
+    "generate_data_sync_script",
     "generate_migration",
     "generate_migration_plan",
     "generate_story_command",

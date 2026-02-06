@@ -1,7 +1,7 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+use regex::Regex;
 use tauri::Manager;
 use tauri::WebviewWindow;
-use regex::Regex;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -56,8 +56,8 @@ mod db;
 mod db_types;
 pub mod dependency_engine;
 pub mod integration;
-mod mysql;
 pub mod mock_data;
+mod mysql;
 mod postgres;
 pub mod quality_analyzer;
 pub mod query_story;
@@ -214,6 +214,8 @@ pub fn run() {
             db::cancel_mock_data_generation,
             db::backup_database,
             db::restore_database,
+            db::compare_table_data,
+            db::generate_data_sync_script,
             // Query Execution
             db::execute_query,
             db::execute_query_profiled,

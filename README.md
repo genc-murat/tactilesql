@@ -25,6 +25,7 @@ TactileSQL is a modern, desktop-first MySQL workbench built with Tauri 2 and van
 - **Searchable Object Explorer**: Integrated search box to quickly find databases, tables, and columns with "Next/Prev" navigation and auto-expansion.
 - **Schema Designer** for columns, indexes, foreign keys, triggers, DDL, and stats.
 - **Schema Diff** for database or single-table comparison with generated sync SQL.
+- **Data Compare** for row-level source/target table comparison with generated data sync SQL (`INSERT`/`UPDATE`/`DELETE`).
 - **Data Import/Export Wizard** supporting CSV, SQL, and JSON formats with progress tracking.
 - **Backup & Restore** with scheduled backups, compression, and full/incremental backup modes.
 - **Mock Data Generator** with deterministic preview, async generation jobs, cancellation, and persisted job history.
@@ -179,6 +180,7 @@ npm run contract:check    # fail on newly introduced missing backend commands
 - **Backup Manager**: Schedule automated backups with compression and encryption
 - **Restore Database**: Restore from previous backups with validation
 - **Mock Data Generator**: Preview generated rows, run async generation/dry-run jobs, track progress, cancel running jobs, and review recent job history across restarts
+- **Data Compare & Sync**: Compare two tables (source/target), select key & compare columns, review row-level diffs (`missing`, `extra`, `changed`), and generate sync SQL script
 
 ### Server Monitor
 
@@ -323,6 +325,8 @@ The Rust backend exposes the following commands (used by the UI):
 - `get_mock_data_generation_status` — Poll status/progress for one generation job
 - `list_mock_data_generation_history` — List recent mock generation jobs (persisted locally)
 - `cancel_mock_data_generation` — Request cancellation for an active generation job
+- `compare_table_data` — Compute row-level diff between source/target tables
+- `generate_data_sync_script` — Generate `INSERT`/`UPDATE`/`DELETE` sync SQL plan from compare result inputs
 - `backup_database` — Create SQL backup output (schema + optional data)
 - `restore_database` — Execute SQL backup file against active connection
 
