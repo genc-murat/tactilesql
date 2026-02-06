@@ -1,6 +1,8 @@
 use crate::dependency_engine::graph::DependencyGraph;
 use crate::schema_tracker::models::SchemaDiff;
+use petgraph::graph::NodeIndex;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ImpactWarning {
@@ -27,36 +29,58 @@ pub fn check_schema_change_impact(
     // 1. Check Dropped Tables
     for table in &diff.dropped_tables {
         let table_name = &table.name;
-        // Find node in graph (simple name match for MVP, ideally schema qualified)
-        // We iterate nodes to find match.
+        let node_indices = find_node_indices_by_name(graph, table_name);
+        if node_indices.is_empty() {
+            continue;
+        }
 
-        let node_id = find_node_id_by_name(graph, table_name);
+        if node_indices.len() > 1 {
+            let candidates = node_indices
+                .iter()
+                .take(4)
+                .map(|idx| graph.graph[*idx].id.clone())
+                .collect::<Vec<_>>();
+            let suffix = if node_indices.len() > 4 {
+                format!(" (+{} more)", node_indices.len() - 4)
+            } else {
+                String::new()
+            };
+            warnings.push(ImpactWarning {
+                severity: ImpactSeverity::Low,
+                message: format!(
+                    "Table '{}' matched multiple dependency nodes: {}{}. Impact results include all matches.",
+                    table_name,
+                    candidates.join(", "),
+                    suffix
+                ),
+                source_table: table_name.clone(),
+                impacted_object: "multiple-schema-match".to_string(),
+                impact_type: "Ambiguous Table Match".to_string(),
+            });
+        }
 
-        if let Some(id) = node_id {
-            // Find what depends on this table
-            if let Some(node_idx) = graph
+        let mut seen_impacted: HashSet<String> = HashSet::new();
+        for node_idx in node_indices {
+            let mut walker = graph
                 .graph
-                .node_indices()
-                .find(|i| graph.graph[*i].id == id)
-            {
-                let mut walker = graph
-                    .graph
-                    .neighbors_directed(node_idx, petgraph::Direction::Incoming)
-                    .detach();
-                while let Some(neighbor_idx) = walker.next_node(&graph.graph) {
-                    let neighbor = &graph.graph[neighbor_idx];
-
-                    warnings.push(ImpactWarning {
-                        severity: ImpactSeverity::High,
-                        message: format!(
-                            "Dropping table '{}' will break dependent object '{}' ({:?})",
-                            table_name, neighbor.name, neighbor.node_type
-                        ),
-                        source_table: table_name.clone(),
-                        impacted_object: neighbor.name.clone(),
-                        impact_type: "Broken Dependency".to_string(),
-                    });
+                .neighbors_directed(node_idx, petgraph::Direction::Incoming)
+                .detach();
+            while let Some(neighbor_idx) = walker.next_node(&graph.graph) {
+                let neighbor = &graph.graph[neighbor_idx];
+                if !seen_impacted.insert(neighbor.id.clone()) {
+                    continue;
                 }
+
+                warnings.push(ImpactWarning {
+                    severity: ImpactSeverity::High,
+                    message: format!(
+                        "Dropping table '{}' will break dependent object '{}' ({:?})",
+                        table_name, neighbor.id, neighbor.node_type
+                    ),
+                    source_table: table_name.clone(),
+                    impacted_object: neighbor.id.clone(),
+                    impact_type: "Broken Dependency".to_string(),
+                });
             }
         }
     }
@@ -65,32 +89,34 @@ pub fn check_schema_change_impact(
     for table_diff in &diff.modified_tables {
         if !table_diff.dropped_columns.is_empty() {
             let table_name = &table_diff.table_name;
-            let node_id = find_node_id_by_name(graph, table_name);
+            let node_indices = find_node_indices_by_name(graph, table_name);
+            if node_indices.is_empty() {
+                continue;
+            }
 
-            if let Some(id) = node_id {
-                // Find downstream
-                if let Some(node_idx) = graph
+            let mut seen_impacted: HashSet<String> = HashSet::new();
+            for node_idx in node_indices {
+                let mut walker = graph
                     .graph
-                    .node_indices()
-                    .find(|i| graph.graph[*i].id == id)
-                {
-                    let mut walker = graph
-                        .graph
-                        .neighbors_directed(node_idx, petgraph::Direction::Incoming)
-                        .detach();
-                    while let Some(neighbor_idx) = walker.next_node(&graph.graph) {
-                        let neighbor = &graph.graph[neighbor_idx];
-
-                        // We don't know for sure if the View uses the dropped column without parsing the View definition.
-                        // But we should warn potential breakage.
-                        warnings.push(ImpactWarning {
-                             severity: ImpactSeverity::Medium,
-                             message: format!("Dropping columns from '{}' may verify affect dependent '{}'. Please verify column usage.", table_name, neighbor.name),
-                             source_table: table_name.clone(),
-                             impacted_object: neighbor.name.clone(),
-                             impact_type: "Potential Broken Dependency".to_string()
-                         });
+                    .neighbors_directed(node_idx, petgraph::Direction::Incoming)
+                    .detach();
+                while let Some(neighbor_idx) = walker.next_node(&graph.graph) {
+                    let neighbor = &graph.graph[neighbor_idx];
+                    if !seen_impacted.insert(neighbor.id.clone()) {
+                        continue;
                     }
+
+                    // We don't know for sure if a dependent object uses dropped columns without parsing its definition.
+                    warnings.push(ImpactWarning {
+                        severity: ImpactSeverity::Medium,
+                        message: format!(
+                            "Dropping columns from '{}' may affect dependent '{}'. Please verify column usage.",
+                            table_name, neighbor.id
+                        ),
+                        source_table: table_name.clone(),
+                        impacted_object: neighbor.id.clone(),
+                        impact_type: "Potential Broken Dependency".to_string(),
+                    });
                 }
             }
         }
@@ -99,21 +125,121 @@ pub fn check_schema_change_impact(
     warnings
 }
 
-fn find_node_id_by_name(graph: &DependencyGraph, name: &str) -> Option<String> {
-    // Naive search: strict equality on name, ignoring schema for now if ambiguous
-    // or try "public.name" vs "name"
-    // Ideally SchemaDiff contains schema info.
+fn find_node_indices_by_name(graph: &DependencyGraph, name: &str) -> Vec<NodeIndex> {
+    let target = name.trim();
+    if target.is_empty() {
+        return vec![];
+    }
 
-    // Graph nodes often ID as "schema.table".
-    // SchemaDiff table name might be just "table" or "table".
-
-    for node in graph.graph.node_weights() {
-        if node.name == name {
-            return Some(node.id.clone());
+    let target_lower = target.to_ascii_lowercase();
+    let parsed_schema_name = target.rsplit_once('.').and_then(|(schema, table)| {
+        let schema = schema.trim();
+        let table = table.trim();
+        if schema.is_empty() || table.is_empty() {
+            None
+        } else {
+            Some((schema.to_ascii_lowercase(), table.to_ascii_lowercase()))
         }
-        if node.id.ends_with(&format!(".{}", name)) {
-            return Some(node.id.clone());
+    });
+
+    let mut exact_id_matches = Vec::new();
+    let mut schema_name_matches = Vec::new();
+    let mut by_name_matches = Vec::new();
+
+    for idx in graph.graph.node_indices() {
+        let node = &graph.graph[idx];
+
+        if node.id.to_ascii_lowercase() == target_lower {
+            exact_id_matches.push(idx);
+            continue;
+        }
+
+        if let Some((schema_hint, table_hint)) = &parsed_schema_name {
+            let node_schema = node.schema.as_deref().unwrap_or("").to_ascii_lowercase();
+            if node_schema == *schema_hint && node.name.to_ascii_lowercase() == *table_hint {
+                schema_name_matches.push(idx);
+                continue;
+            }
+        }
+
+        if node.name.eq_ignore_ascii_case(target) {
+            by_name_matches.push(idx);
         }
     }
-    None
+
+    if !exact_id_matches.is_empty() {
+        return exact_id_matches;
+    }
+    if !schema_name_matches.is_empty() {
+        return schema_name_matches;
+    }
+    by_name_matches
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dependency_engine::graph::{EdgeType, NodeType};
+    use crate::schema_tracker::models::{SchemaDiff, TableDefinition};
+
+    #[test]
+    fn schema_qualified_lookup_is_precise() {
+        let mut graph = DependencyGraph::new();
+        let public_orders = graph.add_node(Some("public".to_string()), "orders".to_string(), NodeType::Table);
+        let archive_orders = graph.add_node(Some("archive".to_string()), "orders".to_string(), NodeType::Table);
+
+        let public_matches = find_node_indices_by_name(&graph, "public.orders");
+        assert_eq!(public_matches.len(), 1);
+        assert_eq!(graph.graph[public_matches[0]].id, public_orders);
+
+        let archive_matches = find_node_indices_by_name(&graph, "archive.orders");
+        assert_eq!(archive_matches.len(), 1);
+        assert_eq!(graph.graph[archive_matches[0]].id, archive_orders);
+    }
+
+    #[test]
+    fn ambiguous_table_name_produces_ambiguity_warning() {
+        let mut graph = DependencyGraph::new();
+        let public_orders =
+            graph.add_node(Some("public".to_string()), "orders".to_string(), NodeType::Table);
+        let archive_orders =
+            graph.add_node(Some("archive".to_string()), "orders".to_string(), NodeType::Table);
+        let public_view = graph.add_node(
+            Some("public".to_string()),
+            "orders_view".to_string(),
+            NodeType::View,
+        );
+        let archive_view = graph.add_node(
+            Some("archive".to_string()),
+            "orders_view_archive".to_string(),
+            NodeType::View,
+        );
+        graph.add_edge(&public_view, &public_orders, EdgeType::Select);
+        graph.add_edge(&archive_view, &archive_orders, EdgeType::Select);
+
+        let diff = SchemaDiff {
+            new_tables: vec![],
+            dropped_tables: vec![TableDefinition {
+                name: "orders".to_string(),
+                columns: vec![],
+                indexes: vec![],
+                foreign_keys: vec![],
+                primary_keys: vec![],
+                constraints: vec![],
+                row_count: None,
+            }],
+            modified_tables: vec![],
+        };
+
+        let warnings = check_schema_change_impact(&diff, &graph);
+        assert!(warnings
+            .iter()
+            .any(|w| w.impact_type == "Ambiguous Table Match"));
+        assert!(warnings
+            .iter()
+            .any(|w| w.impacted_object == "public.orders_view"));
+        assert!(warnings
+            .iter()
+            .any(|w| w.impacted_object == "archive.orders_view_archive"));
+    }
 }

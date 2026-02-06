@@ -58,10 +58,11 @@ export function SchemaDesigner() {
         stats: null,
 
         // UI
-        activeTab: 'columns', // columns, indexes, foreign_keys, constraints, triggers, ddl, stats
+        activeTab: 'columns', // columns, indexes, foreign_keys, diagram, constraints, triggers, ddl, stats
         isLoading: true,
         error: null,
         tablesList: [], // For FK reference dropdown
+        referencedSchemas: {},
 
         // Modals
         showIndexModal: false,
@@ -183,6 +184,9 @@ export function SchemaDesigner() {
                                 </button>
                                 <button class="px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all" id="tab-fks">
                                     Foreign Keys
+                                </button>
+                                <button class="px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all" id="tab-diagram">
+                                    Diagram
                                 </button>
                                 <button class="px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all" id="tab-constraints">
                                     Constraints
@@ -415,6 +419,7 @@ END"></textarea>
         const tabCols = container.querySelector('#tab-columns');
         const tabIdx = container.querySelector('#tab-indexes');
         const tabFks = container.querySelector('#tab-fks');
+        const tabDiagram = container.querySelector('#tab-diagram');
         const tabCons = container.querySelector('#tab-constraints');
         const tabTriggers = container.querySelector('#tab-triggers');
         const tabDdl = container.querySelector('#tab-ddl');
@@ -426,6 +431,7 @@ END"></textarea>
         tabCols.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'columns' ? activeClass : inactiveClass}`;
         tabIdx.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'indexes' ? activeClass : inactiveClass}`;
         tabFks.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'foreign_keys' ? activeClass : inactiveClass}`;
+        tabDiagram.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'diagram' ? activeClass : inactiveClass}`;
         tabCons.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'constraints' ? activeClass : inactiveClass}`;
         tabTriggers.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'triggers' ? activeClass : inactiveClass}`;
         tabDdl.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'ddl' ? activeClass : inactiveClass}`;
@@ -466,6 +472,8 @@ END"></textarea>
                 state.newFK = { name: '', column: '', refTable: '', refColumn: '' };
                 renderFKModal();
             };
+        } else if (state.activeTab === 'diagram') {
+            actionsContainer.innerHTML = '';
         } else if (state.activeTab === 'constraints') {
             actionsContainer.innerHTML = '';
             // Read-only view for now
@@ -563,7 +571,7 @@ END"></textarea>
             thead.innerHTML = '';
             renderStatsView();
         } else if (state.activeTab === 'diagram') {
-            statusDisplay.innerText = `ER DIAGRAM(Direct Relationships)`;
+            statusDisplay.innerText = `ER DIAGRAM (DIRECT RELATIONSHIPS)`;
             thead.innerHTML = '';
             renderDiagramView();
         }
@@ -801,14 +809,63 @@ END"></textarea>
         const tbody = container.querySelector('#table-body');
         tbody.innerHTML = '';
 
+        if (state.isLoading) { renderLoading(tbody); return; }
+        if (state.error) { renderError(tbody, state.error); return; }
+
+        const fkList = (state.foreignKeys || []).filter(fk => fk && fk.referenced_table);
+        const referencedTables = [...new Set(fkList.map(fk => fk.referenced_table))];
+        const relationRows = fkList.length > 0
+            ? fkList.map((fk, idx) => `
+                <div class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 p-3 rounded-lg border ${isLight ? 'bg-gray-50 border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : 'bg-white/5 border-white/10')}">
+                    <span class="text-[10px] font-bold uppercase tracking-widest ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">FK ${idx + 1}</span>
+                    <span class="font-mono text-xs ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">${escapeHtml(state.tableName)}.${escapeHtml(fk.column_name)}</span>
+                    <span class="material-symbols-outlined text-sm ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">arrow_forward</span>
+                    <span class="font-mono text-xs ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">${escapeHtml(fk.referenced_table)}.${escapeHtml(fk.referenced_column)}</span>
+                    <span class="sm:ml-auto text-[10px] font-mono ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500')}">${escapeHtml(fk.constraint_name || 'foreign_key')}</span>
+                </div>
+            `).join('')
+            : `<div class="p-4 rounded-lg border border-dashed ${isLight ? 'border-gray-300 text-gray-500 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] text-[#9893a5] bg-[#fffaf3]' : 'border-white/20 text-gray-400 bg-white/5')} text-sm">
+                No direct foreign key relationships found for this table.
+            </div>`;
+
+        const referencedCards = referencedTables.map((table) => {
+            const cols = (state.referencedSchemas[table] || [])
+                .slice(0, 6)
+                .map(col => `<span class="text-[10px] font-mono ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">${escapeHtml(col.name)} <span class="${isLight ? 'text-gray-400' : 'text-gray-500'}">(${escapeHtml(col.type)})</span></span>`)
+                .join('<br>');
+            const remaining = (state.referencedSchemas[table] || []).length - 6;
+            return `
+                <div class="p-3 rounded-lg border ${isLight ? 'bg-white border-gray-200 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : 'bg-white/5 border-white/10')}">
+                    <div class="text-[11px] font-bold ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-white')} mb-2">${escapeHtml(table)}</div>
+                    <div class="leading-5">${cols || `<span class="text-[10px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500')}">Schema unavailable</span>`}</div>
+                    ${remaining > 0 ? `<div class="mt-2 text-[10px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500')}">+${remaining} more columns</div>` : ''}
+                </div>
+            `;
+        }).join('');
+
         const tr = document.createElement('tr');
         const td = document.createElement('td');
         td.colSpan = 7;
-        td.className = 'p-6';
+        td.className = 'p-0';
         td.innerHTML = `
-            <div class="text-center ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500')}">
-                <span class="material-symbols-outlined text-4xl opacity-50 mb-2">account_tree</span>
-                <p class="text-sm">ER Diagram view coming soon...</p>
+            <div class="p-6 space-y-4">
+                <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                    <div class="p-4 rounded-lg border ${isLight ? 'bg-white border-gray-200 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : 'bg-white/5 border-white/10')}">
+                        <div class="text-[10px] uppercase tracking-widest font-bold ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">Focus Table</div>
+                        <div class="mt-2 text-sm font-semibold ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')}">${escapeHtml(state.tableName)}</div>
+                        <div class="mt-1 text-[11px] ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">${state.columns.length} columns, ${fkList.length} outgoing FKs</div>
+                    </div>
+                    <div class="xl:col-span-2 p-4 rounded-lg border ${isLight ? 'bg-white border-gray-200 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : 'bg-white/5 border-white/10')}">
+                        <div class="text-[10px] uppercase tracking-widest font-bold ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400')} mb-3">Direct Relationships</div>
+                        <div class="space-y-2">${relationRows}</div>
+                    </div>
+                </div>
+                ${referencedTables.length > 0 ? `
+                    <div class="p-4 rounded-lg border ${isLight ? 'bg-white border-gray-200 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : 'bg-white/5 border-white/10')}">
+                        <div class="text-[10px] uppercase tracking-widest font-bold ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400')} mb-3">Referenced Tables</div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">${referencedCards}</div>
+                    </div>
+                ` : ''}
             </div>
         `;
         tr.appendChild(td);
@@ -1982,6 +2039,7 @@ END"></textarea>
     container.querySelector('#tab-columns').onclick = () => { state.activeTab = 'columns'; updateAll(); };
     container.querySelector('#tab-indexes').onclick = () => { state.activeTab = 'indexes'; updateAll(); };
     container.querySelector('#tab-fks').onclick = () => { state.activeTab = 'foreign_keys'; updateAll(); };
+    container.querySelector('#tab-diagram').onclick = () => { state.activeTab = 'diagram'; updateAll(); };
     container.querySelector('#tab-constraints').onclick = () => { state.activeTab = 'constraints'; updateAll(); };
     container.querySelector('#tab-triggers').onclick = () => { state.activeTab = 'triggers'; updateAll(); };
     container.querySelector('#tab-ddl').onclick = () => { state.activeTab = 'ddl'; updateAll(); };

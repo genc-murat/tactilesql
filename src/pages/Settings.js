@@ -77,7 +77,9 @@ export function Settings() {
 
     const render = () => {
         const currentTheme = ThemeManager.getCurrentTheme();
+        const autocompleteEnabled = SettingsManager.get('autocomplete.enabled', true);
         const snippetSuggestionsEnabled = SettingsManager.get('autocomplete.snippets', true);
+        const lineNumbersEnabled = SettingsManager.get('editor.lineNumbers', true);
         const profilerEnabled = SettingsManager.get('profiler.enabled', true);
         const profilerExplainEnabled = SettingsManager.get('profiler.explainAnalyze', true);
         const workbenchSnippetsEnabled = SettingsManager.get('workbench.snippets', true);
@@ -296,8 +298,8 @@ export function Settings() {
                                 <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Auto-complete</h3>
                                 <p class="text-xs text-gray-500 mt-1">Enable SQL auto-completion suggestions</p>
                             </div>
-                            <button class="relative w-12 h-6 rounded-full bg-gradient-to-r from-mysql-teal to-mysql-cyan transition-all" title="Coming soon">
-                                <span class="absolute right-1 top-1 w-4 h-4 rounded-full bg-white shadow-md transition-transform"></span>
+                            <button id="autocomplete-enabled-toggle" class="relative w-12 h-6 rounded-full transition-all ${autocompleteEnabled ? 'bg-gradient-to-r from-mysql-teal to-mysql-cyan' : (isLight ? 'bg-gray-200' : (isOceanic ? 'bg-ocean-border/40' : 'bg-white/10'))}">
+                                <span class="absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow-md transition-transform transform ${autocompleteEnabled ? 'translate-x-6' : 'translate-x-0'}"></span>
                             </button>
                         </div>
 
@@ -336,8 +338,8 @@ export function Settings() {
                                 <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Line Numbers</h3>
                                 <p class="text-xs text-gray-500 mt-1">Show line numbers in the editor</p>
                             </div>
-                            <button class="relative w-12 h-6 rounded-full bg-gradient-to-r from-mysql-teal to-mysql-cyan transition-all">
-                                <span class="absolute right-1 top-1 w-4 h-4 rounded-full bg-white shadow-md transition-transform"></span>
+                            <button id="editor-line-numbers-toggle" class="relative w-12 h-6 rounded-full transition-all ${lineNumbersEnabled ? 'bg-gradient-to-r from-mysql-teal to-mysql-cyan' : (isLight ? 'bg-gray-200' : (isOceanic ? 'bg-ocean-border/40' : 'bg-white/10'))}">
+                                <span class="absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow-md transition-transform transform ${lineNumbersEnabled ? 'translate-x-6' : 'translate-x-0'}"></span>
                             </button>
                         </div>
 
@@ -527,7 +529,9 @@ export function Settings() {
         const emberBtn = container.querySelector('#theme-ember');
         const auroraBtn = container.querySelector('#theme-aurora');
         const preview = container.querySelector('#theme-preview');
+        const autocompleteEnabledToggle = container.querySelector('#autocomplete-enabled-toggle');
         const snippetToggle = container.querySelector('#autocomplete-snippets-toggle');
+        const lineNumbersToggle = container.querySelector('#editor-line-numbers-toggle');
         const workbenchSnippetsToggle = container.querySelector('#workbench-snippets-toggle');
         const workbenchHistoryToggle = container.querySelector('#workbench-history-toggle');
         const profilerToggle = container.querySelector('#profiler-enabled-toggle');
@@ -602,6 +606,16 @@ export function Settings() {
             updateAllButtons('aurora');
         });
 
+        if (autocompleteEnabledToggle) {
+            autocompleteEnabledToggle.addEventListener('click', () => {
+                const current = SettingsManager.get('autocomplete.enabled', true);
+                const next = !current;
+                SettingsManager.set('autocomplete.enabled', next);
+                setToggleState(autocompleteEnabledToggle, next);
+            });
+            setToggleState(autocompleteEnabledToggle, SettingsManager.get('autocomplete.enabled', true));
+        }
+
         if (snippetToggle) {
             snippetToggle.addEventListener('click', () => {
                 const current = SettingsManager.get('autocomplete.snippets', true);
@@ -609,6 +623,16 @@ export function Settings() {
                 SettingsManager.set('autocomplete.snippets', next);
                 setToggleState(snippetToggle, next);
             });
+        }
+
+        if (lineNumbersToggle) {
+            lineNumbersToggle.addEventListener('click', () => {
+                const current = SettingsManager.get('editor.lineNumbers', true);
+                const next = !current;
+                SettingsManager.set('editor.lineNumbers', next);
+                setToggleState(lineNumbersToggle, next);
+            });
+            setToggleState(lineNumbersToggle, SettingsManager.get('editor.lineNumbers', true));
         }
 
         if (workbenchSnippetsToggle) {

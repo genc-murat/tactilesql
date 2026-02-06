@@ -179,6 +179,21 @@ export function DataTools() {
         }
     };
 
+    const handleImportExcel = async () => {
+        if (!selectedDb || !selectedTable) {
+            Dialog.alert('Please select a database and table first.', 'Selection Required');
+            return;
+        }
+
+        const shouldContinue = await Dialog.confirm(
+            'Direct .xlsx parsing is not available in this build.\n\nExport the sheet as CSV and continue with CSV import?',
+            'Excel Import'
+        );
+        if (shouldContinue) {
+            await handleImportCSV();
+        }
+    };
+
     // Backup handlers
     const handleBackup = async () => {
         if (!selectedDb) {
@@ -437,18 +452,17 @@ export function DataTools() {
                             </ul>
                         </div>
                         
-                        <!-- Placeholder for future formats -->
-                        <div class="p-6 rounded-lg ${isLight ? 'bg-gray-50 border border-gray-200' : (isDawn ? 'bg-[#faf4ed]/50 border border-[#f2e9e1]/50' : (isOceanic ? 'bg-ocean-bg/50 border border-ocean-border/50' : 'bg-white/5 border border-white/10'))} opacity-50">
+                        <div class="p-6 rounded-lg ${isLight ? 'bg-gray-50 border border-gray-200 hover:border-mysql-teal' : (isDawn ? 'bg-[#faf4ed] border border-[#f2e9e1] hover:border-[#ea9d34]' : (isOceanic ? 'bg-ocean-bg border border-ocean-border hover:border-ocean-frost' : 'bg-white/5 border border-white/10 hover:border-mysql-teal'))} transition-all cursor-pointer" id="import-excel">
                             <div class="flex items-center gap-4 mb-4">
                                 <div class="w-14 h-14 rounded-xl ${isDawn ? 'bg-[#c4a7e7]/20' : 'bg-purple-500/20'} flex items-center justify-center">
                                     <span class="material-symbols-outlined text-3xl ${isDawn ? 'text-[#c4a7e7]' : 'text-purple-500'}">table_view</span>
                                 </div>
                                 <div>
                                     <h4 class="text-lg font-semibold ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')}">Import Excel</h4>
-                                    <p class="text-sm ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Coming soon</p>
+                                    <p class="text-sm ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">.xlsx to CSV flow</p>
                                 </div>
                             </div>
-                            <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">Support for .xlsx files will be added in a future update.</p>
+                            <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">Convert workbook to CSV, then continue with guided import.</p>
                         </div>
                     </div>
                 </div>
@@ -545,6 +559,7 @@ export function DataTools() {
 
         // Import button
         container.querySelector('#import-csv')?.addEventListener('click', handleImportCSV);
+        container.querySelector('#import-excel')?.addEventListener('click', handleImportExcel);
 
         // Backup/Restore buttons
         container.querySelector('#btn-backup')?.addEventListener('click', handleBackup);

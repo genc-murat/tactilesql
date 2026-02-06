@@ -1,7 +1,7 @@
 use crate::db_types::*;
 use crate::schema_tracker::models::*;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub fn compare_schemas(old: &SchemaSnapshot, new: &SchemaSnapshot) -> SchemaDiff {
     let mut diff = SchemaDiff {
@@ -85,23 +85,70 @@ fn compare_tables(old: &TableDefinition, new: &TableDefinition) -> Option<TableD
     }
 
     // Indexes
-    // Simplified index comparison based on name for now.
-    // Better comparison would check columns even if name changed, but unique constraint names usually matter.
-    let old_idxs: HashMap<String, &TableIndex> =
-        old.indexes.iter().map(|i| (i.name.clone(), i)).collect();
-    let new_idxs: HashMap<String, &TableIndex> =
-        new.indexes.iter().map(|i| (i.name.clone(), i)).collect();
+    // Compare by name first, then by structure (columns/type/unique) to detect renames
+    // and modifications under the same name.
+    let old_profiles = build_index_profiles(&old.indexes);
+    let new_profiles = build_index_profiles(&new.indexes);
 
-    for (name, new_idx) in &new_idxs {
-        if !old_idxs.contains_key(name) {
-            table_diff.new_indexes.push((*new_idx).clone());
+    let mut matched_old_names: HashSet<String> = HashSet::new();
+    let mut matched_new_names: HashSet<String> = HashSet::new();
+
+    // 1) Same normalized name: if signature changed, treat as drop+create.
+    for (name, old_profile) in &old_profiles {
+        if let Some(new_profile) = new_profiles.get(name) {
+            matched_old_names.insert(name.clone());
+            matched_new_names.insert(name.clone());
+
+            if old_profile.signature != new_profile.signature {
+                table_diff
+                    .dropped_indexes
+                    .extend(old_profile.entries.clone());
+                table_diff.new_indexes.extend(new_profile.entries.clone());
+            }
         }
-        // If exists, assume same for MVP, or compare fields
     }
 
-    for (name, old_idx) in &old_idxs {
-        if !new_idxs.contains_key(name) {
-            table_diff.dropped_indexes.push((*old_idx).clone());
+    // 2) Different names: match by signature to avoid false positives on pure rename.
+    let mut new_by_signature: HashMap<IndexSignature, Vec<String>> = HashMap::new();
+    for (name, profile) in &new_profiles {
+        if matched_new_names.contains(name) {
+            continue;
+        }
+        new_by_signature
+            .entry(profile.signature.clone())
+            .or_default()
+            .push(name.clone());
+    }
+
+    for candidates in new_by_signature.values_mut() {
+        candidates.sort();
+    }
+
+    for (old_name, old_profile) in &old_profiles {
+        if matched_old_names.contains(old_name) {
+            continue;
+        }
+
+        if let Some(candidates) = new_by_signature.get_mut(&old_profile.signature) {
+            if let Some(new_name) = candidates.pop() {
+                matched_old_names.insert(old_name.clone());
+                matched_new_names.insert(new_name);
+            }
+        }
+    }
+
+    // 3) Anything still unmatched is a true drop or create.
+    for (name, old_profile) in &old_profiles {
+        if !matched_old_names.contains(name) {
+            table_diff
+                .dropped_indexes
+                .extend(old_profile.entries.clone());
+        }
+    }
+
+    for (name, new_profile) in &new_profiles {
+        if !matched_new_names.contains(name) {
+            table_diff.new_indexes.extend(new_profile.entries.clone());
         }
     }
 
@@ -155,6 +202,73 @@ fn compare_columns(old: &ColumnSchema, new: &ColumnSchema) -> Vec<DiffType> {
     }
 
     changes
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct IndexSignature {
+    columns: Vec<String>,
+    non_unique: bool,
+    index_type: String,
+}
+
+#[derive(Debug, Clone)]
+struct IndexProfile {
+    signature: IndexSignature,
+    entries: Vec<TableIndex>,
+}
+
+fn normalize_index_token(value: &str) -> String {
+    value.trim().to_ascii_lowercase()
+}
+
+fn build_index_profiles(indexes: &[TableIndex]) -> HashMap<String, IndexProfile> {
+    let mut grouped: HashMap<String, Vec<TableIndex>> = HashMap::new();
+
+    for idx in indexes {
+        grouped
+            .entry(normalize_index_token(&idx.name))
+            .or_default()
+            .push(idx.clone());
+    }
+
+    let mut profiles = HashMap::new();
+    for (name, entries) in grouped {
+        let mut seen_cols = HashSet::new();
+        let mut columns = Vec::new();
+        let mut non_unique = true;
+        let mut index_types = Vec::new();
+
+        for entry in &entries {
+            let normalized_col = normalize_index_token(&entry.column_name);
+            if seen_cols.insert(normalized_col.clone()) {
+                columns.push(normalized_col);
+            }
+
+            non_unique = non_unique && entry.non_unique;
+
+            let normalized_type = normalize_index_token(&entry.index_type);
+            if !normalized_type.is_empty() {
+                index_types.push(normalized_type);
+            }
+        }
+
+        index_types.sort();
+        index_types.dedup();
+
+        profiles.insert(
+            name,
+            IndexProfile {
+                signature: IndexSignature {
+                    columns,
+                    non_unique,
+                    index_type: index_types.join("|"),
+                },
+                entries,
+            },
+        );
+    }
+
+    profiles
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -346,5 +460,78 @@ fn float_rank(base: &str) -> Option<u8> {
         "real" | "float4" => Some(1),
         "float" | "double" | "float8" => Some(2),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+
+    fn table_with_indexes(name: &str, indexes: Vec<TableIndex>) -> TableDefinition {
+        TableDefinition {
+            name: name.to_string(),
+            columns: vec![],
+            indexes,
+            foreign_keys: vec![],
+            primary_keys: vec![],
+            constraints: vec![],
+            row_count: None,
+        }
+    }
+
+    fn snapshot_with_tables(tables: Vec<TableDefinition>) -> SchemaSnapshot {
+        SchemaSnapshot {
+            id: None,
+            connection_id: "conn-1".to_string(),
+            timestamp: Utc::now(),
+            schema_hash: "hash".to_string(),
+            tables,
+            views: vec![],
+            routines: vec![],
+            triggers: vec![],
+        }
+    }
+
+    fn index(name: &str, column: &str, non_unique: bool, index_type: &str) -> TableIndex {
+        TableIndex {
+            name: name.to_string(),
+            column_name: column.to_string(),
+            non_unique,
+            index_type: index_type.to_string(),
+        }
+    }
+
+    #[test]
+    fn index_rename_with_same_structure_is_not_reported_as_change() {
+        let old = snapshot_with_tables(vec![table_with_indexes(
+            "orders",
+            vec![index("idx_orders_customer", "customer_id", true, "BTREE")],
+        )]);
+        let new = snapshot_with_tables(vec![table_with_indexes(
+            "orders",
+            vec![index("idx_orders_customer_v2", "customer_id", true, "BTREE")],
+        )]);
+
+        let diff = compare_schemas(&old, &new);
+        assert!(diff.modified_tables.is_empty());
+    }
+
+    #[test]
+    fn index_definition_change_with_same_name_is_reported() {
+        let old = snapshot_with_tables(vec![table_with_indexes(
+            "orders",
+            vec![index("idx_orders_lookup", "customer_id", true, "BTREE")],
+        )]);
+        let new = snapshot_with_tables(vec![table_with_indexes(
+            "orders",
+            vec![index("idx_orders_lookup", "order_date", true, "BTREE")],
+        )]);
+
+        let diff = compare_schemas(&old, &new);
+        assert_eq!(diff.modified_tables.len(), 1);
+        let table_diff = &diff.modified_tables[0];
+        assert!(!table_diff.dropped_indexes.is_empty());
+        assert!(!table_diff.new_indexes.is_empty());
     }
 }

@@ -5,6 +5,9 @@ const DEFAULT_SETTINGS = {
         enabled: true,
         snippets: true,
     },
+    editor: {
+        lineNumbers: true,
+    },
     profiler: {
         enabled: true,
         explainAnalyze: true,
@@ -42,6 +45,7 @@ const loadSettings = () => {
             ...DEFAULT_SETTINGS,
             ...parsed,
             autocomplete: { ...DEFAULT_SETTINGS.autocomplete, ...(parsed.autocomplete || {}) },
+            editor: { ...DEFAULT_SETTINGS.editor, ...(parsed.editor || {}) },
             profiler: { ...DEFAULT_SETTINGS.profiler, ...(parsed.profiler || {}) },
             workbench: { ...DEFAULT_SETTINGS.workbench, ...(parsed.workbench || {}) }
         };

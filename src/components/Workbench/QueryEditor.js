@@ -73,6 +73,7 @@ export function QueryEditor() {
     let cachedColumns = {};
 
     let currentGhostText = ''; // State for ghost text prediction
+    const isAutocompleteEnabled = () => SettingsManager.get('autocomplete.enabled', true);
 
     // --- Context Menu State ---
     let contextMenu = {
@@ -162,7 +163,7 @@ export function QueryEditor() {
 
         const text = textarea.value || '';
         const cursorPos = textarea.selectionStart ?? 0;
-        if (cursorPos === text.length && text.length > 0 && !autocompleteVisible) {
+        if (isAutocompleteEnabled() && cursorPos === text.length && text.length > 0 && !autocompleteVisible) {
             const nextToken = smartAutocomplete.getNextTokenPrediction(text);
             if (nextToken) {
                 currentGhostText = nextToken;
@@ -353,6 +354,7 @@ export function QueryEditor() {
         const lines = text.split('\n');
         const currentLineIndex = lines.length - 1;
         const currentLineLength = lines[currentLineIndex].length;
+        const lineNumberOffset = SettingsManager.get('editor.lineNumbers', true) ? 80 : 20;
 
         // Approximate position
         const lineHeight = 22;
@@ -360,7 +362,7 @@ export function QueryEditor() {
 
         return {
             top: (currentLineIndex + 1) * lineHeight + 40,
-            left: currentLineLength * charWidth + 80
+            left: currentLineLength * charWidth + lineNumberOffset
         };
     };
 
@@ -534,6 +536,11 @@ export function QueryEditor() {
     };
 
     const showAutocomplete = async (textarea) => {
+        if (!isAutocompleteEnabled()) {
+            hideAutocomplete();
+            return;
+        }
+
         const word = getCurrentWord(textarea);
         suggestions = await getSuggestions(word, textarea);
         selectedIndex = 0;
@@ -729,6 +736,7 @@ export function QueryEditor() {
         // Check if PostgreSQL (hide database selector for PostgreSQL)
         const activeDbType = localStorage.getItem('activeDbType') || 'mysql';
         const isPg = activeDbType === 'postgresql';
+        const lineNumbersEnabled = SettingsManager.get('editor.lineNumbers', true);
 
         container.innerHTML = `
             <div class="border-b ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5'))}">
@@ -897,9 +905,9 @@ export function QueryEditor() {
                 </div>
             </div>
             <div class="flex-1 neu-inset rounded-xl ${isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0f1115]'))} overflow-hidden flex p-4 font-mono text-[14px] leading-relaxed relative focus-within:ring-1 focus-within:ring-mysql-teal/50 transition-all">
-                <div class="w-12 ${(isLight || isDawn) ? 'text-gray-300 border-gray-100' : (isOceanic ? 'text-ocean-text/30 border-ocean-border/30' : 'text-gray-600 border-white/5')} text-right pr-4 border-r select-none text-xs leading-[22px] pt-1 overflow-hidden" id="line-numbers"></div>
-                <div class="flex-1 relative pl-6">
-                    <pre id="syntax-highlight" class="absolute inset-0 pl-6 pt-0 font-mono text-[14px] leading-[22px] pointer-events-none overflow-hidden whitespace-pre-wrap break-words" aria-hidden="true"></pre>
+                ${lineNumbersEnabled ? `<div class="w-12 ${(isLight || isDawn) ? 'text-gray-300 border-gray-100' : (isOceanic ? 'text-ocean-text/30 border-ocean-border/30' : 'text-gray-600 border-white/5')} text-right pr-4 border-r select-none text-xs leading-[22px] pt-1 overflow-hidden" id="line-numbers"></div>` : ''}
+                <div class="flex-1 relative ${lineNumbersEnabled ? 'pl-6' : 'pl-0'}">
+                    <pre id="syntax-highlight" class="absolute inset-0 ${lineNumbersEnabled ? 'pl-6' : 'pl-0'} pt-0 font-mono text-[14px] leading-[22px] pointer-events-none overflow-hidden whitespace-pre-wrap break-words" aria-hidden="true"></pre>
                     <textarea id="query-input" class="relative w-full h-full bg-transparent border-none ${isLight ? 'text-transparent' : (isOceanic ? 'text-transparent' : 'text-transparent')} ${isLight ? 'caret-gray-800' : (isOceanic ? 'caret-white' : 'caret-white')} font-mono text-[14px] leading-[22px] focus:ring-0 resize-none outline-none custom-scrollbar p-0 z-10 placeholder:text-gray-600/50" spellcheck="false" placeholder="Enter your SQL query here... (Ctrl+Space for suggestions)">${activeTab ? activeTab.content : ''}</textarea>
                 </div>
             </div>
@@ -1556,7 +1564,7 @@ export function QueryEditor() {
                 }
 
                 // Ghost Text Acceptance
-                if (e.key === 'Tab' && currentGhostText && !autocompleteVisible) {
+                if (isAutocompleteEnabled() && e.key === 'Tab' && currentGhostText && !autocompleteVisible) {
                     e.preventDefault();
 
                     const text = textarea.value;
@@ -1578,7 +1586,11 @@ export function QueryEditor() {
                     return;
                 }
 
-                if (autocompleteVisible) {
+                if (!isAutocompleteEnabled() && autocompleteVisible) {
+                    hideAutocomplete();
+                }
+
+                if (isAutocompleteEnabled() && autocompleteVisible) {
                     if (e.key === 'ArrowDown') {
                         e.preventDefault();
                         selectedIndex = Math.min(selectedIndex + 1, suggestions.length - 1);
@@ -1617,6 +1629,10 @@ export function QueryEditor() {
                 // Ctrl+Space to trigger autocomplete
                 if (e.ctrlKey && e.code === 'Space') {
                     e.preventDefault();
+                    if (!isAutocompleteEnabled()) {
+                        toastWarning('Autocomplete is disabled in Settings.');
+                        return;
+                    }
                     showAutocomplete(textarea);
                 }
 
@@ -2706,6 +2722,26 @@ export function QueryEditor() {
             }
         }, 100);
     });
+
+    const onSettingsChanged = (e) => {
+        const changedPath = e.detail?.path || e.detail?.key;
+        if (!changedPath) return;
+        if (changedPath === 'autocomplete.enabled') {
+            if (!isAutocompleteEnabled()) {
+                hideAutocomplete();
+            }
+            render();
+            return;
+        }
+        if (changedPath === 'editor.lineNumbers') {
+            render();
+        }
+    };
+    window.addEventListener('tactilesql:settings-changed', onSettingsChanged);
+
+    container.onUnmount = () => {
+        window.removeEventListener('tactilesql:settings-changed', onSettingsChanged);
+    };
 
     return container;
 }
