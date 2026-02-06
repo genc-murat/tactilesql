@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "contract:report": "node scripts/command-contract-report.mjs --write",
+    "contract:check": "node scripts/command-contract-report.mjs --check"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.9.1",

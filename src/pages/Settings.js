@@ -1,5 +1,7 @@
 import { ThemeManager } from '../utils/ThemeManager.js';
 import { SettingsManager } from '../utils/SettingsManager.js';
+import { invoke } from '@tauri-apps/api/core';
+import commandContractSnapshot from '../generated/command-contract.json';
 
 // Snippet categories and descriptions
 
@@ -10,6 +12,29 @@ const THIRD_PARTY_SOFTWARE = [
     { name: 'PostCSS', license: 'MIT', url: 'https://postcss.org' },
     { name: 'Autoprefixer', license: 'MIT', url: 'https://github.com/postcss/autoprefixer' },
 ];
+
+const escapeHtml = (value) => String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const normalizeCommandList = (commands) => Array.from(new Set((commands || []).map(c => String(c).trim()).filter(Boolean))).sort();
+
+const buildCommandContractReport = (frontendCommands, backendCommands) => {
+    const frontend = normalizeCommandList(frontendCommands);
+    const backend = normalizeCommandList(backendCommands);
+    const backendSet = new Set(backend);
+    const frontendSet = new Set(frontend);
+
+    return {
+        frontendCommands: frontend,
+        backendCommands: backend,
+        missingInBackend: frontend.filter(cmd => !backendSet.has(cmd)),
+        unusedInFrontend: backend.filter(cmd => !frontendSet.has(cmd)),
+    };
+};
 
 export function Settings() {
     let theme = ThemeManager.getCurrentTheme();
@@ -30,6 +55,17 @@ export function Settings() {
     let isEmber = theme === 'ember';
     let isAurora = theme === 'aurora';
 
+    const snapshotContractReport = buildCommandContractReport(
+        commandContractSnapshot?.frontendCommands,
+        commandContractSnapshot?.backendCommands
+    );
+    let commandContractState = {
+        loading: false,
+        error: null,
+        lastCheckedAt: null,
+        liveReport: null,
+    };
+
     const updateThemeState = (newTheme) => {
         theme = newTheme;
         isLight = theme === 'light' || theme === 'dawn';
@@ -46,6 +82,25 @@ export function Settings() {
         const profilerExplainEnabled = SettingsManager.get('profiler.explainAnalyze', true);
         const workbenchSnippetsEnabled = SettingsManager.get('workbench.snippets', true);
         const workbenchHistoryEnabled = SettingsManager.get('workbench.history', true);
+        const contractReport = commandContractState.liveReport || snapshotContractReport;
+        const missingInBackend = contractReport.missingInBackend || [];
+        const unusedInFrontend = contractReport.unusedInFrontend || [];
+        const contractStatus = commandContractState.loading
+            ? 'Checking...'
+            : (commandContractState.error
+                ? 'Check Failed'
+                : (missingInBackend.length === 0 ? 'Healthy' : 'Mismatch'));
+        const contractStatusClass = commandContractState.loading
+            ? 'text-amber-500 bg-amber-500/10 border-amber-500/20'
+            : (commandContractState.error
+                ? 'text-red-500 bg-red-500/10 border-red-500/20'
+                : (missingInBackend.length === 0
+                    ? 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20'
+                    : 'text-orange-500 bg-orange-500/10 border-orange-500/20'));
+        const contractCheckedLabel = commandContractState.lastCheckedAt
+            ? new Date(commandContractState.lastCheckedAt).toLocaleString()
+            : (commandContractSnapshot?.generatedAt ? new Date(commandContractSnapshot.generatedAt).toLocaleString() : 'N/A');
+        const contractSourceLabel = commandContractState.liveReport ? 'Live Runtime Check' : 'Snapshot';
 
         container.innerHTML = `
         <div class="h-full p-6 lg:p-8">
@@ -393,6 +448,70 @@ export function Settings() {
                                 Reload
                             </button>
                         </div>
+
+                        <div class="pt-4 border-t ${isLight ? 'border-gray-200' : 'border-white/10'}">
+                            <div class="flex items-center justify-between gap-3 mb-3">
+                                <div>
+                                    <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Command Contract Health</h3>
+                                    <p class="text-xs text-gray-500 mt-1">Frontend invoke list vs backend handler registry</p>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span id="command-contract-status-pill" class="px-2 py-1 rounded-md border text-[10px] font-bold uppercase tracking-wider ${contractStatusClass}">
+                                        ${contractStatus}
+                                    </span>
+                                    <button id="refresh-command-contract-btn" class="flex items-center gap-1 px-2.5 py-1.5 rounded-md ${isLight ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-white/10 text-gray-300 hover:bg-white/20'} text-xs font-medium transition-all">
+                                        <span class="material-symbols-outlined text-sm">sync</span>
+                                        Refresh
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+                                <div class="p-3 rounded-lg ${isLight ? 'bg-gray-50' : 'bg-black/20'}">
+                                    <div class="text-[10px] uppercase tracking-wider text-gray-500">Frontend</div>
+                                    <div id="command-contract-count-frontend" class="mt-1 text-sm font-mono ${isLight ? 'text-gray-900' : 'text-white'}">${contractReport.frontendCommands.length}</div>
+                                </div>
+                                <div class="p-3 rounded-lg ${isLight ? 'bg-gray-50' : 'bg-black/20'}">
+                                    <div class="text-[10px] uppercase tracking-wider text-gray-500">Backend</div>
+                                    <div id="command-contract-count-backend" class="mt-1 text-sm font-mono ${isLight ? 'text-gray-900' : 'text-white'}">${contractReport.backendCommands.length}</div>
+                                </div>
+                                <div class="p-3 rounded-lg ${isLight ? 'bg-gray-50' : 'bg-black/20'}">
+                                    <div class="text-[10px] uppercase tracking-wider text-gray-500">Missing In Backend</div>
+                                    <div id="command-contract-count-missing" class="mt-1 text-sm font-mono ${missingInBackend.length > 0 ? 'text-orange-500' : (isLight ? 'text-gray-900' : 'text-white')}">${missingInBackend.length}</div>
+                                </div>
+                                <div class="p-3 rounded-lg ${isLight ? 'bg-gray-50' : 'bg-black/20'}">
+                                    <div class="text-[10px] uppercase tracking-wider text-gray-500">Unused In Frontend</div>
+                                    <div id="command-contract-count-unused" class="mt-1 text-sm font-mono ${isLight ? 'text-gray-900' : 'text-white'}">${unusedInFrontend.length}</div>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 text-xs">
+                                <div class="p-3 rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50' : 'border-white/10 bg-black/20'}">
+                                    <div class="font-semibold mb-2 ${isLight ? 'text-gray-800' : 'text-gray-200'}">Missing In Backend</div>
+                                    <div id="command-contract-missing-list" class="space-y-1 ${isLight ? 'text-gray-600' : 'text-gray-400'}">
+                                        ${missingInBackend.length === 0
+                                            ? '<div>None</div>'
+                                            : missingInBackend.slice(0, 8).map(cmd => `<div class="font-mono">${escapeHtml(cmd)}</div>`).join('')}
+                                        ${missingInBackend.length > 8 ? `<div class="text-gray-500">+${missingInBackend.length - 8} more</div>` : ''}
+                                    </div>
+                                </div>
+                                <div class="p-3 rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50' : 'border-white/10 bg-black/20'}">
+                                    <div class="font-semibold mb-2 ${isLight ? 'text-gray-800' : 'text-gray-200'}">Unused In Frontend</div>
+                                    <div id="command-contract-unused-list" class="space-y-1 ${isLight ? 'text-gray-600' : 'text-gray-400'}">
+                                        ${unusedInFrontend.length === 0
+                                            ? '<div>None</div>'
+                                            : unusedInFrontend.slice(0, 8).map(cmd => `<div class="font-mono">${escapeHtml(cmd)}</div>`).join('')}
+                                        ${unusedInFrontend.length > 8 ? `<div class="text-gray-500">+${unusedInFrontend.length - 8} more</div>` : ''}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mt-3 text-[11px] text-gray-500 flex flex-wrap items-center gap-x-4 gap-y-1">
+                                <span id="command-contract-source">Source: ${contractSourceLabel}</span>
+                                <span id="command-contract-last-checked">Last Checked: ${contractCheckedLabel}</span>
+                                <span id="command-contract-error" class="text-red-500 ${commandContractState.error ? '' : 'hidden'}">${commandContractState.error ? escapeHtml(commandContractState.error) : ''}</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -545,6 +664,130 @@ export function Settings() {
         reloadBtn?.addEventListener('click', () => {
             window.location.reload();
         });
+
+        const getContractStatusMeta = () => {
+            const report = commandContractState.liveReport || snapshotContractReport;
+            const missingCount = report.missingInBackend.length;
+            if (commandContractState.loading) {
+                return {
+                    label: 'Checking...',
+                    className: 'text-amber-500 bg-amber-500/10 border-amber-500/20',
+                };
+            }
+            if (commandContractState.error) {
+                return {
+                    label: 'Check Failed',
+                    className: 'text-red-500 bg-red-500/10 border-red-500/20',
+                };
+            }
+            if (missingCount > 0) {
+                return {
+                    label: 'Mismatch',
+                    className: 'text-orange-500 bg-orange-500/10 border-orange-500/20',
+                };
+            }
+            return {
+                label: 'Healthy',
+                className: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20',
+            };
+        };
+
+        const renderContractList = (containerEl, list) => {
+            if (!containerEl) return;
+            if (!Array.isArray(list) || list.length === 0) {
+                containerEl.innerHTML = '<div>None</div>';
+                return;
+            }
+            const preview = list.slice(0, 8);
+            const rows = preview.map((cmd) => `<div class="font-mono">${escapeHtml(cmd)}</div>`);
+            if (list.length > 8) {
+                rows.push(`<div class="text-gray-500">+${list.length - 8} more</div>`);
+            }
+            containerEl.innerHTML = rows.join('');
+        };
+
+        const updateContractPanel = () => {
+            const report = commandContractState.liveReport || snapshotContractReport;
+            const statusMeta = getContractStatusMeta();
+            const statusPill = container.querySelector('#command-contract-status-pill');
+            const sourceEl = container.querySelector('#command-contract-source');
+            const lastCheckedEl = container.querySelector('#command-contract-last-checked');
+            const errorEl = container.querySelector('#command-contract-error');
+            const refreshBtn = container.querySelector('#refresh-command-contract-btn');
+
+            if (statusPill) {
+                statusPill.textContent = statusMeta.label;
+                statusPill.className = `px-2 py-1 rounded-md border text-[10px] font-bold uppercase tracking-wider ${statusMeta.className}`;
+            }
+
+            const frontendCountEl = container.querySelector('#command-contract-count-frontend');
+            const backendCountEl = container.querySelector('#command-contract-count-backend');
+            const missingCountEl = container.querySelector('#command-contract-count-missing');
+            const unusedCountEl = container.querySelector('#command-contract-count-unused');
+
+            if (frontendCountEl) frontendCountEl.textContent = String(report.frontendCommands.length);
+            if (backendCountEl) backendCountEl.textContent = String(report.backendCommands.length);
+            if (missingCountEl) {
+                missingCountEl.textContent = String(report.missingInBackend.length);
+                missingCountEl.className = `mt-1 text-sm font-mono ${report.missingInBackend.length > 0 ? 'text-orange-500' : (isLight ? 'text-gray-900' : 'text-white')}`;
+            }
+            if (unusedCountEl) unusedCountEl.textContent = String(report.unusedInFrontend.length);
+
+            renderContractList(container.querySelector('#command-contract-missing-list'), report.missingInBackend);
+            renderContractList(container.querySelector('#command-contract-unused-list'), report.unusedInFrontend);
+
+            if (sourceEl) {
+                sourceEl.textContent = `Source: ${commandContractState.liveReport ? 'Live Runtime Check' : 'Snapshot'}`;
+            }
+            if (lastCheckedEl) {
+                const label = commandContractState.lastCheckedAt
+                    ? new Date(commandContractState.lastCheckedAt).toLocaleString()
+                    : (commandContractSnapshot?.generatedAt ? new Date(commandContractSnapshot.generatedAt).toLocaleString() : 'N/A');
+                lastCheckedEl.textContent = `Last Checked: ${label}`;
+            }
+            if (errorEl) {
+                if (commandContractState.error) {
+                    errorEl.classList.remove('hidden');
+                    errorEl.textContent = commandContractState.error;
+                } else {
+                    errorEl.classList.add('hidden');
+                    errorEl.textContent = '';
+                }
+            }
+            if (refreshBtn) {
+                refreshBtn.disabled = commandContractState.loading;
+                const icon = commandContractState.loading ? 'progress_activity' : 'sync';
+                refreshBtn.innerHTML = `<span class="material-symbols-outlined text-sm ${commandContractState.loading ? 'animate-spin' : ''}">${icon}</span>${commandContractState.loading ? 'Checking' : 'Refresh'}`;
+            }
+        };
+
+        const runCommandContractCheck = async (force = false) => {
+            if (commandContractState.loading) return;
+            if (!force && commandContractState.liveReport) return;
+
+            commandContractState.loading = true;
+            commandContractState.error = null;
+            updateContractPanel();
+
+            try {
+                const backendCommands = await invoke('get_registered_commands');
+                commandContractState.liveReport = buildCommandContractReport(
+                    snapshotContractReport.frontendCommands,
+                    backendCommands
+                );
+                commandContractState.lastCheckedAt = new Date().toISOString();
+            } catch (error) {
+                commandContractState.error = String(error);
+            } finally {
+                commandContractState.loading = false;
+                updateContractPanel();
+            }
+        };
+
+        const refreshContractBtn = container.querySelector('#refresh-command-contract-btn');
+        refreshContractBtn?.addEventListener('click', () => runCommandContractCheck(true));
+        updateContractPanel();
+        runCommandContractCheck(false);
 
         // Helper to attach events to model options (needed because they are re-rendered)
         const attachModelEvents = () => {

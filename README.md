@@ -107,6 +107,13 @@ npm run build
 npx tauri build
 ```
 
+Command contract report (frontend `invoke(...)` vs Rust handlers):
+
+```
+npm run contract:report   # refresh src/generated/command-contract.json
+npm run contract:check    # fail on newly introduced missing backend commands
+```
+
 ## Core Screens
 
 ### Workbench

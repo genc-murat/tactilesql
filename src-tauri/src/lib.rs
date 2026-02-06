@@ -1,6 +1,7 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 use tauri::Manager;
 use tauri::WebviewWindow;
+use regex::Regex;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -20,6 +21,31 @@ fn close_devtools(webview: WebviewWindow) {
 #[tauri::command]
 fn is_devtools_open(webview: WebviewWindow) -> bool {
     webview.is_devtools_open()
+}
+
+#[tauri::command]
+fn get_registered_commands() -> Result<Vec<String>, String> {
+    let source = include_str!("lib.rs");
+    let block_re = Regex::new(r"(?s)generate_handler!\[(?P<body>.*?)\]")
+        .map_err(|e| format!("Regex init failed: {}", e))?;
+    let body = block_re
+        .captures(source)
+        .and_then(|caps| caps.name("body"))
+        .map(|m| m.as_str())
+        .ok_or("Failed to locate generate_handler block".to_string())?;
+
+    let command_re = Regex::new(r"(?m)^\s*([a-zA-Z_][a-zA-Z0-9_:]*)\s*,")
+        .map_err(|e| format!("Regex init failed: {}", e))?;
+
+    let mut commands: Vec<String> = command_re
+        .captures_iter(body)
+        .filter_map(|caps| caps.get(1).map(|m| m.as_str().to_string()))
+        .map(|path| path.rsplit("::").next().unwrap_or(&path).to_string())
+        .collect();
+
+    commands.sort();
+    commands.dedup();
+    Ok(commands)
 }
 
 // Database modules
@@ -161,6 +187,7 @@ pub fn run() {
             open_devtools,
             close_devtools,
             is_devtools_open,
+            get_registered_commands,
             // Connection Management
             db::test_connection,
             db::establish_connection,
