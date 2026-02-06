@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-02-06T09:31:52.706Z",
+  "generatedAt": "2026-02-06T09:40:46.819Z",
   "frontendCommands": [
     "add_query_comment",
     "add_query_version",
@@ -95,6 +95,7 @@
     "capture_schema_snapshot",
     "check_impact",
     "close_devtools",
+    "close_ssh_tunnel",
     "compare_queries",
     "compare_query_versions",
     "compare_schema_snapshots",
@@ -163,12 +164,14 @@
     "kill_process",
     "load_connections",
     "open_devtools",
+    "open_ssh_tunnel",
     "run_quality_analysis",
     "save_ai_impact_report",
     "save_connection",
     "save_quality_ai_report",
     "simulate_index_drop",
     "test_connection",
+    "test_ssh_connection",
     "toggle_query_favorite",
     "update_query_context"
   ],
@@ -181,11 +184,11 @@
     "get_indexes",
     "import_csv",
     "restore_database",
-    "save_connections",
-    "test_ssh_connection"
+    "save_connections"
   ],
   "unusedInFrontend": [
     "close_devtools",
+    "close_ssh_tunnel",
     "disconnect",
     "get_active_db_type",
     "get_custom_types",
@@ -196,6 +199,7 @@
     "get_sequences",
     "get_tablespaces",
     "greet",
-    "is_devtools_open"
+    "is_devtools_open",
+    "open_ssh_tunnel"
   ]
 }

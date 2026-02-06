@@ -20,6 +20,7 @@ use tauri::{AppHandle, Manager, State};
 pub use crate::db_types::*;
 use crate::mysql;
 use crate::postgres;
+use crate::ssh_tunnel;
 use regex::Regex;
 use std::sync::LazyLock;
 
@@ -252,11 +253,62 @@ fn get_connections_file_path(app_handle: &AppHandle) -> PathBuf {
 
 #[tauri::command]
 pub async fn test_connection(config: ConnectionConfig) -> Result<String, String> {
-    match config.db_type {
-        DatabaseType::PostgreSQL => postgres::test_connection(&config).await,
-        DatabaseType::MySQL => mysql::test_connection(&config).await,
-        DatabaseType::Disconnected => Err("Cannot test connection for 'Disconnected' type".into()),
+    let mut effective_config = config.clone();
+    let mut temporary_tunnel_key: Option<String> = None;
+
+    if config.use_ssh_tunnel {
+        let ssh_config = ssh_tunnel::extract_ssh_config(&config)?;
+        let tunnel_key = format!("test-{}", uuid::Uuid::new_v4());
+        let local_port = ssh_tunnel::open_or_replace_tunnel(
+            &tunnel_key,
+            ssh_config,
+            config.host.clone(),
+            config.port,
+        )
+        .await?;
+
+        effective_config.host = "127.0.0.1".to_string();
+        effective_config.port = local_port;
+        temporary_tunnel_key = Some(tunnel_key);
     }
+
+    let result = match effective_config.db_type {
+        DatabaseType::PostgreSQL => postgres::test_connection(&effective_config).await,
+        DatabaseType::MySQL => mysql::test_connection(&effective_config).await,
+        DatabaseType::Disconnected => Err("Cannot test connection for 'Disconnected' type".into()),
+    };
+
+    if let Some(key) = temporary_tunnel_key.as_deref() {
+        let _ = ssh_tunnel::close_tunnel(key).await;
+    }
+
+    result
+}
+
+#[tauri::command]
+pub fn test_ssh_connection(config: SSHTunnelConfig) -> Result<String, String> {
+    ssh_tunnel::test_ssh_connection(&config)
+}
+
+#[tauri::command]
+pub async fn open_ssh_tunnel(config: ConnectionConfig) -> Result<u16, String> {
+    if !config.use_ssh_tunnel {
+        return Err("SSH tunnel is not enabled for this connection".to_string());
+    }
+
+    let ssh_config = ssh_tunnel::extract_ssh_config(&config)?;
+    let tunnel_key = config
+        .id
+        .clone()
+        .unwrap_or_else(|| format!("manual-{}", uuid::Uuid::new_v4()));
+
+    ssh_tunnel::open_or_replace_tunnel(&tunnel_key, ssh_config, config.host.clone(), config.port)
+        .await
+}
+
+#[tauri::command]
+pub async fn close_ssh_tunnel(connection_id: String) -> Result<(), String> {
+    ssh_tunnel::close_tunnel(&connection_id).await
 }
 
 #[tauri::command]
@@ -265,10 +317,30 @@ pub async fn establish_connection(
     config: ConnectionConfig,
 ) -> Result<String, String> {
     let connection_id = config.id.clone();
+    let mut effective_config = config.clone();
+    let mut active_tunnel_key: Option<String> = None;
 
-    match config.db_type {
+    if config.use_ssh_tunnel {
+        let ssh_config = ssh_tunnel::extract_ssh_config(&config)?;
+        let tunnel_key = connection_id
+            .clone()
+            .unwrap_or_else(|| format!("session-{}", uuid::Uuid::new_v4()));
+        let local_port = ssh_tunnel::open_or_replace_tunnel(
+            &tunnel_key,
+            ssh_config,
+            config.host.clone(),
+            config.port,
+        )
+        .await?;
+
+        effective_config.host = "127.0.0.1".to_string();
+        effective_config.port = local_port;
+        active_tunnel_key = Some(tunnel_key);
+    }
+
+    let establish_result = match effective_config.db_type {
         DatabaseType::PostgreSQL => {
-            let pool = postgres::create_pool(&config).await?;
+            let pool = postgres::create_pool(&effective_config).await?;
 
             let mut pg_guard = app_state.postgres_pool.lock().await;
             *pg_guard = Some(pool);
@@ -276,20 +348,10 @@ pub async fn establish_connection(
             let mut db_type_guard = app_state.active_db_type.lock().await;
             *db_type_guard = DatabaseType::PostgreSQL;
 
-            if let Some(id) = connection_id.as_deref() {
-                let store = {
-                    let guard = app_state.dependency_engine_store.lock().await;
-                    guard.clone()
-                };
-                if let Some(store) = store {
-                    store.invalidate_connection_cache(id);
-                }
-            }
-
             Ok("PostgreSQL connection established successfully".to_string())
         }
         DatabaseType::MySQL => {
-            let pool = mysql::create_pool(&config).await?;
+            let pool = mysql::create_pool(&effective_config).await?;
 
             let mut mysql_guard = app_state.mysql_pool.lock().await;
             *mysql_guard = Some(pool);
@@ -297,20 +359,35 @@ pub async fn establish_connection(
             let mut db_type_guard = app_state.active_db_type.lock().await;
             *db_type_guard = DatabaseType::MySQL;
 
-            if let Some(id) = connection_id.as_deref() {
-                let store = {
-                    let guard = app_state.dependency_engine_store.lock().await;
-                    guard.clone()
-                };
-                if let Some(store) = store {
-                    store.invalidate_connection_cache(id);
-                }
-            }
-
             Ok("MySQL connection established successfully".to_string())
         }
         DatabaseType::Disconnected => Err("Cannot establish a 'Disconnected' connection".into()),
+    };
+
+    if establish_result.is_err() {
+        if let Some(key) = active_tunnel_key.as_deref() {
+            let _ = ssh_tunnel::close_tunnel(key).await;
+        }
+        return establish_result;
     }
+
+    if let Some(id) = connection_id.as_deref() {
+        let store = {
+            let guard = app_state.dependency_engine_store.lock().await;
+            guard.clone()
+        };
+        if let Some(store) = store {
+            store.invalidate_connection_cache(id);
+        }
+    }
+
+    if active_tunnel_key.is_some() {
+        ssh_tunnel::close_all_except(active_tunnel_key.as_deref()).await?;
+    } else {
+        ssh_tunnel::close_all_tunnels().await?;
+    }
+
+    establish_result
 }
 
 #[tauri::command]
@@ -346,6 +423,8 @@ pub async fn disconnect(app_state: State<'_, AppState>) -> Result<String, String
     if let Some(store) = store {
         store.clear_cache();
     }
+
+    ssh_tunnel::close_all_tunnels().await?;
 
     Ok("Disconnected successfully".to_string())
 }
@@ -441,7 +520,9 @@ pub fn load_connections(
 }
 
 #[tauri::command]
-pub fn delete_connection(app_handle: AppHandle, id: String) -> Result<(), String> {
+pub async fn delete_connection(app_handle: AppHandle, id: String) -> Result<(), String> {
+    ssh_tunnel::close_tunnel(&id).await?;
+
     let file_path = get_connections_file_path(&app_handle);
 
     if !file_path.exists() {

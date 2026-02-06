@@ -62,6 +62,7 @@ pub mod quality_analyzer;
 pub mod query_story;
 pub mod scheduler;
 pub mod schema_tracker;
+mod ssh_tunnel;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -190,6 +191,9 @@ pub fn run() {
             get_registered_commands,
             // Connection Management
             db::test_connection,
+            db::test_ssh_connection,
+            db::open_ssh_tunnel,
+            db::close_ssh_tunnel,
             db::establish_connection,
             db::disconnect,
             db::get_active_db_type,

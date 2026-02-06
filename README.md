@@ -246,7 +246,8 @@ The Rust backend exposes the following commands (used by the UI):
 ### Connection Management
 - `test_connection`, `establish_connection`
 - `get_connections`, `save_connection`, `save_connections`, `delete_connection`
-- `create_ssh_tunnel` — Establish SSH tunnel for remote database access
+- `test_ssh_connection` — Validate SSH host/auth settings
+- `open_ssh_tunnel`, `close_ssh_tunnel` — Manage SSH local-forward tunnel lifecycle
 
 ### Query Execution
 - `execute_query` — Execute SQL statements
