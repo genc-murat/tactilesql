@@ -24,6 +24,7 @@ TactileSQL is a modern, desktop-first MySQL workbench built with Tauri 2 and van
 - **Object Explorer Display Controls**: Toggle visibility of system databases/schemas and improved responsive truncation for long object/column names.
 - **Searchable Object Explorer**: Integrated search box to quickly find databases, tables, and columns with "Next/Prev" navigation and auto-expansion.
 - **Schema Designer** for columns, indexes, foreign keys, triggers, DDL, and stats.
+- **ER Diagram Editor**: Build schema relationship graphs, edit manual relations, hide/restore FK edges, save named layouts, and export as JSON/Mermaid/PNG/**GraphML**.
 - **Schema Diff** for database or single-table comparison with generated sync SQL.
 - **Data Compare** for row-level source/target table comparison with generated data sync SQL (`INSERT`/`UPDATE`/`DELETE`).
 - **Data Import/Export Wizard** supporting CSV, SQL, and JSON formats with progress tracking.
@@ -198,6 +199,15 @@ npm run contract:check    # fail on newly introduced missing backend commands
 - Manage columns, indexes, foreign keys, constraints, triggers
 - View DDL and table stats
 - SQL draft panel for ALTER statements
+- Diagram tab includes a quick **Open in ER Diagram** handoff for full graph editing
+
+### ER Diagram
+
+- Build ER graph by selected connection + database/schema (optional view nodes)
+- Edit relationship overlays: add/delete manual edges, inline label/cardinality updates
+- Hide built-in FK edges and restore them individually
+- Save/load/delete named layouts (positions + edge overrides) per connection and scope
+- Export graph as JSON, Mermaid, PNG, and GraphML
 
 ### Schema Diff
 
@@ -310,6 +320,10 @@ The Rust backend exposes the following commands (used by the UI):
 - `get_procedures`, `get_functions`, `get_events`
 - `save_ai_impact_report`, `get_ai_impact_report`
 - `save_quality_ai_report`, `get_quality_ai_report`
+
+### ER Diagram
+- `build_er_graph` — Build ER graph payload from live schema metadata
+- `save_er_layout`, `get_er_layout`, `list_er_layouts`, `delete_er_layout` — Persist and manage named ER layouts
 
 ### Schema Tracker
 - `capture_schema_snapshot`, `get_schema_snapshots`

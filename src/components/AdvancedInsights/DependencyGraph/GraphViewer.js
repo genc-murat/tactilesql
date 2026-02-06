@@ -360,6 +360,7 @@ export function GraphViewer(graphData, theme, qualityMap, options = {}) {
     let searchDebounceId = null;
     let pendingSearchTerm = '';
     let pendingNodeQuery = initialNodeQuery ? String(initialNodeQuery) : '';
+    let pendingNodePositions = null;
     let searchIndex = [];
 
     const miniMapState = {
@@ -1059,6 +1060,41 @@ export function GraphViewer(graphData, theme, qualityMap, options = {}) {
         }
     };
 
+    const normalizeNodePositions = (positions) => {
+        if (!positions || typeof positions !== 'object') return null;
+        return positions;
+    };
+
+    const applyNodePositions = (positions, options = {}) => {
+        const normalized = normalizeNodePositions(positions);
+        if (!normalized) return false;
+
+        if (!cy) {
+            pendingNodePositions = normalized;
+            return false;
+        }
+
+        cy.batch(() => {
+            Object.entries(normalized).forEach(([nodeId, position]) => {
+                const node = cy.getElementById(nodeId);
+                if (!node || node.empty()) return;
+                const x = Number(position?.x);
+                const y = Number(position?.y);
+                if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+                node.position({ x, y });
+            });
+        });
+
+        if (options.fit) {
+            fitGraph(Boolean(options.animate));
+        }
+
+        updateZoomIndicator();
+        applyLod();
+        scheduleMiniMapDraw();
+        return true;
+    };
+
     const clearSelection = (silent = false) => {
         if (!cy) return;
         cy.elements().removeClass('faded upstream downstream highlighted');
@@ -1463,6 +1499,10 @@ export function GraphViewer(graphData, theme, qualityMap, options = {}) {
                     updateZoomIndicator();
                     applyLod();
                     scheduleMiniMapDraw();
+                    if (pendingNodePositions) {
+                        applyNodePositions(pendingNodePositions, { fit: false, animate: false });
+                        pendingNodePositions = null;
+                    }
                     if (pendingNodeQuery) {
                         selectNodeByQuery(pendingNodeQuery, { emitSelectionMetric: false, focusNode: true });
                         pendingNodeQuery = '';
@@ -1529,6 +1569,23 @@ export function GraphViewer(graphData, theme, qualityMap, options = {}) {
 
     container.getEdgeWeightMode = () => activeEdgeWeightMode;
 
+    container.getNodePositions = () => {
+        if (!cy) return {};
+        const result = {};
+        cy.nodes().forEach(node => {
+            const position = node.position();
+            result[node.id()] = {
+                x: Number(position.x),
+                y: Number(position.y)
+            };
+        });
+        return result;
+    };
+
+    container.setNodePositions = (positions, options = {}) => (
+        applyNodePositions(positions, options)
+    );
+
     container.exportPng = (options = {}) => {
         if (!cy) return null;
         return cy.png({
@@ -1590,6 +1647,10 @@ export function GraphViewer(graphData, theme, qualityMap, options = {}) {
         if (pendingNodeQuery) {
             selectNodeByQuery(pendingNodeQuery, { emitSelectionMetric: false, focusNode: true });
             pendingNodeQuery = '';
+        }
+        if (pendingNodePositions) {
+            applyNodePositions(pendingNodePositions, { fit: false, animate: false });
+            pendingNodePositions = null;
         }
         scheduleMiniMapDraw();
     };

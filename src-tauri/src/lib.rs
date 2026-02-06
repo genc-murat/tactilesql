@@ -55,6 +55,7 @@ mod common;
 mod db;
 mod db_types;
 pub mod dependency_engine;
+pub mod er_diagram;
 pub mod integration;
 pub mod mock_data;
 mod mysql;
@@ -160,6 +161,16 @@ pub fn run() {
                                 println!("Dependency Engine Store initialized.");
                             }
                             Err(e) => eprintln!("Failed to init Dependency Engine Store: {}", e),
+                        }
+
+                        // ER Diagram Store
+                        match crate::er_diagram::storage::ErDiagramStore::new(pool.clone()).await {
+                            Ok(store) => {
+                                let mut guard = state.er_diagram_store.lock().await;
+                                *guard = Some(store);
+                                println!("ER Diagram Store initialized.");
+                            }
+                            Err(e) => eprintln!("Failed to init ER Diagram Store: {}", e),
                         }
 
                         // Query Story Store
@@ -294,6 +305,12 @@ pub fn run() {
             quality_analyzer::commands::get_quality_ai_report,
             // Dependency Engine
             dependency_engine::commands::get_dependency_graph,
+            // ER Diagram
+            er_diagram::commands::build_er_graph,
+            er_diagram::commands::save_er_layout,
+            er_diagram::commands::get_er_layout,
+            er_diagram::commands::list_er_layouts,
+            er_diagram::commands::delete_er_layout,
             integration::commands::check_impact,
             // Query Story
             query_story::commands::create_query_story,

@@ -473,7 +473,19 @@ END"></textarea>
                 renderFKModal();
             };
         } else if (state.activeTab === 'diagram') {
-            actionsContainer.innerHTML = '';
+            actionsContainer.innerHTML = `
+                <button class="h-7 px-3 flex items-center gap-2 rounded ${btnClass} border text-[10px] font-bold transition-colors" id="btn-open-er-diagram">
+                    <span class="material-symbols-outlined text-sm">schema</span> Open in ER Diagram
+                </button>
+            `;
+            container.querySelector('#btn-open-er-diagram').onclick = () => {
+                const activeConnection = JSON.parse(localStorage.getItem('activeConnection') || 'null');
+                const params = new URLSearchParams();
+                if (activeConnection?.id) params.set('conn', String(activeConnection.id));
+                if (state.database) params.set('db', state.database);
+                if (state.tableName) params.set('table', state.tableName);
+                window.location.hash = `/er-diagram?${params.toString()}`;
+            };
         } else if (state.activeTab === 'constraints') {
             actionsContainer.innerHTML = '';
             // Read-only view for now

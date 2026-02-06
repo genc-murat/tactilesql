@@ -30,6 +30,7 @@ pub struct AppState {
         Arc<Mutex<Option<crate::quality_analyzer::storage::QualityAnalyzerStore>>>,
     pub dependency_engine_store:
         Arc<Mutex<Option<crate::dependency_engine::storage::DependencyEngineStore>>>,
+    pub er_diagram_store: Arc<Mutex<Option<crate::er_diagram::storage::ErDiagramStore>>>,
     pub query_story_store: Arc<Mutex<Option<crate::query_story::storage::QueryStoryStore>>>,
     pub local_db_pool: Arc<Mutex<Option<Pool<Sqlite>>>>,
 }
@@ -45,6 +46,7 @@ impl Default for AppState {
             schema_tracker_store: Arc::new(Mutex::new(None)),
             quality_analyzer_store: Arc::new(Mutex::new(None)),
             dependency_engine_store: Arc::new(Mutex::new(None)),
+            er_diagram_store: Arc::new(Mutex::new(None)),
             query_story_store: Arc::new(Mutex::new(None)),
             local_db_pool: Arc::new(Mutex::new(None)),
         }
@@ -62,6 +64,7 @@ impl Clone for AppState {
             schema_tracker_store: Arc::clone(&self.schema_tracker_store),
             quality_analyzer_store: Arc::clone(&self.quality_analyzer_store),
             dependency_engine_store: Arc::clone(&self.dependency_engine_store),
+            er_diagram_store: Arc::clone(&self.er_diagram_store),
             query_story_store: Arc::clone(&self.query_story_store),
             local_db_pool: Arc::clone(&self.local_db_pool),
         }
