@@ -13,7 +13,7 @@ export const detectSyntaxErrors = (sql) => {
     lines.forEach((line, idx) => {
         const trimmed = line.trim();
 
-        // Check for common errors (skip comments)
+        // Check for common errors
         if (trimmed && !trimmed.startsWith('--') && !trimmed.startsWith('/*')) {
             // Missing semicolon at end of statement (if it looks like end)
             if (/^(SELECT|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER)\b/i.test(trimmed)) {
@@ -39,24 +39,8 @@ export const detectSyntaxErrors = (sql) => {
             if (/\bSELCT\b/i.test(trimmed)) {
                 errors.push({ line: idx + 1, message: 'Did you mean SELECT?', severity: 'error' });
             }
-            if (/\bFROM\b.*\bFROM\b/i.test(trimmed)) {
-                errors.push({ line: idx + 1, message: 'Duplicate FROM clause detected', severity: 'error' });
-            }
             if (/\bWHERE\s+FROM\b/i.test(trimmed)) {
                 errors.push({ line: idx + 1, message: 'WHERE should come after FROM', severity: 'error' });
-            }
-            if (/\bINSERT\s+(?!INTO)/i.test(trimmed)) {
-                errors.push({ line: idx + 1, message: 'INSERT should be followed by INTO', severity: 'warning' });
-            }
-            if (/\bUPDATE\s+\w+\s+WHERE\b/i.test(trimmed)) {
-                errors.push({ line: idx + 1, message: 'UPDATE requires SET before WHERE', severity: 'error' });
-            }
-
-            // Unmatched parentheses
-            const openParens = (trimmed.match(/\(/g) || []).length;
-            const closeParens = (trimmed.match(/\)/g) || []).length;
-            if (openParens !== closeParens) {
-                errors.push({ line: idx + 1, message: 'Unmatched parentheses', severity: 'warning' });
             }
         }
     });
