@@ -261,6 +261,7 @@ pub fn run() {
             db::get_anomaly_history,
             db::get_anomaly_cause,
             db::get_query_history,
+            db::get_query_history_range,
             // AI Index Recommendations
             db::get_ai_index_recommendations,
             // PostgreSQL Specific

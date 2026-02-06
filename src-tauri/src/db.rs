@@ -3345,6 +3345,54 @@ pub async fn get_query_history(
     }
 }
 
+fn parse_history_range_ts(
+    label: &str,
+    value: Option<String>,
+) -> Result<Option<chrono::DateTime<chrono::Utc>>, String> {
+    let Some(raw) = value else {
+        return Ok(None);
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+
+    if let Ok(parsed) = chrono::DateTime::parse_from_rfc3339(trimmed) {
+        return Ok(Some(parsed.with_timezone(&chrono::Utc)));
+    }
+
+    if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(trimmed, "%Y-%m-%d %H:%M:%S%.f") {
+        return Ok(Some(
+            chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(naive, chrono::Utc),
+        ));
+    }
+
+    Err(format!(
+        "Invalid {} timestamp. Expected RFC3339, got: {}",
+        label, trimmed
+    ))
+}
+
+#[tauri::command]
+pub async fn get_query_history_range(
+    app_state: State<'_, AppState>,
+    start: Option<String>,
+    end: Option<String>,
+    limit: i64,
+) -> Result<Vec<crate::awareness::profiler::QueryExecution>, String> {
+    let parsed_start = parse_history_range_ts("start", start)?;
+    let parsed_end = parse_history_range_ts("end", end)?;
+
+    let guard = app_state.awareness_store.lock().await;
+    if let Some(store) = guard.as_ref() {
+        store
+            .get_query_history_range(parsed_start, parsed_end, limit)
+            .await
+    } else {
+        Err("Awareness store not initialized".to_string())
+    }
+}
+
 #[derive(Debug)]
 struct SimulationQueryAggregate {
     query_hash: String,
