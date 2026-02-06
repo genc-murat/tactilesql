@@ -198,8 +198,16 @@ pub fn run() {
             db::disconnect,
             db::get_active_db_type,
             db::save_connection,
+            db::save_connections,
             db::load_connections,
             db::delete_connection,
+            // Data Tools
+            db::export_table_csv,
+            db::export_table_json,
+            db::export_table_sql,
+            db::import_csv,
+            db::backup_database,
+            db::restore_database,
             // Query Execution
             db::execute_query,
             db::execute_query_profiled,
@@ -212,6 +220,8 @@ pub fn run() {
             // Indexes & Keys
             db::get_table_indexes,
             db::get_table_foreign_keys,
+            db::get_indexes,
+            db::get_foreign_keys,
             db::get_table_primary_keys,
             db::get_table_constraints,
             db::get_table_stats,

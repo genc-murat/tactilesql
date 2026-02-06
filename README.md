@@ -244,8 +244,8 @@ npm run contract:check    # fail on newly introduced missing backend commands
 The Rust backend exposes the following commands (used by the UI):
 
 ### Connection Management
-- `test_connection`, `establish_connection`
-- `get_connections`, `save_connection`, `save_connections`, `delete_connection`
+- `test_connection`, `establish_connection`, `disconnect`, `get_active_db_type`
+- `load_connections`, `save_connection`, `save_connections`, `delete_connection`
 - `test_ssh_connection` — Validate SSH host/auth settings
 - `open_ssh_tunnel`, `close_ssh_tunnel` — Manage SSH local-forward tunnel lifecycle
 
@@ -275,14 +275,10 @@ The Rust backend exposes the following commands (used by the UI):
 - `add_snapshot_tag`
 
 ### Data Tools
-- `import_csv` — Import CSV files with field mapping
-- `import_sql` — Execute SQL dump files
-- `import_json` — Import JSON data with schema inference
-- `export_data` — Export to CSV, SQL, or JSON formats
-- `create_backup` — Create database backups with compression
-- `restore_backup` — Restore from backup files
-- `list_backups` — List available backup files
-- `schedule_backup` — Schedule automated backups
+- `export_table_csv`, `export_table_json`, `export_table_sql` — Export table data
+- `import_csv` — Import CSV rows into a selected table
+- `backup_database` — Create SQL backup output (schema + optional data)
+- `restore_database` — Execute SQL backup file against active connection
 
 ### Monitoring
 - `get_server_status` — Server status counters and runtime metrics
@@ -295,7 +291,7 @@ The Rust backend exposes the following commands (used by the UI):
 - `get_innodb_status` — InnoDB storage engine status
 
 ### User Management
-- `get_mysql_users`, `get_user_privileges`
+- `get_users`, `get_user_privileges`
 
 ## Keyboard Shortcuts
 
