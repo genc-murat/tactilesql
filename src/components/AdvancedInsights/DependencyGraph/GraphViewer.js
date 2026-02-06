@@ -1125,15 +1125,32 @@ export function GraphViewer(graphData, theme, qualityMap) {
                         },
                         label: 'data(label)',
                         color: colors.text,
-                        'font-size': 12,
+                        'font-size': (ele) => ele.data('type') === 'Column' ? 10 : 12,
                         'min-zoomed-font-size': 8,
                         'text-valign': 'bottom',
-                        'text-margin-y': 5,
-                        width: 40,
-                        height: 40,
-                        shape: (ele) => ele.data('type') === 'Table' ? 'round-rectangle' : (ele.data('type') === 'View' ? 'ellipse' : 'diamond'),
+                        'text-margin-y': (ele) => ele.data('type') === 'Column' ? 4 : 5,
+                        width: (ele) => {
+                            const type = ele.data('type');
+                            if (type === 'Query') return 58;
+                            if (type === 'Column') return 26;
+                            return 40;
+                        },
+                        height: (ele) => {
+                            const type = ele.data('type');
+                            if (type === 'Query') return 58;
+                            if (type === 'Column') return 26;
+                            return 40;
+                        },
+                        shape: (ele) => {
+                            const type = ele.data('type');
+                            if (type === 'Table') return 'round-rectangle';
+                            if (type === 'View') return 'ellipse';
+                            if (type === 'Query') return 'hexagon';
+                            if (type === 'Column') return 'ellipse';
+                            return 'diamond';
+                        },
                         'text-wrap': 'wrap',
-                        'text-max-width': 100,
+                        'text-max-width': (ele) => ele.data('type') === 'Query' ? 140 : 100,
                         'transition-property': 'background-color, line-color, target-arrow-color, opacity',
                         'transition-duration': '0.3s'
                     }

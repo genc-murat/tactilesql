@@ -23,6 +23,7 @@ export function NavBar() {
                     { path: '/quality-analyzer', label: 'QUALITY', icon: 'fact_check' },
                     { path: '/index-lifecycle', label: 'INDEXES', icon: 'timeline' },
                     { path: '/dependencies', label: 'GRAPH', icon: 'account_tree' },
+                    { path: '/lineage', label: 'LINEAGE', icon: 'device_hub' },
                 ]
             },
             {
