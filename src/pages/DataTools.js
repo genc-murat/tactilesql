@@ -94,7 +94,15 @@ export function DataTools() {
     // Dropdown Instances
     let dropdowns = {
         db: null,
-        table: null
+        table: null,
+        transferSourceConn: null,
+        transferTargetConn: null,
+        transferMode: null,
+        transferSink: null,
+        compareSourceDb: null,
+        compareSourceTable: null,
+        compareTargetDb: null,
+        compareTargetTable: null
     };
 
     const escapeHtml = (value) => String(value ?? '')
@@ -1646,6 +1654,144 @@ export function DataTools() {
                 tableContainer.appendChild(dropdowns.table.getElement());
             }
         }
+
+        // --- Compare Tab Dropdowns ---
+        const compSourceDbContainer = container.querySelector('#compare-source-db-container');
+        const compSourceTableContainer = container.querySelector('#compare-source-table-container');
+        const compTargetDbContainer = container.querySelector('#compare-target-db-container');
+        const compTargetTableContainer = container.querySelector('#compare-target-table-container');
+
+        if (compSourceDbContainer) {
+            dropdowns.compareSourceDb = new CustomDropdown({
+                items: databases.map(db => ({ value: db, label: db, icon: 'database' })),
+                value: compareSourceDb,
+                placeholder: 'Select source database',
+                onSelect: (val) => {
+                    compareSourceDb = val;
+                    compareSourceTable = '';
+                    resetCompareColumnState();
+                    resetCompareOutputs();
+                    loadCompareTables('source', compareSourceDb);
+                }
+            });
+            compSourceDbContainer.appendChild(dropdowns.compareSourceDb.getElement());
+        }
+
+        if (compSourceTableContainer) {
+            dropdowns.compareSourceTable = new CustomDropdown({
+                items: compareSourceTables.map(t => ({ value: t, label: t, icon: 'table' })),
+                value: compareSourceTable,
+                placeholder: 'Select source table',
+                onSelect: (val) => {
+                    compareSourceTable = val;
+                    resetCompareColumnState();
+                    resetCompareOutputs();
+                    loadCompareMetadata();
+                }
+            });
+            compSourceTableContainer.appendChild(dropdowns.compareSourceTable.getElement());
+        }
+
+        if (compTargetDbContainer) {
+            dropdowns.compareTargetDb = new CustomDropdown({
+                items: databases.map(db => ({ value: db, label: db, icon: 'database' })),
+                value: compareTargetDb,
+                placeholder: 'Select target database',
+                onSelect: (val) => {
+                    compareTargetDb = val;
+                    compareTargetTable = '';
+                    resetCompareColumnState();
+                    resetCompareOutputs();
+                    loadCompareTables('target', compareTargetDb);
+                }
+            });
+            compTargetDbContainer.appendChild(dropdowns.compareTargetDb.getElement());
+        }
+
+        if (compTargetTableContainer) {
+            dropdowns.compareTargetTable = new CustomDropdown({
+                items: compareTargetTables.map(t => ({ value: t, label: t, icon: 'table' })),
+                value: compareTargetTable,
+                placeholder: 'Select target table',
+                onSelect: (val) => {
+                    compareTargetTable = val;
+                    resetCompareColumnState();
+                    resetCompareOutputs();
+                    loadCompareMetadata();
+                }
+            });
+            compTargetTableContainer.appendChild(dropdowns.compareTargetTable.getElement());
+        }
+
+        // --- Transfer Tab Dropdowns ---
+        const transSourceConnContainer = container.querySelector('#transfer-source-connection-container');
+        const transTargetConnContainer = container.querySelector('#transfer-target-connection-container');
+        const transModeContainer = container.querySelector('#transfer-draft-mode-container');
+        const transSinkContainer = container.querySelector('#transfer-draft-sink-type-container');
+
+        if (transSourceConnContainer) {
+            dropdowns.transferSourceConn = new CustomDropdown({
+                items: transferConnections.map(c => ({ value: c.id, label: c.label, icon: 'bolt' })),
+                value: transferSourceConnectionId,
+                placeholder: 'Select source connection',
+                onSelect: (val) => {
+                    transferSourceConnectionId = val;
+                    resetTransferPlanArtifacts();
+                    render();
+                }
+            });
+            transSourceConnContainer.appendChild(dropdowns.transferSourceConn.getElement());
+        }
+
+        if (transTargetConnContainer) {
+            dropdowns.transferTargetConn = new CustomDropdown({
+                items: transferConnections.map(c => ({ value: c.id, label: c.label, icon: 'bolt' })),
+                value: transferTargetConnectionId,
+                placeholder: 'Select target connection',
+                onSelect: (val) => {
+                    transferTargetConnectionId = val;
+                    resetTransferPlanArtifacts();
+                    render();
+                }
+            });
+            transTargetConnContainer.appendChild(dropdowns.transferTargetConn.getElement());
+        }
+
+        if (transModeContainer) {
+            dropdowns.transferMode = new CustomDropdown({
+                items: [
+                    { value: 'append', label: 'append' },
+                    { value: 'replace', label: 'replace' },
+                    { value: 'upsert', label: 'upsert' }
+                ],
+                value: transferDraftMode,
+                placeholder: 'Select mode',
+                searchable: false,
+                onSelect: (val) => {
+                    transferDraftMode = val;
+                }
+            });
+            transModeContainer.appendChild(dropdowns.transferMode.getElement());
+        }
+
+        if (transSinkContainer) {
+            dropdowns.transferSink = new CustomDropdown({
+                items: [
+                    { value: 'database', label: 'database' },
+                    { value: 'csv', label: 'csv' },
+                    { value: 'jsonl', label: 'jsonl' },
+                    { value: 'sql', label: 'sql' }
+                ],
+                value: transferDraftSinkType,
+                placeholder: 'Select sink',
+                searchable: false,
+                onSelect: (val) => {
+                    transferDraftSinkType = val;
+                    render();
+                }
+            });
+            transSinkContainer.appendChild(dropdowns.transferSink.getElement());
+        }
     };
 
     const renderProcessing = () => {
@@ -1899,21 +2045,13 @@ export function DataTools() {
                     <div class="grid grid-cols-2 gap-4">
                         <div class="rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border bg-ocean-bg' : 'border-white/10 bg-white/5'))} p-4 space-y-3">
                             <div class="text-[10px] font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Source</div>
-                            <select id="compare-source-db" class="w-full tactile-input text-sm py-1.5">
-                                ${dbOptions('Select source database', compareSourceDb)}
-                            </select>
-                            <select id="compare-source-table" class="w-full tactile-input text-sm py-1.5" ${!compareSourceDb ? 'disabled' : ''}>
-                                ${sourceTableOptions}
-                            </select>
+                            <div id="compare-source-db-container"></div>
+                            <div id="compare-source-table-container"></div>
                         </div>
                         <div class="rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border bg-ocean-bg' : 'border-white/10 bg-white/5'))} p-4 space-y-3">
                             <div class="text-[10px] font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Target</div>
-                            <select id="compare-target-db" class="w-full tactile-input text-sm py-1.5">
-                                ${dbOptions('Select target database', compareTargetDb)}
-                            </select>
-                            <select id="compare-target-table" class="w-full tactile-input text-sm py-1.5" ${!compareTargetDb ? 'disabled' : ''}>
-                                ${targetTableOptions}
-                            </select>
+                            <div id="compare-target-db-container"></div>
+                            <div id="compare-target-table-container"></div>
                         </div>
                     </div>
 
@@ -2165,9 +2303,7 @@ export function DataTools() {
                     <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
                         <div class="rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border bg-ocean-bg' : 'border-white/10 bg-white/5'))} p-4 space-y-3">
                             <div class="text-[10px] font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Source</div>
-                            <select id="transfer-source-connection" class="w-full tactile-input text-sm py-1.5">
-                                ${connectionOptions('Select source connection', transferSourceConnectionId)}
-                            </select>
+                            <div id="transfer-source-connection-container"></div>
                             <input id="transfer-source-db" type="text" value="${escapeHtml(transferSourceDatabase)}" class="w-full tactile-input text-sm py-1.5" placeholder="Source database/schema" />
                             <div class="text-[10px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">
                                 Selected: ${escapeHtml(transferConnectionLabel(transferSourceConnectionId))}
@@ -2176,9 +2312,7 @@ export function DataTools() {
 
                         <div class="rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border bg-ocean-bg' : 'border-white/10 bg-white/5'))} p-4 space-y-3">
                             <div class="text-[10px] font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Target</div>
-                            <select id="transfer-target-connection" class="w-full tactile-input text-sm py-1.5">
-                                ${connectionOptions('Select target connection', transferTargetConnectionId)}
-                            </select>
+                            <div id="transfer-target-connection-container"></div>
                             <input id="transfer-target-db" type="text" value="${escapeHtml(transferTargetDatabase)}" class="w-full tactile-input text-sm py-1.5" placeholder="Target database/schema" />
                             <div class="text-[10px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">
                                 Selected: ${escapeHtml(transferConnectionLabel(transferTargetConnectionId))}
@@ -2192,17 +2326,8 @@ export function DataTools() {
                             <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-3">
                                 <input id="transfer-draft-source-table" type="text" value="${escapeHtml(transferDraftSourceTable)}" class="w-full tactile-input text-sm py-1.5" placeholder="Source table (required)" />
                                 <input id="transfer-draft-target-table" type="text" value="${escapeHtml(transferDraftTargetTable)}" class="w-full tactile-input text-sm py-1.5" placeholder="Target table (optional)" />
-                                <select id="transfer-draft-mode" class="w-full tactile-input text-sm py-1.5">
-                                    <option value="append" ${transferDraftMode === 'append' ? 'selected' : ''}>append</option>
-                                    <option value="replace" ${transferDraftMode === 'replace' ? 'selected' : ''}>replace</option>
-                                    <option value="upsert" ${transferDraftMode === 'upsert' ? 'selected' : ''}>upsert</option>
-                                </select>
-                                <select id="transfer-draft-sink-type" class="w-full tactile-input text-sm py-1.5">
-                                    <option value="database" ${transferDraftSinkType === 'database' ? 'selected' : ''}>database</option>
-                                    <option value="csv" ${transferDraftSinkType === 'csv' ? 'selected' : ''}>csv</option>
-                                    <option value="jsonl" ${transferDraftSinkType === 'jsonl' ? 'selected' : ''}>jsonl</option>
-                                    <option value="sql" ${transferDraftSinkType === 'sql' ? 'selected' : ''}>sql</option>
-                                </select>
+                                <div id="transfer-draft-mode-container"></div>
+                                <div id="transfer-draft-sink-type-container"></div>
                                 <input id="transfer-draft-keys" type="text" value="${escapeHtml(transferDraftKeyColumns)}" class="w-full tactile-input text-sm py-1.5" placeholder="Key columns (for upsert)" />
                                 <input id="transfer-draft-sink-path" type="text" value="${escapeHtml(transferDraftSinkPath)}" class="w-full tactile-input text-sm py-1.5" placeholder="Sink path (required for file sinks)" />
                             </div>
@@ -2586,38 +2711,6 @@ export function DataTools() {
         });
 
         // Data Compare controls
-        container.querySelector('#compare-source-db')?.addEventListener('change', async (e) => {
-            compareSourceDb = e.target.value;
-            compareSourceTable = '';
-            compareSourceTables = [];
-            resetCompareColumnState();
-            resetCompareOutputs();
-            render();
-            await loadCompareTables('source', compareSourceDb);
-        });
-        container.querySelector('#compare-target-db')?.addEventListener('change', async (e) => {
-            compareTargetDb = e.target.value;
-            compareTargetTable = '';
-            compareTargetTables = [];
-            resetCompareColumnState();
-            resetCompareOutputs();
-            render();
-            await loadCompareTables('target', compareTargetDb);
-        });
-        container.querySelector('#compare-source-table')?.addEventListener('change', async (e) => {
-            compareSourceTable = e.target.value;
-            resetCompareColumnState();
-            resetCompareOutputs();
-            render();
-            await loadCompareMetadata();
-        });
-        container.querySelector('#compare-target-table')?.addEventListener('change', async (e) => {
-            compareTargetTable = e.target.value;
-            resetCompareColumnState();
-            resetCompareOutputs();
-            render();
-            await loadCompareMetadata();
-        });
         container.querySelector('#compare-sample-limit')?.addEventListener('change', (e) => {
             compareSettings.sampleLimit = ensurePositiveInt(e.target.value, 50);
             e.target.value = String(compareSettings.sampleLimit);
@@ -2695,16 +2788,6 @@ export function DataTools() {
         });
 
         // Data Transfer controls
-        container.querySelector('#transfer-source-connection')?.addEventListener('change', (e) => {
-            transferSourceConnectionId = e.target.value || '';
-            resetTransferPlanArtifacts();
-            render();
-        });
-        container.querySelector('#transfer-target-connection')?.addEventListener('change', (e) => {
-            transferTargetConnectionId = e.target.value || '';
-            resetTransferPlanArtifacts();
-            render();
-        });
         container.querySelector('#transfer-source-db')?.addEventListener('change', (e) => {
             transferSourceDatabase = String(e.target.value || '').trim();
             resetTransferPlanArtifacts();
@@ -2736,16 +2819,6 @@ export function DataTools() {
         });
         container.querySelector('#transfer-draft-target-table')?.addEventListener('change', (e) => {
             transferDraftTargetTable = e.target.value || '';
-        });
-        container.querySelector('#transfer-draft-mode')?.addEventListener('change', (e) => {
-            transferDraftMode = e.target.value || 'append';
-        });
-        container.querySelector('#transfer-draft-sink-type')?.addEventListener('change', (e) => {
-            transferDraftSinkType = e.target.value || 'database';
-            if (transferDraftSinkType === 'database') {
-                transferDraftSinkPath = '';
-            }
-            render();
         });
         container.querySelector('#transfer-draft-keys')?.addEventListener('change', (e) => {
             transferDraftKeyColumns = e.target.value || '';
