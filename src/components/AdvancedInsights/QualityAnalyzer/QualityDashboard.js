@@ -3,6 +3,7 @@ import { QualityAnalyzerApi } from '../../../api/qualityAnalyzer.js';
 import { ThemeManager } from '../../../utils/ThemeManager.js';
 import { AiService } from '../../../utils/AiService.js';
 import { toastError, toastSuccess } from '../../../utils/Toast.js';
+import { CustomDropdown } from '../../UI/CustomDropdown.js';
 import './QualityDashboard.css';
 
 export function QualityDashboard() {
@@ -66,6 +67,13 @@ export function QualityDashboard() {
         aiProvider: null,
         aiModel: null,
         aiReportKey: null
+    };
+
+    // Dropdown instances
+    let dropdowns = {
+        connection: null,
+        database: null,
+        table: null
     };
 
     const resetAiState = () => {
@@ -395,8 +403,8 @@ export function QualityDashboard() {
         const controls = document.createElement('div');
         controls.className = 'flex items-end gap-3 flex-wrap';
 
-        // Helper to create select group
-        const createSelect = (label, id, options, selected, onChange, disabled = false) => {
+        // Helper to create dropdown group with CustomDropdown
+        const createDropdown = (label, id, items, value, onSelect, disabled = false) => {
             const div = document.createElement('div');
             div.className = 'flex flex-col gap-1.5 min-w-[200px] flex-1';
 
@@ -405,42 +413,44 @@ export function QualityDashboard() {
             labelEl.textContent = label;
             div.appendChild(labelEl);
 
-            const select = document.createElement('select');
-            select.id = id;
-            select.className = classes.input;
-            select.disabled = disabled;
-            if (disabled) select.style.opacity = '0.5';
+            const dropdownContainer = document.createElement('div');
+            dropdownContainer.id = id;
+            if (disabled) {
+                dropdownContainer.style.opacity = '0.5';
+                dropdownContainer.style.pointerEvents = 'none';
+            }
+            div.appendChild(dropdownContainer);
 
-            const defaultOpt = document.createElement('option');
-            defaultOpt.value = "";
-            defaultOpt.textContent = `Select ${label}...`;
-            select.appendChild(defaultOpt);
-
-            options.forEach(opt => {
-                const option = document.createElement('option');
-                option.value = opt.value;
-                option.textContent = opt.label;
-                if (opt.value === selected) option.selected = true;
-                select.appendChild(option);
+            const dropdown = new CustomDropdown({
+                items,
+                value,
+                placeholder: `Select ${label}...`,
+                className: 'w-full',
+                onSelect
             });
 
-            select.onchange = onChange;
-            div.appendChild(select);
+            dropdownContainer.appendChild(dropdown.getElement());
 
-            return div;
+            return { div, dropdown };
         };
 
-        // Connection Select
-        const connOptions = state.connections.map(c => ({ value: c.id, label: c.name }));
-        controls.appendChild(createSelect('Connection', 'conn-select', connOptions, state.selectedConnectionId, (e) => selectConnection(e.target.value)));
+        // Connection Dropdown
+        const connItems = state.connections.map(c => ({ value: c.id, label: c.name, icon: 'database' }));
+        const connDropdown = createDropdown('Connection', 'conn-dropdown', connItems, state.selectedConnectionId, (val) => selectConnection(val));
+        controls.appendChild(connDropdown.div);
+        dropdowns.connection = connDropdown.dropdown;
 
-        // Database Select
-        const dbOptions = state.databases.map(db => ({ value: db, label: db }));
-        controls.appendChild(createSelect(state.activeDbType === 'postgresql' ? 'Schema' : 'Database', 'db-select', dbOptions, state.selectedDatabase, (e) => selectDatabase(e.target.value), !state.selectedConnectionId));
+        // Database Dropdown
+        const dbItems = state.databases.map(db => ({ value: db, label: db, icon: 'storage' }));
+        const dbDropdown = createDropdown(state.activeDbType === 'postgresql' ? 'Schema' : 'Database', 'db-dropdown', dbItems, state.selectedDatabase, (val) => selectDatabase(val), !state.selectedConnectionId);
+        controls.appendChild(dbDropdown.div);
+        dropdowns.database = dbDropdown.dropdown;
 
-        // Table Select
-        const tableOptions = state.tables.map(t => ({ value: t, label: t }));
-        controls.appendChild(createSelect('Table', 'table-select', tableOptions, state.selectedTable, (e) => selectTable(e.target.value), !state.selectedDatabase));
+        // Table Dropdown
+        const tableItems = state.tables.map(t => ({ value: t, label: t, icon: 'table' }));
+        const tableDropdown = createDropdown('Table', 'table-dropdown', tableItems, state.selectedTable, (val) => selectTable(val), !state.selectedDatabase);
+        controls.appendChild(tableDropdown.div);
+        dropdowns.table = tableDropdown.dropdown;
 
         // Run Button
         const btnContainer = document.createElement('div');
