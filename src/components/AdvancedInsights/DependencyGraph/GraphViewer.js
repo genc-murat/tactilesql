@@ -261,7 +261,7 @@ export function GraphViewer(graphData, theme, qualityMap) {
     container.appendChild(controls);
 
     const miniMap = document.createElement('div');
-    miniMap.className = 'graph-minimap absolute bottom-4 right-4 z-30 rounded-xl border shadow-lg overflow-hidden backdrop-blur-sm';
+    miniMap.className = 'graph-minimap absolute bottom-20 left-4 z-30 rounded-xl border shadow-lg overflow-hidden backdrop-blur-sm';
     miniMap.style.background = colors.panelBg;
     miniMap.style.borderColor = colors.panelBorder;
 
