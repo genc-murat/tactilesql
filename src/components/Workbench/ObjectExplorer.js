@@ -228,13 +228,13 @@ export function ObjectExplorer() {
                     </div>
                     <div class="pl-4 space-y-0.5 mt-0.5">
                         ${columns.map(col => `
-                            <div class="flex items-center gap-1.5 text-[10px] ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-600'))}">
-                                ${col.column_key === 'PRI' ? `<span class="material-symbols-outlined text-[10px] ${isDawn ? 'text-[#ea9d34]' : 'text-yellow-500'}">key</span>` :
-                col.column_key === 'UNI' ? `<span class="material-symbols-outlined text-[10px] ${isDawn ? 'text-[#3e8fb0]' : 'text-blue-400'}">fingerprint</span>` :
-                    col.column_key === 'MUL' ? '<span class="material-symbols-outlined text-[10px] text-gray-500">link</span>' :
-                        '<span class="w-[10px]"></span>'}
-                                <span class="${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279] font-medium' : (isOceanic ? 'text-ocean-text' : 'text-gray-400'))} ${highlightClass(`col-${db}-${table}-${col.name}`)}" data-search-id="col-${db}-${table}-${col.name}">${col.name}</span>
-                                <span class="${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-700'))} text-[9px]">${col.data_type}</span>
+                            <div class="flex items-center gap-1.5 min-w-0 w-full text-[10px] ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-600'))}">
+                                ${col.column_key === 'PRI' ? `<span class="material-symbols-outlined text-[10px] shrink-0 ${isDawn ? 'text-[#ea9d34]' : 'text-yellow-500'}">key</span>` :
+                col.column_key === 'UNI' ? `<span class="material-symbols-outlined text-[10px] shrink-0 ${isDawn ? 'text-[#3e8fb0]' : 'text-blue-400'}">fingerprint</span>` :
+                    col.column_key === 'MUL' ? '<span class="material-symbols-outlined text-[10px] shrink-0 text-gray-500">link</span>' :
+                        '<span class="w-[10px] shrink-0"></span>'}
+                                <span class="${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279] font-medium' : (isOceanic ? 'text-ocean-text' : 'text-gray-400'))} ${highlightClass(`col-${db}-${table}-${col.name}`)} flex-1 min-w-0 truncate" title="${escapeHtml(col.name || '')}" data-search-id="col-${db}-${table}-${col.name}">${col.name}</span>
+                                <span class="${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-700'))} text-[9px] shrink-0 max-w-[45%] truncate" title="${escapeHtml(col.data_type || '')}">${col.data_type}</span>
                             </div>
                         `).join('')}
                     </div>
@@ -273,10 +273,10 @@ export function ObjectExplorer() {
 
         return `
             <div>
-                <div class="table-item flex items-center gap-2 ${baseText} ${hoverText} cursor-grab py-1 group" data-table="${table}" data-db="${db}" data-conn-id="${renderingConnectionId || activeConnectionId}" draggable="true">
-                    <span class="material-symbols-outlined text-[10px] transition-transform ${isExpanded ? 'rotate-90' : ''} ${isDawn ? 'text-[#ea9d34]' : iconColor}">arrow_right</span>
-                    <span class="material-symbols-outlined text-[14px] ${iconColor} ${iconHover}">table_rows</span>
-                    <span class="${highlightClass(`table-${db}-${table}`)}" data-search-id="table-${db}-${table}">${table}</span>
+                <div class="table-item flex items-center gap-2 min-w-0 w-full ${baseText} ${hoverText} cursor-grab py-1 group" data-table="${table}" data-db="${db}" data-conn-id="${renderingConnectionId || activeConnectionId}" draggable="true">
+                    <span class="material-symbols-outlined text-[10px] shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''} ${isDawn ? 'text-[#ea9d34]' : iconColor}">arrow_right</span>
+                    <span class="material-symbols-outlined text-[14px] shrink-0 ${iconColor} ${iconHover}">table_rows</span>
+                    <span class="${highlightClass(`table-${db}-${table}`)} flex-1 min-w-0 truncate" title="${escapeHtml(table || '')}" data-search-id="table-${db}-${table}">${table}</span>
                 </div>
                 ${isExpanded ? renderTableDetails(db, table) : ''}
             </div>
@@ -351,31 +351,31 @@ export function ObjectExplorer() {
                 ${renderObjectCategory(db, 'tables', 'Tables', 'table_rows', isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal', filteredTables,
             (db, t) => renderTable(db, t))}
                 ${renderObjectCategory(db, 'views', 'Views', 'visibility', isDawn ? 'text-[#3e8fb0]' : 'text-blue-400', filteredViews,
-                (db, v) => `<div class="view-item flex items-center gap-2 text-[10px] ${mainText} ${isLight ? 'hover:text-mysql-teal' : (isDawn ? 'hover:text-[#ea9d34]' : (isOceanic ? 'hover:text-ocean-frost' : 'hover:text-white'))} py-0.5 cursor-pointer" data-view="${v}" data-db="${db}">
-                        <span class="material-symbols-outlined text-[12px] ${isDawn ? 'text-[#3e8fb0]' : 'text-blue-400'}">visibility</span>
-                        <span class="${highlightClass(`view-${db}-${v}`)}" data-search-id="view-${db}-${v}">${v}</span>
+                (db, v) => `<div class="view-item flex items-center gap-2 min-w-0 w-full text-[10px] ${mainText} ${isLight ? 'hover:text-mysql-teal' : (isDawn ? 'hover:text-[#ea9d34]' : (isOceanic ? 'hover:text-ocean-frost' : 'hover:text-white'))} py-0.5 cursor-pointer" data-view="${v}" data-db="${db}">
+                        <span class="material-symbols-outlined text-[12px] shrink-0 ${isDawn ? 'text-[#3e8fb0]' : 'text-blue-400'}">visibility</span>
+                        <span class="${highlightClass(`view-${db}-${v}`)} flex-1 min-w-0 truncate" title="${escapeHtml(v || '')}" data-search-id="view-${db}-${v}">${v}</span>
                     </div>`)}
                 ${renderObjectCategory(db, 'triggers', 'Triggers', 'bolt', isDawn ? 'text-[#f6c177]' : 'text-yellow-400', filteredTriggers,
-                    (db, t) => `<div class="flex items-center gap-2 text-[10px] ${mainText} py-0.5">
-                        <span class="material-symbols-outlined text-[12px] ${isDawn ? 'text-[#f6c177]' : 'text-yellow-400'}">bolt</span>
-                        <span class="${highlightClass(`trigger-${db}-${t.name}`)}" data-search-id="trigger-${db}-${t.name}">${t.name}</span>
-                        <span class="${subText} text-[9px]">${t.timing} ${t.event}</span>
+                    (db, t) => `<div class="flex items-center gap-2 min-w-0 w-full text-[10px] ${mainText} py-0.5">
+                        <span class="material-symbols-outlined text-[12px] shrink-0 ${isDawn ? 'text-[#f6c177]' : 'text-yellow-400'}">bolt</span>
+                        <span class="${highlightClass(`trigger-${db}-${t.name}`)} flex-1 min-w-0 truncate" title="${escapeHtml(t.name || '')}" data-search-id="trigger-${db}-${t.name}">${t.name}</span>
+                        <span class="${subText} text-[9px] shrink-0 max-w-[45%] truncate" title="${escapeHtml(`${t.timing || ''} ${t.event || ''}`.trim())}">${t.timing} ${t.event}</span>
                     </div>`)}
                 ${renderObjectCategory(db, 'procedures', 'Procedures', 'code_blocks', isDawn ? 'text-[#9ccfd8]' : 'text-green-400', filteredProcedures,
-                        (db, p) => `<div class="flex items-center gap-2 text-[10px] ${mainText} py-0.5">
-                        <span class="material-symbols-outlined text-[12px] ${isDawn ? 'text-[#9ccfd8]' : 'text-green-400'}">code_blocks</span>
-                        <span class="${highlightClass(`procedure-${db}-${p.name}`)}" data-search-id="procedure-${db}-${p.name}">${p.name}</span>
+                        (db, p) => `<div class="flex items-center gap-2 min-w-0 w-full text-[10px] ${mainText} py-0.5">
+                        <span class="material-symbols-outlined text-[12px] shrink-0 ${isDawn ? 'text-[#9ccfd8]' : 'text-green-400'}">code_blocks</span>
+                        <span class="${highlightClass(`procedure-${db}-${p.name}`)} flex-1 min-w-0 truncate" title="${escapeHtml(p.name || '')}" data-search-id="procedure-${db}-${p.name}">${p.name}</span>
                     </div>`)}
                 ${renderObjectCategory(db, 'functions', 'Functions', 'function', isDawn ? 'text-[#eb6f92]' : 'text-pink-400', filteredFunctions,
-                            (db, f) => `<div class="flex items-center gap-2 text-[10px] ${mainText} py-0.5">
-                        <span class="material-symbols-outlined text-[12px] ${isDawn ? 'text-[#eb6f92]' : 'text-pink-400'}">function</span>
-                        <span class="${highlightClass(`function-${db}-${f.name}`)}" data-search-id="function-${db}-${f.name}">${f.name}</span>
+                            (db, f) => `<div class="flex items-center gap-2 min-w-0 w-full text-[10px] ${mainText} py-0.5">
+                        <span class="material-symbols-outlined text-[12px] shrink-0 ${isDawn ? 'text-[#eb6f92]' : 'text-pink-400'}">function</span>
+                        <span class="${highlightClass(`function-${db}-${f.name}`)} flex-1 min-w-0 truncate" title="${escapeHtml(f.name || '')}" data-search-id="function-${db}-${f.name}">${f.name}</span>
                     </div>`)}
                 ${renderObjectCategory(db, 'events', 'Events', 'schedule', isDawn ? 'text-[#ea9d34]' : 'text-orange-400', filteredEvents,
-                                (db, e) => `<div class="flex items-center gap-2 text-[10px] ${mainText} py-0.5">
-                        <span class="material-symbols-outlined text-[12px] ${isDawn ? 'text-[#ea9d34]' : 'text-orange-400'}">schedule</span>
-                        <span class="${highlightClass(`event-${db}-${e.name}`)}" data-search-id="event-${db}-${e.name}">${e.name}</span>
-                        <span class="${subText} text-[9px]">${e.status}</span>
+                                (db, e) => `<div class="flex items-center gap-2 min-w-0 w-full text-[10px] ${mainText} py-0.5">
+                        <span class="material-symbols-outlined text-[12px] shrink-0 ${isDawn ? 'text-[#ea9d34]' : 'text-orange-400'}">schedule</span>
+                        <span class="${highlightClass(`event-${db}-${e.name}`)} flex-1 min-w-0 truncate" title="${escapeHtml(e.name || '')}" data-search-id="event-${db}-${e.name}">${e.name}</span>
+                        <span class="${subText} text-[9px] shrink-0 max-w-[45%] truncate" title="${escapeHtml(e.status || '')}">${e.status}</span>
                     </div>`)}
             </div>
         `;
@@ -391,10 +391,10 @@ export function ObjectExplorer() {
 
         return `
             <div>
-                <div data-db="${db}" data-conn-id="${renderingConnectionId || activeConnectionId}" class="db-item flex items-center gap-2 ${baseColor} ${hoverColor} group cursor-pointer p-1">
-                    <span class="material-symbols-outlined text-xs transition-transform ${isExpanded ? 'rotate-90' : ''}">arrow_right</span>
-                    <div class="w-1.5 h-1.5 rounded-full ${dotColor}"></div>
-                    <span class="font-bold tracking-tight ${activeText} ${highlightClass(`db-${db}`)}" data-search-id="db-${db}">${db}</span>
+                <div data-db="${db}" data-conn-id="${renderingConnectionId || activeConnectionId}" class="db-item flex items-center gap-2 min-w-0 w-full ${baseColor} ${hoverColor} group cursor-pointer p-1">
+                    <span class="material-symbols-outlined text-xs shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}">arrow_right</span>
+                    <div class="w-1.5 h-1.5 shrink-0 rounded-full ${dotColor}"></div>
+                    <span class="font-bold tracking-tight ${activeText} ${highlightClass(`db-${db}`)} flex-1 min-w-0 truncate" title="${escapeHtml(db || '')}" data-search-id="db-${db}">${db}</span>
                 </div>
                 ${isExpanded ? renderDatabaseContents(db) : ''}
             </div>
