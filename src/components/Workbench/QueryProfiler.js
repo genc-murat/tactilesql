@@ -26,6 +26,9 @@ export function QueryProfiler() {
     let lockAnalysis = null;
     let monitorInterval = null;
     let profilerEnabled = SettingsManager.get('profiler.enabled', true);
+    let lockWaitDetailsSupported = true;
+    let lockAnalysisSupported = true;
+    let lockSupportWarningShown = false;
 
     let theme = ThemeManager.getCurrentTheme();
     let isLight = theme === 'light';
@@ -74,6 +77,27 @@ export function QueryProfiler() {
         return stored.db_type || stored.dbType || localStorage.getItem('activeDbType') || 'mysql';
     };
 
+    const isMissingLockMetadataSupport = (error) => {
+        const message = String(error || '').toLowerCase();
+        return (
+            message.includes('data_locks') ||
+            message.includes('data_lock_waits') ||
+            message.includes("doesn't exist") ||
+            message.includes('(42s02)')
+        );
+    };
+
+    const disableLockFeaturesIfUnsupported = (error) => {
+        if (!isMissingLockMetadataSupport(error)) return false;
+        lockWaitDetailsSupported = false;
+        lockAnalysisSupported = false;
+        if (!lockSupportWarningShown) {
+            console.warn('Lock monitoring disabled: server does not expose required performance_schema lock tables.', error);
+            lockSupportWarningShown = true;
+        }
+        return true;
+    };
+
     const fetchMonitorData = async () => {
         if (getDbType() !== 'mysql') return;
         try {
@@ -103,6 +127,20 @@ export function QueryProfiler() {
 
     const fetchLocksData = async () => {
         const dbType = getDbType();
+        if (dbType !== 'mysql') {
+            lockAnalysis = null;
+            locksData = [];
+            if (activeTab === 'locks' && isVisible) renderLocksContent();
+            return;
+        }
+
+        if (!lockWaitDetailsSupported && !lockAnalysisSupported) {
+            lockAnalysis = null;
+            locksData = [];
+            if (activeTab === 'locks' && isVisible) renderLocksContent();
+            return;
+        }
+
         const query = `
             SELECT
               r.trx_id AS 'BekleyenIslemID',
@@ -121,38 +159,38 @@ export function QueryProfiler() {
         `;
 
         try {
-            const analysisPromise = invoke('get_lock_analysis')
-                .then((result) => result)
-                .catch((e) => {
-                    console.warn('Failed to fetch lock analysis:', e);
+            const analysisPromise = lockAnalysisSupported
+                ? invoke('get_lock_analysis').catch((e) => {
+                    if (!disableLockFeaturesIfUnsupported(e)) {
+                        console.warn('Failed to fetch lock analysis:', e);
+                    }
                     return null;
-                });
+                })
+                : Promise.resolve(null);
 
-            if (dbType === 'mysql') {
-                const [analysis, result] = await Promise.all([
-                    analysisPromise,
-                    invoke('execute_query', { query }).catch((e) => {
+            const detailPromise = lockWaitDetailsSupported
+                ? invoke('execute_query', { query }).catch((e) => {
+                    if (!disableLockFeaturesIfUnsupported(e)) {
                         console.warn('Failed to fetch MySQL lock wait details:', e);
-                        return null;
-                    })
-                ]);
-                lockAnalysis = analysis;
+                    }
+                    return null;
+                })
+                : Promise.resolve(null);
 
-                if (result && result.rows) {
-                    locksData = result.rows.map(row => ({
-                        waitingTrxId: row[0],
-                        waitingThreadId: row[1],
-                        waitTime: row[2],
-                        waitingQuery: row[3],
-                        blockingTrxId: row[4],
-                        blockingThreadId: row[5],
-                        blockingQuery: row[6]
-                    }));
-                } else {
-                    locksData = [];
-                }
+            const [analysis, result] = await Promise.all([analysisPromise, detailPromise]);
+            lockAnalysis = analysis;
+
+            if (result && result.rows) {
+                locksData = result.rows.map(row => ({
+                    waitingTrxId: row[0],
+                    waitingThreadId: row[1],
+                    waitTime: row[2],
+                    waitingQuery: row[3],
+                    blockingTrxId: row[4],
+                    blockingThreadId: row[5],
+                    blockingQuery: row[6]
+                }));
             } else {
-                lockAnalysis = await analysisPromise;
                 locksData = [];
             }
 

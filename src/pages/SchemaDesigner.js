@@ -409,8 +409,6 @@ END"></textarea>
         updateAll();
     };
 
-    render();
-
     // --- Render Functions ---
 
     function renderTabs() {
@@ -1764,6 +1762,8 @@ END"></textarea>
     }
 
     // --- Handlers ---
+    // Render UI only after all helper const/function initializations above are complete.
+    render();
 
     function handleAddColumn() {
         state.showColumnModal = true;

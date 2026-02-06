@@ -394,22 +394,18 @@ export function ResultsTable(options = {}) {
     };
 
     const checkIfEditable = async (query) => {
-        console.log('Debug: Checking if editable for query:', query);
         // Strip comments for check
         const cleanQuery = query.replace(/--.*$|\/\*[\s\S]*?\*\//gm, '').trim();
 
         // Only editable if it's a simple SELECT query (no JOIN, etc.)
         if (!cleanQuery || !/^\s*SELECT/i.test(cleanQuery)) {
-            console.log('Debug: Not a SELECT query');
             return false;
         }
         if (/JOIN/i.test(cleanQuery) || /UNION/i.test(cleanQuery) || /GROUP BY/i.test(cleanQuery)) {
-            console.log('Debug: Complex query detected');
             return false;
         }
 
         const tableInfo = extractTableInfo(cleanQuery);
-        console.log('Debug: Extracted table info:', tableInfo);
 
         if (!tableInfo) {
             return false;
@@ -434,8 +430,6 @@ export function ResultsTable(options = {}) {
             databaseName = schemaName || connDb;
         }
 
-        console.log('Debug: Resolved context - Table:', tableName, 'Context (DB/Schema):', databaseName);
-
         if (!databaseName) {
             return false;
         }
@@ -452,7 +446,6 @@ export function ResultsTable(options = {}) {
                 database: databaseName,
                 table: tableName
             });
-            console.log('Debug: Fetched FKs:', foreignKeys);
 
             const editable = primaryKeys.length > 0;
             return editable;
@@ -741,8 +734,6 @@ export function ResultsTable(options = {}) {
             const column = currentData.columns[colIdx];
             const fk = foreignKeys.find(f => f.column_name === column);
 
-            if (fk) console.log('Action: Rendering FK cell', column, '->', fk.referenced_table);
-
             let contentHtml = formatCell(displayValue);
             let cellClasses = `p-3 border-r ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5'))} ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text' : 'text-gray-300'))} whitespace-nowrap overflow-hidden text-ellipsis max-w-xs ${isModified ? 'bg-yellow-500/10 border border-yellow-500/30' : ''} ${isEditable && !isDeleted ? 'cursor-pointer hover:bg-cyan-500/5' : ''}`;
 
@@ -791,17 +782,6 @@ export function ResultsTable(options = {}) {
             ${cells}
         </tr>`;
     };
-
-    // --- Global Debug Listener (Temporary) ---
-    if (!window._tactile2DebugListener) {
-        window.addEventListener('click', (e) => {
-            console.log("Global Capture 2 Click:", e.target.tagName, e.target.className);
-            if (e.target.closest('.fk-link')) {
-                console.log("Global Capture 2: Found .fk-link!");
-            }
-        }, true);
-        window._tactile2DebugListener = true;
-    }
 
     const attachRowEvents = (tbody) => {
         // Cell edit events

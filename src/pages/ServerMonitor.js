@@ -27,6 +27,8 @@ export function ServerMonitor() {
     let autoRefresh = true;
     let refreshInterval = null;
     let activeTab = 'overview'; // 'overview' | 'processes' | 'innodb' | 'slow' | 'locks' | 'replication'
+    const lockFeatureAvailability = { locks: true, analysis: true };
+    const lockFeatureWarningShown = { locks: false, analysis: false };
 
     // Previous values for delta calculations
     let prevStatus = null;
@@ -41,22 +43,58 @@ export function ServerMonitor() {
         return `${mins}m`;
     };
 
+    const isMissingLockMetadataSupport = (error) => {
+        const message = String(error || '').toLowerCase();
+        return (
+            message.includes('data_locks') ||
+            message.includes('data_lock_waits') ||
+            message.includes("doesn't exist") ||
+            message.includes('(42s02)')
+        );
+    };
+
+    const disableLockFeatureIfUnsupported = (feature, error) => {
+        if (!isMissingLockMetadataSupport(error)) return false;
+        lockFeatureAvailability[feature] = false;
+        if (!lockFeatureWarningShown[feature]) {
+            const label = feature === 'analysis' ? 'Lock analysis' : 'Lock list';
+            console.warn(`${label} disabled: server does not expose required performance_schema tables.`, error);
+            lockFeatureWarningShown[feature] = true;
+        }
+        return true;
+    };
+
     const loadData = async () => {
         await LoadingManager.wrap('server-monitor', null, async () => {
             try {
                 const activeDbType = localStorage.getItem('activeDbType') || 'mysql';
                 const isPostgres = activeDbType === 'postgresql';
-                
+
+                const lockDataPromise = (!isPostgres && lockFeatureAvailability.locks)
+                    ? invoke('get_locks').catch((e) => {
+                        if (!disableLockFeatureIfUnsupported('locks', e)) {
+                            console.warn('Failed to fetch locks:', e);
+                        }
+                        return [];
+                    })
+                    : Promise.resolve([]);
+
+                const lockAnalysisPromise = (!isPostgres && lockFeatureAvailability.analysis)
+                    ? invoke('get_lock_analysis').catch((e) => {
+                        if (!disableLockFeatureIfUnsupported('analysis', e)) {
+                            console.warn('Lock analysis not available:', e);
+                        }
+                        return null;
+                    })
+                    : Promise.resolve(null);
+
                 // Load data - some commands are MySQL specific
                 const [status, processes, replication, lockData, lockAnalysisData] = await Promise.all([
                     invoke('get_server_status'),
                     invoke('get_process_list'),
                     invoke('get_replication_status'),
-                    invoke('get_locks'),
-                    invoke('get_lock_analysis').catch((e) => {
-                        console.warn('Lock analysis not available:', e);
-                        return null;
-                    })
+                    lockDataPromise,
+                    lockAnalysisPromise
                 ]);
 
                 // MySQL-specific data

@@ -40,7 +40,6 @@ export function GraphViewer(graphData, theme, qualityMap) {
     const minZoom = isDenseGraph ? 0.03 : 0.08;
     const maxZoom = 4.5;
     const fitPadding = isDenseGraph ? 100 : 70;
-    const wheelSensitivity = isDenseGraph ? 0.08 : 0.14;
     const denseGraphLabel = isDenseGraph ? 'Dense Mode' : 'Standard Mode';
     const BLAST_RADIUS_PREVIEW_LIMIT = isDenseGraph ? 8 : 12;
     const BLAST_RADIUS_MAX_LIMIT = 120;
@@ -1237,7 +1236,6 @@ export function GraphViewer(graphData, theme, qualityMap) {
             layout: { name: 'null' },
             minZoom,
             maxZoom,
-            wheelSensitivity,
             textureOnViewport: isDenseGraph,
             motionBlur: isDenseGraph,
             hideEdgesOnViewport: isDenseGraph
