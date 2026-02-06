@@ -10,7 +10,16 @@ export const DatabaseType = {
 
 // Get current active database type
 export const getActiveDbType = () => {
-    return localStorage.getItem('activeDbType') || DatabaseType.MYSQL;
+    if (typeof localStorage !== 'undefined') {
+        return localStorage.getItem('activeDbType') || DatabaseType.MYSQL;
+    }
+
+    // Worker fallback: populated by sqlHighlight.worker.js
+    if (typeof self !== 'undefined' && self.__TACTILESQL_ACTIVE_DB_TYPE) {
+        return self.__TACTILESQL_ACTIVE_DB_TYPE;
+    }
+
+    return DatabaseType.MYSQL;
 };
 
 // Check if current database is PostgreSQL

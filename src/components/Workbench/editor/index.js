@@ -6,3 +6,5 @@ export * from './tabManager.js';
 export * from './queryHelpers.js';
 export * from './sampleQueries.js';
 export * from './executionHelpers.js';
+export * from './executionSafety.js';
+export * from './tabHistory.js';

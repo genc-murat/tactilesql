@@ -15,10 +15,12 @@ import { AiService } from '../../utils/AiService.js';
 import { AiAssistancePanel } from '../UI/AiAssistancePanel.js';
 import { SettingsManager } from '../../utils/SettingsManager.js';
 import { detectSyntaxErrors } from './editor/syntaxChecker.js';
+import { createTabHistoryManager } from './editor/tabHistory.js';
 import { getSortedTabs as sortTabsByPinned, loadTabsState, saveTabsState } from './editor/tabManager.js';
 import { detectSlowQuery, estimateQueryLatency, buildParamSuggestions } from './editor/queryHelpers.js';
 import { getActiveDbType, generateSampleQueries, buildWhatIfVariants } from './editor/sampleQueries.js';
 import { pickExecutionQuery, buildPostgresRetryCandidates } from './editor/executionHelpers.js';
+import { findDestructiveStatementsWithoutWhere, extractNamedParameters, applyNamedParameters } from './editor/executionSafety.js';
 
 // SQL Keywords for autocomplete
 // Imported from SqlHighlighter.js
@@ -38,6 +40,13 @@ let repairPreviewVisible = false;
 // Helper to sort tabs: pinned first, then by original order
 const getSortedTabs = () => sortTabsByPinned(tabs);
 const saveState = () => saveTabsState(tabs, activeTabId);
+const PARAM_DEFAULTS_STORAGE_KEY = 'workbench_query_param_defaults';
+const escapeHtml = (value) => String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 
 export function QueryEditor() {
     let theme = ThemeManager.getCurrentTheme();
@@ -73,29 +82,238 @@ export function QueryEditor() {
         tabId: null
     };
 
+    // --- Tab History State ---
+    const tabHistory = createTabHistoryManager({
+        maxPast: 250,
+        maxSnapshots: 50,
+        autoSnapshotMs: 8000,
+    });
+    tabHistory.syncTabs(tabs);
+
+    // --- Syntax Worker State ---
+    let syntaxWorker = null;
+    let syntaxWorkerHealthy = true;
+    let syntaxRequestId = 0;
+    let latestSyntaxRequestId = 0;
+    let syntaxRenderTimer = null;
+
+    // --- Parameter Defaults ---
+    let parameterDefaults = (() => {
+        try {
+            return JSON.parse(localStorage.getItem(PARAM_DEFAULTS_STORAGE_KEY) || '{}') || {};
+        } catch {
+            return {};
+        }
+    })();
+
+    const persistParameterDefaults = () => {
+        try {
+            localStorage.setItem(PARAM_DEFAULTS_STORAGE_KEY, JSON.stringify(parameterDefaults));
+        } catch {
+            // Ignore storage errors for optional UX defaults
+        }
+    };
+
+    const syncTabHistory = () => {
+        tabHistory.syncTabs(tabs);
+    };
+
+    const setTabContent = (tabId, content, options = {}) => {
+        const { persist = true, trackHistory = true, forceSnapshot = false, historySource = 'edit' } = options;
+        const tab = tabs.find(t => t.id === tabId);
+        if (!tab) return false;
+
+        tab.content = content;
+        if (trackHistory) {
+            tabHistory.record(tabId, content, { forceSnapshot, source: historySource });
+        } else {
+            tabHistory.replaceCurrent(tabId, content);
+        }
+
+        if (persist) saveState();
+        return true;
+    };
+
+    const setActiveTabContent = (content, options = {}) => {
+        return setTabContent(activeTabId, content, options);
+    };
+
+    const applyHistoryContent = (textarea, lineNumbers, updateSyntaxHighlight, content) => {
+        if (!textarea) return;
+        textarea.value = content;
+        textarea.selectionStart = textarea.selectionEnd = content.length;
+        updateSyntaxHighlight(true);
+        if (lineNumbers) {
+            const lines = content.split('\n').length;
+            const minContent = Math.max(lines, 20);
+            lineNumbers.innerHTML = Array.from({ length: minContent }, (_, i) => i + 1).join('<br>');
+        }
+    };
+
+    const getSyntaxFallback = (sql) => {
+        const errors = detectSyntaxErrors(sql);
+        const html = highlightSQL(sql, errors);
+        return { html, errors };
+    };
+
+    const applySyntaxRender = (textarea, syntaxHighlight, html, errors) => {
+        let renderedHtml = html || '';
+        currentGhostText = '';
+
+        const text = textarea.value || '';
+        const cursorPos = textarea.selectionStart ?? 0;
+        if (cursorPos === text.length && text.length > 0 && !autocompleteVisible) {
+            const nextToken = smartAutocomplete.getNextTokenPrediction(text);
+            if (nextToken) {
+                currentGhostText = nextToken;
+                const prefix = text.endsWith(' ') ? '' : ' ';
+                renderedHtml += `<span class="opacity-40 select-none pointer-events-none text-gray-500 italic" data-ghost="true">${prefix}${escapeHtml(nextToken)}</span>`;
+            }
+        }
+
+        syntaxHighlight.innerHTML = `${renderedHtml}\n`;
+
+        if (Array.isArray(errors) && errors.length > 0) {
+            const errorMsg = errors.map(e => `Line ${e.line}: ${e.message}`).join('\n');
+            textarea.title = errorMsg;
+        } else {
+            textarea.title = 'Enter your SQL query here... (Ctrl+Space for suggestions)';
+        }
+    };
+
+    const ensureSyntaxWorker = () => {
+        if (!syntaxWorkerHealthy) return null;
+        if (syntaxWorker) return syntaxWorker;
+
+        try {
+            syntaxWorker = new Worker(new URL('./editor/sqlHighlight.worker.js', import.meta.url), { type: 'module' });
+            syntaxWorker.onmessage = (event) => {
+                const { id, html, errors, error } = event.data || {};
+                if (id !== latestSyntaxRequestId) return;
+
+                const textarea = container.querySelector('#query-input');
+                const syntaxHighlight = container.querySelector('#syntax-highlight');
+                if (!textarea || !syntaxHighlight) return;
+
+                if (error) {
+                    const fallback = getSyntaxFallback(textarea.value || '');
+                    applySyntaxRender(textarea, syntaxHighlight, fallback.html, fallback.errors);
+                    return;
+                }
+
+                applySyntaxRender(textarea, syntaxHighlight, html, errors || []);
+            };
+            syntaxWorker.onerror = (event) => {
+                console.warn('SQL highlight worker error. Falling back to main thread highlight.', event);
+                syntaxWorkerHealthy = false;
+                if (syntaxWorker) {
+                    syntaxWorker.terminate();
+                    syntaxWorker = null;
+                }
+            };
+        } catch (error) {
+            console.warn('Failed to initialize SQL highlight worker. Falling back to main thread highlight.', error);
+            syntaxWorkerHealthy = false;
+            syntaxWorker = null;
+        }
+
+        return syntaxWorker;
+    };
+
+    const requestSyntaxRender = (textarea, syntaxHighlight, immediate = false) => {
+        if (!textarea || !syntaxHighlight) return;
+
+        const runRender = () => {
+            const sql = textarea.value || '';
+            const worker = ensureSyntaxWorker();
+            if (!worker) {
+                const fallback = getSyntaxFallback(sql);
+                applySyntaxRender(textarea, syntaxHighlight, fallback.html, fallback.errors);
+                return;
+            }
+
+            const requestId = ++syntaxRequestId;
+            latestSyntaxRequestId = requestId;
+            worker.postMessage({
+                id: requestId,
+                sql,
+                dbType: getActiveDbType(),
+            });
+        };
+
+        if (syntaxRenderTimer) {
+            clearTimeout(syntaxRenderTimer);
+            syntaxRenderTimer = null;
+        }
+
+        if (immediate) {
+            runRender();
+            return;
+        }
+
+        syntaxRenderTimer = setTimeout(runRender, 20);
+    };
+
+    const promptForNamedParameters = async (query) => {
+        const parameterNames = extractNamedParameters(query);
+        if (parameterNames.length === 0) return query;
+
+        const values = {};
+
+        for (const name of parameterNames) {
+            const defaultValue = Object.prototype.hasOwnProperty.call(parameterDefaults, name)
+                ? parameterDefaults[name]
+                : '';
+            const value = await Dialog.prompt(
+                `Provide value for :${name}\\nTip: add quotes for text/date values.`,
+                'Query Parameters',
+                defaultValue
+            );
+
+            if (value === null) {
+                return null;
+            }
+
+            values[name] = value;
+            parameterDefaults[name] = value;
+        }
+
+        persistParameterDefaults();
+        return applyNamedParameters(query, values);
+    };
+
+    const confirmDestructiveQueryExecution = async (query) => {
+        const findings = findDestructiveStatementsWithoutWhere(query);
+        if (findings.length === 0) return true;
+
+        const preview = findings
+            .slice(0, 3)
+            .map((item, index) => `${index + 1}. [${item.type}] ${item.preview}`)
+            .join('\n');
+        const remaining = findings.length > 3 ? `\n...and ${findings.length - 3} more statements.` : '';
+
+        return await Dialog.confirm(
+            `Potentially destructive statements detected (missing WHERE):\n${preview}${remaining}\n\nDo you want to run this query anyway?`,
+            'Safety Check'
+        );
+    };
+
     // --- Tab Management Helpers ---
     const closeTab = (id) => {
-        const tab = tabs.find(t => t.id === id);
-        // Don't allow closing pinned tabs directly (they must be unpinned first)
-        // But for context menu actions like "Close All", we might want to override or skip pinned?
-        // Standard behavior: Close All closes unpinned. Close Others closes unpinned others.
-        // The user request was simple "close all", usually implies resetting workspace.
-        // Let's stick to: Pinned tabs are protected from mass closure unless explicitly unpinned?
-        // Or "Close All" wipes everything. Let's make "Close All" wipe everything for simplicity as per plan "Reset to single empty Query 1".
-
         if (tabs.length === 1) {
-            // If closing the last tab, reset it instead of removing
             tabs = [{ id: Date.now().toString(), title: 'Query 1', content: '', pinned: false }];
             activeTabId = tabs[0].id;
+            syncTabHistory();
         } else {
             const idx = tabs.findIndex(t => t.id === id);
-            if (idx === -1) return; // Tab not found
+            if (idx === -1) return;
 
             tabs = tabs.filter(t => t.id !== id);
             if (activeTabId === id) {
                 const newIdx = Math.max(0, idx - 1);
                 activeTabId = tabs[newIdx].id;
             }
+            syncTabHistory();
         }
         saveState();
         render();
@@ -105,24 +323,18 @@ export function QueryEditor() {
         const targetTab = tabs.find(t => t.id === id);
         if (!targetTab) return;
 
-        // Keep the target tab, remove all others.
-        // Optional: Keep pinned tabs? Usually "Close Others" keeps pinned tabs too in VS Code etc.
-        // Let's implement smart "Close Others": Keep target + Pinned tabs.
-        // But for simplicity based on user request "close others", usually implies "focus on this one".
-        // Let's keep ONLY the target tab to be safe and simple, or maybe keep pinned?
-        // Let's go with: Keep target tab AND pinned tabs.
-
         tabs = tabs.filter(t => t.id === id || t.pinned);
         activeTabId = id;
+        syncTabHistory();
         saveState();
         render();
     };
 
     const closeAllTabs = () => {
-        // Reset to initial state
         const newId = Date.now().toString();
         tabs = [{ id: newId, title: 'Query 1', content: '', pinned: false, connectionName: '', connectionColor: '' }];
         activeTabId = newId;
+        syncTabHistory();
         saveState();
         render();
     };
@@ -409,16 +621,11 @@ export function QueryEditor() {
         smartAutocomplete.recordSelection(suggestion.value);
 
         // Update tab content
-        const activeTab = tabs.find(t => t.id === activeTabId);
-        if (activeTab) {
-            activeTab.content = newText;
-            saveState(); // Save on autocomplete
-        }
+        setActiveTabContent(newText, { forceSnapshot: true, historySource: 'autocomplete' });
 
-        // Update syntax highlighting immediately
         const syntaxHighlight = container.querySelector('#syntax-highlight');
         if (syntaxHighlight) {
-            syntaxHighlight.innerHTML = highlightSQL(newText) + '\n';
+            requestSyntaxRender(textarea, syntaxHighlight, true);
         }
 
         hideAutocomplete();
@@ -841,11 +1048,7 @@ export function QueryEditor() {
                     const textarea = container.querySelector('#query-input');
                     if (textarea) {
                         textarea.value = variant.query;
-                        const activeTab = tabs.find(t => t.id === activeTabId);
-                        if (activeTab) {
-                            activeTab.content = variant.query;
-                            saveState();
-                        }
+                        setActiveTabContent(variant.query, { forceSnapshot: true, historySource: 'whatif' });
                         render();
                     }
                     overlay.remove();
@@ -867,14 +1070,24 @@ export function QueryEditor() {
             return;
         }
 
+        const resolvedQuery = await promptForNamedParameters(editorContent);
+        if (resolvedQuery === null) {
+            return;
+        }
+
+        const isSafeToExecute = await confirmDestructiveQueryExecution(resolvedQuery);
+        if (!isSafeToExecute) {
+            return;
+        }
+
         isExecuting = true;
 
         const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
         const database = activeConfig.database || '';
         const activeDbType = getActiveDbType();
-        let queryForExecution = editorContent;
+        let queryForExecution = resolvedQuery;
 
-        const estimate = estimateQueryLatency(editorContent, database, auditTrail);
+        const estimate = estimateQueryLatency(queryForExecution, database, auditTrail);
         estimatedExecutionTime = estimate?.estimate || null;
 
         const startTime = performance.now();
@@ -919,12 +1132,8 @@ export function QueryEditor() {
                 if (!hasRecovered) throw lastRetryError;
             }
 
-            if (appliedFixReason && queryForExecution !== editorContent) {
-                const activeTab = tabs.find(t => t.id === activeTabId);
-                if (activeTab) {
-                    activeTab.content = queryForExecution;
-                    saveState();
-                }
+            if (appliedFixReason && queryForExecution !== resolvedQuery) {
+                setActiveTabContent(queryForExecution, { forceSnapshot: true, historySource: 'compat_fix' });
                 textarea.value = queryForExecution;
                 textarea.dispatchEvent(new Event('input', { bubbles: true }));
 
@@ -1179,6 +1388,7 @@ export function QueryEditor() {
                 const num = tabs.length + 1;
                 tabs.push({ id: newId, title: `Query ${num}`, content: '', pinned: false });
                 activeTabId = newId;
+                syncTabHistory();
                 saveState(); // Save new tab
                 render();
             });
@@ -1190,42 +1400,9 @@ export function QueryEditor() {
         const syntaxHighlight = container.querySelector('#syntax-highlight');
         const lineNumbers = container.querySelector('#line-numbers');
 
-        // Update syntax highlighting
-        const updateSyntaxHighlight = () => {
-            if (syntaxHighlight && textarea) {
-                const errors = detectSyntaxErrors(textarea.value);
-                let html = highlightSQL(textarea.value, errors);
-
-                // --- Ghost Text Logic ---
-                currentGhostText = ''; // Reset
-                const text = textarea.value;
-                const cursorPos = textarea.selectionStart;
-
-                // Only show ghost text if cursor is at the end of the input
-                // And we are not showing the autocomplete popup
-                if (cursorPos === text.length && text.length > 0 && !autocompleteVisible) {
-                    const nextToken = smartAutocomplete.getNextTokenPrediction(text);
-                    if (nextToken) {
-                        currentGhostText = nextToken;
-                        // Add a space before if helpful, but usually user types space
-                        // If users types "SELEC", prediction might be "SELECT" ? 
-                        // No, prediction is next TOKEN. So if "SELECT", next is "*".
-                        // So we probably want a leading space if there isn't one
-                        const prefix = text.endsWith(' ') ? '' : ' ';
-                        html += `<span class="opacity-40 select-none pointer-events-none text-gray-500 italic" data-ghost="true">${prefix}${nextToken}</span>`;
-                    }
-                }
-
-                syntaxHighlight.innerHTML = html + '\n';
-
-                // Show error tooltip if any
-                if (errors.length > 0) {
-                    const errorMsg = errors.map(e => `Line ${e.line}: ${e.message}`).join('\n');
-                    textarea.title = errorMsg;
-                } else {
-                    textarea.title = 'Enter your SQL query here... (Ctrl+Space for suggestions)';
-                }
-            }
+        const updateSyntaxHighlight = (immediate = false) => {
+            if (!syntaxHighlight || !textarea) return;
+            requestSyntaxRender(textarea, syntaxHighlight, immediate);
         };
 
         // Update line numbers
@@ -1237,9 +1414,43 @@ export function QueryEditor() {
             }
         };
 
+        const showLocalHistory = async () => {
+            const snapshots = tabHistory.getSnapshots(activeTabId, 12);
+            if (!snapshots || snapshots.length === 0) {
+                Dialog.alert('No local history snapshots for this tab yet.', 'Local History');
+                return;
+            }
+
+            const listText = snapshots
+                .map((entry, idx) => {
+                    const time = new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    const preview = entry.content.replace(/\s+/g, ' ').slice(0, 70);
+                    return `${idx + 1}. ${time} [${entry.source}] ${preview}`;
+                })
+                .join('\n');
+
+            const selected = await Dialog.prompt(
+                `Choose snapshot number to restore (1-${snapshots.length}):\n\n${listText}`,
+                'Local History',
+                '1'
+            );
+
+            if (!selected) return;
+            const idx = parseInt(selected, 10) - 1;
+            if (Number.isNaN(idx) || idx < 0 || idx >= snapshots.length) {
+                Dialog.alert('Invalid snapshot number.', 'Local History');
+                return;
+            }
+
+            const chosen = snapshots[idx];
+            setActiveTabContent(chosen.content, { forceSnapshot: true, historySource: 'history_restore' });
+            applyHistoryContent(textarea, lineNumbers, updateSyntaxHighlight, chosen.content);
+            toastSuccess('Local history snapshot restored.');
+        };
+
         if (textarea) {
             // Initial render
-            updateSyntaxHighlight();
+            updateSyntaxHighlight(true);
             updateLineNumbers();
 
             // Scroll Sync
@@ -1254,13 +1465,10 @@ export function QueryEditor() {
             // Save content on input
             let inputSaveTimeout;
             textarea.addEventListener('input', (e) => {
-                const activeTab = tabs.find(t => t.id === activeTabId);
-                if (activeTab) {
-                    activeTab.content = e.target.value;
-                    // Debounced save
-                    clearTimeout(inputSaveTimeout);
-                    inputSaveTimeout = setTimeout(saveState, 1000);
-                }
+                setActiveTabContent(e.target.value, { persist: false, historySource: 'typing' });
+                clearTimeout(inputSaveTimeout);
+                inputSaveTimeout = setTimeout(saveState, 1000);
+
                 // Update views
                 updateSyntaxHighlight();
                 updateLineNumbers();
@@ -1318,6 +1526,35 @@ export function QueryEditor() {
 
             // Keyboard handling for autocomplete
             textarea.addEventListener('keydown', (e) => {
+                const isCtrl = e.ctrlKey || e.metaKey;
+                const key = String(e.key || '').toLowerCase();
+
+                if (isCtrl && !e.shiftKey && key === 'z') {
+                    e.preventDefault();
+                    const previous = tabHistory.undo(activeTabId);
+                    if (previous !== null) {
+                        setActiveTabContent(previous, { trackHistory: false, historySource: 'undo' });
+                        applyHistoryContent(textarea, lineNumbers, updateSyntaxHighlight, previous);
+                    }
+                    return;
+                }
+
+                if ((isCtrl && key === 'y') || (isCtrl && e.shiftKey && key === 'z')) {
+                    e.preventDefault();
+                    const next = tabHistory.redo(activeTabId);
+                    if (next !== null) {
+                        setActiveTabContent(next, { trackHistory: false, historySource: 'redo' });
+                        applyHistoryContent(textarea, lineNumbers, updateSyntaxHighlight, next);
+                    }
+                    return;
+                }
+
+                if (isCtrl && e.shiftKey && key === 'h') {
+                    e.preventDefault();
+                    showLocalHistory();
+                    return;
+                }
+
                 // Ghost Text Acceptance
                 if (e.key === 'Tab' && currentGhostText && !autocompleteVisible) {
                     e.preventDefault();
@@ -1328,12 +1565,7 @@ export function QueryEditor() {
 
                     textarea.value = newText;
 
-                    // Update state
-                    const activeTab = tabs.find(t => t.id === activeTabId);
-                    if (activeTab) {
-                        activeTab.content = newText;
-                        saveState();
-                    }
+                    setActiveTabContent(newText, { forceSnapshot: true, historySource: 'ghost' });
 
                     // Move cursor to end
                     textarea.selectionStart = textarea.selectionEnd = newText.length;
@@ -1342,7 +1574,7 @@ export function QueryEditor() {
                     smartAutocomplete.recordSelection(currentGhostText, 'ghost_text');
 
                     currentGhostText = '';
-                    updateSyntaxHighlight();
+                    updateSyntaxHighlight(true);
                     return;
                 }
 
@@ -1376,12 +1608,8 @@ export function QueryEditor() {
                         const newText = text.substring(0, start) + sql + text.substring(end);
                         textarea.value = newText;
 
-                        const activeTab = tabs.find(t => t.id === activeTabId);
-                        if (activeTab) {
-                            activeTab.content = newText;
-                            saveState();
-                        }
-                        updateSyntaxHighlight();
+                        setActiveTabContent(newText, { forceSnapshot: true, historySource: 'ai_insert' });
+                        updateSyntaxHighlight(true);
                         updateLineNumbers();
                     });
                 }
@@ -1397,9 +1625,8 @@ export function QueryEditor() {
                     e.preventDefault();
                     const formatted = formatSQL(textarea.value);
                     textarea.value = formatted;
-                    const activeTab = tabs.find(t => t.id === activeTabId);
-                    if (activeTab) activeTab.content = formatted;
-                    updateSyntaxHighlight();
+                    setActiveTabContent(formatted, { forceSnapshot: true, historySource: 'format' });
+                    updateSyntaxHighlight(true);
                     updateLineNumbers();
                 }
 
@@ -1434,12 +1661,8 @@ export function QueryEditor() {
 
                     const newText = lines.join('\n');
                     textarea.value = newText;
-                    const activeTab = tabs.find(t => t.id === activeTabId);
-                    if (activeTab) {
-                        activeTab.content = newText;
-                        saveState(); // Save on comment toggle
-                    }
-                    updateSyntaxHighlight();
+                    setActiveTabContent(newText, { forceSnapshot: true, historySource: 'toggle_comment' });
+                    updateSyntaxHighlight(true);
                 }
 
                 // Ctrl+D to duplicate line
@@ -1464,12 +1687,8 @@ export function QueryEditor() {
                     lines.splice(currentLine + 1, 0, lines[currentLine]);
                     const newText = lines.join('\n');
                     textarea.value = newText;
-                    const activeTab = tabs.find(t => t.id === activeTabId);
-                    if (activeTab) {
-                        activeTab.content = newText;
-                        saveState(); // Save on duplicate line
-                    }
-                    updateSyntaxHighlight();
+                    setActiveTabContent(newText, { forceSnapshot: true, historySource: 'duplicate_line' });
+                    updateSyntaxHighlight(true);
                     updateLineNumbers();
                 }
 
@@ -1494,12 +1713,8 @@ export function QueryEditor() {
                         [lines[currentLine - 1], lines[currentLine]] = [lines[currentLine], lines[currentLine - 1]];
                         const newText = lines.join('\n');
                         textarea.value = newText;
-                        const activeTab = tabs.find(t => t.id === activeTabId);
-                        if (activeTab) {
-                            activeTab.content = newText;
-                            saveState(); // Save on move line up
-                        }
-                        updateSyntaxHighlight();
+                        setActiveTabContent(newText, { forceSnapshot: true, historySource: 'move_line_up' });
+                        updateSyntaxHighlight(true);
                     }
                 }
 
@@ -1524,12 +1739,8 @@ export function QueryEditor() {
                         [lines[currentLine], lines[currentLine + 1]] = [lines[currentLine + 1], lines[currentLine]];
                         const newText = lines.join('\n');
                         textarea.value = newText;
-                        const activeTab = tabs.find(t => t.id === activeTabId);
-                        if (activeTab) {
-                            activeTab.content = newText;
-                            saveState(); // Save on move line down
-                        }
-                        updateSyntaxHighlight();
+                        setActiveTabContent(newText, { forceSnapshot: true, historySource: 'move_line_down' });
+                        updateSyntaxHighlight(true);
                     }
                 }
             });
@@ -1557,13 +1768,8 @@ export function QueryEditor() {
 
                     textarea.value = newText;
 
-                    // Update tab content and highlighting
-                    const activeTab = tabs.find(t => t.id === activeTabId);
-                    if (activeTab) {
-                        activeTab.content = newText;
-                        saveState(); // Save on drop
-                    }
-                    updateSyntaxHighlight();
+                    setActiveTabContent(newText, { forceSnapshot: true, historySource: 'drop_table' });
+                    updateSyntaxHighlight(true);
 
                     textarea.focus();
                     const newPos = cursorPos + tableName.length;
@@ -1590,12 +1796,8 @@ export function QueryEditor() {
                         const newText = text.substring(0, start) + sql + text.substring(end);
                         textarea.value = newText;
 
-                        const activeTab = tabs.find(t => t.id === activeTabId);
-                        if (activeTab) {
-                            activeTab.content = newText;
-                            saveState();
-                        }
-                        updateSyntaxHighlight();
+                        setActiveTabContent(newText, { forceSnapshot: true, historySource: 'ai_insert' });
+                        updateSyntaxHighlight(true);
                         updateLineNumbers();
                     }
                 });
@@ -1610,12 +1812,8 @@ export function QueryEditor() {
                 if (textarea) {
                     const formatted = formatSQL(textarea.value);
                     textarea.value = formatted;
-                    const activeTab = tabs.find(t => t.id === activeTabId);
-                    if (activeTab) {
-                        activeTab.content = formatted;
-                        saveState(); // Save on format
-                    }
-                    updateSyntaxHighlight();
+                    setActiveTabContent(formatted, { forceSnapshot: true, historySource: 'format' });
+                    updateSyntaxHighlight(true);
                     updateLineNumbers();
                 }
             });
@@ -1845,13 +2043,9 @@ export function QueryEditor() {
                         const newText = current ? `${current}\n\n${sql}` : sql;
                         textarea.value = newText;
 
-                        const activeTab = tabs.find(t => t.id === activeTabId);
-                        if (activeTab) {
-                            activeTab.content = newText;
-                            saveState();
-                        }
+                        setActiveTabContent(newText, { forceSnapshot: true, historySource: 'samples' });
 
-                        updateSyntaxHighlight();
+                        updateSyntaxHighlight(true);
                         updateLineNumbers();
                         textarea.focus();
                         textarea.setSelectionRange(newText.length, newText.length);
@@ -2023,6 +2217,8 @@ export function QueryEditor() {
             connectionColor: activeConfig.color || ''
         });
         activeTabId = newId;
+        syncTabHistory();
+        tabHistory.record(newId, query || '', { forceSnapshot: true, source: 'new_tab' });
         saveState();
         render();
     };
@@ -2066,6 +2262,8 @@ export function QueryEditor() {
                 const idx = tabs.findIndex(t => t.id === activeTabId);
                 tabs = tabs.filter(t => t.id !== activeTabId);
                 activeTabId = tabs[Math.max(0, idx - 1)].id;
+                syncTabHistory();
+                saveState();
                 render();
             }
         });
@@ -2075,6 +2273,7 @@ export function QueryEditor() {
             const idx = tabs.findIndex(t => t.id === activeTabId);
             const nextIdx = (idx + 1) % tabs.length;
             activeTabId = tabs[nextIdx].id;
+            saveState();
             render();
         });
 
@@ -2083,6 +2282,7 @@ export function QueryEditor() {
             const idx = tabs.findIndex(t => t.id === activeTabId);
             const prevIdx = (idx - 1 + tabs.length) % tabs.length;
             activeTabId = tabs[prevIdx].id;
+            saveState();
             render();
         });
 
@@ -2091,6 +2291,7 @@ export function QueryEditor() {
             registerHandler(`goToTab${i}`, () => {
                 if (tabs[i - 1]) {
                     activeTabId = tabs[i - 1].id;
+                    saveState();
                     render();
                 }
             });
@@ -2102,8 +2303,7 @@ export function QueryEditor() {
             if (textarea) {
                 const formatted = formatSQL(textarea.value);
                 textarea.value = formatted;
-                const activeTab = tabs.find(t => t.id === activeTabId);
-                if (activeTab) activeTab.content = formatted;
+                setActiveTabContent(formatted, { forceSnapshot: true, historySource: 'format' });
                 // Trigger syntax highlighting update
                 textarea.dispatchEvent(new Event('input', { bubbles: true }));
             }
@@ -2197,6 +2397,14 @@ export function QueryEditor() {
     container.onUnmount = () => {
         resizeObserver.disconnect();
         window.removeEventListener('themechange', onThemeChange);
+        if (syntaxRenderTimer) {
+            clearTimeout(syntaxRenderTimer);
+            syntaxRenderTimer = null;
+        }
+        if (syntaxWorker) {
+            syntaxWorker.terminate();
+            syntaxWorker = null;
+        }
         // Unregister handlers
         ['executeQuery', 'executeAllQuery', 'newTab', 'closeTab', 'nextTab', 'prevTab',
             'goToTab1', 'goToTab2', 'goToTab3', 'goToTab4', 'goToTab5',
@@ -2276,26 +2484,22 @@ export function QueryEditor() {
 
                 const optimizedSql = await AiAssistancePanel.show("Optimization Suggestions", result, { showApply: true });
                 if (optimizedSql) {
-                    const activeTab = tabs.find(t => t.id === activeTabId);
-                    if (activeTab) {
-                        if (selectedText.trim()) {
-                            // Update content with part replacement
-                            const text = textarea.value;
-                            const newContent = text.substring(0, textarea.selectionStart) +
-                                optimizedSql +
-                                text.substring(textarea.selectionEnd);
-                            activeTab.content = newContent;
-                        } else {
-                            activeTab.content = optimizedSql;
-                        }
-                        saveState();
-                        render();
+                    if (selectedText.trim()) {
+                        const text = textarea.value;
+                        const newContent = text.substring(0, textarea.selectionStart) +
+                            optimizedSql +
+                            text.substring(textarea.selectionEnd);
+                        setActiveTabContent(newContent, { forceSnapshot: true, historySource: 'ai_optimize' });
+                    } else {
+                        setActiveTabContent(optimizedSql, { forceSnapshot: true, historySource: 'ai_optimize' });
+                    }
 
-                        // Scroll to sync
-                        const newTextarea = container.querySelector('#query-input');
-                        if (newTextarea) {
-                            newTextarea.dispatchEvent(new Event('input'));
-                        }
+                    render();
+
+                    // Scroll to sync
+                    const newTextarea = container.querySelector('#query-input');
+                    if (newTextarea) {
+                        newTextarea.dispatchEvent(new Event('input'));
                     }
                 }
             } finally {
@@ -2418,10 +2622,8 @@ export function QueryEditor() {
         });
 
         container.querySelector('#repair-apply')?.addEventListener('click', () => {
-            const activeTab = tabs.find(t => t.id === activeTabId);
-            if (activeTab && currentRepairSql) {
-                activeTab.content = currentRepairSql;
-                saveState();
+            if (currentRepairSql) {
+                setActiveTabContent(currentRepairSql, { forceSnapshot: true, historySource: 'ai_repair_apply' });
                 hideRepairPreviewBar();
                 toastSuccess('AI Fix applied!');
                 render();
