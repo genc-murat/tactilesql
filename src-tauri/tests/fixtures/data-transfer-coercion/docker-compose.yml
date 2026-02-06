@@ -1,0 +1,33 @@
+version: "3.9"
+
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: tactile_it
+      MYSQL_USER: tactile
+      MYSQL_PASSWORD: tactile
+    ports:
+      - "33306:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 25
+      start_period: 20s
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: tactile_it
+      POSTGRES_USER: tactile
+      POSTGRES_PASSWORD: tactile
+    ports:
+      - "35432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tactile -d tactile_it"]
+      interval: 5s
+      timeout: 5s
+      retries: 25
+      start_period: 10s

@@ -1,0 +1,857 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-02-06T19:52:38.621Z",
+  "source": "docs/dbeaver-data-transfer-migration-plan-en.md",
+  "importMode": "create_task_requests",
+  "taskCount": 35,
+  "tasks": [
+    {
+      "name": "[DTM-001] Produce data transfer feature matrix (DBeaver parity)",
+      "description": "Approved scope table + in-scope/out-of-scope list",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-001 */;",
+        "backlogId": "DTM-001",
+        "epic": "Scope",
+        "priority": "P0",
+        "dependsOn": [],
+        "definitionOfDone": "Approved scope table + in-scope/out-of-scope list",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:scope",
+        "priority:p0",
+        "source:dtm-plan"
+      ],
+      "owner": "product"
+    },
+    {
+      "name": "[DTM-002] Define NFRs (throughput, memory, retry, timeout, idempotency)",
+      "description": "NFR set documented with measurable metrics",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-002 */;",
+        "backlogId": "DTM-002",
+        "epic": "Scope",
+        "priority": "P0",
+        "dependsOn": [
+          "DTM-001"
+        ],
+        "definitionOfDone": "NFR set documented with measurable metrics",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:scope",
+        "priority:p0",
+        "source:dtm-plan"
+      ],
+      "owner": "product"
+    },
+    {
+      "name": "[DTM-003] Prepare MySQL<->PostgreSQL type mapping matrix",
+      "description": "Conversion rules documented + risky types listed",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-003 */;",
+        "backlogId": "DTM-003",
+        "epic": "Scope",
+        "priority": "P0",
+        "dependsOn": [
+          "DTM-001"
+        ],
+        "definitionOfDone": "Conversion rules documented + risky types listed",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:scope",
+        "priority:p0",
+        "source:dtm-plan"
+      ],
+      "owner": "product"
+    },
+    {
+      "name": "[DTM-101] Add `data_transfer` module skeleton",
+      "description": "Module compiles with baseline model/command files",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-101 */;",
+        "backlogId": "DTM-101",
+        "epic": "Backend",
+        "priority": "P0",
+        "dependsOn": [
+          "DTM-002"
+        ],
+        "definitionOfDone": "Module compiles with baseline model/command files",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:backend",
+        "priority:p0",
+        "source:dtm-plan"
+      ],
+      "owner": "backend"
+    },
+    {
+      "name": "[DTM-102] Design transfer request/plan/run models",
+      "description": "Serde models + validation + unit tests in place",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-102 */;",
+        "backlogId": "DTM-102",
+        "epic": "Backend",
+        "priority": "P0",
+        "dependsOn": [
+          "DTM-101"
+        ],
+        "definitionOfDone": "Serde models + validation + unit tests in place",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:backend",
+        "priority:p0",
+        "source:dtm-plan"
+      ],
+      "owner": "backend"
+    },
+    {
+      "name": "[DTM-103] Register new commands in `lib.rs` handler",
+      "description": "Commands invokable + command contract updated",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-103 */;",
+        "backlogId": "DTM-103",
+        "epic": "Backend",
+        "priority": "P0",
+        "dependsOn": [
+          "DTM-102"
+        ],
+        "definitionOfDone": "Commands invokable + command contract updated",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:backend",
+        "priority:p0",
+        "source:dtm-plan"
+      ],
+      "owner": "backend"
+    },
+    {
+      "name": "[DTM-104] Implement `connectionId`-based source/target resolver",
+      "description": "Two pools can run without breaking active connection",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-104 */;",
+        "backlogId": "DTM-104",
+        "epic": "Backend",
+        "priority": "P0",
+        "dependsOn": [
+          "DTM-101"
+        ],
+        "definitionOfDone": "Two pools can run without breaking active connection",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:backend",
+        "priority:p0",
+        "source:dtm-plan"
+      ],
+      "owner": "backend"
+    },
+    {
+      "name": "[DTM-105] Planner: object selection + dependency ordering",
+      "description": "Planner outputs ordered table/action steps",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-105 */;",
+        "backlogId": "DTM-105",
+        "epic": "Backend",
+        "priority": "P1",
+        "dependsOn": [
+          "DTM-102",
+          "DTM-104"
+        ],
+        "definitionOfDone": "Planner outputs ordered table/action steps",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:backend",
+        "priority:p1",
+        "source:dtm-plan"
+      ],
+      "owner": "backend"
+    },
+    {
+      "name": "[DTM-106] Engine: chunked read/write pipeline (DB->DB)",
+      "description": "Large-table transfer runs with stable memory",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-106 */;",
+        "backlogId": "DTM-106",
+        "epic": "Backend",
+        "priority": "P0",
+        "dependsOn": [
+          "DTM-104",
+          "DTM-105"
+        ],
+        "definitionOfDone": "Large-table transfer runs with stable memory",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:backend",
+        "priority:p0",
+        "source:dtm-plan"
+      ],
+      "owner": "backend"
+    },
+    {
+      "name": "[DTM-107] Mapper: column matching + cast rules",
+      "description": "Auto-map + manual override + cast error report",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-107 */;",
+        "backlogId": "DTM-107",
+        "epic": "Backend",
+        "priority": "P0",
+        "dependsOn": [
+          "DTM-103",
+          "DTM-106"
+        ],
+        "definitionOfDone": "Auto-map + manual override + cast error report",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:backend",
+        "priority:p0",
+        "source:dtm-plan"
+      ],
+      "owner": "backend"
+    },
+    {
+      "name": "[DTM-108] Run storage: status/progress/history persistence",
+      "description": "Runs visible after restart + cancel state preserved",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-108 */;",
+        "backlogId": "DTM-108",
+        "epic": "Backend",
+        "priority": "P1",
+        "dependsOn": [
+          "DTM-103"
+        ],
+        "definitionOfDone": "Runs visible after restart + cancel state preserved",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:backend",
+        "priority:p1",
+        "source:dtm-plan"
+      ],
+      "owner": "backend"
+    },
+    {
+      "name": "[DTM-201] Add `csv` file sink",
+      "description": "Planned tables can be exported as CSV",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-201 */;",
+        "backlogId": "DTM-201",
+        "epic": "Format",
+        "priority": "P1",
+        "dependsOn": [
+          "DTM-106"
+        ],
+        "definitionOfDone": "Planned tables can be exported as CSV",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:format",
+        "priority:p1",
+        "source:dtm-plan"
+      ],
+      "owner": "backend"
+    },
+    {
+      "name": "[DTM-202] Add `json` (jsonl) file sink",
+      "description": "Large data export works in streaming jsonl mode",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-202 */;",
+        "backlogId": "DTM-202",
+        "epic": "Format",
+        "priority": "P1",
+        "dependsOn": [
+          "DTM-106"
+        ],
+        "definitionOfDone": "Large data export works in streaming jsonl mode",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:format",
+        "priority:p1",
+        "source:dtm-plan"
+      ],
+      "owner": "backend"
+    },
+    {
+      "name": "[DTM-203] Add `sql` file sink",
+      "description": "Insert script output + file split option available",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-203 */;",
+        "backlogId": "DTM-203",
+        "epic": "Format",
+        "priority": "P2",
+        "dependsOn": [
+          "DTM-106"
+        ],
+        "definitionOfDone": "Insert script output + file split option available",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:format",
+        "priority:p2",
+        "source:dtm-plan"
+      ],
+      "owner": "backend"
+    },
+    {
+      "name": "[DTM-204] Add write modes: `append`, `replace`, `upsert`",
+      "description": "All 3 modes pass e2e tests",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-204 */;",
+        "backlogId": "DTM-204",
+        "epic": "Format",
+        "priority": "P0",
+        "dependsOn": [
+          "DTM-107"
+        ],
+        "definitionOfDone": "All 3 modes pass e2e tests",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:format",
+        "priority:p0",
+        "source:dtm-plan"
+      ],
+      "owner": "backend"
+    },
+    {
+      "name": "[DTM-205] Add LOB/binary streaming and size guards",
+      "description": "BLOB/CLOB columns transfer safely",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-205 */;",
+        "backlogId": "DTM-205",
+        "epic": "Format",
+        "priority": "P1",
+        "dependsOn": [
+          "DTM-106"
+        ],
+        "definitionOfDone": "BLOB/CLOB columns transfer safely",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:format",
+        "priority:p1",
+        "source:dtm-plan"
+      ],
+      "owner": "backend"
+    },
+    {
+      "name": "[DTM-301] Wire preflight schema diff + migration planner",
+      "description": "Transfer preflight includes diff and recommendations",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-301 */;",
+        "backlogId": "DTM-301",
+        "epic": "Migration",
+        "priority": "P0",
+        "dependsOn": [
+          "DTM-105"
+        ],
+        "definitionOfDone": "Transfer preflight includes diff and recommendations",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:migration",
+        "priority:p0",
+        "source:dtm-plan"
+      ],
+      "owner": "backend"
+    },
+    {
+      "name": "[DTM-302] Apply Lock Guard policy in transfer pipeline",
+      "description": "High-risk runs blocked without explicit confirmation",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-302 */;",
+        "backlogId": "DTM-302",
+        "epic": "Migration",
+        "priority": "P0",
+        "dependsOn": [
+          "DTM-301"
+        ],
+        "definitionOfDone": "High-risk runs blocked without explicit confirmation",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:migration",
+        "priority:p0",
+        "source:dtm-plan"
+      ],
+      "owner": "backend"
+    },
+    {
+      "name": "[DTM-303] Add dry-run row estimation + checksum sampling",
+      "description": "Dry-run returns duration/row/risk estimates",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-303 */;",
+        "backlogId": "DTM-303",
+        "epic": "Migration",
+        "priority": "P1",
+        "dependsOn": [
+          "DTM-106"
+        ],
+        "definitionOfDone": "Dry-run returns duration/row/risk estimates",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:migration",
+        "priority:p1",
+        "source:dtm-plan"
+      ],
+      "owner": "backend"
+    },
+    {
+      "name": "[DTM-304] Add post-run verification + rollback script output",
+      "description": "Verification report + rollback SQL produced",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-304 */;",
+        "backlogId": "DTM-304",
+        "epic": "Migration",
+        "priority": "P1",
+        "dependsOn": [
+          "DTM-303"
+        ],
+        "definitionOfDone": "Verification report + rollback SQL produced",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:migration",
+        "priority:p1",
+        "source:dtm-plan"
+      ],
+      "owner": "backend"
+    },
+    {
+      "name": "[DTM-401] Add `Transfer/Migration` tab to DataTools",
+      "description": "Tab renders and state management works",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-401 */;",
+        "backlogId": "DTM-401",
+        "epic": "UI",
+        "priority": "P0",
+        "dependsOn": [
+          "DTM-103"
+        ],
+        "definitionOfDone": "Tab renders and state management works",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:ui",
+        "priority:p0",
+        "source:dtm-plan"
+      ],
+      "owner": "frontend"
+    },
+    {
+      "name": "[DTM-402] Build 5-step wizard (source,target,mapping,plan,run)",
+      "description": "Step validation + back/next flow complete",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-402 */;",
+        "backlogId": "DTM-402",
+        "epic": "UI",
+        "priority": "P0",
+        "dependsOn": [
+          "DTM-401",
+          "DTM-105"
+        ],
+        "definitionOfDone": "Step validation + back/next flow complete",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:ui",
+        "priority:p0",
+        "source:dtm-plan"
+      ],
+      "owner": "frontend"
+    },
+    {
+      "name": "[DTM-403] Build mapping editor (auto-map + manual override)",
+      "description": "Users can override map/cast per column",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-403 */;",
+        "backlogId": "DTM-403",
+        "epic": "UI",
+        "priority": "P1",
+        "dependsOn": [
+          "DTM-107",
+          "DTM-402"
+        ],
+        "definitionOfDone": "Users can override map/cast per column",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:ui",
+        "priority:p1",
+        "source:dtm-plan"
+      ],
+      "owner": "frontend"
+    },
+    {
+      "name": "[DTM-404] Build run monitor (progress, speed, warnings, cancel)",
+      "description": "Live progress and cancel action available",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-404 */;",
+        "backlogId": "DTM-404",
+        "epic": "UI",
+        "priority": "P0",
+        "dependsOn": [
+          "DTM-108",
+          "DTM-402"
+        ],
+        "definitionOfDone": "Live progress and cancel action available",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:ui",
+        "priority:p0",
+        "source:dtm-plan"
+      ],
+      "owner": "frontend"
+    },
+    {
+      "name": "[DTM-405] Add profile/template save/load",
+      "description": "Transfer profiles can be reused",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-405 */;",
+        "backlogId": "DTM-405",
+        "epic": "UI",
+        "priority": "P2",
+        "dependsOn": [
+          "DTM-402"
+        ],
+        "definitionOfDone": "Transfer profiles can be reused",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:ui",
+        "priority:p2",
+        "source:dtm-plan"
+      ],
+      "owner": "frontend"
+    },
+    {
+      "name": "[DTM-501] Add `TaskType::DataTransferMigration`",
+      "description": "Model + payload validation + UI option added",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-501 */;",
+        "backlogId": "DTM-501",
+        "epic": "Task Center",
+        "priority": "P0",
+        "dependsOn": [
+          "DTM-102"
+        ],
+        "definitionOfDone": "Model + payload validation + UI option added",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:task_center",
+        "priority:p0",
+        "source:dtm-plan"
+      ],
+      "owner": "platform"
+    },
+    {
+      "name": "[DTM-502] Execute transfer tasks in executor",
+      "description": "Manual and scheduled runs succeed",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-502 */;",
+        "backlogId": "DTM-502",
+        "epic": "Task Center",
+        "priority": "P0",
+        "dependsOn": [
+          "DTM-501",
+          "DTM-106"
+        ],
+        "definitionOfDone": "Manual and scheduled runs succeed",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:task_center",
+        "priority:p0",
+        "source:dtm-plan"
+      ],
+      "owner": "platform"
+    },
+    {
+      "name": "[DTM-503] Support transfer tasks as composite steps",
+      "description": "Composite flow can run transfer steps",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-503 */;",
+        "backlogId": "DTM-503",
+        "epic": "Task Center",
+        "priority": "P1",
+        "dependsOn": [
+          "DTM-502"
+        ],
+        "definitionOfDone": "Composite flow can run transfer steps",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:task_center",
+        "priority:p1",
+        "source:dtm-plan"
+      ],
+      "owner": "platform"
+    },
+    {
+      "name": "[DTM-504] Publish payload examples documentation",
+      "description": "Docs aligned with user guide and accessible",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-504 */;",
+        "backlogId": "DTM-504",
+        "epic": "Task Center",
+        "priority": "P1",
+        "dependsOn": [
+          "DTM-501"
+        ],
+        "definitionOfDone": "Docs aligned with user guide and accessible",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:task_center",
+        "priority:p1",
+        "source:dtm-plan"
+      ],
+      "owner": "platform"
+    },
+    {
+      "name": "[DTM-601] Add backend unit/integration tests",
+      "description": "CI test packs are green",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-601 */;",
+        "backlogId": "DTM-601",
+        "epic": "Quality",
+        "priority": "P0",
+        "dependsOn": [
+          "DTM-204",
+          "DTM-304"
+        ],
+        "definitionOfDone": "CI test packs are green",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:quality",
+        "priority:p0",
+        "source:dtm-plan"
+      ],
+      "owner": "qa"
+    },
+    {
+      "name": "[DTM-602] Add frontend e2e flows (wizard + cancel + retry)",
+      "description": "Critical e2e flows pass in automation",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-602 */;",
+        "backlogId": "DTM-602",
+        "epic": "Quality",
+        "priority": "P1",
+        "dependsOn": [
+          "DTM-404"
+        ],
+        "definitionOfDone": "Critical e2e flows pass in automation",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:quality",
+        "priority:p1",
+        "source:dtm-plan"
+      ],
+      "owner": "qa"
+    },
+    {
+      "name": "[DTM-603] Add performance benchmark (10M+ rows)",
+      "description": "Throughput and memory targets reported",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-603 */;",
+        "backlogId": "DTM-603",
+        "epic": "Quality",
+        "priority": "P1",
+        "dependsOn": [
+          "DTM-106"
+        ],
+        "definitionOfDone": "Throughput and memory targets reported",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:quality",
+        "priority:p1",
+        "source:dtm-plan"
+      ],
+      "owner": "qa"
+    },
+    {
+      "name": "[DTM-604] Enforce security/redaction + audit events",
+      "description": "Sensitive values redacted + audit records emitted",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-604 */;",
+        "backlogId": "DTM-604",
+        "epic": "Quality",
+        "priority": "P0",
+        "dependsOn": [
+          "DTM-108",
+          "DTM-502"
+        ],
+        "definitionOfDone": "Sensitive values redacted + audit records emitted",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:quality",
+        "priority:p0",
+        "source:dtm-plan"
+      ],
+      "owner": "qa"
+    },
+    {
+      "name": "[DTM-605] Add feature flag + staged rollout plan",
+      "description": "Controlled rollout via `dataTransferMigration` flag",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-605 */;",
+        "backlogId": "DTM-605",
+        "epic": "Rollout",
+        "priority": "P0",
+        "dependsOn": [
+          "DTM-601",
+          "DTM-602"
+        ],
+        "definitionOfDone": "Controlled rollout via `dataTransferMigration` flag",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:rollout",
+        "priority:p0",
+        "source:dtm-plan"
+      ],
+      "owner": "platform"
+    },
+    {
+      "name": "[DTM-606] Update README + technical/user docs",
+      "description": "Documentation and command list are current",
+      "taskType": "sql_script",
+      "status": "disabled",
+      "payload": {
+        "sql": "SELECT 1 AS backlog_placeholder /* DTM-606 */;",
+        "backlogId": "DTM-606",
+        "epic": "Rollout",
+        "priority": "P1",
+        "dependsOn": [
+          "DTM-605"
+        ],
+        "definitionOfDone": "Documentation and command list are current",
+        "sourceDoc": "docs/dbeaver-data-transfer-migration-plan-en.md"
+      },
+      "tags": [
+        "dbeaver-transfer",
+        "epic:rollout",
+        "priority:p1",
+        "source:dtm-plan"
+      ],
+      "owner": "platform"
+    }
+  ]
+}

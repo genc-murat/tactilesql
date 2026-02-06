@@ -312,6 +312,7 @@ pub async fn get_table_schema(
             c.character_maximum_length,
             c.numeric_precision,
             c.numeric_scale,
+            c.datetime_precision,
             c.is_nullable,
             c.column_default,
             CASE WHEN pk.column_name IS NOT NULL THEN 'PRI' ELSE '' END as column_key
@@ -343,6 +344,9 @@ pub async fn get_table_schema(
         let data_type: String = row.try_get("data_type").unwrap_or_default();
         let udt_name: String = row.try_get("udt_name").unwrap_or_default();
         let max_length: Option<i32> = row.try_get("character_maximum_length").ok();
+        let numeric_precision: Option<i32> = row.try_get("numeric_precision").ok();
+        let numeric_scale: Option<i32> = row.try_get("numeric_scale").ok();
+        let datetime_precision: Option<i32> = row.try_get("datetime_precision").ok();
         let is_nullable_str: String = row.try_get("is_nullable").unwrap_or_default();
         let is_nullable = is_nullable_str == "YES";
         let column_key: String = row.try_get("column_key").unwrap_or_default();
@@ -350,6 +354,18 @@ pub async fn get_table_schema(
 
         let column_type = if let Some(len) = max_length {
             format!("{}({})", udt_name, len)
+        } else if let Some(precision) = numeric_precision {
+            if let Some(scale) = numeric_scale {
+                format!("{}({},{})", udt_name, precision, scale)
+            } else {
+                format!("{}({})", udt_name, precision)
+            }
+        } else if let Some(precision) = datetime_precision {
+            if data_type.contains("time") {
+                format!("{}({})", udt_name, precision)
+            } else {
+                udt_name.clone()
+            }
         } else {
             udt_name.clone()
         };

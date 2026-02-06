@@ -1,12 +1,15 @@
 use crate::db::AppState;
 use crate::db_types::DatabaseType;
+use crate::data_transfer::models::{DataTransferPlanRequest, DataTransferRunStatus, StartDataTransferRequest};
 use crate::task_manager::models::{TaskDefinition, TaskType};
 use chrono::Utc;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::time::Instant;
 use tauri::{AppHandle, Manager};
+use tokio::time::{sleep, Duration};
 
 #[derive(Clone, Default)]
 struct ExecutorContext {
@@ -52,6 +55,7 @@ async fn execute_non_composite_task(
         TaskType::Backup => execute_backup_task(app, task).await,
         TaskType::SchemaSnapshot => execute_schema_snapshot_task(app, task).await,
         TaskType::DataCompareSync => execute_data_compare_sync_task(app, task).await,
+        TaskType::DataTransferMigration => execute_data_transfer_migration_task(app, task).await,
         TaskType::Composite => Err("Nested composite tasks are not supported".to_string()),
     }
 }
@@ -363,6 +367,83 @@ async fn execute_data_compare_sync_task(
     }
 
     Ok(response)
+}
+
+async fn execute_data_transfer_migration_task(
+    app: &AppHandle,
+    task: &TaskDefinition,
+) -> Result<Value, String> {
+    let payload = &task.payload;
+    let request_payload = get_payload_object(payload, &["request", "plan", "transferRequest"])
+        .unwrap_or(payload);
+    let plan = build_data_transfer_plan_request(request_payload)?;
+
+    let dry_run = get_payload_bool(payload, &["dryRun"]).unwrap_or(false);
+    let wait_for_completion = get_payload_bool(payload, &["waitForCompletion", "wait"])
+        .unwrap_or(true);
+    let poll_interval_ms = get_payload_u64(payload, &["pollIntervalMs"])
+        .unwrap_or(1_000)
+        .clamp(200, 10_000);
+    let timeout_seconds = get_payload_u64(payload, &["timeoutSeconds", "maxWaitSeconds"])
+        .unwrap_or(900)
+        .clamp(5, 86_400);
+
+    let app_state = app.state::<AppState>();
+    let start = Instant::now();
+    let mut run = crate::data_transfer::commands::start_data_transfer_with_context(
+        app,
+        app_state.inner(),
+        StartDataTransferRequest {
+            plan,
+            dry_run: Some(dry_run),
+        },
+    )
+    .await?;
+
+    if wait_for_completion {
+        let timeout = Duration::from_secs(timeout_seconds);
+        while !run.status.is_terminal() {
+            if start.elapsed() >= timeout {
+                return Err(format!(
+                    "Data transfer timed out after {} seconds (operationId: {})",
+                    timeout_seconds, run.operation_id
+                ));
+            }
+
+            sleep(Duration::from_millis(poll_interval_ms)).await;
+            run = crate::data_transfer::commands::get_data_transfer_status(run.operation_id.clone())
+                .await?;
+        }
+    }
+
+    if run.status == DataTransferRunStatus::Failed {
+        let message = run
+            .error
+            .clone()
+            .unwrap_or_else(|| format!("Data transfer '{}' failed", run.operation_id));
+        return Err(message);
+    }
+
+    if run.status == DataTransferRunStatus::Cancelled {
+        return Err(format!(
+            "Data transfer '{}' was cancelled",
+            run.operation_id
+        ));
+    }
+
+    let run_json =
+        serde_json::to_value(&run).map_err(|e| format!("Failed to serialize transfer run: {}", e))?;
+
+    Ok(serde_json::json!({
+        "executor": "data_transfer_migration",
+        "taskId": task.id,
+        "dryRun": dry_run,
+        "waitForCompletion": wait_for_completion,
+        "pollIntervalMs": poll_interval_ms,
+        "timeoutSeconds": timeout_seconds,
+        "elapsedMs": start.elapsed().as_millis() as u64,
+        "run": run_json,
+    }))
 }
 
 async fn execute_composite_task(
@@ -1054,6 +1135,17 @@ fn build_data_compare_request(payload: &Value) -> Result<crate::db::DataCompareR
         wrap_in_transaction: get_payload_bool(payload, &["wrapInTransaction"]),
         statement_limit: get_payload_usize(payload, &["statementLimit"]),
     })
+}
+
+fn build_data_transfer_plan_request(payload: &Value) -> Result<DataTransferPlanRequest, String> {
+    if !payload.is_object() {
+        return Err("Data transfer payload must be a JSON object".to_string());
+    }
+
+    let request: DataTransferPlanRequest = serde_json::from_value(payload.clone())
+        .map_err(|e| format!("Invalid data transfer payload: {}", e))?;
+    request.validate()?;
+    Ok(request)
 }
 
 async fn apply_raw_sql_script(app: &AppHandle, script: &str) -> Result<(), String> {

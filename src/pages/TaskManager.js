@@ -9,6 +9,7 @@ const TASK_TYPE_OPTIONS = [
     { value: 'backup', label: 'Backup' },
     { value: 'schema_snapshot', label: 'Schema Snapshot' },
     { value: 'data_compare_sync', label: 'Data Compare + Sync' },
+    { value: 'data_transfer_migration', label: 'Data Transfer + Migration' },
     { value: 'composite', label: 'Composite' },
 ];
 

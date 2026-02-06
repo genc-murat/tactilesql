@@ -11,6 +11,7 @@ pub enum TaskType {
     Backup,
     SchemaSnapshot,
     DataCompareSync,
+    DataTransferMigration,
     Composite,
 }
 
@@ -21,6 +22,7 @@ impl TaskType {
             Self::Backup => "backup",
             Self::SchemaSnapshot => "schema_snapshot",
             Self::DataCompareSync => "data_compare_sync",
+            Self::DataTransferMigration => "data_transfer_migration",
             Self::Composite => "composite",
         }
     }
@@ -31,6 +33,7 @@ impl TaskType {
             "backup" => Ok(Self::Backup),
             "schema_snapshot" => Ok(Self::SchemaSnapshot),
             "data_compare_sync" => Ok(Self::DataCompareSync),
+            "data_transfer_migration" => Ok(Self::DataTransferMigration),
             "composite" => Ok(Self::Composite),
             _ => Err(format!("Invalid task type in storage: {}", value)),
         }
@@ -715,6 +718,103 @@ pub fn validate_task_payload(task_type: &TaskType, payload: &Value) -> Result<()
                 return Err("data_compare_sync payload requires targetTable".to_string());
             }
         }
+        TaskType::DataTransferMigration => {
+            let request_payload =
+                payload_object(payload, &["request", "plan", "transferRequest"]).unwrap_or(payload);
+
+            if payload_string(request_payload, &["sourceConnectionId"]).is_none() {
+                return Err(
+                    "data_transfer_migration payload requires sourceConnectionId".to_string(),
+                );
+            }
+            if payload_string(request_payload, &["targetConnectionId"]).is_none() {
+                return Err(
+                    "data_transfer_migration payload requires targetConnectionId".to_string(),
+                );
+            }
+            if payload_string(request_payload, &["sourceDatabase"]).is_none() {
+                return Err("data_transfer_migration payload requires sourceDatabase".to_string());
+            }
+            if payload_string(request_payload, &["targetDatabase"]).is_none() {
+                return Err("data_transfer_migration payload requires targetDatabase".to_string());
+            }
+
+            let objects = request_payload
+                .get("objects")
+                .and_then(Value::as_array)
+                .ok_or("data_transfer_migration payload requires objects array".to_string())?;
+            if objects.is_empty() {
+                return Err("data_transfer_migration payload requires at least one object".to_string());
+            }
+
+            for (index, object) in objects.iter().enumerate() {
+                let object_label = format!("data_transfer_migration object {}", index + 1);
+                if !object.is_object() {
+                    return Err(format!("{} must be a JSON object", object_label));
+                }
+                if payload_string(object, &["sourceTable"]).is_none() {
+                    return Err(format!("{} requires sourceTable", object_label));
+                }
+
+                let mode = payload_string(object, &["mode"])
+                    .unwrap_or_else(|| "append".to_string())
+                    .to_ascii_lowercase();
+                if !matches!(mode.as_str(), "append" | "replace" | "upsert") {
+                    return Err(format!(
+                        "{} has invalid mode '{}'",
+                        object_label, mode
+                    ));
+                }
+
+                let sink_type = payload_string(object, &["sinkType"])
+                    .unwrap_or_else(|| "database".to_string())
+                    .to_ascii_lowercase();
+                if !matches!(sink_type.as_str(), "database" | "csv" | "jsonl" | "sql") {
+                    return Err(format!(
+                        "{} has invalid sinkType '{}'",
+                        object_label, sink_type
+                    ));
+                }
+                if sink_type != "database" {
+                    let has_sink_path = payload_string(object, &["sinkPath"])
+                        .map(|value| !value.trim().is_empty())
+                        .unwrap_or(false);
+                    if !has_sink_path {
+                        return Err(format!(
+                            "{} uses '{}' sink and requires sinkPath",
+                            object_label, sink_type
+                        ));
+                    }
+                }
+
+                if mode == "upsert" {
+                    if !matches!(sink_type.as_str(), "database" | "sql") {
+                        return Err(format!(
+                            "{} uses upsert mode with '{}' sink; upsert is only valid for database/sql sinks",
+                            object_label, sink_type
+                        ));
+                    }
+
+                    let has_key_columns = object
+                        .get("keyColumns")
+                        .and_then(Value::as_array)
+                        .map(|values| {
+                            values
+                                .iter()
+                                .filter_map(Value::as_str)
+                                .map(str::trim)
+                                .any(|value| !value.is_empty())
+                        })
+                        .unwrap_or(false);
+                    if !has_key_columns {
+                        return Err(format!(
+                            "{} uses upsert mode and requires keyColumns",
+                            object_label
+                        ));
+                    }
+                }
+            }
+        }
         TaskType::Composite => {
             if payload.get("steps").is_some() {
                 let has_steps = payload
@@ -920,6 +1020,12 @@ fn parse_cron_field(field: &str, min: u32, max: u32) -> Result<BTreeSet<u32>, St
     }
 
     Ok(out)
+}
+
+fn payload_object<'a>(payload: &'a Value, keys: &[&str]) -> Option<&'a Value> {
+    keys.iter()
+        .find_map(|key| payload.get(*key))
+        .filter(|value| value.is_object())
 }
 
 fn payload_string(payload: &Value, keys: &[&str]) -> Option<String> {

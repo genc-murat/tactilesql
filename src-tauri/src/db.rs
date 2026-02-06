@@ -202,12 +202,6 @@ fn encrypt_password_with_key(password: &str, key: &[u8]) -> Result<String, Strin
     Ok(BASE64.encode(combined))
 }
 
-fn decrypt_password(encrypted: &str, app_state: &State<'_, AppState>) -> Result<String, String> {
-    let key_guard = futures::executor::block_on(app_state.encryption_key.lock());
-    let key = key_guard.as_ref().ok_or("Encryption key not initialized")?;
-    decrypt_password_with_key(encrypted, key)
-}
-
 fn decrypt_password_with_key(encrypted: &str, key: &[u8]) -> Result<String, String> {
     if encrypted.is_empty() {
         return Ok(String::new());
@@ -2174,12 +2168,11 @@ pub fn save_connections(
     Ok(())
 }
 
-#[tauri::command]
-pub fn load_connections(
-    app_handle: AppHandle,
-    app_state: State<'_, AppState>,
+pub fn load_connections_with_decrypted_passwords(
+    app_handle: &AppHandle,
+    app_state: &AppState,
 ) -> Result<Vec<ConnectionConfig>, String> {
-    let file_path = get_connections_file_path(&app_handle);
+    let file_path = get_connections_file_path(app_handle);
 
     if !file_path.exists() {
         return Ok(Vec::new());
@@ -2191,25 +2184,49 @@ pub fn load_connections(
     let mut connections: Vec<ConnectionConfig> =
         serde_json::from_str(&content).map_err(|e| format!("Failed to parse JSON: {}", e))?;
 
-    // Decrypt passwords - gracefully handle decryption failures
+    let key = {
+        let guard = futures::executor::block_on(app_state.encryption_key.lock());
+        guard.clone()
+    };
+
     for conn in &mut connections {
         if let Some(ref encrypted_pwd) = conn.password {
-            if !encrypted_pwd.is_empty() {
-                match decrypt_password(encrypted_pwd, &app_state) {
+            if encrypted_pwd.is_empty() {
+                continue;
+            }
+
+            match key.as_ref() {
+                Some(key_bytes) => match decrypt_password_with_key(encrypted_pwd, key_bytes) {
                     Ok(decrypted) => conn.password = Some(decrypted),
                     Err(e) => {
-                        // Log the error but don't fail - set password to empty
-                        // User will need to re-enter password for this connection
-                        println!("Warning: Failed to decrypt password for connection '{}': {}. Password reset required.", 
-                            conn.name.clone().unwrap_or_default(), e);
+                        println!(
+                            "Warning: Failed to decrypt password for connection '{}': {}. Password reset required.",
+                            conn.name.clone().unwrap_or_default(),
+                            e
+                        );
                         conn.password = Some(String::new());
                     }
+                },
+                None => {
+                    println!(
+                        "Warning: Encryption key is not initialized while loading '{}'. Password reset required.",
+                        conn.name.clone().unwrap_or_default()
+                    );
+                    conn.password = Some(String::new());
                 }
             }
         }
     }
 
     Ok(connections)
+}
+
+#[tauri::command]
+pub fn load_connections(
+    app_handle: AppHandle,
+    app_state: State<'_, AppState>,
+) -> Result<Vec<ConnectionConfig>, String> {
+    load_connections_with_decrypted_passwords(&app_handle, app_state.inner())
 }
 
 #[tauri::command]

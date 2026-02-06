@@ -52,6 +52,7 @@ fn get_registered_commands() -> Result<Vec<String>, String> {
 pub mod awareness;
 pub mod chronicle;
 mod common;
+pub mod data_transfer;
 mod db;
 mod db_types;
 pub mod dependency_engine;
@@ -113,6 +114,12 @@ pub fn run() {
                             *pool_guard = Some(pool.clone());
                         }
                         println!("Local Storage initialized successfully.");
+
+                        // Data Transfer Store
+                        match crate::data_transfer::storage::set_local_pool(pool.clone()).await {
+                            Ok(_) => println!("Data Transfer Store initialized."),
+                            Err(e) => eprintln!("Failed to init Data Transfer Store: {}", e),
+                        }
 
                         // Task Manager Store
                         match crate::task_manager::storage::TaskManagerStore::new(pool.clone())
@@ -241,6 +248,13 @@ pub fn run() {
             db::restore_database,
             db::compare_table_data,
             db::generate_data_sync_script,
+            data_transfer::commands::preview_data_transfer_plan,
+            data_transfer::commands::start_data_transfer,
+            data_transfer::commands::get_data_transfer_status,
+            data_transfer::commands::list_data_transfer_runs,
+            data_transfer::commands::cancel_data_transfer,
+            data_transfer::commands::validate_data_transfer_mapping,
+            data_transfer::commands::generate_transfer_task_payload,
             // Query Execution
             db::execute_query,
             db::execute_query_profiled,

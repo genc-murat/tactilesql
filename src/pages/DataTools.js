@@ -3,6 +3,7 @@ import { Dialog } from '../components/UI/Dialog.js';
 import { ThemeManager } from '../utils/ThemeManager.js';
 import { CustomDropdown } from '../components/UI/CustomDropdown.js';
 import { DataCompareApi } from '../api/dataCompare.js';
+import { DataTransferApi } from '../api/dataTransfer.js';
 
 export function DataTools() {
     let theme = ThemeManager.getCurrentTheme();
@@ -16,7 +17,7 @@ export function DataTools() {
     container.className = getContainerClass(theme);
 
     // State
-    let activeTab = 'export'; // 'export' | 'import' | 'backup' | 'mock' | 'compare'
+    let activeTab = 'export'; // 'export' | 'import' | 'backup' | 'mock' | 'compare' | 'transfer'
     let databases = [];
     let tables = [];
     let selectedDb = '';
@@ -46,6 +47,33 @@ export function DataTools() {
     let compareResult = null;
     let comparePlan = null;
     let compareError = '';
+    let transferConnections = [];
+    let transferSourceConnectionId = '';
+    let transferTargetConnectionId = '';
+    let transferSourceDatabase = '';
+    let transferTargetDatabase = '';
+    let transferObjects = [];
+    let transferDraftSourceTable = '';
+    let transferDraftTargetTable = '';
+    let transferDraftMode = 'append';
+    let transferDraftKeyColumns = '';
+    let transferDraftSinkType = 'database';
+    let transferDraftSinkPath = '';
+    let transferMappingSourceColumn = '';
+    let transferMappingTargetColumn = '';
+    let transferMappingCastType = '';
+    let transferMappingValidationMessage = '';
+    let transferIncludeSchemaMigration = false;
+    let transferLockGuard = true;
+    let transferDryRun = true;
+    let transferMappingProfile = '';
+    let transferPlanPreview = null;
+    let transferTaskPayload = null;
+    let transferError = '';
+    let transferRunHistory = [];
+    let transferActiveRun = null;
+    let transferActiveOperationId = null;
+    let transferStatusPollInterval = null;
     const mockSettings = {
         rowCount: 100,
         seed: '',
@@ -320,6 +348,428 @@ export function DataTools() {
             Dialog.alert(`Sync script generation failed: ${compareError}`, 'Data Compare');
         } finally {
             isProcessing = false;
+            render();
+        }
+    };
+
+    const TRANSFER_ACTIVE_STATUSES = new Set(['queued', 'running']);
+    const TRANSFER_TERMINAL_STATUSES = new Set(['success', 'failed', 'cancelled']);
+
+    const normalizeTransferStatus = (value) => String(value || '').trim().toLowerCase();
+
+    const isTransferRunActive = (run) => TRANSFER_ACTIVE_STATUSES.has(normalizeTransferStatus(run?.status));
+
+    const isTransferRunTerminal = (run) => TRANSFER_TERMINAL_STATUSES.has(normalizeTransferStatus(run?.status));
+
+    const formatTransferTime = (value) => {
+        if (!value) return '-';
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) return String(value);
+        return parsed.toLocaleString();
+    };
+
+    const parseCommaSeparatedList = (value) => {
+        const seen = new Set();
+        const out = [];
+        String(value || '')
+            .split(',')
+            .map((item) => item.trim())
+            .forEach((item) => {
+                if (!item) return;
+                const token = item.toLowerCase();
+                if (seen.has(token)) return;
+                seen.add(token);
+                out.push(item);
+            });
+        return out;
+    };
+
+    const resetTransferPlanArtifacts = () => {
+        transferPlanPreview = null;
+        transferTaskPayload = null;
+        transferError = '';
+        transferMappingValidationMessage = '';
+    };
+
+    const stopTransferStatusPolling = () => {
+        if (transferStatusPollInterval) {
+            clearInterval(transferStatusPollInterval);
+            transferStatusPollInterval = null;
+        }
+    };
+
+    const upsertTransferRun = (run) => {
+        if (!run?.operationId) return;
+        const index = transferRunHistory.findIndex((item) => item.operationId === run.operationId);
+        if (index >= 0) {
+            transferRunHistory[index] = run;
+        } else {
+            transferRunHistory.unshift(run);
+        }
+        transferRunHistory.sort((a, b) => {
+            const aTs = Date.parse(a.startedAt || a.updatedAt || 0);
+            const bTs = Date.parse(b.startedAt || b.updatedAt || 0);
+            return bTs - aTs;
+        });
+        transferRunHistory = transferRunHistory.slice(0, 40);
+    };
+
+    const setTransferActiveRun = (run) => {
+        transferActiveRun = run || null;
+        transferActiveOperationId = run?.operationId || null;
+        if (run && isTransferRunActive(run)) {
+            startTransferStatusPolling(run.operationId);
+        } else {
+            stopTransferStatusPolling();
+        }
+    };
+
+    const pollTransferRunStatus = async (operationId) => {
+        if (!operationId) return;
+        try {
+            const status = await DataTransferApi.getStatus(operationId);
+            upsertTransferRun(status);
+            if (transferActiveOperationId === operationId) {
+                transferActiveRun = status;
+            }
+            if (isTransferRunTerminal(status)) {
+                stopTransferStatusPolling();
+            }
+            if (activeTab === 'transfer') {
+                render();
+            }
+        } catch (error) {
+            stopTransferStatusPolling();
+            transferError = String(error || 'Failed to fetch transfer status');
+            if (activeTab === 'transfer') {
+                render();
+            }
+        }
+    };
+
+    const startTransferStatusPolling = (operationId) => {
+        stopTransferStatusPolling();
+        pollTransferRunStatus(operationId);
+        transferStatusPollInterval = setInterval(() => {
+            pollTransferRunStatus(operationId);
+        }, 1200);
+    };
+
+    const transferConnectionLabel = (connectionId) => {
+        const item = transferConnections.find((conn) => conn.id === connectionId);
+        return item?.label || connectionId || '-';
+    };
+
+    const loadTransferConnections = async () => {
+        try {
+            const rows = await invoke('load_connections');
+            const normalized = (Array.isArray(rows) ? rows : [])
+                .map((conn, idx) => {
+                    const id = String(conn?.id || '').trim();
+                    const name = String(conn?.name || '').trim();
+                    const host = String(conn?.host || '').trim();
+                    const port = Number.parseInt(String(conn?.port || ''), 10);
+                    const dbType = String(conn?.dbType || conn?.db_type || '').trim();
+                    if (!id) return null;
+
+                    const hostLabel = host
+                        ? `${host}${Number.isFinite(port) && port > 0 ? `:${port}` : ''}`
+                        : `connection-${idx + 1}`;
+                    const baseLabel = name || hostLabel;
+                    const typeLabel = dbType ? ` (${dbType.toUpperCase()})` : '';
+                    return {
+                        id,
+                        label: `${baseLabel}${typeLabel}`
+                    };
+                })
+                .filter(Boolean);
+
+            transferConnections = normalized;
+
+            if (transferSourceConnectionId && !normalized.some((item) => item.id === transferSourceConnectionId)) {
+                transferSourceConnectionId = '';
+            }
+            if (transferTargetConnectionId && !normalized.some((item) => item.id === transferTargetConnectionId)) {
+                transferTargetConnectionId = '';
+            }
+
+            if (!transferSourceConnectionId && normalized.length > 0) {
+                transferSourceConnectionId = normalized[0].id;
+            }
+            if (!transferTargetConnectionId && normalized.length > 0) {
+                transferTargetConnectionId = normalized[Math.min(1, normalized.length - 1)].id;
+            }
+        } catch (error) {
+            console.error('Failed to load transfer connections:', error);
+            transferConnections = [];
+        } finally {
+            if (activeTab === 'transfer') {
+                render();
+            }
+        }
+    };
+
+    const loadTransferRunHistory = async () => {
+        try {
+            const rows = await DataTransferApi.listRuns(40);
+            transferRunHistory = Array.isArray(rows) ? rows : [];
+
+            if (transferActiveOperationId) {
+                const active = transferRunHistory.find((run) => run.operationId === transferActiveOperationId);
+                if (active) {
+                    transferActiveRun = active;
+                    if (isTransferRunActive(active)) {
+                        startTransferStatusPolling(active.operationId);
+                    } else {
+                        stopTransferStatusPolling();
+                    }
+                }
+            }
+        } catch (error) {
+            transferError = String(error || 'Failed to load transfer runs');
+        } finally {
+            if (activeTab === 'transfer') {
+                render();
+            }
+        }
+    };
+
+    const buildTransferPlanRequest = () => ({
+        sourceConnectionId: String(transferSourceConnectionId || '').trim(),
+        targetConnectionId: String(transferTargetConnectionId || '').trim(),
+        sourceDatabase: String(transferSourceDatabase || '').trim(),
+        targetDatabase: String(transferTargetDatabase || '').trim(),
+        includeSchemaMigration: !!transferIncludeSchemaMigration,
+        lockGuard: !!transferLockGuard,
+        mappingProfile: String(transferMappingProfile || '').trim() || null,
+        objects: transferObjects.map((item) => ({
+            sourceTable: item.sourceTable,
+            targetTable: item.targetTable,
+            mode: item.mode,
+            keyColumns: item.keyColumns,
+            sinkType: item.sinkType || 'database',
+            sinkPath: item.sinkPath || null
+        }))
+    });
+
+    const ensureTransferReady = () => {
+        if (!String(transferSourceConnectionId || '').trim()) {
+            Dialog.alert('Please select source connection.', 'Selection Required');
+            return false;
+        }
+        if (!String(transferTargetConnectionId || '').trim()) {
+            Dialog.alert('Please select target connection.', 'Selection Required');
+            return false;
+        }
+        if (!String(transferSourceDatabase || '').trim()) {
+            Dialog.alert('Please enter source database/schema.', 'Selection Required');
+            return false;
+        }
+        if (!String(transferTargetDatabase || '').trim()) {
+            Dialog.alert('Please enter target database/schema.', 'Selection Required');
+            return false;
+        }
+        if (!Array.isArray(transferObjects) || transferObjects.length === 0) {
+            Dialog.alert('Please add at least one transfer object.', 'Selection Required');
+            return false;
+        }
+        return true;
+    };
+
+    const handleTransferAddObject = () => {
+        const sourceTable = String(transferDraftSourceTable || '').trim();
+        const targetTable = String(transferDraftTargetTable || '').trim() || sourceTable;
+        const mode = ['append', 'replace', 'upsert'].includes(transferDraftMode)
+            ? transferDraftMode
+            : 'append';
+        const sinkType = ['database', 'csv', 'jsonl', 'sql'].includes(transferDraftSinkType)
+            ? transferDraftSinkType
+            : 'database';
+        const sinkPath = String(transferDraftSinkPath || '').trim();
+        const keyColumns = parseCommaSeparatedList(transferDraftKeyColumns);
+
+        if (!sourceTable) {
+            Dialog.alert('Source table is required.', 'Transfer Object');
+            return;
+        }
+        if (sinkType !== 'database' && !sinkPath) {
+            Dialog.alert('Sink path is required for CSV/JSONL/SQL sinks.', 'Transfer Object');
+            return;
+        }
+        if (mode === 'upsert' && !['database', 'sql'].includes(sinkType)) {
+            Dialog.alert('Upsert mode is only valid for database/sql sinks.', 'Transfer Object');
+            return;
+        }
+        if (mode === 'upsert' && keyColumns.length === 0) {
+            Dialog.alert('Upsert mode requires at least one key column.', 'Transfer Object');
+            return;
+        }
+
+        transferObjects.push({
+            sourceTable,
+            targetTable,
+            mode,
+            keyColumns,
+            sinkType,
+            sinkPath: sinkType === 'database' ? null : sinkPath
+        });
+        transferDraftSourceTable = '';
+        transferDraftTargetTable = '';
+        transferDraftKeyColumns = '';
+        transferDraftSinkType = 'database';
+        transferDraftSinkPath = '';
+        resetTransferPlanArtifacts();
+        render();
+    };
+
+    const handleTransferRemoveObject = (index) => {
+        if (index < 0 || index >= transferObjects.length) return;
+        transferObjects.splice(index, 1);
+        resetTransferPlanArtifacts();
+        render();
+    };
+
+    const handleTransferPreviewPlan = async () => {
+        if (!ensureTransferReady()) return;
+        resetTransferPlanArtifacts();
+        isProcessing = true;
+        render();
+
+        try {
+            transferPlanPreview = await DataTransferApi.previewPlan(buildTransferPlanRequest());
+        } catch (error) {
+            transferError = String(error || 'Transfer plan preview failed');
+            Dialog.alert(`Transfer plan preview failed: ${transferError}`, 'Data Transfer');
+        } finally {
+            isProcessing = false;
+            render();
+        }
+    };
+
+    const handleTransferStart = async () => {
+        if (!ensureTransferReady()) return;
+
+        if (transferObjects.some((item) => item.mode === 'replace')) {
+            const confirmedReplace = await Dialog.confirm(
+                'Replace mode will overwrite target table data. Continue?',
+                'Replace Mode Warning'
+            );
+            if (!confirmedReplace) return;
+        }
+
+        const plan = buildTransferPlanRequest();
+        const confirmed = await Dialog.confirm(
+            `${transferDryRun ? 'Start dry run' : 'Start transfer'} for ${plan.objects.length} object(s)?`,
+            'Start Data Transfer'
+        );
+        if (!confirmed) return;
+
+        isProcessing = true;
+        transferError = '';
+        render();
+
+        try {
+            const status = await DataTransferApi.startTransfer({
+                plan,
+                dryRun: !!transferDryRun
+            });
+            upsertTransferRun(status);
+            setTransferActiveRun(status);
+            await loadTransferRunHistory();
+        } catch (error) {
+            transferError = String(error || 'Failed to start transfer');
+            Dialog.alert(`Failed to start transfer: ${transferError}`, 'Data Transfer');
+        } finally {
+            isProcessing = false;
+            render();
+        }
+    };
+
+    const handleTransferCancel = async () => {
+        if (!transferActiveRun || !isTransferRunActive(transferActiveRun)) {
+            Dialog.alert('No active transfer run to cancel.', 'Data Transfer');
+            return;
+        }
+        const confirmed = await Dialog.confirm(
+            `Cancel transfer operation ${transferActiveRun.operationId}?`,
+            'Cancel Transfer'
+        );
+        if (!confirmed) return;
+
+        try {
+            const status = await DataTransferApi.cancelTransfer(transferActiveRun.operationId);
+            upsertTransferRun(status);
+            setTransferActiveRun(status);
+            await loadTransferRunHistory();
+            render();
+        } catch (error) {
+            transferError = String(error || 'Failed to cancel transfer');
+            Dialog.alert(`Failed to cancel transfer: ${transferError}`, 'Data Transfer');
+            render();
+        }
+    };
+
+    const handleTransferGenerateTaskPayload = async () => {
+        if (!ensureTransferReady()) return;
+        isProcessing = true;
+        transferError = '';
+        render();
+
+        try {
+            transferTaskPayload = await DataTransferApi.generateTaskPayload(buildTransferPlanRequest());
+        } catch (error) {
+            transferError = String(error || 'Failed to generate transfer task payload');
+            Dialog.alert(`Failed to generate transfer task payload: ${transferError}`, 'Data Transfer');
+        } finally {
+            isProcessing = false;
+            render();
+        }
+    };
+
+    const handleTransferValidateMappingRule = async () => {
+        const sourceColumn = String(transferMappingSourceColumn || '').trim();
+        const targetColumn = String(transferMappingTargetColumn || '').trim();
+        const castType = String(transferMappingCastType || '').trim();
+
+        if (!sourceColumn || !targetColumn) {
+            Dialog.alert('Please provide both source and target column names.', 'Mapping Validation');
+            return;
+        }
+
+        isProcessing = true;
+        transferMappingValidationMessage = '';
+        transferError = '';
+        render();
+
+        try {
+            const message = await DataTransferApi.validateMapping([
+                {
+                    sourceColumn,
+                    targetColumn,
+                    castType: castType || null
+                }
+            ]);
+            transferMappingValidationMessage = message;
+        } catch (error) {
+            transferError = String(error || 'Mapping validation failed');
+            Dialog.alert(`Mapping validation failed: ${transferError}`, 'Data Transfer');
+        } finally {
+            isProcessing = false;
+            render();
+        }
+    };
+
+    const selectTransferRun = async (operationId) => {
+        const opId = String(operationId || '').trim();
+        if (!opId) return;
+        try {
+            const status = await DataTransferApi.getStatus(opId);
+            upsertTransferRun(status);
+            setTransferActiveRun(status);
+            render();
+        } catch (error) {
+            transferError = String(error || 'Failed to load transfer run');
+            Dialog.alert(`Failed to load transfer run: ${transferError}`, 'Data Transfer');
             render();
         }
     };
@@ -1092,7 +1542,7 @@ export function DataTools() {
                         </div>
                         <div>
                             <h1 class="text-xl font-bold ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')}">Data Tools</h1>
-                            <p class="text-sm ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Import, Export, Backup & Mock Data</p>
+                            <p class="text-sm ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Import, Export, Transfer, Backup & Mock Data</p>
                         </div>
                     </div>
                 </div>
@@ -1119,10 +1569,14 @@ export function DataTools() {
                         <span class="material-symbols-outlined text-base mr-1 align-middle">compare_arrows</span>
                         Compare
                     </button>
+                    <button id="tab-transfer" class="px-6 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'transfer' ? (isDawn ? 'bg-[#ea9d34] text-[#fffaf3] shadow-lg' : 'bg-mysql-teal text-white shadow-lg') : (isLight ? 'text-gray-600 hover:text-gray-900' : (isDawn ? 'text-[#575279] hover:text-[#286983]' : 'text-gray-400 hover:text-white'))}">
+                        <span class="material-symbols-outlined text-base mr-1 align-middle">sync_alt</span>
+                        Transfer
+                    </button>
                 </div>
 
                 <!-- Selection Panel -->
-                ${activeTab === 'compare' ? '' : `
+                ${activeTab === 'compare' || activeTab === 'transfer' ? '' : `
                 <div class="grid grid-cols-2 gap-4 mb-6">
                     <div class="space-y-2">
                         <label class="text-[10px] font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Database</label>
@@ -1614,6 +2068,360 @@ export function DataTools() {
             `;
         }
 
+        if (activeTab === 'transfer') {
+            const connectionOptions = (placeholder, selectedValue) => `
+                <option value="">${placeholder}</option>
+                ${transferConnections.map((conn) => `<option value="${escapeHtml(conn.id)}" ${selectedValue === conn.id ? 'selected' : ''}>${escapeHtml(conn.label)}</option>`).join('')}
+            `;
+
+            const objectRows = transferObjects
+                .map((item, idx) => {
+                    const keyColumns = Array.isArray(item.keyColumns) && item.keyColumns.length > 0
+                        ? item.keyColumns.join(', ')
+                        : '-';
+                    const sinkType = String(item.sinkType || 'database').trim().toLowerCase() || 'database';
+                    const sinkPath = sinkType === 'database'
+                        ? '-'
+                        : (String(item.sinkPath || '').trim() || '-');
+                    return `
+                        <tr class="${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')} border-b last:border-b-0">
+                            <td class="px-2 py-2 text-[11px] ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-gray-200')}">${idx + 1}</td>
+                            <td class="px-2 py-2 text-[11px] font-semibold ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-gray-200')}">${escapeHtml(item.sourceTable)}</td>
+                            <td class="px-2 py-2 text-[11px] ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-300')}">${escapeHtml(item.targetTable)}</td>
+                            <td class="px-2 py-2 text-[10px] uppercase tracking-widest ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">${escapeHtml(item.mode)}</td>
+                            <td class="px-2 py-2 text-[10px] uppercase tracking-widest ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">${escapeHtml(sinkType)}</td>
+                            <td class="px-2 py-2 text-[11px] ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-300')}">${escapeHtml(sinkPath)}</td>
+                            <td class="px-2 py-2 text-[11px] ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-300')}">${escapeHtml(keyColumns)}</td>
+                            <td class="px-2 py-2 text-right">
+                                <button class="transfer-remove-object-btn px-2 py-1 rounded text-[10px] font-bold ${isDawn ? 'bg-[#b4637a] text-white' : 'bg-red-500 text-white'} hover:brightness-110 transition-all" data-transfer-index="${idx}">
+                                    Remove
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                })
+                .join('');
+
+            const transferWarnings = Array.isArray(transferPlanPreview?.warnings)
+                ? transferPlanPreview.warnings
+                : [];
+            const transferSchemaPreflight =
+                transferPlanPreview?.schemaMigrationPreflight
+                    && typeof transferPlanPreview.schemaMigrationPreflight === 'object'
+                    ? transferPlanPreview.schemaMigrationPreflight
+                    : null;
+            const transferSchemaPreflightStatus = String(transferSchemaPreflight?.status || '')
+                .trim()
+                .toLowerCase();
+            const transferSchemaPreflightWarnings = Array.isArray(transferSchemaPreflight?.warnings)
+                ? transferSchemaPreflight.warnings
+                : [];
+            const activeRun = transferActiveRun;
+            const activeRunStatus = normalizeTransferStatus(activeRun?.status || '-');
+            const activeRunProgress = Math.max(0, Math.min(100, Number(activeRun?.progressPct || 0)));
+            const activeRunStatusClass = activeRunStatus === 'success'
+                ? (isDawn ? 'text-[#286983]' : 'text-emerald-500')
+                : activeRunStatus === 'failed'
+                    ? (isDawn ? 'text-[#b4637a]' : 'text-red-500')
+                    : activeRunStatus === 'cancelled'
+                        ? (isDawn ? 'text-[#ea9d34]' : 'text-amber-500')
+                        : (isDawn ? 'text-[#31748f]' : 'text-mysql-teal');
+            const canCancelActiveRun = !!activeRun && isTransferRunActive(activeRun);
+
+            const historyRows = transferRunHistory.slice(0, 12).map((run, idx) => {
+                const status = normalizeTransferStatus(run.status || '');
+                const statusClass = status === 'success'
+                    ? (isDawn ? 'text-[#286983]' : 'text-emerald-500')
+                    : status === 'failed'
+                        ? (isDawn ? 'text-[#b4637a]' : 'text-red-500')
+                        : status === 'cancelled'
+                            ? (isDawn ? 'text-[#ea9d34]' : 'text-amber-500')
+                            : (isDawn ? 'text-[#31748f]' : 'text-mysql-teal');
+                return `
+                    <tr class="${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')} border-b last:border-b-0">
+                        <td class="px-2 py-2 text-[11px] ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-gray-200')}">${idx + 1}</td>
+                        <td class="px-2 py-2 text-[11px] font-semibold ${statusClass}">${escapeHtml(status)}</td>
+                        <td class="px-2 py-2 text-[11px] ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-300')}">${escapeHtml(run.sourceDatabase)} -> ${escapeHtml(run.targetDatabase)}</td>
+                        <td class="px-2 py-2 text-[11px] ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-300')}">${run.processedObjects || 0}/${run.objectCount || 0}</td>
+                        <td class="px-2 py-2 text-[10px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">${escapeHtml(formatTransferTime(run.startedAt))}</td>
+                        <td class="px-2 py-2 text-right">
+                            <button class="transfer-select-run-btn px-2 py-1 rounded text-[10px] font-bold ${isDawn ? 'bg-[#31748f] text-white' : 'bg-mysql-teal text-white'} hover:brightness-110 transition-all" data-operation-id="${escapeHtml(run.operationId)}">
+                                Open
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            return `
+                <div class="space-y-5">
+                    <div>
+                        <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} mb-2">Data Transfer / Migration</h3>
+                        <p class="text-sm ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">
+                            Plan and run DB-to-DB or file-sink transfers with object-level mode control, dry-run support, and live run monitoring.
+                        </p>
+                    </div>
+
+                    <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                        <div class="rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border bg-ocean-bg' : 'border-white/10 bg-white/5'))} p-4 space-y-3">
+                            <div class="text-[10px] font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Source</div>
+                            <select id="transfer-source-connection" class="w-full tactile-input text-sm py-1.5">
+                                ${connectionOptions('Select source connection', transferSourceConnectionId)}
+                            </select>
+                            <input id="transfer-source-db" type="text" value="${escapeHtml(transferSourceDatabase)}" class="w-full tactile-input text-sm py-1.5" placeholder="Source database/schema" />
+                            <div class="text-[10px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">
+                                Selected: ${escapeHtml(transferConnectionLabel(transferSourceConnectionId))}
+                            </div>
+                        </div>
+
+                        <div class="rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border bg-ocean-bg' : 'border-white/10 bg-white/5'))} p-4 space-y-3">
+                            <div class="text-[10px] font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Target</div>
+                            <select id="transfer-target-connection" class="w-full tactile-input text-sm py-1.5">
+                                ${connectionOptions('Select target connection', transferTargetConnectionId)}
+                            </select>
+                            <input id="transfer-target-db" type="text" value="${escapeHtml(transferTargetDatabase)}" class="w-full tactile-input text-sm py-1.5" placeholder="Target database/schema" />
+                            <div class="text-[10px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">
+                                Selected: ${escapeHtml(transferConnectionLabel(transferTargetConnectionId))}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="rounded-lg border ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/10')} overflow-hidden">
+                        <div class="px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] ${isLight ? 'bg-gray-50 text-gray-500' : (isDawn ? 'bg-[#faf4ed] text-[#9893a5]' : 'bg-white/5 text-gray-400')}">Transfer Objects</div>
+                        <div class="p-3 space-y-3">
+                            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-3">
+                                <input id="transfer-draft-source-table" type="text" value="${escapeHtml(transferDraftSourceTable)}" class="w-full tactile-input text-sm py-1.5" placeholder="Source table (required)" />
+                                <input id="transfer-draft-target-table" type="text" value="${escapeHtml(transferDraftTargetTable)}" class="w-full tactile-input text-sm py-1.5" placeholder="Target table (optional)" />
+                                <select id="transfer-draft-mode" class="w-full tactile-input text-sm py-1.5">
+                                    <option value="append" ${transferDraftMode === 'append' ? 'selected' : ''}>append</option>
+                                    <option value="replace" ${transferDraftMode === 'replace' ? 'selected' : ''}>replace</option>
+                                    <option value="upsert" ${transferDraftMode === 'upsert' ? 'selected' : ''}>upsert</option>
+                                </select>
+                                <select id="transfer-draft-sink-type" class="w-full tactile-input text-sm py-1.5">
+                                    <option value="database" ${transferDraftSinkType === 'database' ? 'selected' : ''}>database</option>
+                                    <option value="csv" ${transferDraftSinkType === 'csv' ? 'selected' : ''}>csv</option>
+                                    <option value="jsonl" ${transferDraftSinkType === 'jsonl' ? 'selected' : ''}>jsonl</option>
+                                    <option value="sql" ${transferDraftSinkType === 'sql' ? 'selected' : ''}>sql</option>
+                                </select>
+                                <input id="transfer-draft-keys" type="text" value="${escapeHtml(transferDraftKeyColumns)}" class="w-full tactile-input text-sm py-1.5" placeholder="Key columns (for upsert)" />
+                                <input id="transfer-draft-sink-path" type="text" value="${escapeHtml(transferDraftSinkPath)}" class="w-full tactile-input text-sm py-1.5" placeholder="Sink path (required for file sinks)" />
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <div class="text-[10px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">
+                                    Objects: ${transferObjects.length}
+                                </div>
+                                <button id="transfer-add-object-btn" class="px-3 py-2 rounded text-xs font-bold ${isDawn ? 'bg-[#31748f] text-white' : 'bg-mysql-teal text-white'} hover:brightness-110 transition-all">
+                                    Add Object
+                                </button>
+                            </div>
+                            <div class="max-h-[220px] overflow-auto custom-scrollbar border ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/10')} rounded-lg">
+                                <table class="w-full">
+                                    <thead class="${isLight ? 'bg-gray-50 text-gray-500' : (isDawn ? 'bg-[#faf4ed] text-[#9893a5]' : 'bg-black/20 text-gray-400')}">
+                                        <tr>
+                                            <th class="px-2 py-2 text-left text-[10px] uppercase tracking-widest">#</th>
+                                            <th class="px-2 py-2 text-left text-[10px] uppercase tracking-widest">Source</th>
+                                            <th class="px-2 py-2 text-left text-[10px] uppercase tracking-widest">Target</th>
+                                            <th class="px-2 py-2 text-left text-[10px] uppercase tracking-widest">Mode</th>
+                                            <th class="px-2 py-2 text-left text-[10px] uppercase tracking-widest">Sink</th>
+                                            <th class="px-2 py-2 text-left text-[10px] uppercase tracking-widest">Sink Path</th>
+                                            <th class="px-2 py-2 text-left text-[10px] uppercase tracking-widest">Key Columns</th>
+                                            <th class="px-2 py-2 text-right text-[10px] uppercase tracking-widest">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${objectRows || `
+                                            <tr>
+                                                <td colspan="8" class="px-3 py-3 text-[11px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">
+                                                    Add at least one object to transfer.
+                                                </td>
+                                            </tr>
+                                        `}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                        <div class="rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : 'border-white/10 bg-white/5')} p-3 space-y-2">
+                            <div>
+                                <label class="block text-[10px] font-black uppercase tracking-[0.18em] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')} mb-1">Mapping Profile</label>
+                                <input id="transfer-mapping-profile" type="text" value="${escapeHtml(transferMappingProfile)}" class="w-full tactile-input text-sm py-1.5" placeholder="Optional profile name" />
+                            </div>
+                            <label class="flex items-center gap-2 text-xs ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">
+                                <input id="transfer-include-schema" type="checkbox" class="w-4 h-4" ${transferIncludeSchemaMigration ? 'checked' : ''} />
+                                Include schema migration preflight
+                            </label>
+                            <label class="flex items-center gap-2 text-xs ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">
+                                <input id="transfer-lock-guard" type="checkbox" class="w-4 h-4" ${transferLockGuard ? 'checked' : ''} />
+                                Enable lock guard
+                            </label>
+                            <label class="flex items-center gap-2 text-xs ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">
+                                <input id="transfer-dry-run" type="checkbox" class="w-4 h-4" ${transferDryRun ? 'checked' : ''} />
+                                Start as dry run
+                            </label>
+                        </div>
+
+                        <div class="rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : 'border-white/10 bg-white/5')} p-3 space-y-2">
+                            <button id="transfer-preview-btn" class="w-full px-3 py-2 rounded text-xs font-bold ${isDawn ? 'bg-[#31748f] text-white' : 'bg-mysql-teal text-white'} hover:brightness-110 transition-all">
+                                Preview Plan
+                            </button>
+                            <button id="transfer-start-btn" class="w-full px-3 py-2 rounded text-xs font-bold ${isDawn ? 'bg-[#ea9d34] text-[#fffaf3]' : 'bg-emerald-500 text-white'} hover:brightness-110 transition-all">
+                                ${transferDryRun ? 'Start Dry Run' : 'Start Transfer'}
+                            </button>
+                            <button id="transfer-cancel-btn" class="w-full px-3 py-2 rounded text-xs font-bold ${canCancelActiveRun ? (isDawn ? 'bg-[#b4637a] text-white' : 'bg-red-500 text-white') : (isLight ? 'bg-gray-200 text-gray-500' : 'bg-white/10 text-gray-500')} transition-all" ${canCancelActiveRun ? '' : 'disabled'}>
+                                Cancel Active Run
+                            </button>
+                            <button id="transfer-task-payload-btn" class="w-full px-3 py-2 rounded text-xs font-bold ${isDawn ? 'bg-[#286983] text-white' : 'bg-blue-600 text-white'} hover:brightness-110 transition-all">
+                                Generate Task Payload
+                            </button>
+                            <button id="transfer-runs-refresh-btn" class="w-full px-3 py-2 rounded text-xs font-bold ${isDawn ? 'bg-[#797593] text-[#fffaf3]' : 'bg-gray-600 text-white'} hover:brightness-110 transition-all">
+                                Refresh Runs
+                            </button>
+                        </div>
+
+                        <div class="rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : 'border-white/10 bg-white/5')} p-3 space-y-2">
+                            <div class="text-[10px] font-black uppercase tracking-[0.18em] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Mapping Rule Validation</div>
+                            <input id="transfer-mapping-source" type="text" value="${escapeHtml(transferMappingSourceColumn)}" class="w-full tactile-input text-sm py-1.5" placeholder="Source column" />
+                            <input id="transfer-mapping-target" type="text" value="${escapeHtml(transferMappingTargetColumn)}" class="w-full tactile-input text-sm py-1.5" placeholder="Target column" />
+                            <input id="transfer-mapping-cast" type="text" value="${escapeHtml(transferMappingCastType)}" class="w-full tactile-input text-sm py-1.5" placeholder="Cast type (optional)" />
+                            <button id="transfer-validate-mapping-btn" class="w-full px-3 py-2 rounded text-xs font-bold ${isDawn ? 'bg-[#31748f] text-white' : 'bg-mysql-teal text-white'} hover:brightness-110 transition-all">
+                                Validate Mapping Rule
+                            </button>
+                            ${transferMappingValidationMessage ? `
+                                <div class="text-[11px] ${isLight ? 'text-emerald-700' : (isDawn ? 'text-[#286983]' : 'text-emerald-300')}">
+                                    ${escapeHtml(transferMappingValidationMessage)}
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+
+                    ${transferError ? `
+                        <div class="rounded-lg border ${isLight ? 'border-red-200 bg-red-50 text-red-700' : (isDawn ? 'border-[#b4637a]/40 bg-[#b4637a]/10 text-[#b4637a]' : 'border-red-400/30 bg-red-500/10 text-red-400')} px-3 py-2 text-sm">
+                            ${escapeHtml(transferError)}
+                        </div>
+                    ` : ''}
+
+                    ${transferWarnings.length > 0 ? `
+                        <div class="rounded-lg border ${isLight ? 'border-amber-200 bg-amber-50 text-amber-700' : (isDawn ? 'border-[#ea9d34]/40 bg-[#ea9d34]/10 text-[#ea9d34]' : 'border-amber-400/30 bg-amber-500/10 text-amber-300')} px-3 py-2 text-xs">
+                            ${transferWarnings.map((warning) => `<div>• ${escapeHtml(warning)}</div>`).join('')}
+                        </div>
+                    ` : ''}
+
+                    ${transferPlanPreview ? `
+                        <div class="rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : 'border-white/10 bg-white/5')} p-3">
+                            <div class="text-[10px] font-black uppercase tracking-[0.18em] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Plan Preview</div>
+                            <div class="mt-2 text-xs ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : 'text-gray-300')} space-y-1">
+                                <div>Plan ID: <span class="font-mono">${escapeHtml(transferPlanPreview.planId)}</span></div>
+                                <div>Objects: <b>${transferPlanPreview.objectCount}</b></div>
+                                <div>Source: ${escapeHtml(transferPlanPreview.sourceDatabase)} (${escapeHtml(transferPlanPreview.sourceConnectionId)})</div>
+                                <div>Target: ${escapeHtml(transferPlanPreview.targetDatabase)} (${escapeHtml(transferPlanPreview.targetConnectionId)})</div>
+                            </div>
+                            ${transferSchemaPreflight ? `
+                                <div class="mt-3 pt-3 border-t ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/10')}">
+                                    <div class="text-[10px] font-black uppercase tracking-[0.16em] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Schema Preflight</div>
+                                    <div class="mt-2 text-[11px] ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : 'text-gray-300')} space-y-1">
+                                        <div>
+                                            Status: <b>${escapeHtml(transferSchemaPreflightStatus || '-')}</b>
+                                            ${transferSchemaPreflight.strategy ? ` | Strategy: <b>${escapeHtml(transferSchemaPreflight.strategy)}</b>` : ''}
+                                        </div>
+                                        <div>
+                                            Diff: +${Number(transferSchemaPreflight.newTableCount || 0)} / -${Number(transferSchemaPreflight.droppedTableCount || 0)} / ~${Number(transferSchemaPreflight.modifiedTableCount || 0)}
+                                            | Breaking: ${Number(transferSchemaPreflight.breakingChangeCount || 0)}
+                                        </div>
+                                        <div>
+                                            Migration Warnings: ${Number(transferSchemaPreflight.migrationWarningCount || 0)}
+                                            | Unsupported: ${Number(transferSchemaPreflight.unsupportedStatementCount || 0)}
+                                            | External Commands: ${Number(transferSchemaPreflight.externalCommandCount || 0)}
+                                        </div>
+                                    </div>
+                                    ${transferSchemaPreflight.error ? `
+                                        <div class="mt-2 text-[11px] ${isLight ? 'text-red-700' : (isDawn ? 'text-[#b4637a]' : 'text-red-400')}">
+                                            ${escapeHtml(transferSchemaPreflight.error)}
+                                        </div>
+                                    ` : ''}
+                                    ${transferSchemaPreflightWarnings.length > 0 ? `
+                                        <div class="mt-2 space-y-1 text-[11px] ${isLight ? 'text-amber-700' : (isDawn ? 'text-[#ea9d34]' : 'text-amber-300')}">
+                                            ${transferSchemaPreflightWarnings.slice(0, 6).map((warning) => `<div>• ${escapeHtml(warning)}</div>`).join('')}
+                                        </div>
+                                    ` : ''}
+                                    ${transferSchemaPreflight.migrationScriptPreview ? `
+                                        <details class="mt-2">
+                                            <summary class="cursor-pointer text-[11px] font-semibold ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-gray-200')}">
+                                                Migration Script Preview
+                                            </summary>
+                                            <pre class="mt-2 p-2 text-[10px] leading-relaxed ${isLight ? 'text-gray-700 bg-white border border-gray-200' : (isDawn ? 'text-[#575279] bg-[#fffaf3] border border-[#f2e9e1]' : 'text-gray-300 bg-black/20 border border-white/10')} rounded max-h-[220px] overflow-auto custom-scrollbar">${escapeHtml(transferSchemaPreflight.migrationScriptPreview)}</pre>
+                                        </details>
+                                    ` : ''}
+                                </div>
+                            ` : ''}
+                        </div>
+                    ` : ''}
+
+                    ${activeRun ? `
+                        <div class="rounded-lg border ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/10')} overflow-hidden">
+                            <div class="px-3 py-2 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.18em] ${isLight ? 'bg-gray-50 text-gray-500' : (isDawn ? 'bg-[#faf4ed] text-[#9893a5]' : 'bg-white/5 text-gray-400')}">
+                                <span>Active Run</span>
+                                <span class="${activeRunStatusClass}">${escapeHtml(activeRunStatus)}</span>
+                            </div>
+                            <div class="p-3 space-y-2">
+                                <div class="text-[11px] ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-300')}">
+                                    Operation: <span class="font-mono">${escapeHtml(activeRun.operationId)}</span>
+                                </div>
+                                <div class="w-full h-2 rounded ${isLight ? 'bg-gray-200' : (isDawn ? 'bg-[#f2e9e1]' : 'bg-white/10')} overflow-hidden">
+                                    <div class="h-full ${isDawn ? 'bg-[#31748f]' : 'bg-mysql-teal'} transition-all duration-300" style="width:${activeRunProgress}%"></div>
+                                </div>
+                                <div class="text-[11px] ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-300')}">
+                                    ${activeRun.processedObjects || 0}/${activeRun.objectCount || 0} objects | dryRun: ${activeRun.dryRun ? 'yes' : 'no'}
+                                </div>
+                                <div class="text-[11px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">
+                                    Started: ${escapeHtml(formatTransferTime(activeRun.startedAt))} | Updated: ${escapeHtml(formatTransferTime(activeRun.updatedAt))}
+                                </div>
+                                ${activeRun.error ? `<div class="text-[11px] ${isLight ? 'text-red-600' : (isDawn ? 'text-[#b4637a]' : 'text-red-400')}">${escapeHtml(activeRun.error)}</div>` : ''}
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    ${transferTaskPayload ? `
+                        <div class="rounded-lg border ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/10')} overflow-hidden">
+                            <div class="px-3 py-2 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.18em] ${isLight ? 'bg-gray-50 text-gray-500' : (isDawn ? 'bg-[#faf4ed] text-[#9893a5]' : 'bg-white/5 text-gray-400')}">
+                                <span>Task Payload</span>
+                                <button id="transfer-copy-task-payload-btn" class="px-2 py-1 rounded text-[10px] font-bold ${isDawn ? 'bg-[#31748f] text-white' : 'bg-mysql-teal text-white'} hover:brightness-110 transition-all">Copy</button>
+                            </div>
+                            <pre class="p-3 text-[11px] leading-relaxed ${isLight ? 'text-gray-700 bg-white' : (isDawn ? 'text-[#575279] bg-[#fffaf3]' : 'text-gray-300 bg-black/20')} max-h-[280px] overflow-auto custom-scrollbar">${escapeHtml(JSON.stringify(transferTaskPayload, null, 2))}</pre>
+                        </div>
+                    ` : ''}
+
+                    <div class="rounded-lg border ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/10')} overflow-hidden">
+                        <div class="px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] ${isLight ? 'bg-gray-50 text-gray-500' : (isDawn ? 'bg-[#faf4ed] text-[#9893a5]' : 'bg-white/5 text-gray-400')}">Recent Transfer Runs</div>
+                        <div class="max-h-[260px] overflow-auto custom-scrollbar">
+                            <table class="w-full">
+                                <thead class="${isLight ? 'bg-gray-50 text-gray-500' : (isDawn ? 'bg-[#faf4ed] text-[#9893a5]' : 'bg-white/5 text-gray-400')}">
+                                    <tr>
+                                        <th class="px-2 py-2 text-left text-[10px] uppercase tracking-widest">#</th>
+                                        <th class="px-2 py-2 text-left text-[10px] uppercase tracking-widest">Status</th>
+                                        <th class="px-2 py-2 text-left text-[10px] uppercase tracking-widest">Route</th>
+                                        <th class="px-2 py-2 text-left text-[10px] uppercase tracking-widest">Progress</th>
+                                        <th class="px-2 py-2 text-left text-[10px] uppercase tracking-widest">Started</th>
+                                        <th class="px-2 py-2 text-right text-[10px] uppercase tracking-widest">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${historyRows || `
+                                        <tr>
+                                            <td colspan="6" class="px-3 py-3 text-[11px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">
+                                                No transfer runs yet.
+                                            </td>
+                                        </tr>
+                                    `}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
         if (activeTab === 'backup') {
             return `
                 <div class="space-y-4">
@@ -1685,18 +2493,22 @@ export function DataTools() {
     const attachEvents = () => {
         // Tab switching
         container.querySelector('#tab-export')?.addEventListener('click', () => {
+            stopTransferStatusPolling();
             activeTab = 'export';
             render();
         });
         container.querySelector('#tab-import')?.addEventListener('click', () => {
+            stopTransferStatusPolling();
             activeTab = 'import';
             render();
         });
         container.querySelector('#tab-backup')?.addEventListener('click', () => {
+            stopTransferStatusPolling();
             activeTab = 'backup';
             render();
         });
         container.querySelector('#tab-mock')?.addEventListener('click', async () => {
+            stopTransferStatusPolling();
             activeTab = 'mock';
             render();
             loadMockJobHistory();
@@ -1705,6 +2517,7 @@ export function DataTools() {
             }
         });
         container.querySelector('#tab-compare')?.addEventListener('click', async () => {
+            stopTransferStatusPolling();
             activeTab = 'compare';
             resetCompareOutputs();
             render();
@@ -1719,6 +2532,15 @@ export function DataTools() {
             }
             if (compareSourceDb && compareSourceTable && compareTargetDb && compareTargetTable) {
                 await loadCompareMetadata();
+            }
+        });
+        container.querySelector('#tab-transfer')?.addEventListener('click', async () => {
+            activeTab = 'transfer';
+            render();
+            await loadTransferConnections();
+            await loadTransferRunHistory();
+            if (transferActiveRun && isTransferRunActive(transferActiveRun)) {
+                startTransferStatusPolling(transferActiveRun.operationId);
             }
         });
 
@@ -1871,6 +2693,103 @@ export function DataTools() {
                 Dialog.alert(`Failed to copy script: ${error}`, 'Data Compare');
             }
         });
+
+        // Data Transfer controls
+        container.querySelector('#transfer-source-connection')?.addEventListener('change', (e) => {
+            transferSourceConnectionId = e.target.value || '';
+            resetTransferPlanArtifacts();
+            render();
+        });
+        container.querySelector('#transfer-target-connection')?.addEventListener('change', (e) => {
+            transferTargetConnectionId = e.target.value || '';
+            resetTransferPlanArtifacts();
+            render();
+        });
+        container.querySelector('#transfer-source-db')?.addEventListener('change', (e) => {
+            transferSourceDatabase = String(e.target.value || '').trim();
+            resetTransferPlanArtifacts();
+            render();
+        });
+        container.querySelector('#transfer-target-db')?.addEventListener('change', (e) => {
+            transferTargetDatabase = String(e.target.value || '').trim();
+            resetTransferPlanArtifacts();
+            render();
+        });
+        container.querySelector('#transfer-mapping-profile')?.addEventListener('change', (e) => {
+            transferMappingProfile = String(e.target.value || '').trim();
+            resetTransferPlanArtifacts();
+        });
+        container.querySelector('#transfer-include-schema')?.addEventListener('change', (e) => {
+            transferIncludeSchemaMigration = !!e.target.checked;
+            resetTransferPlanArtifacts();
+        });
+        container.querySelector('#transfer-lock-guard')?.addEventListener('change', (e) => {
+            transferLockGuard = !!e.target.checked;
+            resetTransferPlanArtifacts();
+        });
+        container.querySelector('#transfer-dry-run')?.addEventListener('change', (e) => {
+            transferDryRun = !!e.target.checked;
+            render();
+        });
+        container.querySelector('#transfer-draft-source-table')?.addEventListener('change', (e) => {
+            transferDraftSourceTable = e.target.value || '';
+        });
+        container.querySelector('#transfer-draft-target-table')?.addEventListener('change', (e) => {
+            transferDraftTargetTable = e.target.value || '';
+        });
+        container.querySelector('#transfer-draft-mode')?.addEventListener('change', (e) => {
+            transferDraftMode = e.target.value || 'append';
+        });
+        container.querySelector('#transfer-draft-sink-type')?.addEventListener('change', (e) => {
+            transferDraftSinkType = e.target.value || 'database';
+            if (transferDraftSinkType === 'database') {
+                transferDraftSinkPath = '';
+            }
+            render();
+        });
+        container.querySelector('#transfer-draft-keys')?.addEventListener('change', (e) => {
+            transferDraftKeyColumns = e.target.value || '';
+        });
+        container.querySelector('#transfer-draft-sink-path')?.addEventListener('change', (e) => {
+            transferDraftSinkPath = e.target.value || '';
+        });
+        container.querySelector('#transfer-add-object-btn')?.addEventListener('click', handleTransferAddObject);
+        container.querySelectorAll('.transfer-remove-object-btn').forEach((button) => {
+            button.addEventListener('click', (e) => {
+                const index = Number.parseInt(e.currentTarget.dataset.transferIndex || '-1', 10);
+                handleTransferRemoveObject(index);
+            });
+        });
+        container.querySelector('#transfer-preview-btn')?.addEventListener('click', handleTransferPreviewPlan);
+        container.querySelector('#transfer-start-btn')?.addEventListener('click', handleTransferStart);
+        container.querySelector('#transfer-cancel-btn')?.addEventListener('click', handleTransferCancel);
+        container.querySelector('#transfer-task-payload-btn')?.addEventListener('click', handleTransferGenerateTaskPayload);
+        container.querySelector('#transfer-runs-refresh-btn')?.addEventListener('click', loadTransferRunHistory);
+        container.querySelector('#transfer-mapping-source')?.addEventListener('change', (e) => {
+            transferMappingSourceColumn = e.target.value || '';
+        });
+        container.querySelector('#transfer-mapping-target')?.addEventListener('change', (e) => {
+            transferMappingTargetColumn = e.target.value || '';
+        });
+        container.querySelector('#transfer-mapping-cast')?.addEventListener('change', (e) => {
+            transferMappingCastType = e.target.value || '';
+        });
+        container.querySelector('#transfer-validate-mapping-btn')?.addEventListener('click', handleTransferValidateMappingRule);
+        container.querySelector('#transfer-copy-task-payload-btn')?.addEventListener('click', async () => {
+            if (!transferTaskPayload) return;
+            try {
+                await navigator.clipboard.writeText(JSON.stringify(transferTaskPayload, null, 2));
+                Dialog.alert('Transfer task payload copied to clipboard.', 'Data Transfer');
+            } catch (error) {
+                Dialog.alert(`Failed to copy payload: ${error}`, 'Data Transfer');
+            }
+        });
+        container.querySelectorAll('.transfer-select-run-btn').forEach((button) => {
+            button.addEventListener('click', () => {
+                const opId = button.dataset.operationId;
+                selectTransferRun(opId);
+            });
+        });
     };
 
     // Theme handling
@@ -1884,6 +2803,7 @@ export function DataTools() {
     container.onUnmount = () => {
         window.removeEventListener('themechange', onThemeChange);
         stopMockStatusPolling();
+        stopTransferStatusPolling();
     };
 
     // Initialize - render first, then load data

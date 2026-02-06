@@ -1,6 +1,6 @@
 # TactileSQL
 
-TactileSQL is a modern, desktop-first MySQL workbench built with Tauri 2 and vanilla JavaScript. It provides a rich SQL editing experience, schema tools, and operational dashboards in a fast, native shell.
+TactileSQL is a modern, desktop-first SQL workbench for MySQL and PostgreSQL, built with Tauri 2 and vanilla JavaScript. It provides a rich SQL editing experience, schema tools, and operational dashboards in a fast, native shell.
 
 ## Highlights
 
@@ -28,8 +28,9 @@ TactileSQL is a modern, desktop-first MySQL workbench built with Tauri 2 and van
 - **Schema Diff** for database or single-table comparison with generated sync SQL.
 - **Data Compare** for row-level source/target table comparison with generated data sync SQL (`INSERT`/`UPDATE`/`DELETE`).
 - **Data Import/Export Wizard** supporting CSV, SQL, and JSON formats with progress tracking.
+- **Data Transfer/Migration Wizard**: Plan and run DB->DB and DB->file transfers with per-object mode (`append`, `replace`, `upsert`), sink type (`database`, `csv`, `jsonl`, `sql`), dry-run, and run monitoring.
 - **Backup & Restore** with scheduled backups, compression, and full/incremental backup modes.
-- **Task Center** for end-to-end task operations: create/edit tasks, filter by type/status/tag/owner, configure cron/interval/one-shot triggers with next-run preview, build composite DAG flows, run/cancel/retry executions, inspect run logs, and manage retention/purge.
+- **Task Center** for end-to-end task operations: create/edit tasks, filter by type/status/tag/owner, configure cron/interval/one-shot triggers with next-run preview, build composite DAG flows, run/cancel/retry executions, inspect run logs, and manage retention/purge (including `data_transfer_migration` tasks).
 - **Mock Data Generator** with deterministic preview, async generation jobs, cancellation, and persisted job history.
 - **Real-time Server Monitor** with live metrics for CPU, memory, connections, queries, and InnoDB status.
 - **Lock/Deadlock Root-Cause Analysis**: Live lock graph, blocking chains, deadlock-cycle detection, and automatic mitigation suggestions with blocker-termination shortcuts.
@@ -60,7 +61,7 @@ TactileSQL is a modern, desktop-first MySQL workbench built with Tauri 2 and van
 
 - **Frontend**: Vite + Vanilla JS + Tailwind CSS
 - **Desktop**: Tauri v2
-- **Backend**: Rust + SQLx (MySQL)
+- **Backend**: Rust + SQLx (MySQL + PostgreSQL)
 - **State**: LocalStorage + Tauri app data directory
 
 ## Project Structure
@@ -87,9 +88,10 @@ src-tauri/
 
 - **Node.js** (LTS recommended)
 - **Rust toolchain** (stable)
-- **MySQL server** accessible from your machine
+- **MySQL and/or PostgreSQL server** accessible from your machine
 - **Tauri system dependencies** for your OS (see Tauri v2 docs)
 - **SSH access** (optional) for remote database connections via SSH tunnel
+- **Docker + Docker Compose** (optional, for data transfer integration tests)
 
 ## Setup
 
@@ -124,6 +126,17 @@ Command contract report (frontend `invoke(...)` vs Rust handlers):
 npm run contract:report   # refresh src/generated/command-contract.json
 npm run contract:check    # fail on newly introduced missing backend commands
 ```
+
+Data transfer coercion integration tests (MySQL + PostgreSQL via Docker Compose):
+
+```
+scripts/run-data-transfer-coercion-it.sh
+```
+
+Optional environment overrides:
+
+- `TACTILE_IT_MYSQL_HOST`, `TACTILE_IT_MYSQL_PORT`, `TACTILE_IT_MYSQL_USER`, `TACTILE_IT_MYSQL_PASSWORD`, `TACTILE_IT_MYSQL_DATABASE`
+- `TACTILE_IT_POSTGRES_HOST`, `TACTILE_IT_POSTGRES_PORT`, `TACTILE_IT_POSTGRES_USER`, `TACTILE_IT_POSTGRES_PASSWORD`, `TACTILE_IT_POSTGRES_DATABASE`, `TACTILE_IT_POSTGRES_SCHEMA`
 
 ## Core Screens
 
@@ -179,6 +192,10 @@ npm run contract:check    # fail on newly introduced missing backend commands
 
 - **Import Wizard**: Upload CSV, SQL, or JSON files with field mapping and preview
 - **Export Tool**: Export databases or tables to CSV, SQL, or JSON formats
+- **Transfer/Migration**: Plan cross-connection DB->DB or file-sink transfers with object-level controls (`append`/`replace`/`upsert`) and sink targets (`database`/`csv`/`jsonl`/`sql`)
+- **Transfer Safety**: Optional schema-migration preflight (`includeSchemaMigration`) with strategy preview and Lock Guard enforcement for high-risk plans
+- **Transfer Monitoring**: Dry-run support, live status polling, cancellation, and persisted run history
+- **Transfer Mapping Validation**: Validate mapping/cast rules before execution and generate Task Center payload from a transfer plan
 - **Backup Manager**: Schedule automated backups with compression and encryption
 - **Restore Database**: Restore from previous backups with validation
 - **Mock Data Generator**: Preview generated rows, run async generation/dry-run jobs, track progress, cancel running jobs, and review recent job history across restarts
@@ -188,6 +205,7 @@ npm run contract:check    # fail on newly introduced missing backend commands
 
 - Route: `#/tasks` (feature-flagged with `taskCenter`)
 - Task definitions: create/edit/delete with JSON payload validation
+- Task types: `sql_script`, `backup`, `schema_snapshot`, `data_compare_sync`, `data_transfer_migration`, `composite`
 - Task list: live filtering (`type`, `status`, `owner`, `tag`) plus `last run` and `next run` summary columns
 - Trigger editor: `interval`, `cron`, `one_shot` with client-side cron validation and next 5 run preview
 - Composite builder: step management and dependency graph with cycle/dependency validation
@@ -199,6 +217,8 @@ Task Center docs:
 - User guide: `docs/task-manager-user-guide-en.md`
 - Technical guide: `docs/task-manager-technical-guide-en.md`
 - Rollout checklist: `docs/task-manager-rollout-checklist-en.md`
+- Payload examples: `docs/task-manager-payload-examples.md`
+- Backlog import sample: `docs/data-transfer-task-center-import.json`
 
 ### Server Monitor
 
@@ -351,6 +371,13 @@ The Rust backend exposes the following commands (used by the UI):
 ### Data Tools
 - `export_table_csv`, `export_table_json`, `export_table_sql` — Export table data
 - `import_csv` — Import CSV rows into a selected table
+- `preview_data_transfer_plan` — Build transfer plan preview + warnings + optional schema preflight summary
+- `start_data_transfer` — Start transfer run (supports dry-run)
+- `get_data_transfer_status` — Fetch transfer run status/progress by operation id
+- `list_data_transfer_runs` — List recent transfer runs from local run store
+- `cancel_data_transfer` — Request cancellation for an active transfer run
+- `validate_data_transfer_mapping` — Validate mapping/cast rules for transfer columns
+- `generate_transfer_task_payload` — Generate `data_transfer_migration` Task Center payload from plan request
 - `preview_mock_data` — Generate sample rows without writing to DB
 - `start_mock_data_generation` — Start async mock data generation (supports dry-run)
 - `get_mock_data_generation_status` — Poll status/progress for one generation job
