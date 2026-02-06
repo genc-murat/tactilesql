@@ -40,6 +40,11 @@ TactileSQL is a modern, desktop-first MySQL workbench built with Tauri 2 and van
 - **Impact Path Finder**: Find shortest downstream paths between selected source objects and target nodes.
 - **Optimized Dependency Graph UX**: Debounced indexed search, preview-first lineage loading, and viewer reuse for smoother large-graph navigation.
 - **Faster Dependency Rebuilds**: Backend graph cache and duplicate-edge deduplication to reduce repeated extraction cost.
+- **Data Lineage Screen**: Build query-history lineage with time windows (`1h/24h/7d/30d/custom/all`), parse coverage stats, and skip-reason breakdown.
+- **Lineage View Modes**: Switch between `Full`, `Table + Query`, and `Table Only` graphs for dense workloads.
+- **Weighted Lineage Edges**: Visualize edge strength by execution count, total duration, or average duration.
+- **Lineage Exports**: Export lineage as JSON, Mermaid, or PNG; selected-node lineage supports focused Mermaid export.
+- **Lineage Performance**: Graph construction runs in a Web Worker with main-thread fallback and timeout protection.
 - **Connection Manager** with encrypted credential storage, connection testing, and SSH tunnel configuration.
 - **Access Control** viewer for MySQL users and privileges.
 - **Themes**: Dark, Light, and Oceanic.
@@ -143,6 +148,18 @@ npm run contract:check    # fail on newly introduced missing backend commands
 - **Anomaly Dashboard**: Detects and displays performance regressions by comparing current execution against historical baselines.
 - **Performance Profiler**: Backend service that tracks query execution history and builds baseline profiles for anomaly detection.
 
+### Data Lineage
+
+- Build lineage from query execution history with configurable history limit and query-type/table filters
+- Time-window filtering (`1h`, `24h`, `7d`, `30d`, `custom`, `all`) using bounded history range fetch
+- Parse coverage telemetry with skipped-query reason buckets (empty/multi-statement/unsupported/no-table/filtered/parse-error)
+- View modes: `Full (Query + Table + Column)`, `Table + Query`, `Table Only`
+- Edge-weight overlays: `execution_count`, `total_duration_ms`, `avg_duration_ms`
+- Deep-linkable node focus via hash param (`#/lineage?node=<id>`) and rich node detail sidebar
+- Built-in blast radius ranking, path finder, and node-level lineage export
+- Graph exports: full JSON, Mermaid, and PNG
+- Worker-backed lineage graph build for smoother UI on large histories
+
 ### Dashboard
 
 - KPIs: threads, buffer pool, traffic
@@ -239,6 +256,16 @@ npm run contract:check    # fail on newly introduced missing backend commands
 - **Telemetry Hooks**: Emits `tactilesql:graph-metric` events (search latency, payload size, viewer reuse) for diagnostics.
 - **Mermaid Export**: Export the dependency graph as a mermaid diagram for external documentation.
 
+### Data Lineage
+- **History-Driven Graph**: Builds lineage from query execution history (`exact_query`) with query-hash aggregation.
+- **Time Range API**: Uses `get_query_history_range(start, end, limit)` for bounded lineage windows and `get_query_history(limit)` for all-time mode.
+- **AST-Like Heuristics**: Improved parsing for CTE aliases, top-level `SELECT` projection extraction, and column-level read/write inference.
+- **Coverage Metrics**: Shows included vs skipped query counts with categorical skip reasons and coverage percentage.
+- **View Switching**: Toggle between full graph and table-centric graph variants to control density.
+- **Edge Metrics**: Carries per-edge execution count, total duration, and average duration into the graph renderer.
+- **Export Tooling**: Supports JSON, Mermaid, and PNG export from the lineage page.
+- **Web Worker Build Path**: Offloads lineage graph construction to a dedicated worker and falls back to main thread on failure.
+
 ## Backend Commands (Tauri)
 
 The Rust backend exposes the following commands (used by the UI):
@@ -258,6 +285,7 @@ The Rust backend exposes the following commands (used by the UI):
 - `compare_queries` — Compare syntax and performance of two queries
 - `get_anomaly_history` — Retrieve history of detected performance anomalies
 - `get_query_history` — Retrieve execution history for specific queries
+- `get_query_history_range` — Retrieve execution history within a start/end time window
 
 ### Database Schema
 - `get_databases`, `get_tables`, `get_table_schema`
