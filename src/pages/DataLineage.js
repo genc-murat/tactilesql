@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { ThemeManager } from '../utils/ThemeManager.js';
 import { GraphViewer } from '../components/AdvancedInsights/DependencyGraph/GraphViewer.js';
+import { CustomDropdown } from '../components/UI/CustomDropdown.js';
 import '../components/AdvancedInsights/DependencyGraph/DependencyGraph.css';
 
 const MAX_HISTORY_LIMIT = 3000;
@@ -569,12 +570,6 @@ export function DataLineage() {
         const searchInput = container.querySelector('#lineage-search');
 
         buildBtn?.addEventListener('click', fetchAndBuildLineage);
-        limitSelect?.addEventListener('change', () => {
-            state.historyLimit = Number(limitSelect.value) || 400;
-        });
-        queryTypeSelect?.addEventListener('change', () => {
-            state.queryTypeFilter = queryTypeSelect.value;
-        });
         tableFilterInput?.addEventListener('input', () => {
             state.tableFilter = tableFilterInput.value;
         });
@@ -607,15 +602,11 @@ export function DataLineage() {
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
                         <div>
                             <label class="text-[10px] font-bold uppercase tracking-wider ${cls.subtitle}">History Limit</label>
-                            <select id="lineage-limit" class="w-full mt-1 ${cls.input}">
-                                ${[200, 400, 800, 1200, 2000, 3000].map(value => `<option value="${value}" ${state.historyLimit === value ? 'selected' : ''}>${value}</option>`).join('')}
-                            </select>
+                            <div id="lineage-limit-container" class="mt-1"></div>
                         </div>
                         <div>
                             <label class="text-[10px] font-bold uppercase tracking-wider ${cls.subtitle}">Query Type</label>
-                            <select id="lineage-query-type" class="w-full mt-1 ${cls.input}">
-                                ${['ALL', 'SELECT', 'INSERT', 'UPDATE', 'DELETE'].map(value => `<option value="${value}" ${state.queryTypeFilter === value ? 'selected' : ''}>${value}</option>`).join('')}
-                            </select>
+                            <div id="lineage-query-type-container" class="mt-1"></div>
                         </div>
                         <div>
                             <label class="text-[10px] font-bold uppercase tracking-wider ${cls.subtitle}">Table Filter</label>
@@ -680,6 +671,35 @@ export function DataLineage() {
         `;
 
         bindControls();
+
+        // Initialize Custom Dropdowns
+        const limitContainer = container.querySelector('#lineage-limit-container');
+        const typeContainer = container.querySelector('#lineage-query-type-container');
+
+        if (limitContainer) {
+            const limitDropdown = new CustomDropdown({
+                items: [200, 400, 800, 1200, 2000, 3000].map(v => ({ value: v, label: String(v), icon: 'history' })),
+                value: state.historyLimit,
+                placeholder: 'Limit',
+                onSelect: (val) => {
+                    state.historyLimit = Number(val);
+                }
+            });
+            limitContainer.appendChild(limitDropdown.getElement());
+        }
+
+        if (typeContainer) {
+            const typeDropdown = new CustomDropdown({
+                items: ['ALL', 'SELECT', 'INSERT', 'UPDATE', 'DELETE'].map(v => ({ value: v, label: v, icon: 'filter_list' })),
+                value: state.queryTypeFilter,
+                placeholder: 'Type',
+                onSelect: (val) => {
+                    state.queryTypeFilter = val;
+                }
+            });
+            typeContainer.appendChild(typeDropdown.getElement());
+        }
+
         if (state.graphData && !state.error && state.stats.queryNodes > 0) {
             mountViewer();
         } else {
