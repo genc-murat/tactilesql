@@ -22,8 +22,22 @@ const EDITOR_FONT_FAMILY_OPTIONS = Object.freeze([
     Object.freeze({ value: 'ibm', label: 'IBM Plex Mono' }),
     Object.freeze({ value: 'consolas', label: 'Consolas' }),
 ]);
+const EDITOR_LINE_WRAP_OPTIONS = Object.freeze([
+    Object.freeze({ value: 'off', label: 'Off' }),
+    Object.freeze({ value: 'on', label: 'On' }),
+    Object.freeze({ value: 'word', label: 'Word' }),
+]);
+const EXECUTION_RUN_MODE_OPTIONS = Object.freeze([
+    Object.freeze({ value: 'statement', label: 'Current Statement' }),
+    Object.freeze({ value: 'selection', label: 'Selection First' }),
+    Object.freeze({ value: 'all', label: 'Run All' }),
+]);
 const DEFAULT_EDITOR_FONT_SIZE = 13;
 const DEFAULT_EDITOR_FONT_FAMILY = 'jetbrains';
+const DEFAULT_EDITOR_LINE_WRAP = 'on';
+const DEFAULT_EXECUTION_RUN_MODE = 'statement';
+const DEFAULT_QUERY_TIMEOUT_SECONDS = 30;
+const DEFAULT_MAX_ROWS_PER_QUERY = 5000;
 
 const escapeHtml = (value) => String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -68,6 +82,44 @@ const getEditorFontFamilySetting = () => {
         return configured;
     }
     return DEFAULT_EDITOR_FONT_FAMILY;
+};
+
+const getEditorLineWrapSetting = () => {
+    const configured = String(SettingsManager.get(SETTINGS_PATHS.EDITOR_LINE_WRAP) || '').toLowerCase();
+    if (EDITOR_LINE_WRAP_OPTIONS.some(option => option.value === configured)) {
+        return configured;
+    }
+    return DEFAULT_EDITOR_LINE_WRAP;
+};
+
+const getExecutionDefaultRunModeSetting = () => {
+    const configured = String(SettingsManager.get(SETTINGS_PATHS.EXECUTION_DEFAULT_RUN_MODE) || '').toLowerCase();
+    if (EXECUTION_RUN_MODE_OPTIONS.some(option => option.value === configured)) {
+        return configured;
+    }
+    return DEFAULT_EXECUTION_RUN_MODE;
+};
+
+const clampExecutionQueryTimeoutSeconds = (value) => {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isNaN(parsed)) return DEFAULT_QUERY_TIMEOUT_SECONDS;
+    return Math.min(3600, Math.max(0, parsed));
+};
+
+const getExecutionQueryTimeoutSetting = () => {
+    const configured = SettingsManager.get(SETTINGS_PATHS.EXECUTION_QUERY_TIMEOUT_SECONDS);
+    return clampExecutionQueryTimeoutSeconds(configured);
+};
+
+const clampMaxRowsPerQuery = (value) => {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isNaN(parsed)) return DEFAULT_MAX_ROWS_PER_QUERY;
+    return Math.min(50000, Math.max(0, parsed));
+};
+
+const getResultsMaxRowsSetting = () => {
+    const configured = SettingsManager.get(SETTINGS_PATHS.RESULTS_MAX_ROWS_PER_QUERY);
+    return clampMaxRowsPerQuery(configured);
 };
 
 export function Settings() {
@@ -117,6 +169,13 @@ export function Settings() {
         const editorFontSize = getEditorFontSizeSetting();
         const editorFontFamily = getEditorFontFamilySetting();
         const editorFontFamilyLabel = EDITOR_FONT_FAMILY_OPTIONS.find(option => option.value === editorFontFamily)?.label || 'JetBrains Mono';
+        const editorLineWrap = getEditorLineWrapSetting();
+        const editorLineWrapLabel = EDITOR_LINE_WRAP_OPTIONS.find(option => option.value === editorLineWrap)?.label || 'On';
+        const executionDefaultRunMode = getExecutionDefaultRunModeSetting();
+        const executionDefaultRunModeLabel = EXECUTION_RUN_MODE_OPTIONS.find(option => option.value === executionDefaultRunMode)?.label || 'Current Statement';
+        const executionQueryTimeoutSeconds = getExecutionQueryTimeoutSetting();
+        const resultsMaxRowsPerQuery = getResultsMaxRowsSetting();
+        const explorerShowSystemObjects = SettingsManager.get(SETTINGS_PATHS.EXPLORER_SHOW_SYSTEM_OBJECTS);
         const profilerEnabled = SettingsManager.get(SETTINGS_PATHS.PROFILER_ENABLED);
         const profilerExplainEnabled = SettingsManager.get(SETTINGS_PATHS.PROFILER_EXPLAIN_ANALYZE);
         const workbenchSnippetsEnabled = SettingsManager.get(SETTINGS_PATHS.WORKBENCH_SNIPPETS);
@@ -352,6 +411,86 @@ export function Settings() {
                                     </div>
                                 </div>
                             </div>
+                        </div>
+
+                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                            <div>
+                                <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Line Wrap</h3>
+                                <p class="text-xs text-gray-500 mt-1">Control line wrapping behavior in the editor</p>
+                            </div>
+                            <div class="relative" id="line-wrap-dropdown-container">
+                                <button id="line-wrap-trigger" class="flex items-center gap-2 px-3 py-1.5 text-sm ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800 hover:bg-gray-100' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] hover:bg-[#faf4ed]' : 'bg-black/20 border-white/10 text-gray-300 hover:bg-white/5')} rounded-lg border transition-all outline-none focus:border-mysql-teal shadow-sm min-w-[140px] justify-between group">
+                                    <span id="current-line-wrap">${escapeHtml(editorLineWrapLabel)}</span>
+                                    <span class="material-symbols-outlined text-gray-500 group-hover:text-mysql-teal transition-transform duration-200" id="line-wrap-arrow">expand_more</span>
+                                </button>
+
+                                <div id="line-wrap-options" class="hidden absolute top-full right-0 mt-2 w-40 ${isLight ? 'bg-white border-gray-100 shadow-2xl' : 'bg-[#1a1d23] border-white/10 shadow-2xl'} rounded-xl overflow-hidden z-[100] animate-in fade-in slide-in-from-top-2 duration-200 backdrop-blur-xl">
+                                    <div class="p-1">
+                                        ${EDITOR_LINE_WRAP_OPTIONS.map(option => `
+                                            <div class="line-wrap-option px-3 py-2 flex items-center justify-between cursor-pointer rounded-lg transition-colors ${editorLineWrap === option.value ? (isLight ? 'bg-mysql-teal/10 text-mysql-teal font-bold' : 'bg-mysql-teal/20 text-mysql-teal font-bold') : (isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5')}" data-value="${option.value}">
+                                                <span class="text-sm">${escapeHtml(option.label)}</span>
+                                                ${editorLineWrap === option.value ? '<span class="material-symbols-outlined text-mysql-teal text-sm">check_circle</span>' : ''}
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                            <div>
+                                <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Default Run Mode</h3>
+                                <p class="text-xs text-gray-500 mt-1">Behavior for Run button and Ctrl+Enter</p>
+                            </div>
+                            <div class="relative" id="run-mode-dropdown-container">
+                                <button id="run-mode-trigger" class="flex items-center gap-2 px-3 py-1.5 text-sm ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800 hover:bg-gray-100' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] hover:bg-[#faf4ed]' : 'bg-black/20 border-white/10 text-gray-300 hover:bg-white/5')} rounded-lg border transition-all outline-none focus:border-mysql-teal shadow-sm min-w-[190px] justify-between group">
+                                    <span id="current-run-mode">${escapeHtml(executionDefaultRunModeLabel)}</span>
+                                    <span class="material-symbols-outlined text-gray-500 group-hover:text-mysql-teal transition-transform duration-200" id="run-mode-arrow">expand_more</span>
+                                </button>
+
+                                <div id="run-mode-options" class="hidden absolute top-full right-0 mt-2 w-56 ${isLight ? 'bg-white border-gray-100 shadow-2xl' : 'bg-[#1a1d23] border-white/10 shadow-2xl'} rounded-xl overflow-hidden z-[100] animate-in fade-in slide-in-from-top-2 duration-200 backdrop-blur-xl">
+                                    <div class="p-1">
+                                        ${EXECUTION_RUN_MODE_OPTIONS.map(option => `
+                                            <div class="run-mode-option px-3 py-2 flex items-center justify-between cursor-pointer rounded-lg transition-colors ${executionDefaultRunMode === option.value ? (isLight ? 'bg-mysql-teal/10 text-mysql-teal font-bold' : 'bg-mysql-teal/20 text-mysql-teal font-bold') : (isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5')}" data-value="${option.value}">
+                                                <span class="text-sm">${escapeHtml(option.label)}</span>
+                                                ${executionDefaultRunMode === option.value ? '<span class="material-symbols-outlined text-mysql-teal text-sm">check_circle</span>' : ''}
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                            <div>
+                                <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Query Timeout (seconds)</h3>
+                                <p class="text-xs text-gray-500 mt-1">0 means unlimited</p>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <input id="execution-query-timeout-input" type="number" min="0" max="3600" step="5" value="${executionQueryTimeoutSeconds}" class="w-28 text-right px-3 py-1.5 text-sm ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-300')} rounded-lg border outline-none focus:border-mysql-teal transition-colors shadow-sm">
+                                <span class="text-[11px] ${isLight ? 'text-gray-500' : 'text-gray-400'}">sec</span>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                            <div>
+                                <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Max Rows Per Query</h3>
+                                <p class="text-xs text-gray-500 mt-1">0 means unlimited (display-side cap)</p>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <input id="results-max-rows-input" type="number" min="0" max="50000" step="100" value="${resultsMaxRowsPerQuery}" class="w-28 text-right px-3 py-1.5 text-sm ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-300')} rounded-lg border outline-none focus:border-mysql-teal transition-colors shadow-sm">
+                                <span class="text-[11px] ${isLight ? 'text-gray-500' : 'text-gray-400'}">rows</span>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                            <div>
+                                <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Show System Databases/Schemas</h3>
+                                <p class="text-xs text-gray-500 mt-1">Toggle system objects in Object Explorer</p>
+                            </div>
+                            <button id="explorer-system-objects-toggle" class="relative w-12 h-6 rounded-full transition-all ${explorerShowSystemObjects ? 'bg-gradient-to-r from-mysql-teal to-mysql-cyan' : (isLight ? 'bg-gray-200' : (isOceanic ? 'bg-ocean-border/40' : 'bg-white/10'))}">
+                                <span class="absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow-md transition-transform transform ${explorerShowSystemObjects ? 'translate-x-6' : 'translate-x-0'}"></span>
+                            </button>
                         </div>
 
                         <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
@@ -695,6 +834,7 @@ export function Settings() {
         const workbenchHistoryToggle = container.querySelector('#workbench-history-toggle');
         const profilerToggle = container.querySelector('#profiler-enabled-toggle');
         const profilerExplainToggle = container.querySelector('#profiler-explain-toggle');
+        const explorerSystemObjectsToggle = container.querySelector('#explorer-system-objects-toggle');
 
         const isLight = theme === 'light' || theme === 'dawn';
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
@@ -832,6 +972,16 @@ export function Settings() {
                 setToggleState(profilerExplainToggle, next);
             });
             setToggleState(profilerExplainToggle, SettingsManager.get(SETTINGS_PATHS.PROFILER_EXPLAIN_ANALYZE));
+        }
+
+        if (explorerSystemObjectsToggle) {
+            explorerSystemObjectsToggle.addEventListener('click', () => {
+                const current = SettingsManager.get(SETTINGS_PATHS.EXPLORER_SHOW_SYSTEM_OBJECTS);
+                const next = !current;
+                SettingsManager.set(SETTINGS_PATHS.EXPLORER_SHOW_SYSTEM_OBJECTS, next);
+                setToggleState(explorerSystemObjectsToggle, next);
+            });
+            setToggleState(explorerSystemObjectsToggle, SettingsManager.get(SETTINGS_PATHS.EXPLORER_SHOW_SYSTEM_OBJECTS));
         }
 
         const devToolsToggleBtn = container.querySelector('#toggle-devtools-btn');
@@ -1350,8 +1500,8 @@ export function Settings() {
                 modelTrigger.addEventListener('click', (e) => {
                     e.stopPropagation();
                     const isHidden = modelDropdown.classList.contains('hidden');
-                    container.querySelectorAll('#ai-provider-options, #font-size-options, #font-family-options').forEach(d => d.classList.add('hidden'));
-                    container.querySelectorAll('#ai-provider-arrow, #font-size-arrow, #font-family-arrow').forEach(a => a.style.transform = '');
+                    container.querySelectorAll('#ai-provider-options, #font-size-options, #font-family-options, #line-wrap-options, #run-mode-options').forEach(d => d.classList.add('hidden'));
+                    container.querySelectorAll('#ai-provider-arrow, #font-size-arrow, #font-family-arrow, #line-wrap-arrow, #run-mode-arrow').forEach(a => a.style.transform = '');
 
                     if (isHidden) {
                         modelDropdown.classList.remove('hidden');
@@ -1402,6 +1552,16 @@ export function Settings() {
         const fontFamilyDropdown = container.querySelector('#font-family-options');
         const fontFamilyArrow = container.querySelector('#font-family-arrow');
         const currentFontFamilySpan = container.querySelector('#current-font-family');
+        const lineWrapTrigger = container.querySelector('#line-wrap-trigger');
+        const lineWrapDropdown = container.querySelector('#line-wrap-options');
+        const lineWrapArrow = container.querySelector('#line-wrap-arrow');
+        const currentLineWrapSpan = container.querySelector('#current-line-wrap');
+        const runModeTrigger = container.querySelector('#run-mode-trigger');
+        const runModeDropdown = container.querySelector('#run-mode-options');
+        const runModeArrow = container.querySelector('#run-mode-arrow');
+        const currentRunModeSpan = container.querySelector('#current-run-mode');
+        const queryTimeoutInput = container.querySelector('#execution-query-timeout-input');
+        const maxRowsInput = container.querySelector('#results-max-rows-input');
 
         if (aiKeyInput && aiSaveBtn && aiVisibilityBtn && aiKeyLabel && aiKeyLink) {
             let activeProvider = localStorage.getItem('ai_provider') || 'openai';
@@ -1497,8 +1657,8 @@ export function Settings() {
                 providerTrigger.addEventListener('click', (e) => {
                     e.stopPropagation();
                     const isHidden = providerDropdown.classList.contains('hidden');
-                    container.querySelectorAll('#ai-model-options, #font-size-options, #font-family-options').forEach(d => d.classList.add('hidden'));
-                    container.querySelectorAll('#ai-model-arrow, #font-size-arrow, #font-family-arrow').forEach(a => a.style.transform = '');
+                    container.querySelectorAll('#ai-model-options, #font-size-options, #font-family-options, #line-wrap-options, #run-mode-options').forEach(d => d.classList.add('hidden'));
+                    container.querySelectorAll('#ai-model-arrow, #font-size-arrow, #font-family-arrow, #line-wrap-arrow, #run-mode-arrow').forEach(a => a.style.transform = '');
                     if (isHidden) {
                         providerDropdown.classList.remove('hidden');
                         if (providerArrow) providerArrow.style.transform = 'rotate(180deg)';
@@ -1526,8 +1686,8 @@ export function Settings() {
                 fontSizeTrigger.addEventListener('click', (e) => {
                     e.stopPropagation();
                     const isHidden = fontSizeDropdown.classList.contains('hidden');
-                    container.querySelectorAll('#ai-provider-options, #ai-model-options, #font-family-options').forEach(d => d.classList.add('hidden'));
-                    container.querySelectorAll('#ai-provider-arrow, #ai-model-arrow, #font-family-arrow').forEach(a => a.style.transform = '');
+                    container.querySelectorAll('#ai-provider-options, #ai-model-options, #font-family-options, #line-wrap-options, #run-mode-options').forEach(d => d.classList.add('hidden'));
+                    container.querySelectorAll('#ai-provider-arrow, #ai-model-arrow, #font-family-arrow, #line-wrap-arrow, #run-mode-arrow').forEach(a => a.style.transform = '');
                     if (isHidden) {
                         fontSizeDropdown.classList.remove('hidden');
                         if (fontSizeArrow) fontSizeArrow.style.transform = 'rotate(180deg)';
@@ -1571,8 +1731,8 @@ export function Settings() {
                 fontFamilyTrigger.addEventListener('click', (e) => {
                     e.stopPropagation();
                     const isHidden = fontFamilyDropdown.classList.contains('hidden');
-                    container.querySelectorAll('#ai-provider-options, #ai-model-options, #font-size-options').forEach(d => d.classList.add('hidden'));
-                    container.querySelectorAll('#ai-provider-arrow, #ai-model-arrow, #font-size-arrow').forEach(a => a.style.transform = '');
+                    container.querySelectorAll('#ai-provider-options, #ai-model-options, #font-size-options, #line-wrap-options, #run-mode-options').forEach(d => d.classList.add('hidden'));
+                    container.querySelectorAll('#ai-provider-arrow, #ai-model-arrow, #font-size-arrow, #line-wrap-arrow, #run-mode-arrow').forEach(a => a.style.transform = '');
                     if (isHidden) {
                         fontFamilyDropdown.classList.remove('hidden');
                         if (fontFamilyArrow) fontFamilyArrow.style.transform = 'rotate(180deg)';
@@ -1612,12 +1772,122 @@ export function Settings() {
                 });
             }
 
+            if (lineWrapTrigger && lineWrapDropdown) {
+                lineWrapTrigger.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const isHidden = lineWrapDropdown.classList.contains('hidden');
+                    container.querySelectorAll('#ai-provider-options, #ai-model-options, #font-size-options, #font-family-options, #run-mode-options').forEach(d => d.classList.add('hidden'));
+                    container.querySelectorAll('#ai-provider-arrow, #ai-model-arrow, #font-size-arrow, #font-family-arrow, #run-mode-arrow').forEach(a => a.style.transform = '');
+                    if (isHidden) {
+                        lineWrapDropdown.classList.remove('hidden');
+                        if (lineWrapArrow) lineWrapArrow.style.transform = 'rotate(180deg)';
+                    } else {
+                        lineWrapDropdown.classList.add('hidden');
+                        if (lineWrapArrow) lineWrapArrow.style.transform = '';
+                    }
+                });
+
+                lineWrapDropdown.querySelectorAll('.line-wrap-option').forEach(option => {
+                    option.addEventListener('click', () => {
+                        const val = String(option.dataset.value || '');
+                        if (!val) return;
+                        const selectedLabel = option.querySelector('span')?.textContent || 'On';
+                        if (currentLineWrapSpan) currentLineWrapSpan.textContent = selectedLabel;
+                        lineWrapDropdown.classList.add('hidden');
+                        if (lineWrapArrow) lineWrapArrow.style.transform = '';
+                        SettingsManager.set(SETTINGS_PATHS.EDITOR_LINE_WRAP, val);
+                        lineWrapDropdown.querySelectorAll('.line-wrap-option').forEach(opt => {
+                            const isSelected = opt.dataset.value === val;
+                            opt.className = `line-wrap-option px-3 py-2 flex items-center justify-between cursor-pointer rounded-lg transition-colors ${isSelected ? (isLight ? 'bg-mysql-teal/10 text-mysql-teal font-bold' : 'bg-mysql-teal/20 text-mysql-teal font-bold') : (isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5')}`;
+                            let check = opt.querySelector('.material-symbols-outlined');
+                            if (isSelected) {
+                                if (!check) {
+                                    check = document.createElement('span');
+                                    check.className = 'material-symbols-outlined text-mysql-teal text-sm';
+                                    check.textContent = 'check_circle';
+                                    opt.appendChild(check);
+                                } else {
+                                    check.style.display = 'block';
+                                }
+                            } else if (check) {
+                                check.style.display = 'none';
+                            }
+                        });
+                    });
+                });
+            }
+
+            if (runModeTrigger && runModeDropdown) {
+                runModeTrigger.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const isHidden = runModeDropdown.classList.contains('hidden');
+                    container.querySelectorAll('#ai-provider-options, #ai-model-options, #font-size-options, #font-family-options, #line-wrap-options').forEach(d => d.classList.add('hidden'));
+                    container.querySelectorAll('#ai-provider-arrow, #ai-model-arrow, #font-size-arrow, #font-family-arrow, #line-wrap-arrow').forEach(a => a.style.transform = '');
+                    if (isHidden) {
+                        runModeDropdown.classList.remove('hidden');
+                        if (runModeArrow) runModeArrow.style.transform = 'rotate(180deg)';
+                    } else {
+                        runModeDropdown.classList.add('hidden');
+                        if (runModeArrow) runModeArrow.style.transform = '';
+                    }
+                });
+
+                runModeDropdown.querySelectorAll('.run-mode-option').forEach(option => {
+                    option.addEventListener('click', () => {
+                        const val = String(option.dataset.value || '');
+                        if (!val) return;
+                        const selectedLabel = option.querySelector('span')?.textContent || 'Current Statement';
+                        if (currentRunModeSpan) currentRunModeSpan.textContent = selectedLabel;
+                        runModeDropdown.classList.add('hidden');
+                        if (runModeArrow) runModeArrow.style.transform = '';
+                        SettingsManager.set(SETTINGS_PATHS.EXECUTION_DEFAULT_RUN_MODE, val);
+                        runModeDropdown.querySelectorAll('.run-mode-option').forEach(opt => {
+                            const isSelected = opt.dataset.value === val;
+                            opt.className = `run-mode-option px-3 py-2 flex items-center justify-between cursor-pointer rounded-lg transition-colors ${isSelected ? (isLight ? 'bg-mysql-teal/10 text-mysql-teal font-bold' : 'bg-mysql-teal/20 text-mysql-teal font-bold') : (isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5')}`;
+                            let check = opt.querySelector('.material-symbols-outlined');
+                            if (isSelected) {
+                                if (!check) {
+                                    check = document.createElement('span');
+                                    check.className = 'material-symbols-outlined text-mysql-teal text-sm';
+                                    check.textContent = 'check_circle';
+                                    opt.appendChild(check);
+                                } else {
+                                    check.style.display = 'block';
+                                }
+                            } else if (check) {
+                                check.style.display = 'none';
+                            }
+                        });
+                    });
+                });
+            }
+
+            if (maxRowsInput) {
+                const commitMaxRowsValue = () => {
+                    const next = clampMaxRowsPerQuery(maxRowsInput.value);
+                    maxRowsInput.value = String(next);
+                    SettingsManager.set(SETTINGS_PATHS.RESULTS_MAX_ROWS_PER_QUERY, next);
+                };
+                maxRowsInput.addEventListener('change', commitMaxRowsValue);
+                maxRowsInput.addEventListener('blur', commitMaxRowsValue);
+            }
+
+            if (queryTimeoutInput) {
+                const commitQueryTimeoutValue = () => {
+                    const next = clampExecutionQueryTimeoutSeconds(queryTimeoutInput.value);
+                    queryTimeoutInput.value = String(next);
+                    SettingsManager.set(SETTINGS_PATHS.EXECUTION_QUERY_TIMEOUT_SECONDS, next);
+                };
+                queryTimeoutInput.addEventListener('change', commitQueryTimeoutValue);
+                queryTimeoutInput.addEventListener('blur', commitQueryTimeoutValue);
+            }
+
             document.addEventListener('click', (e) => {
                 if (!container.contains(e.target)) return;
-                const matchesTrigger = e.target.closest('#ai-provider-trigger, #ai-model-trigger, #font-size-trigger, #font-family-trigger');
+                const matchesTrigger = e.target.closest('#ai-provider-trigger, #ai-model-trigger, #font-size-trigger, #font-family-trigger, #line-wrap-trigger, #run-mode-trigger');
                 if (!matchesTrigger) {
-                    container.querySelectorAll('#ai-provider-options, #ai-model-options, #font-size-options, #font-family-options').forEach(d => d.classList.add('hidden'));
-                    container.querySelectorAll('#ai-provider-arrow, #ai-model-arrow, #font-size-arrow, #font-family-arrow').forEach(a => a.style.transform = '');
+                    container.querySelectorAll('#ai-provider-options, #ai-model-options, #font-size-options, #font-family-options, #line-wrap-options, #run-mode-options').forEach(d => d.classList.add('hidden'));
+                    container.querySelectorAll('#ai-provider-arrow, #ai-model-arrow, #font-size-arrow, #font-family-arrow, #line-wrap-arrow, #run-mode-arrow').forEach(a => a.style.transform = '');
                 }
             });
 

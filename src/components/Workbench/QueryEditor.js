@@ -42,6 +42,8 @@ let repairPreviewVisible = false;
 const getSortedTabs = () => sortTabsByPinned(tabs);
 const saveState = () => saveTabsState(tabs, activeTabId);
 const PARAM_DEFAULTS_STORAGE_KEY = 'workbench_query_param_defaults';
+const EDITOR_LINE_WRAP_MODES = Object.freeze(['off', 'on', 'word']);
+const EXECUTION_RUN_MODES = Object.freeze(['statement', 'selection', 'all']);
 const EDITOR_FONT_FAMILY_OPTIONS = Object.freeze({
     jetbrains: Object.freeze({
         label: 'JetBrains Mono',
@@ -79,6 +81,18 @@ const clampEditorFontSize = (value) => {
     return Math.min(24, Math.max(10, parsed));
 };
 
+const clampMaxRowsPerQuery = (value) => {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isNaN(parsed)) return 5000;
+    return Math.min(50000, Math.max(0, parsed));
+};
+
+const clampExecutionQueryTimeoutSeconds = (value) => {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isNaN(parsed)) return 30;
+    return Math.min(3600, Math.max(0, parsed));
+};
+
 const getEditorFontSize = () => {
     const configured = SettingsManager.get(SETTINGS_PATHS.EDITOR_FONT_SIZE);
     if (configured !== undefined && configured !== null) {
@@ -95,6 +109,26 @@ const getEditorFontFamilyKey = () => {
     return DEFAULT_EDITOR_FONT_FAMILY;
 };
 
+const getEditorLineWrapMode = () => {
+    const raw = String(SettingsManager.get(SETTINGS_PATHS.EDITOR_LINE_WRAP) || '').toLowerCase();
+    return EDITOR_LINE_WRAP_MODES.includes(raw) ? raw : 'on';
+};
+
+const getDefaultRunMode = () => {
+    const raw = String(SettingsManager.get(SETTINGS_PATHS.EXECUTION_DEFAULT_RUN_MODE) || '').toLowerCase();
+    return EXECUTION_RUN_MODES.includes(raw) ? raw : 'statement';
+};
+
+const getMaxRowsPerQuery = () => {
+    const configured = SettingsManager.get(SETTINGS_PATHS.RESULTS_MAX_ROWS_PER_QUERY);
+    return clampMaxRowsPerQuery(configured);
+};
+
+const getExecutionQueryTimeoutSeconds = () => {
+    const configured = SettingsManager.get(SETTINGS_PATHS.EXECUTION_QUERY_TIMEOUT_SECONDS);
+    return clampExecutionQueryTimeoutSeconds(configured);
+};
+
 const getEditorTypography = () => {
     const fontSize = getEditorFontSize();
     const lineHeight = Math.max(16, Math.round(fontSize * 1.6));
@@ -102,6 +136,18 @@ const getEditorTypography = () => {
     const fontFamilyKey = getEditorFontFamilyKey();
     const fontFamily = EDITOR_FONT_FAMILY_OPTIONS[fontFamilyKey]?.stack || EDITOR_FONT_FAMILY_OPTIONS[DEFAULT_EDITOR_FONT_FAMILY].stack;
     return { fontSize, lineHeight, charWidth, fontFamily, fontFamilyKey };
+};
+
+const getWrapClassForMode = (mode) => {
+    if (mode === 'off') return 'whitespace-pre break-normal';
+    if (mode === 'word') return 'whitespace-pre-wrap break-words';
+    return 'whitespace-pre-wrap break-normal';
+};
+
+const getRunModeLabel = (mode) => {
+    if (mode === 'all') return 'Run All';
+    if (mode === 'selection') return 'Selection First';
+    return 'Current Statement';
 };
 
 export function QueryEditor() {
@@ -797,6 +843,10 @@ export function QueryEditor() {
         const activeDbType = localStorage.getItem('activeDbType') || 'mysql';
         const isPg = activeDbType === 'postgresql';
         const lineNumbersEnabled = SettingsManager.get(SETTINGS_PATHS.EDITOR_LINE_NUMBERS);
+        const lineWrapMode = getEditorLineWrapMode();
+        const wrapClass = getWrapClassForMode(lineWrapMode);
+        const defaultRunMode = getDefaultRunMode();
+        const defaultRunModeLabel = getRunModeLabel(defaultRunMode);
         const typography = getEditorTypography();
         const lineNumberFontSize = Math.max(10, typography.fontSize - 2);
 
@@ -960,7 +1010,7 @@ export function QueryEditor() {
                             <span class="text-[8px] font-black uppercase tracking-widest relative z-10">Generate SQL</span>
                         </button>
 
-                        <button id="execute-btn" class="relative flex items-center gap-1 px-2.5 py-0.5 bg-mysql-teal text-black rounded shadow-[0_0_8px_rgba(0,200,255,0.15)] hover:shadow-[0_0_15px_rgba(0,200,255,0.3)] hover:brightness-110 active:scale-95 transition-all duration-300 overflow-hidden group font-black uppercase tracking-wider text-[8px]" title="Run selection/current statement (Ctrl+Enter). Shift+Click or Ctrl+Shift+Enter runs all statements.">
+                        <button id="execute-btn" class="relative flex items-center gap-1 px-2.5 py-0.5 bg-mysql-teal text-black rounded shadow-[0_0_8px_rgba(0,200,255,0.15)] hover:shadow-[0_0_15px_rgba(0,200,255,0.3)] hover:brightness-110 active:scale-95 transition-all duration-300 overflow-hidden group font-black uppercase tracking-wider text-[8px]" title="Run (${defaultRunModeLabel}) (Ctrl+Enter). Shift+Click or Ctrl+Shift+Enter runs all statements.">
                             <span class="material-symbols-outlined text-[14px] relative z-10 group-hover:scale-110 transition-transform duration-200">play_arrow</span>
                             <span class="relative z-10">Run</span>
                             <span class="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-out"></span>
@@ -973,8 +1023,8 @@ export function QueryEditor() {
             <div class="flex-1 neu-inset rounded-xl ${isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0f1115]'))} overflow-hidden flex p-4 relative focus-within:ring-1 focus-within:ring-mysql-teal/50 transition-all" style="font-size:${typography.fontSize}px;line-height:${typography.lineHeight}px;font-family:${typography.fontFamily};">
                 ${lineNumbersEnabled ? `<div class="w-12 ${(isLight || isDawn) ? 'text-gray-300 border-gray-100' : (isOceanic ? 'text-ocean-text/30 border-ocean-border/30' : 'text-gray-600 border-white/5')} text-right pr-4 border-r select-none pt-1 overflow-hidden" id="line-numbers" style="font-size:${lineNumberFontSize}px;line-height:${typography.lineHeight}px;font-family:${typography.fontFamily};"></div>` : ''}
                 <div class="flex-1 relative ${lineNumbersEnabled ? 'pl-6' : 'pl-0'}">
-                    <pre id="syntax-highlight" class="absolute inset-0 ${lineNumbersEnabled ? 'pl-6' : 'pl-0'} pt-0 pointer-events-none overflow-hidden whitespace-pre-wrap break-words" style="font-size:${typography.fontSize}px;line-height:${typography.lineHeight}px;font-family:${typography.fontFamily};" aria-hidden="true"></pre>
-                    <textarea id="query-input" class="relative w-full h-full bg-transparent border-none ${isLight ? 'text-transparent' : (isOceanic ? 'text-transparent' : 'text-transparent')} ${isLight ? 'caret-gray-800' : (isOceanic ? 'caret-white' : 'caret-white')} focus:ring-0 resize-none outline-none custom-scrollbar p-0 z-10 placeholder:text-gray-600/50" style="font-size:${typography.fontSize}px;line-height:${typography.lineHeight}px;font-family:${typography.fontFamily};" spellcheck="false" placeholder="Enter your SQL query here... (Ctrl+Space for suggestions)">${activeTab ? activeTab.content : ''}</textarea>
+                    <pre id="syntax-highlight" class="absolute inset-0 ${lineNumbersEnabled ? 'pl-6' : 'pl-0'} pt-0 pointer-events-none overflow-hidden ${wrapClass}" style="font-size:${typography.fontSize}px;line-height:${typography.lineHeight}px;font-family:${typography.fontFamily};" aria-hidden="true"></pre>
+                    <textarea id="query-input" class="relative w-full h-full bg-transparent border-none ${isLight ? 'text-transparent' : (isOceanic ? 'text-transparent' : 'text-transparent')} ${isLight ? 'caret-gray-800' : (isOceanic ? 'caret-white' : 'caret-white')} ${wrapClass} focus:ring-0 resize-none outline-none custom-scrollbar p-0 z-10 placeholder:text-gray-600/50" style="font-size:${typography.fontSize}px;line-height:${typography.lineHeight}px;font-family:${typography.fontFamily};" spellcheck="false" placeholder="Enter your SQL query here... (Ctrl+Space for suggestions)">${activeTab ? activeTab.content : ''}</textarea>
                 </div>
             </div>
 
@@ -1176,11 +1226,16 @@ export function QueryEditor() {
             // Execute query (profiled) - UI stays responsive due to async/await
             const explainAnalyze = SettingsManager.get(SETTINGS_PATHS.PROFILER_EXPLAIN_ANALYZE);
             const profileOptions = { explainAnalyze };
+            const queryTimeoutSeconds = getExecutionQueryTimeoutSeconds();
 
             let response;
             let appliedFixReason = null;
             try {
-                response = await invoke('execute_query_profiled', { query: queryForExecution, profile_options: profileOptions });
+                response = await invoke('execute_query_profiled', {
+                    query: queryForExecution,
+                    profile_options: profileOptions,
+                    query_timeout_seconds: queryTimeoutSeconds,
+                });
             } catch (primaryError) {
                 if (activeDbType !== 'postgresql') throw primaryError;
 
@@ -1193,7 +1248,11 @@ export function QueryEditor() {
 
                 for (const candidate of retryCandidates) {
                     try {
-                        response = await invoke('execute_query_profiled', { query: candidate.query, profile_options: profileOptions });
+                        response = await invoke('execute_query_profiled', {
+                            query: candidate.query,
+                            profile_options: profileOptions,
+                            query_timeout_seconds: queryTimeoutSeconds,
+                        });
                         queryForExecution = candidate.query;
                         appliedFixReason = candidate.reason;
                         hasRecovered = true;
@@ -1230,9 +1289,28 @@ export function QueryEditor() {
             // Ensure results is always an array
             const resultsArray = Array.isArray(safeResponse.results) ? safeResponse.results : (safeResponse.results ? [safeResponse.results] : []);
             const statusDiff = safeResponse.statusDiff || null;
+            const maxRowsPerQuery = getMaxRowsPerQuery();
 
             // Add query to each result for context
             resultsArray.forEach((res, idx) => {
+                const metadata = (res && typeof res.metadata === 'object' && res.metadata !== null)
+                    ? { ...res.metadata }
+                    : {};
+                const rows = Array.isArray(res.rows) ? res.rows : [];
+                const originalRowCount = rows.length;
+
+                if (maxRowsPerQuery > 0 && originalRowCount > maxRowsPerQuery) {
+                    res.rows = rows.slice(0, maxRowsPerQuery);
+                    metadata.rowLimitApplied = true;
+                    metadata.maxRowsPerQuery = maxRowsPerQuery;
+                    metadata.originalRowCount = originalRowCount;
+                } else {
+                    metadata.rowLimitApplied = false;
+                    metadata.maxRowsPerQuery = maxRowsPerQuery;
+                    metadata.originalRowCount = originalRowCount;
+                }
+
+                res.metadata = metadata;
                 res.query = queryForExecution;
                 res.duration = lastExecutionTime;
                 res.profileOptions = profileOptions;
@@ -1258,7 +1336,11 @@ export function QueryEditor() {
             }));
 
             // Log to Audit Trail
-            const totalRows = resultsArray.reduce((sum, r) => sum + (r.rows?.length || 0), 0);
+            const totalRows = resultsArray.reduce((sum, r) => {
+                const original = Number(r?.metadata?.originalRowCount);
+                if (!Number.isNaN(original) && original >= 0) return sum + original;
+                return sum + (r.rows?.length || 0);
+            }, 0);
             const slowSignal = detectSlowQuery(queryForExecution, lastExecutionTime, database, auditTrail);
 
             auditTrail.logQuery({
@@ -1922,7 +2004,7 @@ export function QueryEditor() {
             });
 
             executeBtn.addEventListener('click', async (e) => {
-                const mode = e.shiftKey ? 'all' : 'smart';
+                const mode = e.shiftKey ? 'all' : getDefaultRunMode();
                 await executeEditorQuery(mode);
             });
         }
@@ -2361,11 +2443,11 @@ export function QueryEditor() {
     };
     window.addEventListener('themechange', onThemeChange);
 
-    // --- Register Keyboard Shortcut Handlers ---
+        // --- Register Keyboard Shortcut Handlers ---
     const registerShortcutHandlers = () => {
-        // Execute selection/current statement (Ctrl+Enter, F5)
+        // Execute query using default run mode (Ctrl+Enter, F5)
         registerHandler('executeQuery', () => {
-            executeEditorQuery('smart');
+            executeEditorQuery(getDefaultRunMode());
         });
 
         // Execute all statements (Ctrl+Shift+Enter)
@@ -2844,7 +2926,11 @@ export function QueryEditor() {
             render();
             return;
         }
-        if (changedPath === SETTINGS_PATHS.EDITOR_FONT_SIZE || changedPath === SETTINGS_PATHS.EDITOR_FONT_FAMILY) {
+        if (changedPath === SETTINGS_PATHS.EDITOR_FONT_SIZE
+            || changedPath === SETTINGS_PATHS.EDITOR_FONT_FAMILY
+            || changedPath === SETTINGS_PATHS.EDITOR_LINE_WRAP
+            || changedPath === SETTINGS_PATHS.EXECUTION_DEFAULT_RUN_MODE
+            || changedPath === SETTINGS_PATHS.RESULTS_MAX_ROWS_PER_QUERY) {
             render();
         }
     };

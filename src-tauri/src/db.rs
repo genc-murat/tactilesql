@@ -1461,6 +1461,7 @@ pub async fn execute_query_profiled(
     app_state: State<'_, AppState>,
     query: String,
     profile_options: Option<ProfileOptions>,
+    query_timeout_seconds: Option<u64>,
 ) -> Result<ProfiledQueryResponse, String> {
     let start_time = chrono::Utc::now();
 
@@ -1480,7 +1481,9 @@ pub async fn execute_query_profiled(
             let pool = guard
                 .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
-            let res = postgres::execute_query(pool, query.clone()).await?;
+            let res =
+                postgres::execute_query_with_timeout(pool, query.clone(), query_timeout_seconds)
+                    .await?;
             let explain_metrics = if explain_analyze_enabled && is_safe_for_explain(&query) {
                 postgres::get_explain_analyze_metrics(pool, &query)
                     .await
@@ -1493,7 +1496,12 @@ pub async fn execute_query_profiled(
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
-            mysql::execute_query_with_status(pool, query.clone()).await?
+            mysql::execute_query_with_status_with_timeout(
+                pool,
+                query.clone(),
+                query_timeout_seconds,
+            )
+            .await?
         }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     };

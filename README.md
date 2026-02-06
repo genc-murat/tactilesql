@@ -5,6 +5,7 @@ TactileSQL is a modern, desktop-first MySQL workbench built with Tauri 2 and van
 ## Highlights
 
 - **SQL Workbench** with multi-tab editor, syntax highlighting, auto-format, and autocomplete.
+- **Configurable SQL Execution Defaults**: Set default run mode (`current statement` / `selection first` / `run all`) and query timeout (`0 = unlimited`).
 - **Smart Autocomplete++** with context-aware suggestions, FK-based JOIN hints, and frequency learning.
 - **Query Audit Trail** for compliance tracking with exportable logs, statistics, and filtering.
 - **Visual Explain** and **Query Profiler** for performance insights.
@@ -20,6 +21,7 @@ TactileSQL is a modern, desktop-first MySQL workbench built with Tauri 2 and van
 - **Editable Results Grid** with virtual scrolling, column visibility, CSV export, and clipboard copy.
 - **Interactive Relational Data Exploration**: Navigate foreign keys directly from results with instant related data popups.
 - **Object Explorer** with search functionality, databases, tables, views, triggers, procedures, functions, and events.
+- **Object Explorer Display Controls**: Toggle visibility of system databases/schemas and improved responsive truncation for long object/column names.
 - **Searchable Object Explorer**: Integrated search box to quickly find databases, tables, and columns with "Next/Prev" navigation and auto-expansion.
 - **Schema Designer** for columns, indexes, foreign keys, triggers, DDL, and stats.
 - **Schema Diff** for database or single-table comparison with generated sync SQL.
@@ -124,6 +126,7 @@ npm run contract:check    # fail on newly introduced missing backend commands
 ### Workbench
 
 - Multi-tab SQL editor with autocomplete and syntax highlighting
+- Configurable editor typography (font size + font family) and line wrapping (`off` / `on` / `word`)
 - **AI Assistant (Ctrl+I)**: Generate SQL from natural language or edit existing queries.
 - **AI Profiler Analysis**: Interpretation of performance metrics (Tmp tables, lock waits, etc.) with AI-driven recommendations.
 - **Lock Graph + Blocking Chain View**: Query Profiler Locks tab now includes root blocker ranking, chain depth, deadlock flags, and automatic remediation guidance.
@@ -132,8 +135,10 @@ npm run contract:check    # fail on newly introduced missing backend commands
 - Slow query early warning and latency estimates
 - Parameter suggestions based on history
 - What‑If Optimizer for variant comparisons
+- Execution defaults for Run button / `Ctrl+Enter` and configurable query timeout per execution
 - Query execution history and snippet library
 - Results grid with filtering, selection, and inline editing
+- Configurable max rows per query in results (`0 = unlimited`) with limit indicator when truncation is applied
 - **Results Explorer**: Ctrl+Click on foreign keys to view referenced related data in popup
 - **Object Explorer Search**: Quickly jump to any database, table, or column with a persistent search box, match navigation, and auto-expanding tree.
 
@@ -221,7 +226,13 @@ npm run contract:check    # fail on newly introduced missing backend commands
 ### Settings
 
 - Theme selection
-- Editor preferences (UI only)
+- Editor font size and font family
+- Editor line wrap mode (`off`, `on`, `word`)
+- Execution default run mode (`current statement`, `selection first`, `run all`)
+- Execution query timeout in seconds (`0 = unlimited`)
+- Results max rows per query (`0 = unlimited`)
+- Object Explorer system databases/schemas visibility toggle
+- Autocomplete and profiler preferences
 
 ## Advanced Insights
 

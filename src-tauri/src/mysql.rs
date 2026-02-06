@@ -12,6 +12,8 @@ use std::collections::{HashMap, HashSet};
 use tokio::time::{timeout, Duration};
 
 const SIM_EXPLAIN_TIMEOUT_MS: u64 = 2500;
+const DEFAULT_QUERY_TIMEOUT_SECS: u64 = 30;
+const MAX_QUERY_TIMEOUT_SECS: u64 = 3600;
 
 // --- Connection ---
 
@@ -89,9 +91,18 @@ pub async fn create_pool(config: &ConnectionConfig) -> Result<Pool<MySql>, Strin
 
 // --- Query Execution ---
 
+fn normalize_query_timeout_seconds(query_timeout_seconds: Option<u64>) -> Option<u64> {
+    match query_timeout_seconds {
+        Some(0) => None,
+        Some(value) => Some(value.min(MAX_QUERY_TIMEOUT_SECS)),
+        None => Some(DEFAULT_QUERY_TIMEOUT_SECS),
+    }
+}
+
 async fn execute_query_with_executor<'a, E>(
     executor: E,
     query: &'a str,
+    query_timeout_seconds: Option<u64>,
 ) -> Result<Vec<QueryResult>, String>
 where
     E: Executor<'a, Database = MySql>,
@@ -210,9 +221,13 @@ where
         Ok::<_, String>(())
     };
 
-    tokio::time::timeout(std::time::Duration::from_secs(30), stream_future)
-        .await
-        .map_err(|_| "Query timed out after 30 seconds".to_string())??;
+    if let Some(timeout_secs) = normalize_query_timeout_seconds(query_timeout_seconds) {
+        tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), stream_future)
+            .await
+            .map_err(|_| format!("Query timed out after {} seconds", timeout_secs))??;
+    } else {
+        stream_future.await?;
+    }
 
     if results.is_empty() {
         return Ok(vec![QueryResult {
@@ -261,9 +276,10 @@ fn compute_status_diff(
     diff
 }
 
-pub async fn execute_query_with_status(
+pub async fn execute_query_with_status_with_timeout(
     pool: &Pool<MySql>,
     query: String,
+    query_timeout_seconds: Option<u64>,
 ) -> Result<(Vec<QueryResult>, Option<HashMap<String, i64>>), String> {
     let query = query.trim().to_string();
     if query.is_empty() {
@@ -282,7 +298,8 @@ pub async fn execute_query_with_status(
         .map_err(|e| format!("Failed to acquire connection: {}", e))?;
 
     let before_status = fetch_session_status(conn.as_mut()).await.ok();
-    let results = execute_query_with_executor(conn.as_mut(), &query).await?;
+    let results =
+        execute_query_with_executor(conn.as_mut(), &query, query_timeout_seconds).await?;
 
     let status_diff = if let Some(before) = before_status {
         match fetch_session_status(conn.as_mut()).await {
@@ -297,7 +314,15 @@ pub async fn execute_query_with_status(
 }
 
 pub async fn execute_query(pool: &Pool<MySql>, query: String) -> Result<Vec<QueryResult>, String> {
-    execute_query_with_executor(pool, &query).await
+    execute_query_with_timeout(pool, query, None).await
+}
+
+pub async fn execute_query_with_timeout(
+    pool: &Pool<MySql>,
+    query: String,
+    query_timeout_seconds: Option<u64>,
+) -> Result<Vec<QueryResult>, String> {
+    execute_query_with_executor(pool, &query, query_timeout_seconds).await
 }
 
 // --- Database/Table Operations ---

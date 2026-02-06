@@ -1059,9 +1059,13 @@ export function QueryProfiler() {
         const resultsArray = Array.isArray(detail) ? detail : (detail ? [detail] : []);
         if (resultsArray.length === 0) return;
         const mainResult = resultsArray[0];
+        const originalRowCount = Number(mainResult?.metadata?.originalRowCount);
+        const rowsReturned = (!Number.isNaN(originalRowCount) && originalRowCount >= 0)
+            ? originalRowCount
+            : (mainResult.rows?.length || 0);
         updateProfile({
             query: mainResult.query || 'Query',
-            rowsReturned: mainResult.rows?.length || 0,
+            rowsReturned,
             duration: mainResult.duration || 0,
             statusDiff: mainResult.statusDiff || null
         });

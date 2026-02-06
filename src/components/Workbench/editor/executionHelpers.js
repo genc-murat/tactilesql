@@ -131,7 +131,11 @@ export const pickExecutionQuery = (textarea, mode = 'smart') => {
     const selectionStart = textarea.selectionStart ?? 0;
     const selectionEnd = textarea.selectionEnd ?? selectionStart;
     const selectedText = raw.slice(selectionStart, selectionEnd).trim();
-    if (selectedText) {
+    if (mode === 'selection' && selectedText) {
+        return { query: selectedText, source: 'selection' };
+    }
+
+    if (mode === 'smart' && selectedText) {
         return { query: selectedText, source: 'selection' };
     }
 

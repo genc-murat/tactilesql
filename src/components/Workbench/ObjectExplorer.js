@@ -5,6 +5,8 @@ import { ThemeManager } from '../../utils/ThemeManager.js';
 import { getQuoteChar, isPostgreSQL, DatabaseType } from '../../database/index.js';
 import { escapeHtml, DatabaseCache, CacheTypes } from '../../utils/helpers.js';
 import { toastSuccess, toastError } from '../../utils/Toast.js';
+import { SettingsManager } from '../../utils/SettingsManager.js';
+import { SETTINGS_PATHS } from '../../constants/settingsKeys.js';
 
 export function ObjectExplorer() {
     let theme = ThemeManager.getCurrentTheme();
@@ -228,13 +230,13 @@ export function ObjectExplorer() {
                     </div>
                     <div class="pl-4 space-y-0.5 mt-0.5">
                         ${columns.map(col => `
-                            <div class="flex items-center gap-1.5 min-w-0 w-full text-[10px] ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-600'))}">
+                            <div class="grid items-center gap-1.5 min-w-0 w-full overflow-hidden text-[10px] ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-600'))}" style="grid-template-columns: 12px minmax(0,1fr) minmax(0,45%);">
                                 ${col.column_key === 'PRI' ? `<span class="material-symbols-outlined text-[10px] shrink-0 ${isDawn ? 'text-[#ea9d34]' : 'text-yellow-500'}">key</span>` :
                 col.column_key === 'UNI' ? `<span class="material-symbols-outlined text-[10px] shrink-0 ${isDawn ? 'text-[#3e8fb0]' : 'text-blue-400'}">fingerprint</span>` :
                     col.column_key === 'MUL' ? '<span class="material-symbols-outlined text-[10px] shrink-0 text-gray-500">link</span>' :
                         '<span class="w-[10px] shrink-0"></span>'}
-                                <span class="${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279] font-medium' : (isOceanic ? 'text-ocean-text' : 'text-gray-400'))} ${highlightClass(`col-${db}-${table}-${col.name}`)} flex-1 min-w-0 truncate" title="${escapeHtml(col.name || '')}" data-search-id="col-${db}-${table}-${col.name}">${col.name}</span>
-                                <span class="${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-700'))} text-[9px] shrink-0 max-w-[45%] truncate" title="${escapeHtml(col.data_type || '')}">${col.data_type}</span>
+                                <span class="${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279] font-medium' : (isOceanic ? 'text-ocean-text' : 'text-gray-400'))} ${highlightClass(`col-${db}-${table}-${col.name}`)} min-w-0 truncate" title="${escapeHtml(col.name || '')}" data-search-id="col-${db}-${table}-${col.name}">${escapeHtml(col.name || '')}</span>
+                                <span class="${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-700'))} text-[9px] min-w-0 truncate text-right" title="${escapeHtml(col.data_type || '')}">${escapeHtml(col.data_type || '')}</span>
                             </div>
                         `).join('')}
                     </div>
@@ -356,10 +358,10 @@ export function ObjectExplorer() {
                         <span class="${highlightClass(`view-${db}-${v}`)} flex-1 min-w-0 truncate" title="${escapeHtml(v || '')}" data-search-id="view-${db}-${v}">${v}</span>
                     </div>`)}
                 ${renderObjectCategory(db, 'triggers', 'Triggers', 'bolt', isDawn ? 'text-[#f6c177]' : 'text-yellow-400', filteredTriggers,
-                    (db, t) => `<div class="flex items-center gap-2 min-w-0 w-full text-[10px] ${mainText} py-0.5">
+                    (db, t) => `<div class="grid items-center gap-2 min-w-0 w-full overflow-hidden text-[10px] ${mainText} py-0.5" style="grid-template-columns: 12px minmax(0,1fr) minmax(0,45%);">
                         <span class="material-symbols-outlined text-[12px] shrink-0 ${isDawn ? 'text-[#f6c177]' : 'text-yellow-400'}">bolt</span>
-                        <span class="${highlightClass(`trigger-${db}-${t.name}`)} flex-1 min-w-0 truncate" title="${escapeHtml(t.name || '')}" data-search-id="trigger-${db}-${t.name}">${t.name}</span>
-                        <span class="${subText} text-[9px] shrink-0 max-w-[45%] truncate" title="${escapeHtml(`${t.timing || ''} ${t.event || ''}`.trim())}">${t.timing} ${t.event}</span>
+                        <span class="${highlightClass(`trigger-${db}-${t.name}`)} min-w-0 truncate" title="${escapeHtml(t.name || '')}" data-search-id="trigger-${db}-${t.name}">${escapeHtml(t.name || '')}</span>
+                        <span class="${subText} text-[9px] min-w-0 truncate text-right" title="${escapeHtml(`${t.timing || ''} ${t.event || ''}`.trim())}">${escapeHtml(`${t.timing || ''} ${t.event || ''}`.trim())}</span>
                     </div>`)}
                 ${renderObjectCategory(db, 'procedures', 'Procedures', 'code_blocks', isDawn ? 'text-[#9ccfd8]' : 'text-green-400', filteredProcedures,
                         (db, p) => `<div class="flex items-center gap-2 min-w-0 w-full text-[10px] ${mainText} py-0.5">
@@ -372,10 +374,10 @@ export function ObjectExplorer() {
                         <span class="${highlightClass(`function-${db}-${f.name}`)} flex-1 min-w-0 truncate" title="${escapeHtml(f.name || '')}" data-search-id="function-${db}-${f.name}">${f.name}</span>
                     </div>`)}
                 ${renderObjectCategory(db, 'events', 'Events', 'schedule', isDawn ? 'text-[#ea9d34]' : 'text-orange-400', filteredEvents,
-                                (db, e) => `<div class="flex items-center gap-2 min-w-0 w-full text-[10px] ${mainText} py-0.5">
+                                (db, e) => `<div class="grid items-center gap-2 min-w-0 w-full overflow-hidden text-[10px] ${mainText} py-0.5" style="grid-template-columns: 12px minmax(0,1fr) minmax(0,45%);">
                         <span class="material-symbols-outlined text-[12px] shrink-0 ${isDawn ? 'text-[#ea9d34]' : 'text-orange-400'}">schedule</span>
-                        <span class="${highlightClass(`event-${db}-${e.name}`)} flex-1 min-w-0 truncate" title="${escapeHtml(e.name || '')}" data-search-id="event-${db}-${e.name}">${e.name}</span>
-                        <span class="${subText} text-[9px] shrink-0 max-w-[45%] truncate" title="${escapeHtml(e.status || '')}">${e.status}</span>
+                        <span class="${highlightClass(`event-${db}-${e.name}`)} min-w-0 truncate" title="${escapeHtml(e.name || '')}" data-search-id="event-${db}-${e.name}">${escapeHtml(e.name || '')}</span>
+                        <span class="${subText} text-[9px] min-w-0 truncate text-right" title="${escapeHtml(e.status || '')}">${escapeHtml(e.status || '')}</span>
                     </div>`)}
             </div>
         `;
@@ -404,14 +406,22 @@ export function ObjectExplorer() {
     // --- Render all databases for active connection ---
     const renderActiveConnectionData = () => {
         const sysDbs = getSystemDatabases();
-        const visibleDbs = searchContext ? databases.filter(db => databaseHasAnyMatch(db)) : databases;
+        const showSystemObjects = SettingsManager.get(SETTINGS_PATHS.EXPLORER_SHOW_SYSTEM_OBJECTS);
+        const matchedDbs = searchContext ? databases.filter(db => databaseHasAnyMatch(db)) : databases;
+        const visibleDbs = showSystemObjects
+            ? matchedDbs
+            : matchedDbs.filter(db => !sysDbs.includes(db.toLowerCase()));
         const userDbs = visibleDbs.filter(db => !sysDbs.includes(db.toLowerCase()));
-        const systemDbs = visibleDbs.filter(db => sysDbs.includes(db.toLowerCase()));
+        const systemDbs = showSystemObjects
+            ? visibleDbs.filter(db => sysDbs.includes(db.toLowerCase()))
+            : [];
 
         if (visibleDbs.length === 0) {
             const noDataText = searchContext
                 ? `No matches for "${escapeHtml(searchQuery)}"`
-                : `No ${isPostgreSQL() ? 'schemas' : 'databases'} found`;
+                : (showSystemObjects
+                    ? `No ${isPostgreSQL() ? 'schemas' : 'databases'} found`
+                    : `No user ${isPostgreSQL() ? 'schemas' : 'databases'} found`);
             return `<div class="pl-6 py-1 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-600')} italic text-[10px]">${noDataText}</div>`;
         }
 
@@ -2305,10 +2315,21 @@ export function ObjectExplorer() {
     };
     window.addEventListener('tactilesql:connection-changed', onConnectionChanged);
 
+    const onSettingsChanged = (e) => {
+        const changedPath = e.detail?.path || e.detail?.key;
+        if (!changedPath) return;
+        if (changedPath === SETTINGS_PATHS.EXPLORER_SHOW_SYSTEM_OBJECTS) {
+            didStateChangeSinceLastTreeRender = true;
+            render();
+        }
+    };
+    window.addEventListener('tactilesql:settings-changed', onSettingsChanged);
+
     // Patch for cleanup
     explorer.onUnmount = () => {
         window.removeEventListener('themechange', onThemeChange);
         window.removeEventListener('tactilesql:connection-changed', onConnectionChanged);
+        window.removeEventListener('tactilesql:settings-changed', onSettingsChanged);
     };
 
     setupListeners();
