@@ -151,6 +151,7 @@ export function Settings() {
         lastCheckedAt: null,
         liveReport: null,
     };
+    let settingsUiCleanup = () => {};
 
     const updateThemeState = (newTheme) => {
         theme = newTheme;
@@ -201,17 +202,70 @@ export function Settings() {
         const contractSourceLabel = commandContractState.liveReport ? 'Live Runtime Check' : 'Snapshot';
 
         container.innerHTML = `
-        <div class="h-full p-6 lg:p-8">
+        <div class="h-full p-4 lg:p-8">
             <!-- Header -->
-            <div class="mb-6">
-                <h1 class="text-2xl font-bold ${isLight ? 'text-gray-900' : 'text-white'} mb-2">Settings</h1>
-                <p class="text-gray-500">Configure your TactileSQL preferences</p>
+            <div class="mb-6 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                    <h1 class="text-2xl font-bold ${isLight ? 'text-gray-900' : 'text-white'} mb-2">Settings</h1>
+                    <p class="text-gray-500">Configure your TactileSQL preferences</p>
+                </div>
+                <div class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">
+                    Tips: Search any setting, jump by section, or use quick toggles.
+                </div>
+            </div>
+
+            <div class="mb-6 sticky top-0 z-20">
+                <div class="rounded-xl border p-4 space-y-4 shadow-sm ${isLight ? 'bg-white/95 border-gray-200' : (isDawn ? 'bg-[#fffaf3]/95 border-[#f2e9e1]' : 'bg-[#11141a]/95 border-white/10')} backdrop-blur">
+                    <div class="flex flex-col gap-3 lg:flex-row lg:items-center">
+                        <label for="settings-search-input" class="text-xs font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">Search Settings</label>
+                        <div class="relative flex-1">
+                            <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-base text-gray-500">search</span>
+                            <input id="settings-search-input" type="text" class="w-full rounded-lg border py-2 pl-10 pr-3 text-sm outline-none transition-colors focus:border-mysql-teal ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800 placeholder:text-gray-400' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] placeholder:text-[#797593]' : 'bg-black/20 border-white/10 text-gray-200 placeholder:text-gray-500')}" placeholder="e.g. auto-complete, timeout, theme, api key">
+                        </div>
+                        <button id="settings-clear-search-btn" class="px-3 py-2 rounded-lg border text-xs font-semibold uppercase tracking-wider transition-colors ${isLight ? 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100' : 'bg-white/5 border-white/10 text-gray-300 hover:bg-white/10'}">
+                            Clear
+                        </button>
+                    </div>
+
+                    <div class="flex flex-wrap gap-2">
+                        <button data-settings-jump="appearance" class="settings-jump-btn px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${isLight ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-white/5 text-gray-300 hover:bg-white/10'}">Appearance</button>
+                        <button data-settings-jump="ai" class="settings-jump-btn px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${isLight ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-white/5 text-gray-300 hover:bg-white/10'}">AI Assistant</button>
+                        <button data-settings-jump="editor" class="settings-jump-btn px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${isLight ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-white/5 text-gray-300 hover:bg-white/10'}">Editor</button>
+                        <button data-settings-jump="about" class="settings-jump-btn px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${isLight ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-white/5 text-gray-300 hover:bg-white/10'}">About</button>
+                        <button data-settings-jump="developer" class="settings-jump-btn px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${isLight ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-white/5 text-gray-300 hover:bg-white/10'}">Developer</button>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
+                        <button id="quick-toggle-autocomplete" class="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${isLight ? 'bg-gray-50 border-gray-200 hover:bg-gray-100' : 'bg-black/20 border-white/10 hover:bg-white/10'}">
+                            <span class="text-xs font-medium ${isLight ? 'text-gray-700' : 'text-gray-200'}">Auto-complete</span>
+                            <span id="quick-autocomplete-status" class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${autocompleteEnabled ? 'text-emerald-500 bg-emerald-500/10 border border-emerald-500/20' : 'text-gray-500 bg-gray-500/10 border border-gray-500/20'}">${autocompleteEnabled ? 'On' : 'Off'}</span>
+                        </button>
+                        <button id="quick-toggle-line-numbers" class="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${isLight ? 'bg-gray-50 border-gray-200 hover:bg-gray-100' : 'bg-black/20 border-white/10 hover:bg-white/10'}">
+                            <span class="text-xs font-medium ${isLight ? 'text-gray-700' : 'text-gray-200'}">Line Numbers</span>
+                            <span id="quick-line-numbers-status" class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${lineNumbersEnabled ? 'text-emerald-500 bg-emerald-500/10 border border-emerald-500/20' : 'text-gray-500 bg-gray-500/10 border border-gray-500/20'}">${lineNumbersEnabled ? 'On' : 'Off'}</span>
+                        </button>
+                        <button id="quick-toggle-profiler" class="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${isLight ? 'bg-gray-50 border-gray-200 hover:bg-gray-100' : 'bg-black/20 border-white/10 hover:bg-white/10'}">
+                            <span class="text-xs font-medium ${isLight ? 'text-gray-700' : 'text-gray-200'}">Query Profiler</span>
+                            <span id="quick-profiler-status" class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${profilerEnabled ? 'text-emerald-500 bg-emerald-500/10 border border-emerald-500/20' : 'text-gray-500 bg-gray-500/10 border border-gray-500/20'}">${profilerEnabled ? 'On' : 'Off'}</span>
+                        </button>
+                        <button id="quick-toggle-system-objects" class="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${isLight ? 'bg-gray-50 border-gray-200 hover:bg-gray-100' : 'bg-black/20 border-white/10 hover:bg-white/10'}">
+                            <span class="text-xs font-medium ${isLight ? 'text-gray-700' : 'text-gray-200'}">System Objects</span>
+                            <span id="quick-system-objects-status" class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${explorerShowSystemObjects ? 'text-emerald-500 bg-emerald-500/10 border border-emerald-500/20' : 'text-gray-500 bg-gray-500/10 border border-gray-500/20'}">${explorerShowSystemObjects ? 'On' : 'Off'}</span>
+                        </button>
+                    </div>
+
+                    <p id="settings-search-meta" class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">Showing all sections.</p>
+                </div>
+            </div>
+
+            <div id="settings-empty-state" class="hidden mb-6 rounded-xl border p-4 text-sm ${isLight ? 'border-gray-200 bg-white text-gray-700' : 'border-white/10 bg-black/20 text-gray-300'}">
+                No matching settings found. Try another keyword.
             </div>
 
             <!-- Content -->
-            <div class="space-y-6">
+            <div id="settings-content" class="space-y-6">
                 <!-- Appearance Section -->
-                <div class="tactile-card ${isLight ? (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : 'bg-white border-gray-200') + ' shadow-sm' : ''} rounded-xl p-6">
+                <div id="settings-section-appearance" data-settings-section="appearance" class="tactile-card ${isLight ? (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : 'bg-white border-gray-200') + ' shadow-sm' : ''} rounded-xl p-6">
                     <div class="flex items-center gap-3 mb-6">
                         <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
                             <span class="material-symbols-outlined text-white">palette</span>
@@ -224,7 +278,7 @@ export function Settings() {
 
                     <!-- Theme Selection -->
                     <div class="space-y-4">
-                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                        <div data-settings-item class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
                             <div>
                                 <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Theme</h3>
                                 <p class="text-xs text-gray-500 mt-1">Select your preferred color scheme</p>
@@ -268,7 +322,7 @@ export function Settings() {
                 </div>
 
                 <!-- AI Assistant Section -->
-                <div class="tactile-card ${isLight ? (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : 'bg-white border-gray-200') + ' shadow-sm' : ''} rounded-xl p-6">
+                <div id="settings-section-ai" data-settings-section="ai" class="tactile-card ${isLight ? (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : 'bg-white border-gray-200') + ' shadow-sm' : ''} rounded-xl p-6">
                     <div class="flex items-center gap-3 mb-6">
                         <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-rose-500 to-rose-600 flex items-center justify-center">
                             <span class="material-symbols-outlined text-white">auto_awesome</span>
@@ -282,7 +336,7 @@ export function Settings() {
                     <div class="space-y-4">
                     <div class="space-y-4">
                         <!-- Provider Selection -->
-                        <div class="space-y-2 relative" id="ai-provider-dropdown-container">
+                        <div data-settings-item class="space-y-2 relative" id="ai-provider-dropdown-container">
                             <label class="text-xs font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">AI Provider</label>
                             <button id="ai-provider-trigger" class="w-full flex items-center justify-between px-3 py-2 text-sm ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800 hover:bg-gray-100' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] hover:bg-[#faf4ed]' : 'bg-black/20 border-white/10 text-gray-300 hover:bg-white/5')} rounded-lg border transition-all outline-none focus:border-mysql-teal shadow-sm group">
                                 <span id="current-ai-provider">${localStorage.getItem('ai_provider') ? localStorage.getItem('ai_provider').charAt(0).toUpperCase() + localStorage.getItem('ai_provider').slice(1) : 'OpenAI'}</span>
@@ -302,13 +356,13 @@ export function Settings() {
                         </div>
 
                         <!-- Local Base URL (Hidden by default unless local is active) -->
-                        <div id="ai-local-url-container" class="space-y-2 ${localStorage.getItem('ai_provider') === 'local' ? '' : 'hidden'}">
+                        <div id="ai-local-url-container" data-settings-item class="space-y-2 ${localStorage.getItem('ai_provider') === 'local' ? '' : 'hidden'}">
                             <label class="text-xs font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">Base URL</label>
                             <input type="text" id="setting-ai-local-url" class="w-full ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-300')} rounded px-3 py-2 text-sm font-mono outline-none focus:border-mysql-teal transition-colors" placeholder="http://localhost:11434/v1" value="${localStorage.getItem('local_base_url') || 'http://localhost:11434/v1'}">
                             <p class="text-[10px] text-gray-500">Ollama/LM Studio etc. (OpenAI compatible API)</p>
                         </div>
 
-                        <div class="space-y-2">
+                        <div data-settings-item class="space-y-2">
                              <div class="flex items-center justify-between">
                                 <label id="ai-key-label" class="text-xs font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">
                                     ${localStorage.getItem('ai_provider') === 'gemini' ? 'Gemini Key' : (localStorage.getItem('ai_provider') === 'anthropic' ? 'Anthropic Key' : (localStorage.getItem('ai_provider') === 'deepseek' ? 'DeepSeek Key' : (localStorage.getItem('ai_provider') === 'groq' ? 'Groq Key' : (localStorage.getItem('ai_provider') === 'mistral' ? 'Mistral Key' : (localStorage.getItem('ai_provider') === 'local' ? 'API Key' : 'OpenAI Key')))))}
@@ -326,7 +380,7 @@ export function Settings() {
                             <p class="text-[10px] text-gray-500">Your key is stored locally on your device and never sent to our servers.</p>
                         </div>
 
-                        <div id="ai-model-container" class="space-y-2 pt-2 relative">
+                        <div id="ai-model-container" data-settings-item class="space-y-2 pt-2 relative">
                             <label class="text-xs font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">Default Model</label>
                             <div id="ai-model-select-wrapper">
                                 ${localStorage.getItem('ai_provider') === 'local' ? `
@@ -353,7 +407,7 @@ export function Settings() {
                 </div>
 
                 <!-- Editor Section -->
-                <div class="tactile-card ${isLight ? (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : 'bg-white border-gray-200') + ' shadow-sm' : ''} rounded-xl p-6">
+                <div id="settings-section-editor" data-settings-section="editor" class="tactile-card ${isLight ? (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : 'bg-white border-gray-200') + ' shadow-sm' : ''} rounded-xl p-6">
                     <div class="flex items-center gap-3 mb-6">
                         <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500 to-cyan-600 flex items-center justify-center">
                             <span class="material-symbols-outlined text-white">code</span>
@@ -365,7 +419,7 @@ export function Settings() {
                     </div>
 
                     <div class="space-y-4">
-                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                        <div data-settings-item class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
                             <div>
                                 <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Font Size</h3>
                                 <p class="text-xs text-gray-500 mt-1">Adjust the editor font size</p>
@@ -389,7 +443,7 @@ export function Settings() {
                             </div>
                         </div>
 
-                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                        <div data-settings-item class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
                             <div>
                                 <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Font Family</h3>
                                 <p class="text-xs text-gray-500 mt-1">Pick the SQL editor typeface</p>
@@ -413,7 +467,7 @@ export function Settings() {
                             </div>
                         </div>
 
-                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                        <div data-settings-item class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
                             <div>
                                 <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Line Wrap</h3>
                                 <p class="text-xs text-gray-500 mt-1">Control line wrapping behavior in the editor</p>
@@ -437,7 +491,7 @@ export function Settings() {
                             </div>
                         </div>
 
-                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                        <div data-settings-item class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
                             <div>
                                 <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Default Run Mode</h3>
                                 <p class="text-xs text-gray-500 mt-1">Behavior for Run button and Ctrl+Enter</p>
@@ -461,7 +515,7 @@ export function Settings() {
                             </div>
                         </div>
 
-                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                        <div data-settings-item class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
                             <div>
                                 <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Query Timeout (seconds)</h3>
                                 <p class="text-xs text-gray-500 mt-1">0 means unlimited</p>
@@ -472,7 +526,7 @@ export function Settings() {
                             </div>
                         </div>
 
-                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                        <div data-settings-item class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
                             <div>
                                 <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Max Rows Per Query</h3>
                                 <p class="text-xs text-gray-500 mt-1">0 means unlimited (display-side cap)</p>
@@ -483,7 +537,7 @@ export function Settings() {
                             </div>
                         </div>
 
-                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                        <div data-settings-item class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
                             <div>
                                 <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Show System Databases/Schemas</h3>
                                 <p class="text-xs text-gray-500 mt-1">Toggle system objects in Object Explorer</p>
@@ -493,7 +547,7 @@ export function Settings() {
                             </button>
                         </div>
 
-                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                        <div data-settings-item class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
                             <div>
                                 <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Auto-complete</h3>
                                 <p class="text-xs text-gray-500 mt-1">Enable SQL auto-completion suggestions</p>
@@ -503,7 +557,7 @@ export function Settings() {
                             </button>
                         </div>
 
-                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                        <div data-settings-item class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
                             <div>
                                 <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Snippet Suggestions</h3>
                                 <p class="text-xs text-gray-500 mt-1">Show snippet triggers in autocomplete</p>
@@ -513,7 +567,7 @@ export function Settings() {
                             </button>
                         </div>
 
-                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                        <div data-settings-item class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
                             <div>
                                 <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Workbench Snippets</h3>
                                 <p class="text-xs text-gray-500 mt-1">Show the snippets panel in the workbench sidebar</p>
@@ -523,7 +577,7 @@ export function Settings() {
                             </button>
                         </div>
 
-                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                        <div data-settings-item class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
                             <div>
                                 <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Workbench History</h3>
                                 <p class="text-xs text-gray-500 mt-1">Show query history in the workbench sidebar</p>
@@ -533,7 +587,7 @@ export function Settings() {
                             </button>
                         </div>
 
-                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                        <div data-settings-item class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
                             <div>
                                 <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Line Numbers</h3>
                                 <p class="text-xs text-gray-500 mt-1">Show line numbers in the editor</p>
@@ -543,7 +597,7 @@ export function Settings() {
                             </button>
                         </div>
 
-                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                        <div data-settings-item class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
                             <div>
                                 <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Query Profiler</h3>
                                 <p class="text-xs text-gray-500 mt-1">Show performance popup after queries</p>
@@ -553,7 +607,7 @@ export function Settings() {
                             </button>
                         </div>
 
-                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                        <div data-settings-item class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
                             <div>
                                 <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">PostgreSQL EXPLAIN ANALYZE</h3>
                                 <p class="text-xs text-gray-500 mt-1">Collect EXPLAIN ANALYZE metrics in profiler (runs query twice)</p>
@@ -563,7 +617,7 @@ export function Settings() {
                             </button>
                         </div>
 
-                        <div class="flex items-center justify-between py-4">
+                        <div data-settings-item class="flex items-center justify-between py-4">
                             <div>
                                 <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">AI Command</h3>
                                 <p class="text-xs text-gray-500 mt-1">Generate SQL using Natural Language</p>
@@ -578,7 +632,7 @@ export function Settings() {
                 </div>
 
                 <!-- About Section -->
-                <div class="tactile-card ${isLight ? (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : 'bg-white border-gray-200') + ' shadow-sm' : ''} rounded-xl p-6">
+                <div id="settings-section-about" data-settings-section="about" class="tactile-card ${isLight ? (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : 'bg-white border-gray-200') + ' shadow-sm' : ''} rounded-xl p-6">
                     <div class="flex items-center gap-3 mb-6">
                         <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center">
                             <span class="material-symbols-outlined text-white">info</span>
@@ -589,7 +643,7 @@ export function Settings() {
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-2 gap-4 text-sm mb-6">
+                    <div data-settings-item class="grid grid-cols-2 gap-4 text-sm mb-6">
                         <div class="p-4 rounded-lg ${isLight ? 'bg-gray-50' : 'bg-black/20'}">
                             <span class="text-gray-500">Version</span>
                             <p class="${isLight ? 'text-gray-900' : 'text-white'} font-mono mt-1">1.0.0</p>
@@ -600,7 +654,7 @@ export function Settings() {
                         </div>
                     </div>
 
-                    <div>
+                    <div data-settings-item>
                         <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'} mb-3">Third-Party Notices</h3>
                         <div class="text-xs space-y-2">
                              <p class="text-gray-500">This software uses the following open source packages:</p>
@@ -617,7 +671,7 @@ export function Settings() {
                 </div>
 
                 <!-- Developer Section -->
-                <div class="tactile-card ${isLight ? (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : 'bg-white border-gray-200') + ' shadow-sm' : ''} rounded-xl p-6">
+                <div id="settings-section-developer" data-settings-section="developer" class="tactile-card ${isLight ? (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : 'bg-white border-gray-200') + ' shadow-sm' : ''} rounded-xl p-6">
                     <div class="flex items-center gap-3 mb-6">
                         <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-rose-500 to-rose-600 flex items-center justify-center">
                             <span class="material-symbols-outlined text-white">terminal</span>
@@ -629,7 +683,7 @@ export function Settings() {
                     </div>
 
                     <div class="space-y-4">
-                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                        <div data-settings-item class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
                             <div>
                                 <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Developer Tools</h3>
                                 <p class="text-xs text-gray-500 mt-1">Open/close browser DevTools for debugging</p>
@@ -643,7 +697,7 @@ export function Settings() {
                             </div>
                         </div>
 
-                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                        <div data-settings-item class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
                             <div>
                                 <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Runtime Connection</h3>
                                 <p id="runtime-connection-name" class="text-xs text-gray-500 mt-1">Checking active profile...</p>
@@ -657,7 +711,7 @@ export function Settings() {
                             </div>
                         </div>
 
-                        <div class="flex items-center justify-between py-4">
+                        <div data-settings-item class="flex items-center justify-between py-4">
                             <div>
                                 <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Reload Application</h3>
                                 <p class="text-xs text-gray-500 mt-1">Force reload the application window</p>
@@ -820,6 +874,9 @@ export function Settings() {
     };
 
     const attachEvents = () => {
+        settingsUiCleanup();
+        settingsUiCleanup = () => {};
+
         const darkBtn = container.querySelector('#theme-dark');
         const lightBtn = container.querySelector('#theme-light');
         const dawnBtn = container.querySelector('#theme-dawn');
@@ -835,11 +892,102 @@ export function Settings() {
         const profilerToggle = container.querySelector('#profiler-enabled-toggle');
         const profilerExplainToggle = container.querySelector('#profiler-explain-toggle');
         const explorerSystemObjectsToggle = container.querySelector('#explorer-system-objects-toggle');
+        const settingsSearchInput = container.querySelector('#settings-search-input');
+        const settingsClearSearchBtn = container.querySelector('#settings-clear-search-btn');
+        const settingsSearchMeta = container.querySelector('#settings-search-meta');
+        const settingsEmptyState = container.querySelector('#settings-empty-state');
+        const quickToggleAutocompleteBtn = container.querySelector('#quick-toggle-autocomplete');
+        const quickToggleLineNumbersBtn = container.querySelector('#quick-toggle-line-numbers');
+        const quickToggleProfilerBtn = container.querySelector('#quick-toggle-profiler');
+        const quickToggleSystemObjectsBtn = container.querySelector('#quick-toggle-system-objects');
+        const quickAutocompleteStatus = container.querySelector('#quick-autocomplete-status');
+        const quickLineNumbersStatus = container.querySelector('#quick-line-numbers-status');
+        const quickProfilerStatus = container.querySelector('#quick-profiler-status');
+        const quickSystemObjectsStatus = container.querySelector('#quick-system-objects-status');
+        const sectionCards = Array.from(container.querySelectorAll('[data-settings-section]'));
+        const sectionJumpButtons = Array.from(container.querySelectorAll('[data-settings-jump]'));
+        const searchableItems = Array.from(container.querySelectorAll('[data-settings-item]'));
 
         const isLight = theme === 'light' || theme === 'dawn';
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
         const isEmber = theme === 'ember';
         const isAurora = theme === 'aurora';
+        const searchableItemsBySection = new Map(
+            sectionCards.map(section => [section, searchableItems.filter(item => section.contains(item))])
+        );
+
+        const setQuickStatus = (el, enabled) => {
+            if (!el) return;
+            el.textContent = enabled ? 'On' : 'Off';
+            el.className = `px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${enabled
+                ? 'text-emerald-500 bg-emerald-500/10 border border-emerald-500/20'
+                : 'text-gray-500 bg-gray-500/10 border border-gray-500/20'}`;
+        };
+
+        const syncQuickToggles = () => {
+            setQuickStatus(quickAutocompleteStatus, Boolean(SettingsManager.get(SETTINGS_PATHS.AUTOCOMPLETE_ENABLED)));
+            setQuickStatus(quickLineNumbersStatus, Boolean(SettingsManager.get(SETTINGS_PATHS.EDITOR_LINE_NUMBERS)));
+            setQuickStatus(quickProfilerStatus, Boolean(SettingsManager.get(SETTINGS_PATHS.PROFILER_ENABLED)));
+            setQuickStatus(quickSystemObjectsStatus, Boolean(SettingsManager.get(SETTINGS_PATHS.EXPLORER_SHOW_SYSTEM_OBJECTS)));
+        };
+
+        const setSearchVisibility = (el, shouldShow) => {
+            if (!el) return;
+            if (shouldShow) {
+                if (el.dataset.settingsSearchHidden === '1') {
+                    delete el.dataset.settingsSearchHidden;
+                    el.style.removeProperty('display');
+                }
+                return;
+            }
+            el.dataset.settingsSearchHidden = '1';
+            el.style.display = 'none';
+        };
+
+        const applySearchFilter = () => {
+            const query = String(settingsSearchInput?.value || '').trim().toLowerCase();
+            let visibleSectionCount = 0;
+
+            searchableItems.forEach((item) => {
+                const haystack = String(item.textContent || '').toLowerCase();
+                const isMatch = !query || haystack.includes(query);
+                setSearchVisibility(item, isMatch);
+            });
+
+            sectionCards.forEach((section) => {
+                const sectionTitle = String(section.querySelector('h2')?.textContent || '').toLowerCase();
+                const sectionMatches = query.length > 0 && sectionTitle.includes(query);
+                const hasMatchingItems = (searchableItemsBySection.get(section) || []).some(item => item.dataset.settingsSearchHidden !== '1');
+                const shouldShow = !query || sectionMatches || hasMatchingItems;
+
+                setSearchVisibility(section, shouldShow);
+                if (shouldShow) {
+                    visibleSectionCount += 1;
+                }
+                if (sectionMatches && query) {
+                    (searchableItemsBySection.get(section) || []).forEach(item => setSearchVisibility(item, true));
+                }
+            });
+
+            if (settingsSearchMeta) {
+                settingsSearchMeta.textContent = query
+                    ? `${visibleSectionCount} section matched "${query}".`
+                    : 'Showing all sections.';
+            }
+            if (settingsEmptyState) {
+                settingsEmptyState.classList.toggle('hidden', visibleSectionCount > 0 || !query);
+            }
+        };
+
+        const jumpToSection = (sectionName) => {
+            if (!sectionName) return;
+            if (settingsSearchInput && settingsSearchInput.value.trim()) {
+                settingsSearchInput.value = '';
+                applySearchFilter();
+            }
+            const target = container.querySelector(`#settings-section-${sectionName}`);
+            target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        };
 
         const getToggleClasses = (isOn) => {
             const buttonClass = `relative w-12 h-6 rounded-full transition-all ${isOn ? 'bg-gradient-to-r from-mysql-teal to-mysql-cyan' : (isLight ? 'bg-gray-200' : (isOceanic ? 'bg-ocean-border/40' : ((isEmber || isAurora) ? 'bg-[#2c1c27]/70' : 'bg-white/10')))}`;
@@ -905,12 +1053,50 @@ export function Settings() {
             updateAllButtons('aurora');
         });
 
+        settingsSearchInput?.addEventListener('input', applySearchFilter);
+        settingsSearchInput?.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                settingsSearchInput.value = '';
+                applySearchFilter();
+            }
+        });
+        settingsClearSearchBtn?.addEventListener('click', () => {
+            if (!settingsSearchInput) return;
+            settingsSearchInput.value = '';
+            applySearchFilter();
+            settingsSearchInput.focus();
+        });
+
+        sectionJumpButtons.forEach(btn => {
+            btn.addEventListener('click', () => jumpToSection(btn.dataset.settingsJump));
+        });
+
+        quickToggleAutocompleteBtn?.addEventListener('click', () => autocompleteEnabledToggle?.click());
+        quickToggleLineNumbersBtn?.addEventListener('click', () => lineNumbersToggle?.click());
+        quickToggleProfilerBtn?.addEventListener('click', () => profilerToggle?.click());
+        quickToggleSystemObjectsBtn?.addEventListener('click', () => explorerSystemObjectsToggle?.click());
+
+        syncQuickToggles();
+        applySearchFilter();
+
+        const onSettingsChanged = () => {
+            syncQuickToggles();
+            if (settingsSearchInput?.value.trim()) {
+                applySearchFilter();
+            }
+        };
+        window.addEventListener('tactilesql:settings-changed', onSettingsChanged);
+        settingsUiCleanup = () => {
+            window.removeEventListener('tactilesql:settings-changed', onSettingsChanged);
+        };
+
         if (autocompleteEnabledToggle) {
             autocompleteEnabledToggle.addEventListener('click', () => {
                 const current = SettingsManager.get(SETTINGS_PATHS.AUTOCOMPLETE_ENABLED);
                 const next = !current;
                 SettingsManager.set(SETTINGS_PATHS.AUTOCOMPLETE_ENABLED, next);
                 setToggleState(autocompleteEnabledToggle, next);
+                syncQuickToggles();
             });
             setToggleState(autocompleteEnabledToggle, SettingsManager.get(SETTINGS_PATHS.AUTOCOMPLETE_ENABLED));
         }
@@ -930,6 +1116,7 @@ export function Settings() {
                 const next = !current;
                 SettingsManager.set(SETTINGS_PATHS.EDITOR_LINE_NUMBERS, next);
                 setToggleState(lineNumbersToggle, next);
+                syncQuickToggles();
             });
             setToggleState(lineNumbersToggle, SettingsManager.get(SETTINGS_PATHS.EDITOR_LINE_NUMBERS));
         }
@@ -960,6 +1147,7 @@ export function Settings() {
                 const next = !current;
                 SettingsManager.set(SETTINGS_PATHS.PROFILER_ENABLED, next);
                 setToggleState(profilerToggle, next);
+                syncQuickToggles();
             });
             setToggleState(profilerToggle, SettingsManager.get(SETTINGS_PATHS.PROFILER_ENABLED));
         }
@@ -980,6 +1168,7 @@ export function Settings() {
                 const next = !current;
                 SettingsManager.set(SETTINGS_PATHS.EXPLORER_SHOW_SYSTEM_OBJECTS, next);
                 setToggleState(explorerSystemObjectsToggle, next);
+                syncQuickToggles();
             });
             setToggleState(explorerSystemObjectsToggle, SettingsManager.get(SETTINGS_PATHS.EXPLORER_SHOW_SYSTEM_OBJECTS));
         }
@@ -1933,6 +2122,7 @@ export function Settings() {
     window.addEventListener('themechange', onThemeChange);
 
     container.onUnmount = () => {
+        settingsUiCleanup();
         window.removeEventListener('themechange', onThemeChange);
     };
 
