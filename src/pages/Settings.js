@@ -1,5 +1,6 @@
 import { ThemeManager } from '../utils/ThemeManager.js';
 import { SettingsManager } from '../utils/SettingsManager.js';
+import { SETTINGS_PATHS } from '../constants/settingsKeys.js';
 import { invoke } from '@tauri-apps/api/core';
 import commandContractSnapshot from '../generated/command-contract.json';
 
@@ -77,13 +78,13 @@ export function Settings() {
 
     const render = () => {
         const currentTheme = ThemeManager.getCurrentTheme();
-        const autocompleteEnabled = SettingsManager.get('autocomplete.enabled', true);
-        const snippetSuggestionsEnabled = SettingsManager.get('autocomplete.snippets', true);
-        const lineNumbersEnabled = SettingsManager.get('editor.lineNumbers', true);
-        const profilerEnabled = SettingsManager.get('profiler.enabled', true);
-        const profilerExplainEnabled = SettingsManager.get('profiler.explainAnalyze', true);
-        const workbenchSnippetsEnabled = SettingsManager.get('workbench.snippets', true);
-        const workbenchHistoryEnabled = SettingsManager.get('workbench.history', true);
+        const autocompleteEnabled = SettingsManager.get(SETTINGS_PATHS.AUTOCOMPLETE_ENABLED);
+        const snippetSuggestionsEnabled = SettingsManager.get(SETTINGS_PATHS.AUTOCOMPLETE_SNIPPETS);
+        const lineNumbersEnabled = SettingsManager.get(SETTINGS_PATHS.EDITOR_LINE_NUMBERS);
+        const profilerEnabled = SettingsManager.get(SETTINGS_PATHS.PROFILER_ENABLED);
+        const profilerExplainEnabled = SettingsManager.get(SETTINGS_PATHS.PROFILER_EXPLAIN_ANALYZE);
+        const workbenchSnippetsEnabled = SettingsManager.get(SETTINGS_PATHS.WORKBENCH_SNIPPETS);
+        const workbenchHistoryEnabled = SettingsManager.get(SETTINGS_PATHS.WORKBENCH_HISTORY);
         const contractReport = commandContractState.liveReport || snapshotContractReport;
         const missingInBackend = contractReport.missingInBackend || [];
         const unusedInFrontend = contractReport.unusedInFrontend || [];
@@ -608,71 +609,71 @@ export function Settings() {
 
         if (autocompleteEnabledToggle) {
             autocompleteEnabledToggle.addEventListener('click', () => {
-                const current = SettingsManager.get('autocomplete.enabled', true);
+                const current = SettingsManager.get(SETTINGS_PATHS.AUTOCOMPLETE_ENABLED);
                 const next = !current;
-                SettingsManager.set('autocomplete.enabled', next);
+                SettingsManager.set(SETTINGS_PATHS.AUTOCOMPLETE_ENABLED, next);
                 setToggleState(autocompleteEnabledToggle, next);
             });
-            setToggleState(autocompleteEnabledToggle, SettingsManager.get('autocomplete.enabled', true));
+            setToggleState(autocompleteEnabledToggle, SettingsManager.get(SETTINGS_PATHS.AUTOCOMPLETE_ENABLED));
         }
 
         if (snippetToggle) {
             snippetToggle.addEventListener('click', () => {
-                const current = SettingsManager.get('autocomplete.snippets', true);
+                const current = SettingsManager.get(SETTINGS_PATHS.AUTOCOMPLETE_SNIPPETS);
                 const next = !current;
-                SettingsManager.set('autocomplete.snippets', next);
+                SettingsManager.set(SETTINGS_PATHS.AUTOCOMPLETE_SNIPPETS, next);
                 setToggleState(snippetToggle, next);
             });
         }
 
         if (lineNumbersToggle) {
             lineNumbersToggle.addEventListener('click', () => {
-                const current = SettingsManager.get('editor.lineNumbers', true);
+                const current = SettingsManager.get(SETTINGS_PATHS.EDITOR_LINE_NUMBERS);
                 const next = !current;
-                SettingsManager.set('editor.lineNumbers', next);
+                SettingsManager.set(SETTINGS_PATHS.EDITOR_LINE_NUMBERS, next);
                 setToggleState(lineNumbersToggle, next);
             });
-            setToggleState(lineNumbersToggle, SettingsManager.get('editor.lineNumbers', true));
+            setToggleState(lineNumbersToggle, SettingsManager.get(SETTINGS_PATHS.EDITOR_LINE_NUMBERS));
         }
 
         if (workbenchSnippetsToggle) {
             workbenchSnippetsToggle.addEventListener('click', () => {
-                const current = SettingsManager.get('workbench.snippets', true);
+                const current = SettingsManager.get(SETTINGS_PATHS.WORKBENCH_SNIPPETS);
                 const next = !current;
-                SettingsManager.set('workbench.snippets', next);
+                SettingsManager.set(SETTINGS_PATHS.WORKBENCH_SNIPPETS, next);
                 setToggleState(workbenchSnippetsToggle, next);
             });
-            setToggleState(workbenchSnippetsToggle, SettingsManager.get('workbench.snippets', true));
+            setToggleState(workbenchSnippetsToggle, SettingsManager.get(SETTINGS_PATHS.WORKBENCH_SNIPPETS));
         }
 
         if (workbenchHistoryToggle) {
             workbenchHistoryToggle.addEventListener('click', () => {
-                const current = SettingsManager.get('workbench.history', true);
+                const current = SettingsManager.get(SETTINGS_PATHS.WORKBENCH_HISTORY);
                 const next = !current;
-                SettingsManager.set('workbench.history', next);
+                SettingsManager.set(SETTINGS_PATHS.WORKBENCH_HISTORY, next);
                 setToggleState(workbenchHistoryToggle, next);
             });
-            setToggleState(workbenchHistoryToggle, SettingsManager.get('workbench.history', true));
+            setToggleState(workbenchHistoryToggle, SettingsManager.get(SETTINGS_PATHS.WORKBENCH_HISTORY));
         }
 
         if (profilerToggle) {
             profilerToggle.addEventListener('click', () => {
-                const current = SettingsManager.get('profiler.enabled', true);
+                const current = SettingsManager.get(SETTINGS_PATHS.PROFILER_ENABLED);
                 const next = !current;
-                SettingsManager.set('profiler.enabled', next);
+                SettingsManager.set(SETTINGS_PATHS.PROFILER_ENABLED, next);
                 setToggleState(profilerToggle, next);
             });
-            setToggleState(profilerToggle, SettingsManager.get('profiler.enabled', true));
+            setToggleState(profilerToggle, SettingsManager.get(SETTINGS_PATHS.PROFILER_ENABLED));
         }
 
         if (profilerExplainToggle) {
             profilerExplainToggle.addEventListener('click', () => {
-                const current = SettingsManager.get('profiler.explainAnalyze', true);
+                const current = SettingsManager.get(SETTINGS_PATHS.PROFILER_EXPLAIN_ANALYZE);
                 const next = !current;
-                SettingsManager.set('profiler.explainAnalyze', next);
+                SettingsManager.set(SETTINGS_PATHS.PROFILER_EXPLAIN_ANALYZE, next);
                 setToggleState(profilerExplainToggle, next);
             });
-            setToggleState(profilerExplainToggle, SettingsManager.get('profiler.explainAnalyze', true));
+            setToggleState(profilerExplainToggle, SettingsManager.get(SETTINGS_PATHS.PROFILER_EXPLAIN_ANALYZE));
         }
 
         const devToolsBtn = container.querySelector('#open-devtools-btn');

@@ -2,6 +2,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { ThemeManager } from '../../utils/ThemeManager.js';
 import { SettingsManager } from '../../utils/SettingsManager.js';
+import { SETTINGS_PATHS } from '../../constants/settingsKeys.js';
 import { Dialog } from '../UI/Dialog.js';
 import { AiService } from '../../utils/AiService.js';
 
@@ -25,7 +26,7 @@ export function QueryProfiler() {
     let locksData = [];
     let lockAnalysis = null;
     let monitorInterval = null;
-    let profilerEnabled = SettingsManager.get('profiler.enabled', true);
+    let profilerEnabled = SettingsManager.get(SETTINGS_PATHS.PROFILER_ENABLED);
     let lockWaitDetailsSupported = true;
     let lockAnalysisSupported = true;
     let lockSupportWarningShown = false;
@@ -1104,7 +1105,7 @@ export function QueryProfiler() {
     };
 
     const onSettingsChange = (e) => {
-        if (e.detail?.key === 'profiler.enabled' || e.detail?.path === 'profiler.enabled') {
+        if (e.detail?.key === SETTINGS_PATHS.PROFILER_ENABLED || e.detail?.path === SETTINGS_PATHS.PROFILER_ENABLED) {
             profilerEnabled = !!e.detail.value;
             if (!profilerEnabled) hide();
             else render();

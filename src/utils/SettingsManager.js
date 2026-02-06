@@ -1,22 +1,6 @@
-const SETTINGS_KEY = 'tactilesql_settings';
+import { DEFAULT_SETTINGS, SETTING_DEFAULTS } from '../constants/settingsKeys.js';
 
-const DEFAULT_SETTINGS = {
-    autocomplete: {
-        enabled: true,
-        snippets: true,
-    },
-    editor: {
-        lineNumbers: true,
-    },
-    profiler: {
-        enabled: true,
-        explainAnalyze: true,
-    },
-    workbench: {
-        snippets: true,
-        history: true,
-    },
-};
+const SETTINGS_KEY = 'tactilesql_settings';
 
 const deepGet = (obj, path) => {
     if (!path) return obj;
@@ -36,21 +20,32 @@ const deepSet = (obj, path, value) => {
     return next;
 };
 
+const deepMerge = (base, overrides) => {
+    if (!overrides || typeof overrides !== 'object') return base;
+
+    const merged = { ...base };
+    Object.entries(overrides).forEach(([key, value]) => {
+        const baseValue = merged[key];
+        const isNestedObject = value && typeof value === 'object' && !Array.isArray(value);
+        if (isNestedObject && baseValue && typeof baseValue === 'object' && !Array.isArray(baseValue)) {
+            merged[key] = deepMerge(baseValue, value);
+        } else {
+            merged[key] = value;
+        }
+    });
+    return merged;
+};
+
+const cloneDefaults = () => deepMerge({}, DEFAULT_SETTINGS);
+
 const loadSettings = () => {
     try {
         const raw = localStorage.getItem(SETTINGS_KEY);
-        if (!raw) return { ...DEFAULT_SETTINGS };
+        if (!raw) return cloneDefaults();
         const parsed = JSON.parse(raw);
-        return {
-            ...DEFAULT_SETTINGS,
-            ...parsed,
-            autocomplete: { ...DEFAULT_SETTINGS.autocomplete, ...(parsed.autocomplete || {}) },
-            editor: { ...DEFAULT_SETTINGS.editor, ...(parsed.editor || {}) },
-            profiler: { ...DEFAULT_SETTINGS.profiler, ...(parsed.profiler || {}) },
-            workbench: { ...DEFAULT_SETTINGS.workbench, ...(parsed.workbench || {}) }
-        };
+        return deepMerge(cloneDefaults(), parsed);
     } catch {
-        return { ...DEFAULT_SETTINGS };
+        return cloneDefaults();
     }
 };
 
@@ -65,7 +60,12 @@ export const SettingsManager = {
     get(path, fallback = undefined) {
         const settings = loadSettings();
         const value = deepGet(settings, path);
-        return value === undefined ? fallback : value;
+        if (value !== undefined) return value;
+        if (fallback !== undefined) return fallback;
+        if (path && Object.prototype.hasOwnProperty.call(SETTING_DEFAULTS, path)) {
+            return SETTING_DEFAULTS[path];
+        }
+        return undefined;
     },
     set(path, value) {
         const current = loadSettings();

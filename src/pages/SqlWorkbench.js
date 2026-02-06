@@ -3,10 +3,12 @@ import { ResultsTable } from '../components/Workbench/ResultsTable.js';
 import { ObjectExplorer } from '../components/Workbench/ObjectExplorer.js';
 import { SnippetLibrary } from '../components/Workbench/SnippetLibrary.js';
 import { QueryStoryPanel } from '../components/Workbench/QueryStoryPanel.js';
+import { QueryStoryAPI } from '../api/queryStory.js';
 
 import { QueryProfiler } from '../components/Workbench/QueryProfiler.js';
 import { ThemeManager } from '../utils/ThemeManager.js';
 import { SettingsManager } from '../utils/SettingsManager.js';
+import { SETTINGS_PATHS } from '../constants/settingsKeys.js';
 import { debounce } from '../utils/helpers.js';
 
 export function SqlWorkbench() {
@@ -184,8 +186,8 @@ export function SqlWorkbench() {
     });
 
     const applySnippetPanelVisibility = () => {
-        const showSnippets = SettingsManager.get('workbench.snippets', true);
-        const showHistory = SettingsManager.get('workbench.history', true);
+        const showSnippets = SettingsManager.get(SETTINGS_PATHS.WORKBENCH_SNIPPETS);
+        const showHistory = SettingsManager.get(SETTINGS_PATHS.WORKBENCH_HISTORY);
         const shouldShowPanel = showSnippets || showHistory;
 
         snippets.style.display = shouldShowPanel ? '' : 'none';
@@ -236,7 +238,10 @@ export function SqlWorkbench() {
     window.addEventListener('themechange', onThemeChange);
 
     const onSettingsChange = (e) => {
-        if (e.detail?.path?.startsWith('workbench.')) {
+        if (
+            e.detail?.path === SETTINGS_PATHS.WORKBENCH_SNIPPETS ||
+            e.detail?.path === SETTINGS_PATHS.WORKBENCH_HISTORY
+        ) {
             applySnippetPanelVisibility();
         }
     };
@@ -274,11 +279,8 @@ export function SqlWorkbench() {
     // Listen for query execution to update execution count
     const onQueryExecuted = (e) => {
         if (e.detail?.query) {
-            // Calculate hash and increment execution count
-            import('../api/queryStory.js').then(({ QueryStoryAPI }) => {
-                QueryStoryAPI.calculateQueryHash(e.detail.query).then(hash => {
-                    QueryStoryAPI.incrementExecution(hash).catch(() => {}); // Silently fail if no story
-                });
+            QueryStoryAPI.calculateQueryHash(e.detail.query).then(hash => {
+                QueryStoryAPI.incrementExecution(hash).catch(() => {}); // Silently fail if no story
             });
         }
     };

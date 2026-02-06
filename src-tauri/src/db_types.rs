@@ -435,15 +435,3 @@ pub struct AiIndexRecommendations {
     pub analyzed_queries: i32,
     pub analysis_summary: String,
 }
-
-// --- Query Pattern for Analysis ---
-#[derive(Serialize, Debug)]
-pub struct QueryPattern {
-    pub query_pattern: String,
-    pub frequency: i32,
-    pub avg_duration_ms: f64,
-    pub where_columns: Vec<String>,
-    pub join_columns: Vec<String>,
-    pub order_by_columns: Vec<String>,
-    pub group_by_columns: Vec<String>,
-}

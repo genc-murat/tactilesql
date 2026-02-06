@@ -1,0 +1,51 @@
+name: Quality Gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux dependencies for Tauri
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Frontend build
+        run: npm run build
+
+      - name: Command contract check
+        run: npm run contract:check
+
+      - name: Backend compile check
+        run: cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Backend regression test (ambiguous table impact warning)
+        run: cargo test --manifest-path src-tauri/Cargo.toml ambiguous_table_name_produces_ambiguity_warning -- --nocapture
+
+      - name: Backend regression test (index rename diff)
+        run: cargo test --manifest-path src-tauri/Cargo.toml index_rename_with_same_structure_is_not_reported_as_change -- --nocapture

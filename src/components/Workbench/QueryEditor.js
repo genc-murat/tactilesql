@@ -14,6 +14,7 @@ import { AskAiBar } from '../UI/AskAiBar.js';
 import { AiService } from '../../utils/AiService.js';
 import { AiAssistancePanel } from '../UI/AiAssistancePanel.js';
 import { SettingsManager } from '../../utils/SettingsManager.js';
+import { SETTINGS_PATHS } from '../../constants/settingsKeys.js';
 import { detectSyntaxErrors } from './editor/syntaxChecker.js';
 import { createTabHistoryManager } from './editor/tabHistory.js';
 import { getSortedTabs as sortTabsByPinned, loadTabsState, saveTabsState } from './editor/tabManager.js';
@@ -73,7 +74,7 @@ export function QueryEditor() {
     let cachedColumns = {};
 
     let currentGhostText = ''; // State for ghost text prediction
-    const isAutocompleteEnabled = () => SettingsManager.get('autocomplete.enabled', true);
+    const isAutocompleteEnabled = () => SettingsManager.get(SETTINGS_PATHS.AUTOCOMPLETE_ENABLED);
 
     // --- Context Menu State ---
     let contextMenu = {
@@ -354,7 +355,7 @@ export function QueryEditor() {
         const lines = text.split('\n');
         const currentLineIndex = lines.length - 1;
         const currentLineLength = lines[currentLineIndex].length;
-        const lineNumberOffset = SettingsManager.get('editor.lineNumbers', true) ? 80 : 20;
+        const lineNumberOffset = SettingsManager.get(SETTINGS_PATHS.EDITOR_LINE_NUMBERS) ? 80 : 20;
 
         // Approximate position
         const lineHeight = 22;
@@ -736,7 +737,7 @@ export function QueryEditor() {
         // Check if PostgreSQL (hide database selector for PostgreSQL)
         const activeDbType = localStorage.getItem('activeDbType') || 'mysql';
         const isPg = activeDbType === 'postgresql';
-        const lineNumbersEnabled = SettingsManager.get('editor.lineNumbers', true);
+        const lineNumbersEnabled = SettingsManager.get(SETTINGS_PATHS.EDITOR_LINE_NUMBERS);
 
         container.innerHTML = `
             <div class="border-b ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5'))}">
@@ -1108,7 +1109,7 @@ export function QueryEditor() {
             window.dispatchEvent(new CustomEvent('tactilesql:query-executing'));
 
             // Execute query (profiled) - UI stays responsive due to async/await
-            const explainAnalyze = SettingsManager.get('profiler.explainAnalyze', true);
+            const explainAnalyze = SettingsManager.get(SETTINGS_PATHS.PROFILER_EXPLAIN_ANALYZE);
             const profileOptions = { explainAnalyze };
 
             let response;
@@ -2726,14 +2727,14 @@ export function QueryEditor() {
     const onSettingsChanged = (e) => {
         const changedPath = e.detail?.path || e.detail?.key;
         if (!changedPath) return;
-        if (changedPath === 'autocomplete.enabled') {
+        if (changedPath === SETTINGS_PATHS.AUTOCOMPLETE_ENABLED) {
             if (!isAutocompleteEnabled()) {
                 hideAutocomplete();
             }
             render();
             return;
         }
-        if (changedPath === 'editor.lineNumbers') {
+        if (changedPath === SETTINGS_PATHS.EDITOR_LINE_NUMBERS) {
             render();
         }
     };

@@ -17,6 +17,7 @@ import { getSqlKeywords, getSqlFunctions, getDataTypes, getAllSnippets, getQuote
 import { auditTrail } from './QueryAuditTrail.js';
 import { DatabaseCache, CacheTypes } from './helpers.js';
 import { SettingsManager } from './SettingsManager.js';
+import { SETTINGS_PATHS } from '../constants/settingsKeys.js';
 
 // Import modularized components
 import { 
@@ -214,7 +215,7 @@ export class SmartAutocomplete {
             let suggestions = [];
 
             // Check for snippet triggers first (2+ chars)
-            const snippetSuggestionsEnabled = SettingsManager.get('autocomplete.snippets', true);
+            const snippetSuggestionsEnabled = SettingsManager.get(SETTINGS_PATHS.AUTOCOMPLETE_SNIPPETS);
             if (snippetSuggestionsEnabled && word.length >= 2 && !word.includes('.')) {
                 const snippetSuggestions = this.#getSnippetSuggestions(word);
                 if (snippetSuggestions.length > 0) {

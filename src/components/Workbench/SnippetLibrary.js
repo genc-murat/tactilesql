@@ -1,6 +1,7 @@
 import { Dialog } from '../UI/Dialog.js';
 import { ThemeManager } from '../../utils/ThemeManager.js';
 import { SettingsManager } from '../../utils/SettingsManager.js';
+import { SETTINGS_PATHS } from '../../constants/settingsKeys.js';
 import { escapeHtml } from '../../utils/helpers.js';
 
 export function SnippetLibrary() {
@@ -131,8 +132,8 @@ export function SnippetLibrary() {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
-        const showSnippets = SettingsManager.get('workbench.snippets', true);
-        const showHistory = SettingsManager.get('workbench.history', true);
+        const showSnippets = SettingsManager.get(SETTINGS_PATHS.WORKBENCH_SNIPPETS);
+        const showHistory = SettingsManager.get(SETTINGS_PATHS.WORKBENCH_HISTORY);
         const dividerClass = isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border' : 'border-white/5'));
         const filteredSnippets = getFilteredSnippets();
         const snippetSectionClass = showHistory ? 'flex flex-col gap-3' : 'flex-1 flex flex-col gap-3 min-h-0';
@@ -409,7 +410,10 @@ export function SnippetLibrary() {
     window.addEventListener('tactilesql:history-update', onHistoryUpdate);
 
     const onSettingsChange = (e) => {
-        if (e.detail?.path?.startsWith('workbench.')) {
+        if (
+            e.detail?.path === SETTINGS_PATHS.WORKBENCH_SNIPPETS ||
+            e.detail?.path === SETTINGS_PATHS.WORKBENCH_HISTORY
+        ) {
             render();
         }
     };
