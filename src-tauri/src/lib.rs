@@ -64,6 +64,7 @@ pub mod quality_analyzer;
 pub mod query_story;
 pub mod scheduler;
 pub mod schema_tracker;
+pub mod task_manager;
 mod ssh_tunnel;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -112,6 +113,18 @@ pub fn run() {
                             *pool_guard = Some(pool.clone());
                         }
                         println!("Local Storage initialized successfully.");
+
+                        // Task Manager Store
+                        match crate::task_manager::storage::TaskManagerStore::new(pool.clone())
+                            .await
+                        {
+                            Ok(store) => {
+                                let mut guard = state.task_manager_store.lock().await;
+                                *guard = Some(store);
+                                println!("Task Manager Store initialized.");
+                            }
+                            Err(e) => eprintln!("Failed to init Task Manager Store: {}", e),
+                        }
 
                         // Awareness Store
                         match crate::awareness::store::AwarenessStore::new(pool.clone()).await {
@@ -183,6 +196,7 @@ pub fn run() {
                             }
                             Err(e) => eprintln!("Failed to init Query Story Store: {}", e),
                         }
+
                     }
                     Err(e) => eprintln!("Failed to initialize Local Storage: {}", e),
                 }
@@ -324,6 +338,34 @@ pub fn run() {
             query_story::commands::compare_query_versions,
             query_story::commands::delete_query_story,
             query_story::commands::calculate_query_hash,
+            // Task Manager
+            task_manager::commands::create_task,
+            task_manager::commands::get_task,
+            task_manager::commands::list_tasks,
+            task_manager::commands::update_task,
+            task_manager::commands::delete_task,
+            task_manager::commands::create_task_trigger,
+            task_manager::commands::get_task_trigger,
+            task_manager::commands::list_task_triggers,
+            task_manager::commands::update_task_trigger,
+            task_manager::commands::delete_task_trigger,
+            task_manager::commands::get_task_runs,
+            task_manager::commands::get_task_run_logs,
+            task_manager::commands::list_task_audit_logs,
+            task_manager::commands::get_task_log_retention_policy,
+            task_manager::commands::set_task_log_retention_policy,
+            task_manager::commands::purge_task_history,
+            task_manager::commands::upsert_composite_task_graph,
+            task_manager::commands::get_composite_task_graph,
+            task_manager::commands::get_composite_step_runs,
+            task_manager::commands::run_task_now,
+            task_manager::commands::cancel_task_run,
+            task_manager::commands::retry_task_run,
+            task_manager::commands::get_scheduler_state,
+            task_manager::commands::set_scheduler_state,
+            task_manager::commands::pause_scheduler,
+            task_manager::commands::resume_scheduler,
+            task_manager::commands::disable_scheduler,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

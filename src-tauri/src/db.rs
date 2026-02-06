@@ -1015,7 +1015,7 @@ fn build_delete_statement_for_row(
 }
 
 async fn load_table_schema_for_compare(
-    app_state: &State<'_, AppState>,
+    app_state: &AppState,
     db_type: &DatabaseType,
     database: &str,
     table: &str,
@@ -1038,7 +1038,7 @@ async fn load_table_schema_for_compare(
 }
 
 async fn load_table_primary_keys_for_compare(
-    app_state: &State<'_, AppState>,
+    app_state: &AppState,
     db_type: &DatabaseType,
     database: &str,
     table: &str,
@@ -1061,7 +1061,7 @@ async fn load_table_primary_keys_for_compare(
 }
 
 async fn load_table_row_count_for_compare(
-    app_state: &State<'_, AppState>,
+    app_state: &AppState,
     db_type: &DatabaseType,
     database: &str,
     table: &str,
@@ -1092,7 +1092,7 @@ async fn load_table_row_count_for_compare(
 }
 
 async fn load_table_rows_for_compare(
-    app_state: &State<'_, AppState>,
+    app_state: &AppState,
     db_type: &DatabaseType,
     database: &str,
     table: &str,
@@ -1147,7 +1147,7 @@ async fn load_table_rows_for_compare(
 }
 
 async fn compute_data_compare_internal(
-    app_state: &State<'_, AppState>,
+    app_state: &AppState,
     request: &DataCompareRequest,
 ) -> Result<DataCompareInternalResult, String> {
     let source_database = parse_non_empty_field("sourceDatabase", &request.source_database)?;
@@ -3291,13 +3291,12 @@ pub async fn restore_database(
     Ok(format!("Restore completed from {}", file_path))
 }
 
-#[tauri::command]
-pub async fn compare_table_data(
-    app_state: State<'_, AppState>,
+pub async fn compare_table_data_with_state(
+    app_state: &AppState,
     request: DataCompareRequest,
 ) -> Result<DataCompareResult, String> {
     let sample_limit = clamp_data_compare_sample_limit(request.sample_limit);
-    let internal = compute_data_compare_internal(&app_state, &request).await?;
+    let internal = compute_data_compare_internal(app_state, &request).await?;
     let key_columns =
         canonical_list_to_display(&internal.key_canonicals, &internal.output_name_by_canonical);
     let compare_columns = canonical_list_to_display(
@@ -3319,9 +3318,8 @@ pub async fn compare_table_data(
     })
 }
 
-#[tauri::command]
-pub async fn generate_data_sync_script(
-    app_state: State<'_, AppState>,
+pub async fn generate_data_sync_script_with_state(
+    app_state: &AppState,
     request: DataCompareRequest,
 ) -> Result<DataSyncPlan, String> {
     let include_inserts = request.include_inserts.unwrap_or(true);
@@ -3334,7 +3332,7 @@ pub async fn generate_data_sync_script(
         return Err("At least one sync action must be enabled (insert/update/delete).".to_string());
     }
 
-    let internal = compute_data_compare_internal(&app_state, &request).await?;
+    let internal = compute_data_compare_internal(app_state, &request).await?;
     let key_columns =
         canonical_list_to_display(&internal.key_canonicals, &internal.output_name_by_canonical);
     let compare_columns = canonical_list_to_display(
@@ -3491,6 +3489,22 @@ pub async fn generate_data_sync_script(
         warnings,
         truncated,
     })
+}
+
+#[tauri::command]
+pub async fn compare_table_data(
+    app_state: State<'_, AppState>,
+    request: DataCompareRequest,
+) -> Result<DataCompareResult, String> {
+    compare_table_data_with_state(app_state.inner(), request).await
+}
+
+#[tauri::command]
+pub async fn generate_data_sync_script(
+    app_state: State<'_, AppState>,
+    request: DataCompareRequest,
+) -> Result<DataSyncPlan, String> {
+    generate_data_sync_script_with_state(app_state.inner(), request).await
 }
 
 // =====================================================

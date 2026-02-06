@@ -29,6 +29,7 @@ TactileSQL is a modern, desktop-first MySQL workbench built with Tauri 2 and van
 - **Data Compare** for row-level source/target table comparison with generated data sync SQL (`INSERT`/`UPDATE`/`DELETE`).
 - **Data Import/Export Wizard** supporting CSV, SQL, and JSON formats with progress tracking.
 - **Backup & Restore** with scheduled backups, compression, and full/incremental backup modes.
+- **Task Center** for end-to-end task operations: create/edit tasks, filter by type/status/tag/owner, configure cron/interval/one-shot triggers with next-run preview, build composite DAG flows, run/cancel/retry executions, inspect run logs, and manage retention/purge.
 - **Mock Data Generator** with deterministic preview, async generation jobs, cancellation, and persisted job history.
 - **Real-time Server Monitor** with live metrics for CPU, memory, connections, queries, and InnoDB status.
 - **Lock/Deadlock Root-Cause Analysis**: Live lock graph, blocking chains, deadlock-cycle detection, and automatic mitigation suggestions with blocker-termination shortcuts.
@@ -182,6 +183,22 @@ npm run contract:check    # fail on newly introduced missing backend commands
 - **Restore Database**: Restore from previous backups with validation
 - **Mock Data Generator**: Preview generated rows, run async generation/dry-run jobs, track progress, cancel running jobs, and review recent job history across restarts
 - **Data Compare & Sync**: Compare two tables (source/target), select key & compare columns, review row-level diffs (`missing`, `extra`, `changed`), and generate sync SQL script
+
+### Task Center
+
+- Route: `#/tasks` (feature-flagged with `taskCenter`)
+- Task definitions: create/edit/delete with JSON payload validation
+- Task list: live filtering (`type`, `status`, `owner`, `tag`) plus `last run` and `next run` summary columns
+- Trigger editor: `interval`, `cron`, `one_shot` with client-side cron validation and next 5 run preview
+- Composite builder: step management and dependency graph with cycle/dependency validation
+- Run operations: `Run Now`, selected run `Cancel`, selected run `Retry`
+- Observability: run history, run logs, composite step statuses, scheduler state controls
+- Retention: configurable history retention days and manual purge action
+
+Task Center docs:
+- User guide: `docs/task-manager-user-guide-en.md`
+- Technical guide: `docs/task-manager-technical-guide-en.md`
+- Rollout checklist: `docs/task-manager-rollout-checklist-en.md`
 
 ### Server Monitor
 

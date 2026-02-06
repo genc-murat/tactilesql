@@ -32,6 +32,9 @@ pub struct AppState {
         Arc<Mutex<Option<crate::dependency_engine::storage::DependencyEngineStore>>>,
     pub er_diagram_store: Arc<Mutex<Option<crate::er_diagram::storage::ErDiagramStore>>>,
     pub query_story_store: Arc<Mutex<Option<crate::query_story::storage::QueryStoryStore>>>,
+    pub task_manager_store: Arc<Mutex<Option<crate::task_manager::storage::TaskManagerStore>>>,
+    pub task_scheduler_state: Arc<Mutex<crate::task_manager::models::SchedulerState>>,
+    pub task_last_retention_purge_epoch: Arc<Mutex<i64>>,
     pub local_db_pool: Arc<Mutex<Option<Pool<Sqlite>>>>,
 }
 
@@ -48,6 +51,11 @@ impl Default for AppState {
             dependency_engine_store: Arc::new(Mutex::new(None)),
             er_diagram_store: Arc::new(Mutex::new(None)),
             query_story_store: Arc::new(Mutex::new(None)),
+            task_manager_store: Arc::new(Mutex::new(None)),
+            task_scheduler_state: Arc::new(Mutex::new(
+                crate::task_manager::models::SchedulerState::Running,
+            )),
+            task_last_retention_purge_epoch: Arc::new(Mutex::new(0)),
             local_db_pool: Arc::new(Mutex::new(None)),
         }
     }
@@ -66,6 +74,9 @@ impl Clone for AppState {
             dependency_engine_store: Arc::clone(&self.dependency_engine_store),
             er_diagram_store: Arc::clone(&self.er_diagram_store),
             query_story_store: Arc::clone(&self.query_story_store),
+            task_manager_store: Arc::clone(&self.task_manager_store),
+            task_scheduler_state: Arc::clone(&self.task_scheduler_state),
+            task_last_retention_purge_epoch: Arc::clone(&self.task_last_retention_purge_epoch),
             local_db_pool: Arc::clone(&self.local_db_pool),
         }
     }

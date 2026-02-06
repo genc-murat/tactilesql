@@ -1,4 +1,5 @@
 import { ThemeManager } from '../../utils/ThemeManager.js';
+import { isFeatureEnabled } from '../../config/featureFlags.js';
 
 export function NavBar() {
     const nav = document.createElement('nav');
@@ -8,6 +9,7 @@ export function NavBar() {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const taskCenterEnabled = isFeatureEnabled('taskCenter');
         // Get current path from hash
         const currentPath = window.location.hash.split('?')[0].slice(1) || '/';
 
@@ -32,6 +34,9 @@ export function NavBar() {
                 icon: 'settings_suggest',
                 id: 'menu-ops',
                 children: [
+                    ...(taskCenterEnabled
+                        ? [{ path: '/tasks', label: 'TASKS', icon: 'checklist' }]
+                        : []),
                     { path: '/data-tools', label: 'TOOLS', icon: 'build' },
                     { path: '/capacity', label: 'CAPACITY', icon: 'data_usage' },
                     { path: '/audit', label: 'AUDIT', icon: 'visibility' },

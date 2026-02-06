@@ -7,11 +7,25 @@ import { ThemeManager } from './utils/ThemeManager.js';
 import { initKeyboardShortcuts, registerHandler, showShortcutsHelp } from './utils/KeyboardShortcuts.js';
 import { QueryComparator } from './components/Awareness/QueryComparator.js';
 import { AnomalyDashboard } from './components/Awareness/AnomalyDashboard.js';
+import { isFeatureEnabled } from './config/featureFlags.js';
 
 // Lazy load page components for better initial load time
 const lazyLoad = (importFn, exportName) => async () => {
     const module = await importFn();
     return module[exportName]();
+};
+
+const featureDisabledPage = (title, description) => () => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'h-full w-full p-8 flex items-center justify-center';
+    wrapper.innerHTML = `
+        <div class="max-w-xl w-full rounded-2xl border border-amber-300/40 bg-amber-500/10 px-6 py-8 text-center">
+            <div class="text-xs uppercase tracking-[0.2em] text-amber-300 mb-2">Feature Flag</div>
+            <h2 class="text-xl font-semibold text-white mb-2">${title}</h2>
+            <p class="text-sm text-gray-200">${description}</p>
+        </div>
+    `;
+    return wrapper;
 };
 
 // Add window resize handles with custom resizing logic
@@ -130,6 +144,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     mainContent.className = 'flex-1 overflow-hidden relative';
     root.appendChild(mainContent);
 
+    const taskCenterEnabled = isFeatureEnabled('taskCenter');
+
     const routes = {
         '/': { component: lazyLoad(() => import('./pages/SqlWorkbench.js'), 'SqlWorkbench') },
         '/workbench': { component: lazyLoad(() => import('./pages/SqlWorkbench.js'), 'SqlWorkbench') },
@@ -148,6 +164,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         '/quality-analyzer': { component: lazyLoad(() => import('./components/AdvancedInsights/QualityAnalyzer/QualityDashboard.js'), 'QualityDashboard') },
         '/index-lifecycle': { component: lazyLoad(() => import('./pages/IndexLifecycle.js'), 'IndexLifecycle') },
         '/audit': { component: lazyLoad(() => import('./pages/AuditTrail.js'), 'AuditTrail') },
+        '/tasks': {
+            component: taskCenterEnabled
+                ? lazyLoad(() => import('./pages/TaskManager.js'), 'TaskManager')
+                : featureDisabledPage(
+                    'Task Center Disabled',
+                    'Task Center is currently disabled by rollout policy. Enable feature flag "taskCenter" to access this page.'
+                )
+        },
         '/help': { component: lazyLoad(() => import('./pages/Help.js'), 'Help') },
     };
 
