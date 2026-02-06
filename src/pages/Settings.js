@@ -14,6 +14,16 @@ const THIRD_PARTY_SOFTWARE = [
     { name: 'PostCSS', license: 'MIT', url: 'https://postcss.org' },
     { name: 'Autoprefixer', license: 'MIT', url: 'https://github.com/postcss/autoprefixer' },
 ];
+const EDITOR_FONT_SIZE_OPTIONS = Object.freeze([10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24]);
+const EDITOR_FONT_FAMILY_OPTIONS = Object.freeze([
+    Object.freeze({ value: 'jetbrains', label: 'JetBrains Mono' }),
+    Object.freeze({ value: 'fira', label: 'Fira Code' }),
+    Object.freeze({ value: 'source', label: 'Source Code Pro' }),
+    Object.freeze({ value: 'ibm', label: 'IBM Plex Mono' }),
+    Object.freeze({ value: 'consolas', label: 'Consolas' }),
+]);
+const DEFAULT_EDITOR_FONT_SIZE = 13;
+const DEFAULT_EDITOR_FONT_FAMILY = 'jetbrains';
 
 const escapeHtml = (value) => String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -36,6 +46,28 @@ const buildCommandContractReport = (frontendCommands, backendCommands) => {
         missingInBackend: frontend.filter(cmd => !backendSet.has(cmd)),
         unusedInFrontend: backend.filter(cmd => !frontendSet.has(cmd)),
     };
+};
+
+const clampEditorFontSize = (value) => {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isNaN(parsed)) return DEFAULT_EDITOR_FONT_SIZE;
+    return Math.min(24, Math.max(10, parsed));
+};
+
+const getEditorFontSizeSetting = () => {
+    const configured = SettingsManager.get(SETTINGS_PATHS.EDITOR_FONT_SIZE);
+    if (configured !== undefined && configured !== null) {
+        return clampEditorFontSize(configured);
+    }
+    return clampEditorFontSize(localStorage.getItem('editorFontSize'));
+};
+
+const getEditorFontFamilySetting = () => {
+    const configured = String(SettingsManager.get(SETTINGS_PATHS.EDITOR_FONT_FAMILY) || '').toLowerCase();
+    if (EDITOR_FONT_FAMILY_OPTIONS.some(option => option.value === configured)) {
+        return configured;
+    }
+    return DEFAULT_EDITOR_FONT_FAMILY;
 };
 
 export function Settings() {
@@ -82,6 +114,9 @@ export function Settings() {
         const autocompleteEnabled = SettingsManager.get(SETTINGS_PATHS.AUTOCOMPLETE_ENABLED);
         const snippetSuggestionsEnabled = SettingsManager.get(SETTINGS_PATHS.AUTOCOMPLETE_SNIPPETS);
         const lineNumbersEnabled = SettingsManager.get(SETTINGS_PATHS.EDITOR_LINE_NUMBERS);
+        const editorFontSize = getEditorFontSizeSetting();
+        const editorFontFamily = getEditorFontFamilySetting();
+        const editorFontFamilyLabel = EDITOR_FONT_FAMILY_OPTIONS.find(option => option.value === editorFontFamily)?.label || 'JetBrains Mono';
         const profilerEnabled = SettingsManager.get(SETTINGS_PATHS.PROFILER_ENABLED);
         const profilerExplainEnabled = SettingsManager.get(SETTINGS_PATHS.PROFILER_EXPLAIN_ANALYZE);
         const workbenchSnippetsEnabled = SettingsManager.get(SETTINGS_PATHS.WORKBENCH_SNIPPETS);
@@ -278,16 +313,40 @@ export function Settings() {
                             </div>
                             <div class="relative" id="font-size-dropdown-container">
                                 <button id="font-size-trigger" class="flex items-center gap-2 px-3 py-1.5 text-sm ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800 hover:bg-gray-100' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] hover:bg-[#faf4ed]' : 'bg-black/20 border-white/10 text-gray-300 hover:bg-white/5')} rounded-lg border transition-all outline-none focus:border-mysql-teal shadow-sm min-w-[100px] justify-between group">
-                                    <span id="current-font-size">${localStorage.getItem('editorFontSize') || '14'}px</span>
+                                    <span id="current-font-size">${editorFontSize}px</span>
                                     <span class="material-symbols-outlined text-gray-500 group-hover:text-mysql-teal transition-transform duration-200" id="font-size-arrow">expand_more</span>
                                 </button>
                                 
                                 <div id="font-size-options" class="hidden absolute top-full right-0 mt-2 w-32 ${isLight ? 'bg-white border-gray-100 shadow-2xl' : 'bg-[#1a1d23] border-white/10 shadow-2xl'} rounded-xl overflow-hidden z-[100] animate-in fade-in slide-in-from-top-2 duration-200 backdrop-blur-xl">
                                     <div class="p-1">
-                                        ${['12', '14', '16', '18', '20', '22', '24'].map(size => `
-                                            <div class="font-size-option px-3 py-2 flex items-center justify-between cursor-pointer rounded-lg transition-colors ${(localStorage.getItem('editorFontSize') || '14') === size ? (isLight ? 'bg-mysql-teal/10 text-mysql-teal font-bold' : 'bg-mysql-teal/20 text-mysql-teal font-bold') : (isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5')}" data-value="${size}">
+                                        ${EDITOR_FONT_SIZE_OPTIONS.map(size => `
+                                            <div class="font-size-option px-3 py-2 flex items-center justify-between cursor-pointer rounded-lg transition-colors ${editorFontSize === size ? (isLight ? 'bg-mysql-teal/10 text-mysql-teal font-bold' : 'bg-mysql-teal/20 text-mysql-teal font-bold') : (isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5')}" data-value="${size}">
                                                 <span class="text-sm">${size}px</span>
-                                                ${(localStorage.getItem('editorFontSize') || '14') === size ? '<span class="material-symbols-outlined text-mysql-teal text-sm">check_circle</span>' : ''}
+                                                ${editorFontSize === size ? '<span class="material-symbols-outlined text-mysql-teal text-sm">check_circle</span>' : ''}
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                            <div>
+                                <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Font Family</h3>
+                                <p class="text-xs text-gray-500 mt-1">Pick the SQL editor typeface</p>
+                            </div>
+                            <div class="relative" id="font-family-dropdown-container">
+                                <button id="font-family-trigger" class="flex items-center gap-2 px-3 py-1.5 text-sm ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800 hover:bg-gray-100' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] hover:bg-[#faf4ed]' : 'bg-black/20 border-white/10 text-gray-300 hover:bg-white/5')} rounded-lg border transition-all outline-none focus:border-mysql-teal shadow-sm min-w-[180px] justify-between group">
+                                    <span id="current-font-family">${escapeHtml(editorFontFamilyLabel)}</span>
+                                    <span class="material-symbols-outlined text-gray-500 group-hover:text-mysql-teal transition-transform duration-200" id="font-family-arrow">expand_more</span>
+                                </button>
+                                
+                                <div id="font-family-options" class="hidden absolute top-full right-0 mt-2 w-56 ${isLight ? 'bg-white border-gray-100 shadow-2xl' : 'bg-[#1a1d23] border-white/10 shadow-2xl'} rounded-xl overflow-hidden z-[100] animate-in fade-in slide-in-from-top-2 duration-200 backdrop-blur-xl">
+                                    <div class="p-1">
+                                        ${EDITOR_FONT_FAMILY_OPTIONS.map(option => `
+                                            <div class="font-family-option px-3 py-2 flex items-center justify-between cursor-pointer rounded-lg transition-colors ${editorFontFamily === option.value ? (isLight ? 'bg-mysql-teal/10 text-mysql-teal font-bold' : 'bg-mysql-teal/20 text-mysql-teal font-bold') : (isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5')}" data-value="${option.value}">
+                                                <span class="text-sm">${escapeHtml(option.label)}</span>
+                                                ${editorFontFamily === option.value ? '<span class="material-symbols-outlined text-mysql-teal text-sm">check_circle</span>' : ''}
                                             </div>
                                         `).join('')}
                                     </div>
@@ -1291,8 +1350,8 @@ export function Settings() {
                 modelTrigger.addEventListener('click', (e) => {
                     e.stopPropagation();
                     const isHidden = modelDropdown.classList.contains('hidden');
-                    container.querySelectorAll('#ai-provider-options, #font-size-options').forEach(d => d.classList.add('hidden'));
-                    container.querySelectorAll('#ai-provider-arrow, #font-size-arrow').forEach(a => a.style.transform = '');
+                    container.querySelectorAll('#ai-provider-options, #font-size-options, #font-family-options').forEach(d => d.classList.add('hidden'));
+                    container.querySelectorAll('#ai-provider-arrow, #font-size-arrow, #font-family-arrow').forEach(a => a.style.transform = '');
 
                     if (isHidden) {
                         modelDropdown.classList.remove('hidden');
@@ -1339,6 +1398,10 @@ export function Settings() {
         const fontSizeDropdown = container.querySelector('#font-size-options');
         const fontSizeArrow = container.querySelector('#font-size-arrow');
         const currentFontSizeSpan = container.querySelector('#current-font-size');
+        const fontFamilyTrigger = container.querySelector('#font-family-trigger');
+        const fontFamilyDropdown = container.querySelector('#font-family-options');
+        const fontFamilyArrow = container.querySelector('#font-family-arrow');
+        const currentFontFamilySpan = container.querySelector('#current-font-family');
 
         if (aiKeyInput && aiSaveBtn && aiVisibilityBtn && aiKeyLabel && aiKeyLink) {
             let activeProvider = localStorage.getItem('ai_provider') || 'openai';
@@ -1434,8 +1497,8 @@ export function Settings() {
                 providerTrigger.addEventListener('click', (e) => {
                     e.stopPropagation();
                     const isHidden = providerDropdown.classList.contains('hidden');
-                    container.querySelectorAll('#ai-model-options, #font-size-options').forEach(d => d.classList.add('hidden'));
-                    container.querySelectorAll('#ai-model-arrow, #font-size-arrow').forEach(a => a.style.transform = '');
+                    container.querySelectorAll('#ai-model-options, #font-size-options, #font-family-options').forEach(d => d.classList.add('hidden'));
+                    container.querySelectorAll('#ai-model-arrow, #font-size-arrow, #font-family-arrow').forEach(a => a.style.transform = '');
                     if (isHidden) {
                         providerDropdown.classList.remove('hidden');
                         if (providerArrow) providerArrow.style.transform = 'rotate(180deg)';
@@ -1463,8 +1526,8 @@ export function Settings() {
                 fontSizeTrigger.addEventListener('click', (e) => {
                     e.stopPropagation();
                     const isHidden = fontSizeDropdown.classList.contains('hidden');
-                    container.querySelectorAll('#ai-provider-options, #ai-model-options').forEach(d => d.classList.add('hidden'));
-                    container.querySelectorAll('#ai-provider-arrow, #ai-model-arrow').forEach(a => a.style.transform = '');
+                    container.querySelectorAll('#ai-provider-options, #ai-model-options, #font-family-options').forEach(d => d.classList.add('hidden'));
+                    container.querySelectorAll('#ai-provider-arrow, #ai-model-arrow, #font-family-arrow').forEach(a => a.style.transform = '');
                     if (isHidden) {
                         fontSizeDropdown.classList.remove('hidden');
                         if (fontSizeArrow) fontSizeArrow.style.transform = 'rotate(180deg)';
@@ -1476,15 +1539,74 @@ export function Settings() {
 
                 fontSizeDropdown.querySelectorAll('.font-size-option').forEach(option => {
                     option.addEventListener('click', () => {
-                        const val = option.dataset.value;
+                        const val = Number.parseInt(option.dataset.value, 10);
+                        if (Number.isNaN(val)) return;
                         if (currentFontSizeSpan) currentFontSizeSpan.textContent = `${val}px`;
                         fontSizeDropdown.classList.add('hidden');
                         if (fontSizeArrow) fontSizeArrow.style.transform = '';
-                        localStorage.setItem('editorFontSize', val);
-                        window.dispatchEvent(new CustomEvent('settingschange', { detail: { key: 'editorFontSize', value: val } }));
+                        SettingsManager.set(SETTINGS_PATHS.EDITOR_FONT_SIZE, val);
                         fontSizeDropdown.querySelectorAll('.font-size-option').forEach(opt => {
-                            const isSelected = opt.dataset.value === val;
+                            const selectedValue = Number.parseInt(opt.dataset.value, 10);
+                            const isSelected = selectedValue === val;
                             opt.className = `font-size-option px-3 py-2 flex items-center justify-between cursor-pointer rounded-lg transition-colors ${isSelected ? (isLight ? 'bg-mysql-teal/10 text-mysql-teal font-bold' : 'bg-mysql-teal/20 text-mysql-teal font-bold') : (isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5')}`;
+                            let check = opt.querySelector('.material-symbols-outlined');
+                            if (isSelected) {
+                                if (!check) {
+                                    check = document.createElement('span');
+                                    check.className = 'material-symbols-outlined text-mysql-teal text-sm';
+                                    check.textContent = 'check_circle';
+                                    opt.appendChild(check);
+                                } else {
+                                    check.style.display = 'block';
+                                }
+                            } else if (check) {
+                                check.style.display = 'none';
+                            }
+                        });
+                    });
+                });
+            }
+
+            if (fontFamilyTrigger && fontFamilyDropdown) {
+                fontFamilyTrigger.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const isHidden = fontFamilyDropdown.classList.contains('hidden');
+                    container.querySelectorAll('#ai-provider-options, #ai-model-options, #font-size-options').forEach(d => d.classList.add('hidden'));
+                    container.querySelectorAll('#ai-provider-arrow, #ai-model-arrow, #font-size-arrow').forEach(a => a.style.transform = '');
+                    if (isHidden) {
+                        fontFamilyDropdown.classList.remove('hidden');
+                        if (fontFamilyArrow) fontFamilyArrow.style.transform = 'rotate(180deg)';
+                    } else {
+                        fontFamilyDropdown.classList.add('hidden');
+                        if (fontFamilyArrow) fontFamilyArrow.style.transform = '';
+                    }
+                });
+
+                fontFamilyDropdown.querySelectorAll('.font-family-option').forEach(option => {
+                    option.addEventListener('click', () => {
+                        const val = String(option.dataset.value || '');
+                        if (!val) return;
+                        const selectedLabel = option.querySelector('span')?.textContent || 'JetBrains Mono';
+                        if (currentFontFamilySpan) currentFontFamilySpan.textContent = selectedLabel;
+                        fontFamilyDropdown.classList.add('hidden');
+                        if (fontFamilyArrow) fontFamilyArrow.style.transform = '';
+                        SettingsManager.set(SETTINGS_PATHS.EDITOR_FONT_FAMILY, val);
+                        fontFamilyDropdown.querySelectorAll('.font-family-option').forEach(opt => {
+                            const isSelected = opt.dataset.value === val;
+                            opt.className = `font-family-option px-3 py-2 flex items-center justify-between cursor-pointer rounded-lg transition-colors ${isSelected ? (isLight ? 'bg-mysql-teal/10 text-mysql-teal font-bold' : 'bg-mysql-teal/20 text-mysql-teal font-bold') : (isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5')}`;
+                            let check = opt.querySelector('.material-symbols-outlined');
+                            if (isSelected) {
+                                if (!check) {
+                                    check = document.createElement('span');
+                                    check.className = 'material-symbols-outlined text-mysql-teal text-sm';
+                                    check.textContent = 'check_circle';
+                                    opt.appendChild(check);
+                                } else {
+                                    check.style.display = 'block';
+                                }
+                            } else if (check) {
+                                check.style.display = 'none';
+                            }
                         });
                     });
                 });
@@ -1492,10 +1614,10 @@ export function Settings() {
 
             document.addEventListener('click', (e) => {
                 if (!container.contains(e.target)) return;
-                const matchesTrigger = e.target.closest('#ai-provider-trigger, #ai-model-trigger, #font-size-trigger');
+                const matchesTrigger = e.target.closest('#ai-provider-trigger, #ai-model-trigger, #font-size-trigger, #font-family-trigger');
                 if (!matchesTrigger) {
-                    container.querySelectorAll('#ai-provider-options, #ai-model-options, #font-size-options').forEach(d => d.classList.add('hidden'));
-                    container.querySelectorAll('#ai-provider-arrow, #ai-model-arrow, #font-size-arrow').forEach(a => a.style.transform = '');
+                    container.querySelectorAll('#ai-provider-options, #ai-model-options, #font-size-options, #font-family-options').forEach(d => d.classList.add('hidden'));
+                    container.querySelectorAll('#ai-provider-arrow, #ai-model-arrow, #font-size-arrow, #font-family-arrow').forEach(a => a.style.transform = '');
                 }
             });
 

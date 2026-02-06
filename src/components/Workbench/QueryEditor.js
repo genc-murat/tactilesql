@@ -42,12 +42,67 @@ let repairPreviewVisible = false;
 const getSortedTabs = () => sortTabsByPinned(tabs);
 const saveState = () => saveTabsState(tabs, activeTabId);
 const PARAM_DEFAULTS_STORAGE_KEY = 'workbench_query_param_defaults';
+const EDITOR_FONT_FAMILY_OPTIONS = Object.freeze({
+    jetbrains: Object.freeze({
+        label: 'JetBrains Mono',
+        stack: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+    }),
+    fira: Object.freeze({
+        label: 'Fira Code',
+        stack: "'Fira Code', 'JetBrains Mono', 'Cascadia Code', 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+    }),
+    source: Object.freeze({
+        label: 'Source Code Pro',
+        stack: "'Source Code Pro', 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+    }),
+    ibm: Object.freeze({
+        label: 'IBM Plex Mono',
+        stack: "'IBM Plex Mono', 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+    }),
+    consolas: Object.freeze({
+        label: 'Consolas',
+        stack: "Consolas, 'Cascadia Code', 'SFMono-Regular', Menlo, Monaco, 'Liberation Mono', 'Courier New', monospace",
+    }),
+});
+const DEFAULT_EDITOR_FONT_FAMILY = 'jetbrains';
+
 const escapeHtml = (value) => String(value)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+
+const clampEditorFontSize = (value) => {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isNaN(parsed)) return 13;
+    return Math.min(24, Math.max(10, parsed));
+};
+
+const getEditorFontSize = () => {
+    const configured = SettingsManager.get(SETTINGS_PATHS.EDITOR_FONT_SIZE);
+    if (configured !== undefined && configured !== null) {
+        return clampEditorFontSize(configured);
+    }
+    return clampEditorFontSize(localStorage.getItem('editorFontSize'));
+};
+
+const getEditorFontFamilyKey = () => {
+    const raw = String(SettingsManager.get(SETTINGS_PATHS.EDITOR_FONT_FAMILY) || '').toLowerCase();
+    if (raw && Object.prototype.hasOwnProperty.call(EDITOR_FONT_FAMILY_OPTIONS, raw)) {
+        return raw;
+    }
+    return DEFAULT_EDITOR_FONT_FAMILY;
+};
+
+const getEditorTypography = () => {
+    const fontSize = getEditorFontSize();
+    const lineHeight = Math.max(16, Math.round(fontSize * 1.6));
+    const charWidth = Math.max(6, Number((fontSize * 0.6).toFixed(2)));
+    const fontFamilyKey = getEditorFontFamilyKey();
+    const fontFamily = EDITOR_FONT_FAMILY_OPTIONS[fontFamilyKey]?.stack || EDITOR_FONT_FAMILY_OPTIONS[DEFAULT_EDITOR_FONT_FAMILY].stack;
+    return { fontSize, lineHeight, charWidth, fontFamily, fontFamilyKey };
+};
 
 export function QueryEditor() {
     let theme = ThemeManager.getCurrentTheme();
@@ -355,11 +410,15 @@ export function QueryEditor() {
         const lines = text.split('\n');
         const currentLineIndex = lines.length - 1;
         const currentLineLength = lines[currentLineIndex].length;
-        const lineNumberOffset = SettingsManager.get(SETTINGS_PATHS.EDITOR_LINE_NUMBERS) ? 80 : 20;
+        const typography = getEditorTypography();
+        const lineNumbersNode = container.querySelector('#line-numbers');
+        const lineNumberOffset = lineNumbersNode
+            ? Math.round(lineNumbersNode.getBoundingClientRect().width + 24)
+            : (SettingsManager.get(SETTINGS_PATHS.EDITOR_LINE_NUMBERS) ? 80 : 20);
 
         // Approximate position
-        const lineHeight = 22;
-        const charWidth = 8.4;
+        const lineHeight = typography.lineHeight;
+        const charWidth = typography.charWidth;
 
         return {
             top: (currentLineIndex + 1) * lineHeight + 40,
@@ -738,6 +797,8 @@ export function QueryEditor() {
         const activeDbType = localStorage.getItem('activeDbType') || 'mysql';
         const isPg = activeDbType === 'postgresql';
         const lineNumbersEnabled = SettingsManager.get(SETTINGS_PATHS.EDITOR_LINE_NUMBERS);
+        const typography = getEditorTypography();
+        const lineNumberFontSize = Math.max(10, typography.fontSize - 2);
 
         container.innerHTML = `
             <div class="border-b ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5'))}">
@@ -909,11 +970,11 @@ export function QueryEditor() {
 
                 </div>
             </div>
-            <div class="flex-1 neu-inset rounded-xl ${isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0f1115]'))} overflow-hidden flex p-4 font-mono text-[14px] leading-relaxed relative focus-within:ring-1 focus-within:ring-mysql-teal/50 transition-all">
-                ${lineNumbersEnabled ? `<div class="w-12 ${(isLight || isDawn) ? 'text-gray-300 border-gray-100' : (isOceanic ? 'text-ocean-text/30 border-ocean-border/30' : 'text-gray-600 border-white/5')} text-right pr-4 border-r select-none text-xs leading-[22px] pt-1 overflow-hidden" id="line-numbers"></div>` : ''}
+            <div class="flex-1 neu-inset rounded-xl ${isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0f1115]'))} overflow-hidden flex p-4 relative focus-within:ring-1 focus-within:ring-mysql-teal/50 transition-all" style="font-size:${typography.fontSize}px;line-height:${typography.lineHeight}px;font-family:${typography.fontFamily};">
+                ${lineNumbersEnabled ? `<div class="w-12 ${(isLight || isDawn) ? 'text-gray-300 border-gray-100' : (isOceanic ? 'text-ocean-text/30 border-ocean-border/30' : 'text-gray-600 border-white/5')} text-right pr-4 border-r select-none pt-1 overflow-hidden" id="line-numbers" style="font-size:${lineNumberFontSize}px;line-height:${typography.lineHeight}px;font-family:${typography.fontFamily};"></div>` : ''}
                 <div class="flex-1 relative ${lineNumbersEnabled ? 'pl-6' : 'pl-0'}">
-                    <pre id="syntax-highlight" class="absolute inset-0 ${lineNumbersEnabled ? 'pl-6' : 'pl-0'} pt-0 font-mono text-[14px] leading-[22px] pointer-events-none overflow-hidden whitespace-pre-wrap break-words" aria-hidden="true"></pre>
-                    <textarea id="query-input" class="relative w-full h-full bg-transparent border-none ${isLight ? 'text-transparent' : (isOceanic ? 'text-transparent' : 'text-transparent')} ${isLight ? 'caret-gray-800' : (isOceanic ? 'caret-white' : 'caret-white')} font-mono text-[14px] leading-[22px] focus:ring-0 resize-none outline-none custom-scrollbar p-0 z-10 placeholder:text-gray-600/50" spellcheck="false" placeholder="Enter your SQL query here... (Ctrl+Space for suggestions)">${activeTab ? activeTab.content : ''}</textarea>
+                    <pre id="syntax-highlight" class="absolute inset-0 ${lineNumbersEnabled ? 'pl-6' : 'pl-0'} pt-0 pointer-events-none overflow-hidden whitespace-pre-wrap break-words" style="font-size:${typography.fontSize}px;line-height:${typography.lineHeight}px;font-family:${typography.fontFamily};" aria-hidden="true"></pre>
+                    <textarea id="query-input" class="relative w-full h-full bg-transparent border-none ${isLight ? 'text-transparent' : (isOceanic ? 'text-transparent' : 'text-transparent')} ${isLight ? 'caret-gray-800' : (isOceanic ? 'caret-white' : 'caret-white')} focus:ring-0 resize-none outline-none custom-scrollbar p-0 z-10 placeholder:text-gray-600/50" style="font-size:${typography.fontSize}px;line-height:${typography.lineHeight}px;font-family:${typography.fontFamily};" spellcheck="false" placeholder="Enter your SQL query here... (Ctrl+Space for suggestions)">${activeTab ? activeTab.content : ''}</textarea>
                 </div>
             </div>
 
@@ -2780,6 +2841,10 @@ export function QueryEditor() {
             return;
         }
         if (changedPath === SETTINGS_PATHS.EDITOR_LINE_NUMBERS) {
+            render();
+            return;
+        }
+        if (changedPath === SETTINGS_PATHS.EDITOR_FONT_SIZE || changedPath === SETTINGS_PATHS.EDITOR_FONT_FAMILY) {
             render();
         }
     };
