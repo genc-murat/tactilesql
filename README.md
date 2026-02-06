@@ -27,6 +27,7 @@ TactileSQL is a modern, desktop-first MySQL workbench built with Tauri 2 and van
 - **Schema Diff** for database or single-table comparison with generated sync SQL.
 - **Data Import/Export Wizard** supporting CSV, SQL, and JSON formats with progress tracking.
 - **Backup & Restore** with scheduled backups, compression, and full/incremental backup modes.
+- **Mock Data Generator** with deterministic preview, async generation jobs, cancellation, and persisted job history.
 - **Real-time Server Monitor** with live metrics for CPU, memory, connections, queries, and InnoDB status.
 - **Lock/Deadlock Root-Cause Analysis**: Live lock graph, blocking chains, deadlock-cycle detection, and automatic mitigation suggestions with blocker-termination shortcuts.
 - **Capacity Planner** charts now sync total/data/index storage, cache hit, and disk I/O series under one tooltip with hover-linked markers.
@@ -177,6 +178,7 @@ npm run contract:check    # fail on newly introduced missing backend commands
 - **Export Tool**: Export databases or tables to CSV, SQL, or JSON formats
 - **Backup Manager**: Schedule automated backups with compression and encryption
 - **Restore Database**: Restore from previous backups with validation
+- **Mock Data Generator**: Preview generated rows, run async generation/dry-run jobs, track progress, cancel running jobs, and review recent job history across restarts
 
 ### Server Monitor
 
@@ -316,6 +318,11 @@ The Rust backend exposes the following commands (used by the UI):
 ### Data Tools
 - `export_table_csv`, `export_table_json`, `export_table_sql` — Export table data
 - `import_csv` — Import CSV rows into a selected table
+- `preview_mock_data` — Generate sample rows without writing to DB
+- `start_mock_data_generation` — Start async mock data generation (supports dry-run)
+- `get_mock_data_generation_status` — Poll status/progress for one generation job
+- `list_mock_data_generation_history` — List recent mock generation jobs (persisted locally)
+- `cancel_mock_data_generation` — Request cancellation for an active generation job
 - `backup_database` — Create SQL backup output (schema + optional data)
 - `restore_database` — Execute SQL backup file against active connection
 
@@ -369,6 +376,7 @@ Common shortcuts (see the in-app help with `F1`):
 ## Data Storage
 **Connection profiles** are stored in the **Tauri app data directory** as `connections.json`.
 - **Backup files** are stored in `<app-data>/backups/` directory.
+- **Feature stores and mock job history** are stored in `<app-data>/storage/local.db` (SQLite, WAL mode).
 - **SSH keys** and credentials are encrypted with AES-256-GCM.
 - **Passwords** are encrypted before saving (AES-256-GCM in Rust).
 

@@ -15,17 +15,179 @@ export function DataTools() {
     container.className = getContainerClass(theme);
 
     // State
-    let activeTab = 'export'; // 'export' | 'import' | 'backup'
+    let activeTab = 'export'; // 'export' | 'import' | 'backup' | 'mock'
     let databases = [];
     let tables = [];
     let selectedDb = '';
     let selectedTable = '';
     let isProcessing = false;
+    let mockSchema = [];
+    let mockSchemaKey = '';
+    let mockPreview = null;
+    let mockGenerationResult = null;
+    let activeMockOperationId = null;
+    let mockJobStatus = null;
+    let mockStatusPollInterval = null;
+    let mockLastFinalizedOpId = null;
+    let mockJobHistory = [];
+    const mockSettings = {
+        rowCount: 100,
+        seed: '',
+        includeNullableColumns: true,
+        dryRun: false,
+        columnRules: {}
+    };
 
     // Dropdown Instances
     let dropdowns = {
         db: null,
         table: null
+    };
+
+    const escapeHtml = (value) => String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    const resetMockOutputs = () => {
+        stopMockStatusPolling();
+        mockPreview = null;
+        mockGenerationResult = null;
+        mockJobStatus = null;
+        activeMockOperationId = null;
+        mockLastFinalizedOpId = null;
+    };
+
+    const resetMockSchema = () => {
+        mockSchema = [];
+        mockSchemaKey = '';
+        mockSettings.columnRules = {};
+        resetMockOutputs();
+    };
+
+    const currentMockSchemaKey = () => {
+        if (!selectedDb || !selectedTable) return '';
+        return `${selectedDb}.${selectedTable}`;
+    };
+
+    const ensurePositiveInt = (value, fallback = 1) => {
+        const parsed = Number.parseInt(String(value), 10);
+        if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+        return parsed;
+    };
+
+    const normalizeSeed = () => {
+        const raw = String(mockSettings.seed || '').trim();
+        if (!raw) return null;
+        const parsed = Number.parseInt(raw, 10);
+        if (!Number.isFinite(parsed) || parsed < 0) return null;
+        return parsed;
+    };
+
+    const HIGH_VOLUME_GUARD_THRESHOLD = 20000;
+    const CRITICAL_TARGET_REGEX = /(prod|production|live|master|critical|primary)/i;
+
+    const isCriticalMockTarget = () => {
+        const target = `${selectedDb || ''}.${selectedTable || ''}`;
+        return CRITICAL_TARGET_REGEX.test(target);
+    };
+
+    const stopMockStatusPolling = () => {
+        if (mockStatusPollInterval) {
+            clearInterval(mockStatusPollInterval);
+            mockStatusPollInterval = null;
+        }
+    };
+
+    const formatMockTime = (value) => {
+        if (!value) return '-';
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) return String(value);
+        return parsed.toLocaleString();
+    };
+
+    const loadMockJobHistory = async () => {
+        try {
+            const history = await invoke('list_mock_data_generation_history', { limit: 30 });
+            mockJobHistory = Array.isArray(history) ? history : [];
+        } catch (error) {
+            console.error('Failed to load mock job history:', error);
+            mockJobHistory = [];
+        } finally {
+            if (activeTab === 'mock') {
+                render();
+            }
+        }
+    };
+
+    const finalizeMockOperation = (status) => {
+        if (!status) return;
+        if (mockLastFinalizedOpId === status.operationId) return;
+        mockLastFinalizedOpId = status.operationId;
+        activeMockOperationId = null;
+        stopMockStatusPolling();
+
+        if (status.status === 'completed') {
+            mockGenerationResult = {
+                insertedRows: status.insertedRows,
+                attemptedRows: status.totalRows,
+                elapsedMs: 0,
+                seed: status.seed,
+                warnings: status.warnings || [],
+                dryRun: !!status.dryRun
+            };
+            const title = status.dryRun ? 'Mock Dry Run Completed' : 'Mock Data Completed';
+            const message = status.dryRun
+                ? `Dry run completed for ${status.totalRows} rows.\nNo data inserted.\nSeed: ${status.seed}`
+                : `Inserted ${status.insertedRows} rows.\nSeed: ${status.seed}`;
+            Dialog.alert(message, title);
+            loadMockJobHistory();
+            return;
+        }
+
+        if (status.status === 'cancelled') {
+            Dialog.alert(
+                'Mock data generation cancelled. Transaction was rolled back.',
+                'Mock Data Cancelled'
+            );
+            loadMockJobHistory();
+            return;
+        }
+
+        if (status.status === 'failed') {
+            Dialog.alert(
+                `Mock data generation failed: ${status.error || 'Unknown error'}`,
+                'Mock Data Error'
+            );
+            loadMockJobHistory();
+        }
+    };
+
+    const pollMockOperationStatus = async (operationId) => {
+        if (!operationId) return;
+        try {
+            const status = await invoke('get_mock_data_generation_status', { operationId });
+            mockJobStatus = status;
+            if (['completed', 'cancelled', 'failed'].includes(status.status)) {
+                finalizeMockOperation(status);
+            }
+            render();
+        } catch (error) {
+            stopMockStatusPolling();
+            activeMockOperationId = null;
+            Dialog.alert(`Failed to fetch mock generation status: ${error}`, 'Mock Data Error');
+            render();
+        }
+    };
+
+    const startMockStatusPolling = (operationId) => {
+        stopMockStatusPolling();
+        pollMockOperationStatus(operationId);
+        mockStatusPollInterval = setInterval(() => {
+            pollMockOperationStatus(operationId);
+        }, 1000);
     };
 
     // Load databases
@@ -50,6 +212,38 @@ export function DataTools() {
         } catch (error) {
             console.error('Failed to load tables:', error);
             tables = [];
+            render();
+        }
+    };
+
+    const loadMockSchema = async () => {
+        const nextKey = currentMockSchemaKey();
+        if (!nextKey) {
+            resetMockSchema();
+            render();
+            return;
+        }
+
+        try {
+            const schema = await invoke('get_table_schema', {
+                database: selectedDb,
+                table: selectedTable
+            });
+            mockSchema = Array.isArray(schema) ? schema : [];
+            mockSchemaKey = nextKey;
+
+            const nextRules = {};
+            mockSchema.forEach((column) => {
+                const existing = mockSettings.columnRules[column.name];
+                nextRules[column.name] = existing || 'auto';
+            });
+            mockSettings.columnRules = nextRules;
+            resetMockOutputs();
+            render();
+        } catch (error) {
+            console.error('Failed to load mock schema:', error);
+            resetMockSchema();
+            Dialog.alert(`Failed to load table schema: ${error}`, 'Mock Data');
             render();
         }
     };
@@ -252,6 +446,364 @@ export function DataTools() {
         }
     };
 
+    const buildMockColumnRulesPayload = () => {
+        const payload = {};
+        Object.entries(mockSettings.columnRules).forEach(([column, generator]) => {
+            payload[column] = { generator: generator || 'auto' };
+        });
+        return payload;
+    };
+
+    const ensureMockReady = async () => {
+        if (!selectedDb || !selectedTable) {
+            Dialog.alert('Please select a database and table first.', 'Selection Required');
+            return false;
+        }
+        if (currentMockSchemaKey() !== mockSchemaKey || mockSchema.length === 0) {
+            await loadMockSchema();
+        }
+        if (mockSchema.length === 0) {
+            Dialog.alert('Table schema is empty. Select another table.', 'Mock Data');
+            return false;
+        }
+        return true;
+    };
+
+    const handleMockPreview = async () => {
+        if (activeMockOperationId && mockJobStatus && ['queued', 'running'].includes(mockJobStatus.status)) {
+            Dialog.alert('Please wait for the active mock generation to finish or cancel it first.', 'Mock Data');
+            return;
+        }
+
+        const ready = await ensureMockReady();
+        if (!ready) return;
+
+        const rowCount = ensurePositiveInt(mockSettings.rowCount, 20);
+        const seed = normalizeSeed();
+
+        isProcessing = true;
+        render();
+
+        try {
+            const result = await invoke('preview_mock_data', {
+                database: selectedDb,
+                table: selectedTable,
+                rowCount,
+                seed,
+                includeNullableColumns: !!mockSettings.includeNullableColumns,
+                columnRules: buildMockColumnRulesPayload()
+            });
+            mockPreview = result;
+            mockGenerationResult = null;
+        } catch (error) {
+            Dialog.alert(`Mock preview failed: ${error}`, 'Error');
+        } finally {
+            isProcessing = false;
+            render();
+        }
+    };
+
+    const handleMockGenerate = async () => {
+        if (activeMockOperationId && mockJobStatus && ['queued', 'running'].includes(mockJobStatus.status)) {
+            Dialog.alert('A mock generation operation is already running.', 'Mock Data');
+            return;
+        }
+
+        const ready = await ensureMockReady();
+        if (!ready) return;
+
+        const rowCount = ensurePositiveInt(mockSettings.rowCount, 100);
+        const seed = normalizeSeed();
+        const dryRun = !!mockSettings.dryRun;
+
+        if (dryRun) {
+            const confirmedDryRun = await Dialog.confirm(
+                `Run dry run for ${rowCount} rows on ${selectedDb}.${selectedTable}? No data will be inserted.`,
+                'Confirm Dry Run'
+            );
+            if (!confirmedDryRun) return;
+        } else {
+            const confirmed = await Dialog.confirm(
+                `Generate and insert ${rowCount} mock rows into ${selectedDb}.${selectedTable}?`,
+                'Confirm Mock Data Generation'
+            );
+            if (!confirmed) return;
+
+            if (rowCount >= HIGH_VOLUME_GUARD_THRESHOLD) {
+                const confirmedHighVolume = await Dialog.confirm(
+                    `High-volume operation detected (${rowCount} rows).\nDo you want to continue?`,
+                    'High Volume Safety Check'
+                );
+                if (!confirmedHighVolume) return;
+            }
+
+            if (isCriticalMockTarget()) {
+                const criticalConfirmed = await Dialog.confirm(
+                    `Target looks like a production-critical schema/table (${selectedDb}.${selectedTable}).\nConfirm to continue.`,
+                    'Critical Target Warning'
+                );
+                if (!criticalConfirmed) return;
+            }
+        }
+
+        isProcessing = true;
+        render();
+
+        try {
+            const status = await invoke('start_mock_data_generation', {
+                database: selectedDb,
+                table: selectedTable,
+                rowCount,
+                seed,
+                includeNullableColumns: !!mockSettings.includeNullableColumns,
+                columnRules: buildMockColumnRulesPayload(),
+                dryRun
+            });
+
+            activeMockOperationId = status.operationId;
+            mockJobStatus = status;
+            mockLastFinalizedOpId = null;
+            mockPreview = null;
+            mockGenerationResult = null;
+            startMockStatusPolling(status.operationId);
+            loadMockJobHistory();
+        } catch (error) {
+            Dialog.alert(`Mock data generation failed: ${error}`, 'Error');
+        } finally {
+            isProcessing = false;
+            render();
+        }
+    };
+
+    const handleMockCancel = async () => {
+        if (!activeMockOperationId) return;
+        const confirmed = await Dialog.confirm(
+            'Cancel the active mock generation operation?',
+            'Cancel Mock Generation'
+        );
+        if (!confirmed) return;
+
+        try {
+            const status = await invoke('cancel_mock_data_generation', {
+                operationId: activeMockOperationId
+            });
+            mockJobStatus = status;
+            loadMockJobHistory();
+            render();
+        } catch (error) {
+            Dialog.alert(`Failed to cancel operation: ${error}`, 'Mock Data');
+        }
+    };
+
+    const renderMockRules = () => {
+        const isLight = theme === 'light';
+        const isDawn = theme === 'dawn';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const generators = [
+            { value: 'auto', label: 'Auto' },
+            { value: 'text', label: 'Text' },
+            { value: 'integer', label: 'Integer' },
+            { value: 'decimal', label: 'Decimal' },
+            { value: 'boolean', label: 'Boolean' },
+            { value: 'date', label: 'Date' },
+            { value: 'datetime', label: 'DateTime' }
+        ];
+
+        if (mockSchema.length === 0) {
+            return `
+                <div class="rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50 text-gray-500' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed] text-[#9893a5]' : (isOceanic ? 'border-ocean-border bg-ocean-bg text-ocean-text/70' : 'border-white/10 bg-white/5 text-gray-400'))} p-4 text-sm">
+                    Select a table to load column rules.
+                </div>
+            `;
+        }
+
+        const rows = mockSchema.map((column, idx) => {
+            const selected = mockSettings.columnRules[column.name] || 'auto';
+            const options = generators
+                .map((g) => `<option value="${g.value}" ${selected === g.value ? 'selected' : ''}>${g.label}</option>`)
+                .join('');
+            return `
+                <tr class="${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')} border-b last:border-b-0">
+                    <td class="py-2 pr-3 text-xs font-semibold ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-white')}">${escapeHtml(column.name)}</td>
+                    <td class="py-2 pr-3 text-[11px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">${escapeHtml(column.column_type || column.data_type || '-')}</td>
+                    <td class="py-2 pr-3 text-[10px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">${column.is_nullable ? 'NULLABLE' : 'NOT NULL'}</td>
+                    <td class="py-2">
+                        <select data-column-index="${idx}" class="mock-generator-select w-full px-2 py-1 rounded border text-[11px] ${isLight ? 'bg-white border-gray-200 text-gray-700' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text' : 'bg-black/20 border-white/10 text-gray-200'))}">
+                            ${options}
+                        </select>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        return `
+            <div class="rounded-lg border ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border' : 'border-white/10'))} overflow-hidden">
+                <div class="px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] ${isLight ? 'bg-gray-50 text-gray-500' : (isDawn ? 'bg-[#faf4ed] text-[#9893a5]' : (isOceanic ? 'bg-ocean-bg text-ocean-text/70' : 'bg-white/5 text-gray-400'))}">
+                    Column Generators
+                </div>
+                <div class="max-h-[260px] overflow-auto custom-scrollbar p-3">
+                    <table class="w-full">
+                        <thead>
+                            <tr class="text-left text-[10px] uppercase tracking-widest ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500')}">
+                                <th class="pb-2 pr-3">Column</th>
+                                <th class="pb-2 pr-3">Type</th>
+                                <th class="pb-2 pr-3">Null</th>
+                                <th class="pb-2">Generator</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    };
+
+    const renderMockPreview = () => {
+        const isLight = theme === 'light';
+        const isDawn = theme === 'dawn';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+
+        if (!mockPreview || !Array.isArray(mockPreview.rows) || mockPreview.rows.length === 0) {
+            return `
+                <div class="rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border bg-ocean-bg' : 'border-white/10 bg-white/5'))} p-4 text-sm ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">
+                    Run <b>Preview</b> to see generated sample rows.
+                </div>
+            `;
+        }
+
+        const headers = (mockPreview.columns || []).map((col) => `<th class="px-2 py-2 text-left text-[10px] uppercase tracking-widest">${escapeHtml(col)}</th>`).join('');
+        const rows = mockPreview.rows.map((row) => {
+            const cells = row.map((cell) => {
+                if (cell === null || typeof cell === 'undefined') {
+                    return `<td class="px-2 py-1.5 text-[11px] italic ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500')}">NULL</td>`;
+                }
+                return `<td class="px-2 py-1.5 text-[11px] ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-gray-200')}">${escapeHtml(cell)}</td>`;
+            }).join('');
+            return `<tr class="${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')} border-b last:border-b-0">${cells}</tr>`;
+        }).join('');
+
+        const warningText = (mockPreview.warnings || []).length > 0
+            ? `<div class="text-[10px] mt-2 ${isLight ? 'text-amber-600' : (isDawn ? 'text-[#ea9d34]' : 'text-amber-400')}">${escapeHtml(mockPreview.warnings.join(' | '))}</div>`
+            : '';
+
+        return `
+            <div class="rounded-lg border ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border' : 'border-white/10'))} overflow-hidden">
+                <div class="px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] ${isLight ? 'bg-gray-50 text-gray-500' : (isDawn ? 'bg-[#faf4ed] text-[#9893a5]' : (isOceanic ? 'bg-ocean-bg text-ocean-text/70' : 'bg-white/5 text-gray-400'))}">
+                    Preview Rows (${mockPreview.rows.length}) | Seed ${mockPreview.seed}
+                </div>
+                <div class="max-h-[280px] overflow-auto custom-scrollbar">
+                    <table class="w-full">
+                        <thead class="${isLight ? 'bg-gray-50 text-gray-500' : (isDawn ? 'bg-[#faf4ed] text-[#9893a5]' : 'bg-white/5 text-gray-400')}">
+                            <tr>${headers}</tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>
+            </div>
+            ${warningText}
+        `;
+    };
+
+    const renderMockJobStatus = () => {
+        if (!mockJobStatus) return '';
+        const isLight = theme === 'light';
+        const isDawn = theme === 'dawn';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const progress = Math.max(0, Math.min(100, Number(mockJobStatus.progressPct || 0)));
+        const status = String(mockJobStatus.status || '').toLowerCase();
+        const isRunning = status === 'queued' || status === 'running';
+        const statusColor = status === 'completed'
+            ? (isDawn ? 'text-[#286983]' : 'text-emerald-500')
+            : status === 'failed'
+                ? (isDawn ? 'text-[#b4637a]' : 'text-red-500')
+                : status === 'cancelled'
+                    ? (isDawn ? 'text-[#ea9d34]' : 'text-amber-500')
+                    : (isDawn ? 'text-[#31748f]' : 'text-mysql-teal');
+
+        const warnings = (mockJobStatus.warnings || [])
+            .map((w) => `<li>${escapeHtml(w)}</li>`)
+            .join('');
+
+        return `
+            <div class="rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border bg-ocean-bg' : 'border-white/10 bg-white/5'))} p-3 space-y-2">
+                <div class="flex items-center justify-between">
+                    <div class="text-[10px] font-black uppercase tracking-[0.18em] ${statusColor}">Operation: ${escapeHtml(status)}</div>
+                    ${isRunning ? `
+                        <button id="mock-cancel-btn" class="px-2 py-1 rounded text-[10px] font-bold ${isDawn ? 'bg-[#b4637a] text-white' : 'bg-red-500 text-white'} hover:brightness-110 transition-all">
+                            Cancel
+                        </button>
+                    ` : ''}
+                </div>
+                <div class="w-full h-2 rounded ${isLight ? 'bg-gray-200' : (isDawn ? 'bg-[#f2e9e1]' : 'bg-white/10')} overflow-hidden">
+                    <div class="h-full ${isDawn ? 'bg-[#31748f]' : 'bg-mysql-teal'} transition-all duration-300" style="width:${progress}%"></div>
+                </div>
+                <div class="text-xs ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">
+                    ${mockJobStatus.insertedRows || 0} / ${mockJobStatus.totalRows || 0} rows
+                    ${mockJobStatus.dryRun ? '(dry run)' : ''}
+                </div>
+                ${mockJobStatus.error ? `<div class="text-[11px] ${isLight ? 'text-red-600' : (isDawn ? 'text-[#b4637a]' : 'text-red-400')}">${escapeHtml(mockJobStatus.error)}</div>` : ''}
+                ${warnings ? `<ul class="text-[11px] ${isLight ? 'text-amber-600' : (isDawn ? 'text-[#ea9d34]' : 'text-amber-400')} list-disc pl-4">${warnings}</ul>` : ''}
+            </div>
+        `;
+    };
+
+    const renderMockJobHistory = () => {
+        const isLight = theme === 'light';
+        const isDawn = theme === 'dawn';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+
+        if (!Array.isArray(mockJobHistory) || mockJobHistory.length === 0) {
+            return `
+                <div class="rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border bg-ocean-bg' : 'border-white/10 bg-white/5'))} p-3 text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">
+                    No mock job history yet.
+                </div>
+            `;
+        }
+
+        const rows = mockJobHistory.slice(0, 12).map((job) => {
+            const status = String(job.status || '').toLowerCase();
+            const statusClass = status === 'completed'
+                ? (isDawn ? 'text-[#286983]' : 'text-emerald-500')
+                : status === 'failed'
+                    ? (isDawn ? 'text-[#b4637a]' : 'text-red-500')
+                    : status === 'cancelled'
+                        ? (isDawn ? 'text-[#ea9d34]' : 'text-amber-500')
+                        : (isDawn ? 'text-[#31748f]' : 'text-mysql-teal');
+            const rowsLabel = `${job.insertedRows || 0}/${job.totalRows || 0}`;
+            const target = `${job.database || '-'} . ${job.table || '-'}`;
+            return `
+                <tr class="${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')} border-b last:border-b-0">
+                    <td class="px-2 py-2 text-[11px] font-semibold ${statusClass}">${escapeHtml(status)}</td>
+                    <td class="px-2 py-2 text-[11px] ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-gray-200')}">${escapeHtml(target)}</td>
+                    <td class="px-2 py-2 text-[11px] ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-gray-200')}">${escapeHtml(rowsLabel)}${job.dryRun ? ' (dry)' : ''}</td>
+                    <td class="px-2 py-2 text-[10px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">${escapeHtml(formatMockTime(job.startedAt))}</td>
+                </tr>
+            `;
+        }).join('');
+
+        return `
+            <div class="rounded-lg border ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border' : 'border-white/10'))} overflow-hidden">
+                <div class="px-3 py-2 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.18em] ${isLight ? 'bg-gray-50 text-gray-500' : (isDawn ? 'bg-[#faf4ed] text-[#9893a5]' : (isOceanic ? 'bg-ocean-bg text-ocean-text/70' : 'bg-white/5 text-gray-400'))}">
+                    <span>Recent Jobs</span>
+                    <button id="mock-history-refresh-btn" class="px-2 py-1 rounded text-[10px] font-bold ${isDawn ? 'bg-[#31748f] text-white' : 'bg-mysql-teal text-white'} hover:brightness-110 transition-all">Refresh</button>
+                </div>
+                <div class="max-h-[220px] overflow-auto custom-scrollbar">
+                    <table class="w-full">
+                        <thead class="${isLight ? 'bg-gray-50 text-gray-500' : (isDawn ? 'bg-[#faf4ed] text-[#9893a5]' : 'bg-white/5 text-gray-400')}">
+                            <tr>
+                                <th class="px-2 py-2 text-left text-[10px] uppercase tracking-widest">Status</th>
+                                <th class="px-2 py-2 text-left text-[10px] uppercase tracking-widest">Target</th>
+                                <th class="px-2 py-2 text-left text-[10px] uppercase tracking-widest">Rows</th>
+                                <th class="px-2 py-2 text-left text-[10px] uppercase tracking-widest">Started</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    };
+
     const render = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
@@ -267,7 +819,7 @@ export function DataTools() {
                         </div>
                         <div>
                             <h1 class="text-xl font-bold ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')}">Data Tools</h1>
-                            <p class="text-sm ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Import, Export & Backup</p>
+                            <p class="text-sm ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Import, Export, Backup & Mock Data</p>
                         </div>
                     </div>
                 </div>
@@ -285,6 +837,10 @@ export function DataTools() {
                     <button id="tab-backup" class="px-6 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'backup' ? (isDawn ? 'bg-[#ea9d34] text-[#fffaf3] shadow-lg' : 'bg-mysql-teal text-white shadow-lg') : (isLight ? 'text-gray-600 hover:text-gray-900' : (isDawn ? 'text-[#575279] hover:text-[#286983]' : 'text-gray-400 hover:text-white'))}">
                         <span class="material-symbols-outlined text-base mr-1 align-middle">backup</span>
                         Backup & Restore
+                    </button>
+                    <button id="tab-mock" class="px-6 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'mock' ? (isDawn ? 'bg-[#ea9d34] text-[#fffaf3] shadow-lg' : 'bg-mysql-teal text-white shadow-lg') : (isLight ? 'text-gray-600 hover:text-gray-900' : (isDawn ? 'text-[#575279] hover:text-[#286983]' : 'text-gray-400 hover:text-white'))}">
+                        <span class="material-symbols-outlined text-base mr-1 align-middle">science</span>
+                        Mock Data
                     </button>
                 </div>
 
@@ -323,6 +879,7 @@ export function DataTools() {
                 onSelect: (val) => {
                     selectedDb = val;
                     selectedTable = '';
+                    resetMockSchema();
                     loadTables(selectedDb);
                 }
             });
@@ -341,9 +898,16 @@ export function DataTools() {
                     items: tables.map(t => ({ value: t, label: t, icon: 'table' })),
                     value: selectedTable,
                     placeholder: 'Select table...',
-                    onSelect: (val) => {
+                    onSelect: async (val) => {
                         selectedTable = val;
+                        resetMockOutputs();
+                        mockSchema = [];
+                        mockSchemaKey = '';
                         render();
+                        if (activeTab === 'mock') {
+                            loadMockJobHistory();
+                            await loadMockSchema();
+                        }
                     }
                 });
                 tableContainer.appendChild(dropdowns.table.getElement());
@@ -469,6 +1033,72 @@ export function DataTools() {
             `;
         }
 
+        if (activeTab === 'mock') {
+            const seedValue = escapeHtml(mockSettings.seed || '');
+            const rowCountValue = ensurePositiveInt(mockSettings.rowCount, 100);
+            const summary = mockGenerationResult
+                ? `
+                    <div class="rounded-lg border ${isLight ? 'border-green-200 bg-green-50' : (isDawn ? 'border-[#9ccfd8] bg-[#eff8f8]' : (isOceanic ? 'border-emerald-400/40 bg-emerald-400/10' : 'border-emerald-400/30 bg-emerald-500/10'))} p-3">
+                        <div class="text-[10px] font-black uppercase tracking-widest ${isLight ? 'text-green-700' : (isDawn ? 'text-[#286983]' : 'text-emerald-300')}">Last Run</div>
+                        <div class="mt-1 text-sm ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-gray-200')}">
+                            Inserted <b>${mockGenerationResult.insertedRows}</b> / ${mockGenerationResult.attemptedRows} rows in <b>${mockGenerationResult.elapsedMs} ms</b>
+                        </div>
+                        <div class="mt-1 text-[11px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">Seed: ${mockGenerationResult.seed}</div>
+                    </div>
+                `
+                : '';
+
+            return `
+                <div class="space-y-5">
+                    <div>
+                        <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} mb-2">Mock Data Generator</h3>
+                        <p class="text-sm ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">
+                            Generate deterministic sample rows for the selected table using optional seed and column-level generator rules.
+                        </p>
+                    </div>
+
+                    <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                        <div class="space-y-3">
+                            <div class="rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border bg-ocean-bg' : 'border-white/10 bg-white/5'))} p-3 space-y-3">
+                                <div>
+                                    <label class="block text-[10px] font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')} mb-1">Row Count</label>
+                                    <input id="mock-row-count" type="number" min="1" max="100000" value="${rowCountValue}" class="w-full tactile-input text-sm py-1.5" />
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')} mb-1">Seed (Optional)</label>
+                                    <input id="mock-seed" type="number" min="0" value="${seedValue}" class="w-full tactile-input text-sm py-1.5" placeholder="e.g. 42" />
+                                </div>
+                                <label class="flex items-center gap-2 text-xs ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">
+                                    <input id="mock-include-nullable" type="checkbox" class="w-4 h-4" ${mockSettings.includeNullableColumns ? 'checked' : ''} />
+                                    Include nullable columns
+                                </label>
+                                <label class="flex items-center gap-2 text-xs ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">
+                                    <input id="mock-dry-run" type="checkbox" class="w-4 h-4" ${mockSettings.dryRun ? 'checked' : ''} />
+                                    Dry run (preview insert only, no writes)
+                                </label>
+                                <div class="grid grid-cols-2 gap-2 pt-1">
+                                    <button id="mock-preview-btn" class="px-3 py-2 rounded-lg text-xs font-bold ${isDawn ? 'bg-[#31748f] text-white hover:brightness-110' : 'bg-mysql-teal text-white hover:brightness-110'} transition-all">
+                                        Preview
+                                    </button>
+                                    <button id="mock-generate-btn" class="px-3 py-2 rounded-lg text-xs font-bold ${isDawn ? 'bg-[#ea9d34] text-[#fffaf3] hover:brightness-110' : 'bg-emerald-500 text-white hover:brightness-110'} transition-all">
+                                        ${mockSettings.dryRun ? 'Run Dry Run' : 'Generate'}
+                                    </button>
+                                </div>
+                            </div>
+                            ${summary}
+                        </div>
+
+                        <div class="xl:col-span-2 space-y-4">
+                            ${renderMockJobStatus()}
+                            ${renderMockJobHistory()}
+                            ${renderMockRules()}
+                            ${renderMockPreview()}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
         if (activeTab === 'backup') {
             return `
                 <div class="space-y-4">
@@ -551,6 +1181,14 @@ export function DataTools() {
             activeTab = 'backup';
             render();
         });
+        container.querySelector('#tab-mock')?.addEventListener('click', async () => {
+            activeTab = 'mock';
+            render();
+            loadMockJobHistory();
+            if (selectedDb && selectedTable && currentMockSchemaKey() !== mockSchemaKey) {
+                await loadMockSchema();
+            }
+        });
 
         // Backup/Restore buttons
         container.querySelector('#export-csv')?.addEventListener('click', handleExportCSV);
@@ -564,6 +1202,34 @@ export function DataTools() {
         // Backup/Restore buttons
         container.querySelector('#btn-backup')?.addEventListener('click', handleBackup);
         container.querySelector('#btn-restore')?.addEventListener('click', handleRestore);
+
+        // Mock buttons
+        container.querySelector('#mock-preview-btn')?.addEventListener('click', handleMockPreview);
+        container.querySelector('#mock-generate-btn')?.addEventListener('click', handleMockGenerate);
+        container.querySelector('#mock-row-count')?.addEventListener('change', (e) => {
+            mockSettings.rowCount = ensurePositiveInt(e.target.value, 100);
+            e.target.value = String(mockSettings.rowCount);
+        });
+        container.querySelector('#mock-seed')?.addEventListener('change', (e) => {
+            mockSettings.seed = e.target.value;
+        });
+        container.querySelector('#mock-include-nullable')?.addEventListener('change', (e) => {
+            mockSettings.includeNullableColumns = !!e.target.checked;
+        });
+        container.querySelector('#mock-dry-run')?.addEventListener('change', (e) => {
+            mockSettings.dryRun = !!e.target.checked;
+            render();
+        });
+        container.querySelector('#mock-cancel-btn')?.addEventListener('click', handleMockCancel);
+        container.querySelector('#mock-history-refresh-btn')?.addEventListener('click', loadMockJobHistory);
+        container.querySelectorAll('.mock-generator-select').forEach((select) => {
+            select.addEventListener('change', (e) => {
+                const columnIndex = Number.parseInt(e.target.dataset.columnIndex || '-1', 10);
+                const columnName = mockSchema[columnIndex]?.name;
+                if (!columnName) return;
+                mockSettings.columnRules[columnName] = e.target.value || 'auto';
+            });
+        });
     };
 
     // Theme handling
@@ -576,6 +1242,7 @@ export function DataTools() {
 
     container.onUnmount = () => {
         window.removeEventListener('themechange', onThemeChange);
+        stopMockStatusPolling();
     };
 
     // Initialize - render first, then load data

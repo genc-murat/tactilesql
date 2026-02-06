@@ -57,6 +57,7 @@ mod db_types;
 pub mod dependency_engine;
 pub mod integration;
 mod mysql;
+pub mod mock_data;
 mod postgres;
 pub mod quality_analyzer;
 pub mod query_story;
@@ -206,6 +207,11 @@ pub fn run() {
             db::export_table_json,
             db::export_table_sql,
             db::import_csv,
+            db::preview_mock_data,
+            db::start_mock_data_generation,
+            db::get_mock_data_generation_status,
+            db::list_mock_data_generation_history,
+            db::cancel_mock_data_generation,
             db::backup_database,
             db::restore_database,
             // Query Execution
