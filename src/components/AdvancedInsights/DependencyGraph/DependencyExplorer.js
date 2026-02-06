@@ -411,11 +411,14 @@ export function DependencyExplorer() {
         // Sidebar (Impact Details) - Hidden by default
         const sidebar = document.createElement('div');
         const sidebarBg = isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (theme === 'oceanic' ? 'bg-[#3B4252] border-[#4C566A]' : (theme === 'ember' ? 'bg-[#1d141c] border-[#2c1c27]' : (theme === 'aurora' ? 'bg-[#0f1a1d] border-[#1b2e33]' : 'bg-[#1a202c] border-white/10'))));
-        sidebar.className = `w-[300px] border-l transform transition-transform duration-300 absolute right-0 top-0 bottom-0 z-20 translate-x-full ${sidebarBg}`;
+        sidebar.className = `h-full border-l transition-all duration-300 overflow-hidden shrink-0 flex flex-col ${sidebarBg}`;
+        sidebar.style.width = '0px';
+        sidebar.style.minWidth = '0px';
 
         const renderSidebar = (data) => {
             if (!data) {
-                sidebar.classList.add('translate-x-full');
+                sidebar.style.width = '0px';
+                sidebar.style.minWidth = '0px';
                 return;
             }
 
@@ -482,7 +485,8 @@ export function DependencyExplorer() {
                 `;
             })();
 
-            sidebar.classList.remove('translate-x-full');
+            sidebar.style.width = '300px';
+            sidebar.style.minWidth = '300px';
             sidebar.innerHTML = `
                 <div class="h-full flex flex-col">
                     <div class="p-4 border-b ${isLight ? 'border-gray-100' : (theme === 'dawn' ? 'border-[#f2e9e1]' : (theme === 'oceanic' ? 'border-[#4C566A]' : (theme === 'ember' ? 'border-[#2c1c27]' : (theme === 'aurora' ? 'border-[#1b2e33]' : 'border-white/5'))))}">
@@ -769,7 +773,8 @@ export function DependencyExplorer() {
             const closeBtn = sidebar.querySelector('#close-sidebar');
             if (closeBtn) {
                 closeBtn.onclick = () => {
-                    sidebar.classList.add('translate-x-full');
+                    sidebar.style.width = '0px';
+                    sidebar.style.minWidth = '0px';
                 };
             }
         };
@@ -837,9 +842,19 @@ export function DependencyExplorer() {
                 viewer.updateSearch(searchTerm);
             }
 
-            content.appendChild(searchContainer);
-            content.appendChild(viewer);
+            // Graph Wrapper for flex flow
+            const graphWrapper = document.createElement('div');
+            graphWrapper.className = 'flex-1 relative overflow-hidden h-full';
+            graphWrapper.appendChild(searchContainer);
+            graphWrapper.appendChild(viewer);
+
+            content.appendChild(graphWrapper);
             content.appendChild(sidebar);
+
+            // Resize graph when sidebar transition ends
+            sidebar.ontransitionend = () => {
+                if (viewer.onAttach) viewer.onAttach();
+            };
 
             if (viewerToReuse && typeof viewer.onAttach === 'function') {
                 viewer.onAttach();
