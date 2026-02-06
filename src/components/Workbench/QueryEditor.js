@@ -838,11 +838,15 @@ export function QueryEditor() {
                             </button>
                             
                             <!-- Dropdown -->
-                            <div class="menu-dropdown absolute right-0 top-full mt-1 w-36 hidden z-[500] animate-in fade-in slide-in-from-top-1 duration-200">
+                            <div class="menu-dropdown absolute right-0 top-full mt-1 w-44 hidden z-[500] animate-in fade-in slide-in-from-top-1 duration-200">
                                 <div class="p-0.5 rounded border ${isLight ? 'bg-white border-gray-200 shadow-lg' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-lg' : (isOceanic ? 'bg-ocean-panel border-ocean-border shadow-xl' : 'bg-[#1a1d23] border-white/10 shadow-xl'))} backdrop-blur-xl">
+                                    <button id="execution-plan-btn" class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors ${isLight ? 'text-gray-700 hover:bg-gray-100' : 'text-gray-300 hover:bg-white/10'}">
+                                        <span class="material-symbols-outlined text-[14px] text-cyan-400">data_object</span>
+                                        <span class="text-[10px] font-bold">Execution Plan (Raw)</span>
+                                    </button>
                                     <button id="explain-btn" class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors ${isLight ? 'text-gray-700 hover:bg-gray-100' : 'text-gray-300 hover:bg-white/10'}">
                                         <span class="material-symbols-outlined text-[14px] text-blue-400">analytics</span>
-                                        <span class="text-[10px] font-bold">Execution Plan</span>
+                                        <span class="text-[10px] font-bold">Visual Explain</span>
                                     </button>
                                     <button id="analyze-btn" class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors ${isLight ? 'text-gray-700 hover:bg-gray-100' : 'text-gray-300 hover:bg-white/10'}">
                                         <span class="material-symbols-outlined text-[14px] text-amber-400">speed</span>
@@ -1871,6 +1875,13 @@ export function QueryEditor() {
 
         }
 
+        const getAnalysisQuery = () => {
+            const textarea = container.querySelector('#query-input');
+            if (!textarea) return '';
+            const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
+            return (selectedText.trim() ? selectedText : textarea.value).trim().replace(/;\s*$/, '');
+        };
+
         // AI Optimization Logic
         const aiOptimizeBtn = container.querySelector('#ai-optimize-btn');
         if (aiOptimizeBtn) {
@@ -1883,20 +1894,54 @@ export function QueryEditor() {
             aiExplainBtn.addEventListener('click', handleAiExplain);
         }
 
-        // Explain Logic (Standard Explain)
+        // Execution Plan Logic (Raw backend plan text)
+        const executionPlanBtn = container.querySelector('#execution-plan-btn');
+        if (executionPlanBtn) {
+            let isLoadingExecutionPlan = false;
+            executionPlanBtn.addEventListener('click', async () => {
+                if (isLoadingExecutionPlan) return;
+
+                const queryToRun = getAnalysisQuery();
+                if (!queryToRun) {
+                    Dialog.alert('Please enter a query to analyze.', 'Info');
+                    return;
+                }
+
+                const originalHTML = executionPlanBtn.innerHTML;
+                isLoadingExecutionPlan = true;
+
+                try {
+                    executionPlanBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span><span class="text-[10px] font-bold">Loading...</span>';
+                    executionPlanBtn.classList.add('opacity-70');
+
+                    const plan = await invoke('get_execution_plan', { query: queryToRun });
+                    const planText = typeof plan === 'string' ? plan : JSON.stringify(plan, null, 2);
+                    Dialog.alert(
+                        `<pre class="max-h-96 overflow-auto whitespace-pre-wrap text-left text-[11px] leading-relaxed">${escapeHtml(planText)}</pre>`,
+                        'Execution Plan'
+                    );
+                } catch (error) {
+                    Dialog.alert(`Execution plan failed: ${String(error).replace(/\n/g, '<br>')}`, 'Query Analysis Error');
+                } finally {
+                    executionPlanBtn.innerHTML = originalHTML;
+                    executionPlanBtn.classList.remove('opacity-70');
+                    isLoadingExecutionPlan = false;
+                }
+            });
+        }
+
+        // Explain Logic (Visual Explain with EXPLAIN query execution)
         const explainBtn = container.querySelector('#explain-btn');
         if (explainBtn) {
             let isExplaining = false;
-            explainBtn.addEventListener('click', async (e) => {
+            explainBtn.addEventListener('click', async () => {
                 if (isExplaining) return; // Prevent double-click
 
                 isExplaining = true;
 
-                const textarea = container.querySelector('#query-input');
-                const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
-                const queryToRun = (selectedText.trim() ? selectedText : textarea.value).trim().replace(/;\s*$/, '');
+                const queryToRun = getAnalysisQuery();
 
-                if (!queryToRun.trim()) {
+                if (!queryToRun) {
                     isExplaining = false;
                     Dialog.alert('Please enter a query to explain.', 'Info');
                     return;

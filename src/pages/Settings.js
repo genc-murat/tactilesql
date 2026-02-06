@@ -433,12 +433,29 @@ export function Settings() {
                         <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
                             <div>
                                 <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Developer Tools</h3>
-                                <p class="text-xs text-gray-500 mt-1">Open browser DevTools for debugging</p>
+                                <p class="text-xs text-gray-500 mt-1">Open/close browser DevTools for debugging</p>
                             </div>
-                            <button id="open-devtools-btn" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-rose-500 to-rose-600 text-white text-sm font-medium hover:from-rose-600 hover:to-rose-700 transition-all shadow-lg shadow-rose-500/20">
-                                <span class="material-symbols-outlined text-lg">bug_report</span>
-                                Open DevTools
-                            </button>
+                            <div class="flex items-center gap-3">
+                                <span id="devtools-status" class="px-2 py-1 rounded-md border text-[10px] font-bold uppercase tracking-wider text-amber-500 bg-amber-500/10 border-amber-500/20">Unknown</span>
+                                <button id="toggle-devtools-btn" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-rose-500 to-rose-600 text-white text-sm font-medium hover:from-rose-600 hover:to-rose-700 transition-all shadow-lg shadow-rose-500/20">
+                                    <span class="material-symbols-outlined text-lg">bug_report</span>
+                                    Open DevTools
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                            <div>
+                                <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Runtime Connection</h3>
+                                <p id="runtime-connection-name" class="text-xs text-gray-500 mt-1">Checking active profile...</p>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span id="runtime-db-type" class="px-2 py-1 rounded-md border text-[10px] font-bold uppercase tracking-wider text-amber-500 bg-amber-500/10 border-amber-500/20">Checking...</span>
+                                <button id="disconnect-btn" class="flex items-center gap-2 px-4 py-2 rounded-lg ${isLight ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-white/10 text-gray-300 hover:bg-white/20'} text-sm font-medium transition-all">
+                                    <span class="material-symbols-outlined text-lg">link_off</span>
+                                    Disconnect
+                                </button>
+                            </div>
                         </div>
 
                         <div class="flex items-center justify-between py-4">
@@ -676,14 +693,128 @@ export function Settings() {
             setToggleState(profilerExplainToggle, SettingsManager.get(SETTINGS_PATHS.PROFILER_EXPLAIN_ANALYZE));
         }
 
-        const devToolsBtn = container.querySelector('#open-devtools-btn');
-        devToolsBtn?.addEventListener('click', async () => {
+        const devToolsToggleBtn = container.querySelector('#toggle-devtools-btn');
+        const devToolsStatusEl = container.querySelector('#devtools-status');
+        const runtimeDbTypeEl = container.querySelector('#runtime-db-type');
+        const runtimeConnectionNameEl = container.querySelector('#runtime-connection-name');
+        const disconnectBtn = container.querySelector('#disconnect-btn');
+
+        const setDevToolsStatus = (isOpen, isUnknown = false) => {
+            if (!devToolsStatusEl) return;
+
+            if (isUnknown) {
+                devToolsStatusEl.textContent = 'Unknown';
+                devToolsStatusEl.className = 'px-2 py-1 rounded-md border text-[10px] font-bold uppercase tracking-wider text-amber-500 bg-amber-500/10 border-amber-500/20';
+                return;
+            }
+
+            devToolsStatusEl.textContent = isOpen ? 'Open' : 'Closed';
+            devToolsStatusEl.className = `px-2 py-1 rounded-md border text-[10px] font-bold uppercase tracking-wider ${isOpen
+                ? 'text-rose-500 bg-rose-500/10 border-rose-500/20'
+                : 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20'}`;
+        };
+
+        const setDevToolsButtonState = (isOpen) => {
+            if (!devToolsToggleBtn) return;
+            devToolsToggleBtn.innerHTML = `
+                <span class="material-symbols-outlined text-lg">${isOpen ? 'visibility_off' : 'bug_report'}</span>
+                ${isOpen ? 'Close DevTools' : 'Open DevTools'}
+            `;
+        };
+
+        const syncDevToolsState = async () => {
             try {
-                await window.__TAURI__.core.invoke('open_devtools');
+                const isOpen = Boolean(await invoke('is_devtools_open'));
+                setDevToolsStatus(isOpen);
+                setDevToolsButtonState(isOpen);
             } catch (err) {
-                console.error('Failed to open DevTools:', err);
+                console.error('Failed to fetch DevTools state:', err);
+                setDevToolsStatus(false, true);
+                setDevToolsButtonState(false);
+            }
+        };
+
+        const updateRuntimeConnectionView = (dbType) => {
+            const normalizedType = String(dbType || 'disconnected').toLowerCase();
+            const isConnected = normalizedType !== 'disconnected';
+
+            if (runtimeDbTypeEl) {
+                const label = normalizedType === 'postgresql'
+                    ? 'PostgreSQL'
+                    : (normalizedType === 'mysql' ? 'MySQL' : 'Disconnected');
+                runtimeDbTypeEl.textContent = label;
+                runtimeDbTypeEl.className = `px-2 py-1 rounded-md border text-[10px] font-bold uppercase tracking-wider ${isConnected
+                    ? 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20'
+                    : 'text-gray-500 bg-gray-500/10 border-gray-500/20'}`;
+            }
+
+            if (runtimeConnectionNameEl) {
+                let label = 'No active profile';
+                try {
+                    const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || 'null');
+                    if (activeConfig) {
+                        label = activeConfig.name || activeConfig.database || `${activeConfig.host || 'Unknown host'}:${activeConfig.port || ''}`;
+                    }
+                } catch (error) {
+                    console.warn('Failed to parse active connection state:', error);
+                }
+                runtimeConnectionNameEl.textContent = label;
+            }
+
+            if (disconnectBtn) {
+                disconnectBtn.disabled = !isConnected;
+                disconnectBtn.classList.toggle('opacity-50', !isConnected);
+                disconnectBtn.classList.toggle('cursor-not-allowed', !isConnected);
+            }
+        };
+
+        const syncRuntimeConnectionState = async () => {
+            try {
+                const dbType = await invoke('get_active_db_type');
+                updateRuntimeConnectionView(dbType);
+            } catch (error) {
+                console.error('Failed to fetch runtime connection state:', error);
+                updateRuntimeConnectionView('disconnected');
+            }
+        };
+
+        devToolsToggleBtn?.addEventListener('click', async () => {
+            try {
+                const isOpen = Boolean(await invoke('is_devtools_open'));
+                if (isOpen) {
+                    await invoke('close_devtools');
+                } else {
+                    await invoke('open_devtools');
+                }
+            } catch (err) {
+                console.error('Failed to toggle DevTools:', err);
+            } finally {
+                await syncDevToolsState();
             }
         });
+
+        disconnectBtn?.addEventListener('click', async () => {
+            const originalHTML = disconnectBtn.innerHTML;
+            try {
+                disconnectBtn.disabled = true;
+                disconnectBtn.classList.add('opacity-70');
+                disconnectBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-lg">sync</span>Disconnecting...';
+
+                await invoke('disconnect');
+                localStorage.setItem('activeDbType', 'disconnected');
+                localStorage.removeItem('activeConnection');
+                window.dispatchEvent(new CustomEvent('tactilesql:connection-changed'));
+            } catch (err) {
+                console.error('Failed to disconnect:', err);
+            } finally {
+                disconnectBtn.classList.remove('opacity-70');
+                disconnectBtn.innerHTML = originalHTML;
+                await syncRuntimeConnectionState();
+            }
+        });
+
+        syncDevToolsState();
+        syncRuntimeConnectionState();
 
         const reloadBtn = container.querySelector('#reload-app-btn');
         reloadBtn?.addEventListener('click', () => {
