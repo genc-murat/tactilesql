@@ -13,18 +13,20 @@ export function QualityDashboard() {
     const getClasses = (t) => {
         const isLight = t === 'light';
         const isDawn = t === 'dawn';
-        const isOceanic = t === 'oceanic' || t === 'ember' || t === 'aurora';
+        const isOceanic = t === 'oceanic';
+        const isEmber = t === 'ember';
+        const isAurora = t === 'aurora';
 
         return {
-            container: `quality-dashboard flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-[#2E3440]' : 'bg-[#0a0c10]'))} transition-colors duration-300`,
-            header: `px-6 py-4 flex flex-col gap-4 border-b ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-[#3B4252] border-ocean-border/50' : 'bg-[#13161b] border-white/10'))}`,
-            content: `flex-1 overflow-y-auto custom-scrollbar p-6 ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-[#2E3440]' : 'bg-[#0a0c10]'))}`,
-            card: `rounded-xl border shadow-sm p-5 ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-sm shadow-[#ea9d34]/5' : (isOceanic ? 'bg-[#3B4252] border-ocean-border/50' : 'bg-[#13161b] border-white/10'))}`,
+            container: `quality-dashboard flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-[#2E3440]' : (isEmber ? 'bg-[#140c12]' : (isAurora ? 'bg-[#0b1214]' : 'bg-[#0a0c10]'))))} transition-colors duration-300`,
+            header: `px-6 py-4 flex flex-col gap-4 border-b ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-[#3B4252] border-[#4C566A]' : (isEmber ? 'bg-[#1d141c] border-[#2c1c27]' : (isAurora ? 'bg-[#0f1a1d] border-[#1b2e33]' : 'bg-[#13161b] border-white/10'))))}`,
+            content: `flex-1 overflow-y-auto custom-scrollbar p-6 ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-[#2E3440]' : (isEmber ? 'bg-[#140c12]' : (isAurora ? 'bg-[#0b1214]' : 'bg-[#0a0c10]'))))}`,
+            card: `rounded-xl border shadow-sm p-5 ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-sm shadow-[#ea9d34]/5' : (isOceanic ? 'bg-[#3B4252] border-[#4C566A]' : (isEmber ? 'bg-[#1d141c] border-[#2c1c27]' : (isAurora ? 'bg-[#0f1a1d] border-[#1b2e33]' : 'bg-[#13161b] border-white/10'))))}`,
             text: {
                 primary: isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white'),
                 secondary: isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400'),
                 label: isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400'),
-                accent: isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal'
+                accent: isDawn ? 'text-[#ea9d34]' : (isEmber ? 'text-purple-400' : (isAurora ? 'text-cyan-400' : 'text-mysql-teal'))
             },
             input: `w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 transition-all cursor-pointer ${isLight
                 ? 'bg-white border-gray-300 text-gray-900 focus:border-mysql-teal focus:ring-mysql-teal/20'
@@ -32,11 +34,18 @@ export function QualityDashboard() {
                     ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] focus:border-[#ea9d34] focus:ring-[#ea9d34]/20'
                     : 'bg-black/20 border-white/10 text-white focus:border-mysql-teal focus:ring-mysql-teal/20')
                 }`,
-            tabBtn: (active) => `relative px-1 py-3 text-sm font-medium transition-colors ${active
-                ? (isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal')
-                : (isLight ? 'text-gray-500 hover:text-gray-700' : (isDawn ? 'text-[#9893a5] hover:text-[#575279]' : 'text-gray-400 hover:text-white'))
-                } ${active ? 'border-b-2' : ''}`,
-            tabBorder: isDawn ? 'border-[#ea9d34]' : 'border-mysql-teal'
+            tabBtn: (active) => {
+                let accentColor = 'text-mysql-teal';
+                if (isDawn) accentColor = 'text-[#ea9d34]';
+                if (isEmber) accentColor = 'text-purple-400';
+                if (isAurora) accentColor = 'text-cyan-400';
+
+                return `relative px-1 py-3 text-sm font-medium transition-colors ${active
+                    ? accentColor
+                    : (isLight ? 'text-gray-500 hover:text-gray-700' : (isDawn ? 'text-[#9893a5] hover:text-[#575279]' : 'text-gray-400 hover:text-white'))
+                    } ${active ? 'border-b-2' : ''}`;
+            },
+            tabBorder: isDawn ? 'border-[#ea9d34]' : (isEmber ? 'border-purple-500' : (isAurora ? 'border-cyan-500' : 'border-mysql-teal'))
         };
     };
 
@@ -666,7 +675,7 @@ export function QualityDashboard() {
                 : (theme === 'dawn'
                     ? 'bg-[#faf4ed] border-[#f2e9e1]'
                     : 'bg-black/20 border-white/10')
-            }`;
+                }`;
 
             const toolbar = document.createElement('div');
             toolbar.className = `flex items-center justify-between px-3 py-2 border-b ${theme === 'light' ? 'border-gray-200' : (theme === 'dawn' ? 'border-[#f2e9e1]' : 'border-white/10')}`;
