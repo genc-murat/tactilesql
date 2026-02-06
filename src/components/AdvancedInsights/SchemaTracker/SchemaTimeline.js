@@ -4,14 +4,32 @@ export function SchemaTimeline({ snapshots, onSelectSnapshot, selectedSnapshotId
     const theme = ThemeManager.getCurrentTheme();
     const isLight = theme === 'light';
     const isDawn = theme === 'dawn';
-    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+    const isOceanic = theme === 'oceanic';
+    const isEmber = theme === 'ember';
+    const isAurora = theme === 'aurora';
 
     const container = document.createElement('div');
-    container.className = `w-72 border-r transition-colors duration-300 ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3]' : (isOceanic ? 'border-ocean-border/50 bg-[#2E3440]' : 'border-white/5 bg-[#0a0c10]'))} h-full flex flex-col flex-shrink-0`;
+    const getContainerBg = () => {
+        if (isLight) return 'bg-gray-50 border-gray-200';
+        if (isDawn) return 'bg-[#fffaf3] border-[#f2e9e1]';
+        if (isOceanic) return 'bg-[#2E3440] border-[#4C566A]';
+        if (isEmber) return 'bg-[#140c12] border-[#2c1c27]';
+        if (isAurora) return 'bg-[#0b1214] border-[#1b2e33]';
+        return 'bg-[#0a0c10] border-white/5';
+    };
+    container.className = `w-72 border-r transition-colors duration-300 ${getContainerBg()} h-full flex flex-col flex-shrink-0`;
 
     // Header
     const header = document.createElement('div');
-    header.className = `px-4 py-3 border-b transition-colors duration-300 ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')} flex justify-between items-center`;
+    const getHeaderBorder = () => {
+        if (isLight) return 'border-gray-200';
+        if (isDawn) return 'border-[#f2e9e1]';
+        if (isOceanic) return 'border-[#4C566A]';
+        if (isEmber) return 'border-[#2c1c27]';
+        if (isAurora) return 'border-[#1b2e33]';
+        return 'border-white/5';
+    };
+    header.className = `px-4 py-3 border-b transition-colors duration-300 ${getHeaderBorder()} flex justify-between items-center`;
     header.innerHTML = `
         <span class="text-xs font-bold tracking-wider ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">TIMELINE</span>
         <span class="text-[10px] ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500')}">${snapshots.length} Snapshots</span>
@@ -42,10 +60,16 @@ export function SchemaTimeline({ snapshots, onSelectSnapshot, selectedSnapshotId
             if (isSelected) {
                 if (isLight) selectionClasses = 'bg-white border-blue-400 shadow-md ring-1 ring-blue-100';
                 else if (isDawn) selectionClasses = 'bg-[#faf4ed] border-[#ea9d34] shadow-md shadow-[#ea9d34]/10';
+                else if (isOceanic) selectionClasses = 'bg-[#3B4252] border-blue-500/50 shadow-lg shadow-blue-500/10';
+                else if (isEmber) selectionClasses = 'bg-[#1d141c] border-purple-500/50 shadow-lg shadow-purple-500/10';
+                else if (isAurora) selectionClasses = 'bg-[#0f1a1d] border-cyan-500/50 shadow-lg shadow-cyan-500/10';
                 else selectionClasses = 'bg-white/5 border-blue-500/50 shadow-lg shadow-blue-500/10';
             } else {
                 if (isLight) selectionClasses = 'hover:bg-white hover:border-gray-300 border-transparent text-gray-500';
                 else if (isDawn) selectionClasses = 'hover:bg-[#faf4ed] hover:border-[#f2e9e1] border-transparent text-[#9893a5]';
+                else if (isOceanic) selectionClasses = 'hover:bg-[#3B4252] hover:border-[#4C566A] border-transparent text-gray-400';
+                else if (isEmber) selectionClasses = 'hover:bg-[#1d141c] hover:border-[#2c1c27] border-transparent text-gray-400';
+                else if (isAurora) selectionClasses = 'hover:bg-[#0f1a1d] hover:border-[#1b2e33] border-transparent text-gray-400';
                 else selectionClasses = 'hover:bg-white/5 hover:border-white/10 border-transparent text-gray-400';
             }
 
@@ -78,7 +102,7 @@ export function SchemaTimeline({ snapshots, onSelectSnapshot, selectedSnapshotId
                 </div>
                 
                 ${isSelected ? `
-                    <div class="absolute -right-[1px] top-1/2 -translate-y-1/2 w-1 h-8 ${isDawn ? 'bg-[#ea9d34]' : 'bg-blue-500'} rounded-l"></div>
+                    <div class="absolute -right-[1px] top-1/2 -translate-y-1/2 w-1 h-8 ${isDawn ? 'bg-[#ea9d34]' : (isAurora ? 'bg-cyan-500' : (isEmber ? 'bg-purple-500' : 'bg-blue-500'))} rounded-l"></div>
                 ` : ''}
             `;
 

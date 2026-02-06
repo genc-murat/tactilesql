@@ -1006,22 +1006,55 @@ pub async fn get_capacity_metrics(
 
     let disk_read_bytes = blks_read.saturating_mul(block_size);
 
-    // Disk write bytes (database-wide) from bgwriter buffers
-    let disk_write_bytes = match sqlx::query(r#"
-        SELECT 
+    // Disk write bytes (database-wide) from writer/checkpointer stats.
+    // PostgreSQL 17+ moved checkpoint counters out of pg_stat_bgwriter.
+    let disk_write_bytes = if let Ok(bg_row) = sqlx::query(
+        r#"
+        SELECT
             COALESCE(buffers_checkpoint, 0) + COALESCE(buffers_clean, 0) + COALESCE(buffers_backend, 0) as buffers_written
         FROM pg_stat_bgwriter
-    "#)
+    "#,
+    )
+    .fetch_one(pool)
+    .await
+    {
+        let buffers_written: i64 = bg_row.try_get::<i64, _>("buffers_written").unwrap_or(0);
+        buffers_written.saturating_mul(block_size)
+    } else if let Ok(split_row) = sqlx::query(
+        r#"
+        SELECT
+            COALESCE(c.buffers_written, 0) + COALESCE(b.buffers_clean, 0) as buffers_written
+        FROM pg_stat_checkpointer c
+        CROSS JOIN pg_stat_bgwriter b
+    "#,
+    )
+    .fetch_one(pool)
+    .await
+    {
+        let buffers_written: i64 = split_row
+            .try_get::<i64, _>("buffers_written")
+            .unwrap_or(0);
+        buffers_written.saturating_mul(block_size)
+    } else {
+        match sqlx::query(
+            r#"
+            SELECT COALESCE(buffers_clean, 0) as buffers_written
+            FROM pg_stat_bgwriter
+        "#,
+        )
         .fetch_one(pool)
         .await
-    {
-        Ok(bg_row) => {
-            let buffers_written: i64 = bg_row.try_get::<i64, _>("buffers_written").unwrap_or(0);
-            buffers_written.saturating_mul(block_size)
-        }
-        Err(e) => {
-            eprintln!("Background writer stats unavailable: {}", e);
-            0
+        {
+            Ok(clean_row) => {
+                let buffers_written: i64 = clean_row
+                    .try_get::<i64, _>("buffers_written")
+                    .unwrap_or(0);
+                buffers_written.saturating_mul(block_size)
+            }
+            Err(e) => {
+                eprintln!("Background writer/checkpointer stats unavailable: {}", e);
+                0
+            }
         }
     };
 
