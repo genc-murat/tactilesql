@@ -223,6 +223,7 @@ export function SchemaTracker() {
                 migrationScript: currentMigration,
                 breakingChanges: currentBreakingChanges,
                 connectionId: activeConnection?.id,
+                dbType: activeConnection?.dbType || activeConnection?.db_type || 'mysql',
                 baseSnapshotId: comparisonBaseSnapshotId,
                 targetSnapshotId: comparisonTargetSnapshotId
             }));

@@ -29,6 +29,7 @@ TactileSQL is a modern, desktop-first MySQL workbench built with Tauri 2 and van
 - **Lock/Deadlock Root-Cause Analysis**: Live lock graph, blocking chains, deadlock-cycle detection, and automatic mitigation suggestions with blocker-termination shortcuts.
 - **Capacity Planner** charts now sync total/data/index storage, cache hit, and disk I/O series under one tooltip with hover-linked markers.
 - **Schema Evolution Tracker**: Capture snapshots, detect drifts, and auto-generate migration scripts.
+- **Online Schema Change Planner**: Strategy-aware migration planning for MySQL (`native`, `pt_osc`, `gh_ost`) and PostgreSQL (`postgres_concurrently`) with lock-risk warnings.
 - **AI Schema Impact Analysis**: LLM-based downstream risk analysis for schema diffs with persistent snapshot-pair history.
 - **Data Quality Analyzer**: Track data health scores, detect anomalies (NULLs, duplicates), and visualize quality trends.
 - **Dependency Engine**: Visualize lineage between tables, views, and procedures with impact analysis for schema changes.
@@ -169,6 +170,9 @@ npx tauri build
 
 - Compare source/target databases or single tables
 - Generate sync SQL for create/alter/drop
+- Select online migration strategy (MySQL: `native`, `pt_osc`, `gh_ost`; PostgreSQL: `postgres_concurrently`, `native`)
+- Review lock-risk warnings and use Lock Guard confirmation before copying high-risk outputs
+- Generate external OSC command templates for MySQL when `pt_osc`/`gh_ost` strategy is selected
 
 ### Index Lifecycle
 
@@ -201,6 +205,9 @@ npx tauri build
 - **Snapshots**: Capture database state at any point in time.
 - **Diff Viewer**: Visual comparison between snapshots showing added/dropped/modified tables and columns.
 - **Migration Generation**: Automatically generates SQL scripts to migrate between versions.
+- **Online Change Wizard**: Strategy-aware planning with MySQL `pt_osc`/`gh_ost` command templates and PostgreSQL `CONCURRENTLY` index DDL mode.
+- **Lock Risk Warnings**: Surfaces low/medium/high lock risk heuristics for generated statements before execution.
+- **Lock Guard**: Extra confirmation prompt before copying plans with high lock-risk warnings.
 - **Breaking Change Detection**: Alerts on destructive changes (drops, type changes).
 - **AI Impact Analysis**: Generates risk summaries and mitigation plans for each schema diff, saved per snapshot pair.
 
@@ -252,6 +259,12 @@ The Rust backend exposes the following commands (used by the UI):
 - `get_procedures`, `get_functions`, `get_events`
 - `save_ai_impact_report`, `get_ai_impact_report`
 - `save_quality_ai_report`, `get_quality_ai_report`
+
+### Schema Tracker
+- `capture_schema_snapshot`, `get_schema_snapshots`
+- `compare_schema_snapshots`, `detect_breaking_changes`
+- `generate_migration`, `generate_migration_plan`
+- `add_snapshot_tag`
 
 ### Data Tools
 - `import_csv` — Import CSV files with field mapping

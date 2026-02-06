@@ -232,6 +232,7 @@ pub fn run() {
             schema_tracker::commands::compare_schema_snapshots,
             schema_tracker::commands::detect_breaking_changes,
             schema_tracker::commands::generate_migration,
+            schema_tracker::commands::generate_migration_plan,
             schema_tracker::commands::add_snapshot_tag,
             schema_tracker::commands::get_schema_snapshots,
             schema_tracker::commands::save_ai_impact_report,

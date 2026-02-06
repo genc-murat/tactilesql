@@ -1,6 +1,7 @@
 use crate::db::AppState;
 use crate::db_types::DatabaseType;
 use crate::schema_tracker::diff::BreakingChange;
+use crate::schema_tracker::migration::{MigrationPlan, MigrationStrategy};
 use crate::schema_tracker::models::{SchemaDiff, SchemaImpactAiReport, SchemaSnapshot};
 use tauri::{command, State};
 
@@ -83,6 +84,24 @@ pub async fn detect_breaking_changes(diff: SchemaDiff) -> Result<Vec<BreakingCha
 pub async fn generate_migration(diff: SchemaDiff, db_type: DatabaseType) -> Result<String, String> {
     Ok(crate::schema_tracker::migration::generate_migration_script(
         &diff, &db_type,
+    ))
+}
+
+#[command]
+pub async fn generate_migration_plan(
+    diff: SchemaDiff,
+    db_type: DatabaseType,
+    strategy: Option<String>,
+) -> Result<MigrationPlan, String> {
+    let parsed_strategy = match strategy {
+        Some(value) => Some(MigrationStrategy::from_str(&value)?),
+        None => None,
+    };
+
+    Ok(crate::schema_tracker::migration::generate_migration_plan(
+        &diff,
+        &db_type,
+        parsed_strategy,
     ))
 }
 

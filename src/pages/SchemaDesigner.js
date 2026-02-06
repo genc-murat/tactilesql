@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Dialog } from '../components/UI/Dialog.js';
 import { ThemeManager } from '../utils/ThemeManager.js';
 import { escapeHtml } from '../utils/helpers.js';
-import { toastSuccess, toastError } from '../utils/Toast.js';
+import { toastSuccess } from '../utils/Toast.js';
 import { CustomDropdown } from '../components/UI/CustomDropdown.js';
 
 export function SchemaDesigner() {
@@ -11,11 +11,25 @@ export function SchemaDesigner() {
     const params = new URLSearchParams(hash.split('?')[1] || '');
     const dbName = params.get('db') || 'unknown_db';
     const tableName = params.get('table') || 'unknown_table';
+    const normalizeDbType = (dbType) => {
+        const value = String(dbType || '').toLowerCase();
+        return value === 'postgres' || value === 'postgresql' ? 'postgresql' : 'mysql';
+    };
+    const activeConnection = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+    const activeDbType = normalizeDbType(activeConnection.dbType || activeConnection.db_type);
 
     // --- State ---
     let state = {
         database: dbName,
         tableName: tableName,
+        activeDbType,
+        schemaChangeStrategy: activeDbType === 'postgresql' ? 'postgres_concurrently' : 'native',
+        lockGuardEnabled: true,
+        generatedStatements: [],
+        generatedSqlText: '',
+        lockWarnings: [],
+        externalOscCommands: [],
+        unsupportedOscStatements: [],
 
         // Columns
         columns: [],
@@ -109,6 +123,17 @@ export function SchemaDesigner() {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isPostgres = state.activeDbType === 'postgresql';
+        const strategyOptions = isPostgres
+            ? `
+                <option value="postgres_concurrently" ${state.schemaChangeStrategy === 'postgres_concurrently' ? 'selected' : ''}>Indexes: CONCURRENTLY</option>
+                <option value="native" ${state.schemaChangeStrategy === 'native' ? 'selected' : ''}>Standard DDL</option>
+            `
+            : `
+                <option value="native" ${state.schemaChangeStrategy === 'native' ? 'selected' : ''}>Native DDL</option>
+                <option value="pt_osc" ${state.schemaChangeStrategy === 'pt_osc' ? 'selected' : ''}>pt-online-schema-change plan</option>
+                <option value="gh_ost" ${state.schemaChangeStrategy === 'gh_ost' ? 'selected' : ''}>gh-ost plan</option>
+            `;
         return `
             <header class="h-14 border-b ${isLight ? 'border-gray-100 bg-white' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'border-white/5 bg-[#121418]'))} px-6 flex items-center justify-between z-20">
                 <div class="flex items-center gap-8">
@@ -125,7 +150,17 @@ export function SchemaDesigner() {
                         </div>
                     </div>
                 </div>
-                <div class="flex items-center gap-4">
+                <div class="flex items-center gap-3">
+                    <div class="flex items-center gap-2 px-3 py-2 rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3]' : 'border-white/10 bg-white/5')}">
+                        <label for="schema-change-strategy" class="text-[9px] uppercase tracking-widest font-bold ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">${isPostgres ? 'PG DDL Mode' : 'MySQL OSC Mode'}</label>
+                        <select id="schema-change-strategy" class="tactile-input text-[10px] py-1 px-2 min-w-[200px] ${isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : ''}">
+                            ${strategyOptions}
+                        </select>
+                    </div>
+                    <label class="flex items-center gap-2 px-2 py-1 rounded border ${isLight ? 'border-gray-200 bg-gray-50 text-gray-600' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3] text-[#575279]' : 'border-white/10 bg-white/5 text-gray-300')} text-[10px] font-bold uppercase tracking-widest">
+                        <input type="checkbox" id="lock-guard-toggle" class="w-3 h-3" ${state.lockGuardEnabled ? 'checked' : ''} />
+                        Lock Guard
+                    </label>
                     <button class="flex items-center gap-2 px-5 py-2 ${isDawn ? 'bg-[#ea9d34] text-[#fffaf3] shadow-[#ea9d34]/20' : 'bg-mysql-teal text-white shadow-mysql-teal/20'} rounded-lg text-[11px] font-bold tracking-widest uppercase hover:brightness-110 transition-all shadow-lg" id="btn-push-changes">
                         <span class="material-symbols-outlined text-sm">publish</span>
                         Push Changes
@@ -204,6 +239,9 @@ export function SchemaDesigner() {
                         </div>
                     </div>
                     <div class="p-6 code-overlay font-mono text-[13px] leading-relaxed overflow-y-auto custom-scrollbar flex-1 ${isDawn ? 'text-[#575279]' : ''}" id="sql-content-area">
+                        <div id="sql-strategy-note" class="mb-3 text-[10px]"></div>
+                        <div id="sql-warning-list" class="mb-3 space-y-2"></div>
+                        <div id="sql-command-hints" class="mb-3"></div>
                         <code class="block whitespace-pre" id="sql-code-block"></code>
                     </div>
                 </div>
@@ -1343,118 +1381,379 @@ END"></textarea>
         return groups;
     }
 
+    const isPostgresDb = () => state.activeDbType === 'postgresql';
+
+    const quoteIdent = (identifier) => {
+        const raw = String(identifier || '').trim();
+        if (isPostgresDb()) {
+            return `"${raw.replace(/"/g, '""')}"`;
+        }
+        return `\`${raw.replace(/`/g, '``')}\``;
+    };
+
+    const quoteTableRef = () => {
+        if (isPostgresDb()) {
+            return `${quoteIdent(state.database)}.${quoteIdent(state.tableName)}`;
+        }
+        return quoteIdent(state.tableName);
+    };
+
+    const quoteIndexRef = (name) => {
+        if (isPostgresDb()) {
+            return `${quoteIdent(state.database)}.${quoteIdent(name)}`;
+        }
+        return quoteIdent(name);
+    };
+
+    const toStatement = (sql) => `${sql.trim().replace(/;$/, '')};`;
+
+    const formatColumnType = (column) => {
+        const baseType = String(column.type || '').trim();
+        const length = String(column.length ?? '').trim();
+        if (!length || baseType.includes('(')) return baseType;
+        return `${baseType}(${length})`;
+    };
+
+    const buildOscExecutionPlan = (statements) => {
+        if (state.activeDbType !== 'mysql' || state.schemaChangeStrategy === 'native') {
+            return { commands: [], unsupported: [] };
+        }
+
+        const commands = [];
+        const unsupported = [];
+        const isPtOsc = state.schemaChangeStrategy === 'pt_osc';
+
+        for (const statement of statements) {
+            const raw = statement.trim().replace(/;$/, '');
+            const alterMatch = raw.match(/^ALTER\s+TABLE\s+`?([^`\s]+)`?\s+(.+)$/i);
+
+            if (!alterMatch) {
+                unsupported.push(raw);
+                continue;
+            }
+
+            const table = alterMatch[1];
+            const alterClause = alterMatch[2].replace(/"/g, '\\"');
+
+            if (isPtOsc) {
+                commands.push(`pt-online-schema-change --alter "${alterClause}" D=${state.database},t=${table} --execute`);
+            } else {
+                commands.push(`gh-ost --host="<host>" --user="<user>" --database="${state.database}" --table="${table}" --alter="${alterClause}" --execute`);
+            }
+        }
+
+        return { commands, unsupported };
+    };
+
+    const buildLockRiskWarnings = (statements, unsupportedOscStatements = []) => {
+        const warnings = [];
+
+        for (const statement of statements) {
+            const compact = statement.replace(/\s+/g, ' ').trim();
+            const normalized = compact.toUpperCase();
+
+            if (isPostgresDb()) {
+                if (normalized.startsWith('CREATE INDEX')) {
+                    if (normalized.includes('CONCURRENTLY')) {
+                        warnings.push({
+                            severity: 'low',
+                            message: 'CREATE INDEX CONCURRENTLY selected. Build is online but still takes brief metadata locks at start/end.'
+                        });
+                    } else {
+                        warnings.push({
+                            severity: 'high',
+                            message: 'CREATE INDEX without CONCURRENTLY may block writes. Prefer CONCURRENTLY on production tables.'
+                        });
+                    }
+                } else if (normalized.startsWith('ALTER TABLE') &&
+                    (normalized.includes(' DROP COLUMN ') ||
+                        normalized.includes(' ALTER COLUMN ') ||
+                        normalized.includes(' SET NOT NULL') ||
+                        normalized.includes(' TYPE '))) {
+                    warnings.push({
+                        severity: 'high',
+                        message: 'ALTER TABLE change may take ACCESS EXCLUSIVE lock in PostgreSQL and block reads/writes.'
+                    });
+                } else if (normalized.startsWith('DROP INDEX') && !normalized.includes('CONCURRENTLY')) {
+                    warnings.push({
+                        severity: 'medium',
+                        message: 'DROP INDEX without CONCURRENTLY can block sessions waiting on index metadata.'
+                    });
+                }
+            } else {
+                if (normalized.startsWith('ALTER TABLE')) {
+                    if (normalized.includes(' CHANGE COLUMN ') || normalized.includes(' MODIFY COLUMN ') || normalized.includes(' DROP COLUMN ')) {
+                        warnings.push({
+                            severity: 'high',
+                            message: 'MySQL ALTER TABLE column change may hold metadata lock and block concurrent writes.'
+                        });
+                    } else {
+                        warnings.push({
+                            severity: 'medium',
+                            message: 'MySQL ALTER TABLE can create metadata lock waits during execution.'
+                        });
+                    }
+                } else if (normalized.startsWith('CREATE INDEX') || normalized.startsWith('DROP INDEX')) {
+                    warnings.push({
+                        severity: 'medium',
+                        message: 'Index operations can increase lock waits during peak traffic.'
+                    });
+                }
+            }
+        }
+
+        for (const unsupportedStatement of unsupportedOscStatements) {
+            warnings.push({
+                severity: 'high',
+                message: `OSC external tool mode cannot auto-convert this statement: ${unsupportedStatement}`
+            });
+        }
+
+        return warnings;
+    };
+
+    const renderStrategyNote = (noteContainer) => {
+        if (!noteContainer) return;
+
+        if (state.activeDbType === 'mysql' && state.schemaChangeStrategy !== 'native') {
+            noteContainer.innerHTML = `
+                <div class="px-3 py-2 rounded border ${isLight ? 'bg-blue-50 border-blue-200 text-blue-700' : (isDawn ? 'bg-[#ea9d34]/10 border-[#ea9d34]/20 text-[#ea9d34]' : 'bg-blue-500/10 border-blue-500/20 text-blue-300')}">
+                    External OSC mode active. Push action will copy ${state.schemaChangeStrategy === 'pt_osc' ? 'pt-online-schema-change' : 'gh-ost'} command plan instead of executing SQL directly.
+                </div>
+            `;
+            return;
+        }
+
+        if (state.activeDbType === 'postgresql' && state.schemaChangeStrategy === 'postgres_concurrently') {
+            noteContainer.innerHTML = `
+                <div class="px-3 py-2 rounded border ${isLight ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : (isDawn ? 'bg-[#286983]/10 border-[#286983]/20 text-[#286983]' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300')}">
+                    PostgreSQL index changes use <span class="font-bold">CONCURRENTLY</span>. This is safer online, but builds longer and still takes brief metadata locks.
+                </div>
+            `;
+            return;
+        }
+
+        noteContainer.innerHTML = '';
+    };
+
+    const renderWarnings = (warningsContainer) => {
+        if (!warningsContainer) return;
+
+        if (!state.lockWarnings.length) {
+            warningsContainer.innerHTML = '';
+            return;
+        }
+
+        warningsContainer.innerHTML = state.lockWarnings.map((warning) => {
+            const severity = String(warning.severity || 'low').toLowerCase();
+            const classes = severity === 'high'
+                ? (isLight ? 'bg-red-50 border-red-200 text-red-700' : 'bg-red-500/10 border-red-500/25 text-red-400')
+                : severity === 'medium'
+                    ? (isLight ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-amber-500/10 border-amber-500/25 text-amber-400')
+                    : (isLight ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-blue-500/10 border-blue-500/25 text-blue-300');
+            const icon = severity === 'high' ? 'error' : (severity === 'medium' ? 'warning' : 'info');
+            return `
+                <div class="px-3 py-2 rounded border ${classes} flex items-start gap-2 text-[10px] leading-snug">
+                    <span class="material-symbols-outlined text-[14px]">${icon}</span>
+                    <span>${escapeHtml(warning.message || '')}</span>
+                </div>
+            `;
+        }).join('');
+    };
+
+    const renderExternalCommands = (commandsContainer) => {
+        if (!commandsContainer) return;
+
+        if (!state.externalOscCommands.length) {
+            commandsContainer.innerHTML = '';
+            return;
+        }
+
+        commandsContainer.innerHTML = `
+            <div class="rounded border ${isLight ? 'bg-gray-50 border-gray-200 text-gray-700' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-white/5 border-white/10 text-gray-200')}">
+                <div class="px-3 py-2 border-b ${isLight ? 'border-gray-200 text-gray-600' : (isDawn ? 'border-[#f2e9e1] text-[#797593]' : 'border-white/10 text-gray-400')} text-[10px] uppercase tracking-widest font-bold">
+                    External OSC Command Plan
+                </div>
+                <pre class="p-3 text-[11px] leading-relaxed whitespace-pre-wrap break-words">${escapeHtml(state.externalOscCommands.join('\n'))}</pre>
+            </div>
+        `;
+    };
+
     function generateSQL() {
         const codeBlock = container.querySelector('#sql-code-block');
-        let sql = `-- Modifications for table: ${state.tableName} \n`;
-        let hasChanges = false;
+        const strategyNote = container.querySelector('#sql-strategy-note');
+        const warningsContainer = container.querySelector('#sql-warning-list');
+        const commandsContainer = container.querySelector('#sql-command-hints');
+        const tableRef = quoteTableRef();
+        const statements = [];
+        const notes = [];
+        const indexConcurrency = isPostgresDb() && state.schemaChangeStrategy === 'postgres_concurrently' ? ' CONCURRENTLY' : '';
 
-        // Columns
-        state.columns.forEach(newCol => {
+        const push = (sql) => statements.push(toStatement(sql));
+
+        state.columns.forEach((newCol) => {
             const original = state.originalColumns.find(c => c.id === newCol.id);
+            const typeDef = formatColumnType(newCol);
+            const defaultPart = newCol.defaultVal ? ` DEFAULT ${newCol.defaultVal}` : '';
+
             if (!original) {
-                hasChanges = true;
-                sql += `ALTER TABLE \`${state.tableName}\` ADD COLUMN \`${newCol.name}\` ${newCol.type}${newCol.length ? `(${newCol.length})` : ''} ${!newCol.nullable ? 'NOT NULL' : 'NULL'};\n`;
+                if (isPostgresDb()) {
+                    push(`ALTER TABLE ${tableRef} ADD COLUMN ${quoteIdent(newCol.name)} ${typeDef}${newCol.nullable ? '' : ' NOT NULL'}${defaultPart}`);
+                } else {
+                    push(`ALTER TABLE ${tableRef} ADD COLUMN ${quoteIdent(newCol.name)} ${typeDef} ${newCol.nullable ? 'NULL' : 'NOT NULL'}${defaultPart}`);
+                }
+                return;
+            }
+
+            const nameChanged = original.name !== newCol.name;
+            const typeChanged = original.type !== newCol.type || String(original.length ?? '') !== String(newCol.length ?? '');
+            const nullableChanged = original.nullable !== newCol.nullable;
+
+            if (isPostgresDb()) {
+                if (nameChanged) {
+                    push(`ALTER TABLE ${tableRef} RENAME COLUMN ${quoteIdent(original.name)} TO ${quoteIdent(newCol.name)}`);
+                }
+                if (typeChanged) {
+                    push(`ALTER TABLE ${tableRef} ALTER COLUMN ${quoteIdent(newCol.name)} TYPE ${typeDef}`);
+                }
+                if (nullableChanged) {
+                    push(`ALTER TABLE ${tableRef} ALTER COLUMN ${quoteIdent(newCol.name)} ${newCol.nullable ? 'DROP NOT NULL' : 'SET NOT NULL'}`);
+                }
             } else {
-                const hasChanged =
-                    original.name !== newCol.name ||
-                    original.type !== newCol.type ||
-                    original.length != newCol.length ||
-                    original.nullable !== newCol.nullable ||
-                    original.autoIncrement !== newCol.autoIncrement;
-
-                if (hasChanged) {
-                    hasChanges = true;
-                    // Change Column (covers rename + type change)
-                    sql += `ALTER TABLE \`${state.tableName}\` CHANGE COLUMN \`${original.name}\` \`${newCol.name}\` ${newCol.type}${newCol.length ? `(${newCol.length})` : ''} ${!newCol.nullable ? 'NOT NULL' : 'NULL'};\n`;
+                if (nameChanged || typeChanged || nullableChanged || original.autoIncrement !== newCol.autoIncrement) {
+                    push(`ALTER TABLE ${tableRef} CHANGE COLUMN ${quoteIdent(original.name)} ${quoteIdent(newCol.name)} ${typeDef} ${newCol.nullable ? 'NULL' : 'NOT NULL'}`);
                 }
+            }
 
-                if (original.unique !== newCol.unique) {
-                    hasChanges = true;
-                    if (newCol.unique) sql += `CREATE UNIQUE INDEX \`uq_${newCol.name}\` ON \`${state.tableName}\`(\`${newCol.name}\`);\n`;
-                    else sql += `DROP INDEX \`uq_${original.name}\`; -- Warning: Verify name\n`;
+            if (original.unique !== newCol.unique) {
+                const newName = `uq_${newCol.name}`;
+                const oldName = `uq_${original.name}`;
+                if (newCol.unique) {
+                    if (isPostgresDb()) {
+                        push(`CREATE UNIQUE INDEX${indexConcurrency} ${quoteIdent(newName)} ON ${tableRef} (${quoteIdent(newCol.name)})`);
+                    } else if (state.schemaChangeStrategy === 'native') {
+                        push(`CREATE UNIQUE INDEX ${quoteIdent(newName)} ON ${tableRef} (${quoteIdent(newCol.name)})`);
+                    } else {
+                        push(`ALTER TABLE ${tableRef} ADD UNIQUE INDEX ${quoteIdent(newName)} (${quoteIdent(newCol.name)})`);
+                    }
+                } else if (isPostgresDb()) {
+                    push(`DROP INDEX${indexConcurrency} IF EXISTS ${quoteIndexRef(oldName)}`);
+                } else if (state.schemaChangeStrategy === 'native') {
+                    push(`DROP INDEX ${quoteIdent(oldName)} ON ${tableRef}`);
+                } else {
+                    push(`ALTER TABLE ${tableRef} DROP INDEX ${quoteIdent(oldName)}`);
                 }
             }
         });
 
-        // Deleted Columns
-        state.originalColumns.forEach(oldCol => {
+        state.originalColumns.forEach((oldCol) => {
             if (!state.columns.find(c => c.id === oldCol.id)) {
-                hasChanges = true;
-                sql += `ALTER TABLE \`${state.tableName}\` DROP COLUMN \`${oldCol.name}\`;\n`;
+                push(`ALTER TABLE ${tableRef} DROP COLUMN ${quoteIdent(oldCol.name)}`);
             }
         });
 
-        // Indexes
         const groupedCurrent = groupByIndexName(state.indexes);
         const groupedOriginal = groupByIndexName(state.originalIndexes);
 
-        Object.keys(groupedCurrent).forEach(name => {
+        Object.keys(groupedCurrent).forEach((name) => {
             if (!groupedOriginal[name]) {
-                hasChanges = true;
                 const idx = groupedCurrent[name];
-                const cols = idx.columns.map(c => `\`${c}\``).join(', ');
-                const typeStr = idx.unique ? 'UNIQUE INDEX' : 'INDEX';
-                sql += `CREATE ${typeStr} \`${idx.name}\` ON \`${state.tableName}\` (${cols});\n`;
+                const cols = (idx.columns || []).map(col => quoteIdent(col)).join(', ');
+                if (isPostgresDb()) {
+                    const uniquePart = idx.unique ? 'UNIQUE ' : '';
+                    push(`CREATE ${uniquePart}INDEX${indexConcurrency} ${quoteIdent(idx.name)} ON ${tableRef} (${cols})`);
+                } else if (state.schemaChangeStrategy === 'native') {
+                    const uniquePart = idx.unique ? 'UNIQUE ' : '';
+                    push(`CREATE ${uniquePart}INDEX ${quoteIdent(idx.name)} ON ${tableRef} (${cols})`);
+                } else {
+                    const uniquePart = idx.unique ? 'UNIQUE ' : '';
+                    push(`ALTER TABLE ${tableRef} ADD ${uniquePart}INDEX ${quoteIdent(idx.name)} (${cols})`);
+                }
             }
         });
 
-        Object.keys(groupedOriginal).forEach(name => {
+        Object.keys(groupedOriginal).forEach((name) => {
             if (!groupedCurrent[name]) {
-                hasChanges = true;
-                sql += `DROP INDEX \`${name}\` ON \`${state.tableName}\`;\n`;
+                if (isPostgresDb()) {
+                    push(`DROP INDEX${indexConcurrency} IF EXISTS ${quoteIndexRef(name)}`);
+                } else if (state.schemaChangeStrategy === 'native') {
+                    push(`DROP INDEX ${quoteIdent(name)} ON ${tableRef}`);
+                } else {
+                    push(`ALTER TABLE ${tableRef} DROP INDEX ${quoteIdent(name)}`);
+                }
             }
         });
 
-        // Foreign Keys
-        state.foreignKeys.forEach(fk => {
+        state.foreignKeys.forEach((fk) => {
             const original = state.originalForeignKeys.find(f => f.constraint_name === fk.constraint_name);
             if (!original) {
-                hasChanges = true;
-                sql += `ALTER TABLE \`${state.tableName}\` ADD CONSTRAINT \`${fk.constraint_name}\` FOREIGN KEY (\`${fk.column_name}\`) REFERENCES \`${fk.referenced_table}\` (\`${fk.referenced_column}\`);\n`;
+                push(`ALTER TABLE ${tableRef} ADD CONSTRAINT ${quoteIdent(fk.constraint_name)} FOREIGN KEY (${quoteIdent(fk.column_name)}) REFERENCES ${quoteIdent(fk.referenced_table)} (${quoteIdent(fk.referenced_column)})`);
             }
         });
 
-        state.originalForeignKeys.forEach(fk => {
+        state.originalForeignKeys.forEach((fk) => {
             if (!state.foreignKeys.some(f => f.constraint_name === fk.constraint_name)) {
-                hasChanges = true;
-                sql += `ALTER TABLE \`${state.tableName}\` DROP FOREIGN KEY \`${fk.constraint_name}\`;\n`;
+                if (isPostgresDb()) {
+                    push(`ALTER TABLE ${tableRef} DROP CONSTRAINT ${quoteIdent(fk.constraint_name)}`);
+                } else {
+                    push(`ALTER TABLE ${tableRef} DROP FOREIGN KEY ${quoteIdent(fk.constraint_name)}`);
+                }
             }
         });
 
-        // Triggers
         if (state.triggers) {
-            state.triggers.forEach(trig => {
-                const original = state.originalTriggers.find(t => t.name === trig.name);
-                if (!original) {
-                    hasChanges = true;
-                    // Create Trigger
-                    sql += `CREATE TRIGGER \`${trig.name}\` ${trig.timing} ${trig.event} ON \`${state.tableName}\` FOR EACH ROW
-BEGIN
-${trig.body}
-END;\n`;
+            if (isPostgresDb()) {
+                if (state.triggers.length !== state.originalTriggers.length) {
+                    notes.push('Trigger diffs in PostgreSQL require CREATE FUNCTION/CREATE TRIGGER and are not auto-generated by this panel.');
                 }
-            });
+            } else {
+                state.triggers.forEach((trig) => {
+                    const original = state.originalTriggers.find(t => t.name === trig.name);
+                    if (!original) {
+                        push(`CREATE TRIGGER ${quoteIdent(trig.name)} ${trig.timing} ${trig.event} ON ${tableRef} FOR EACH ROW\nBEGIN\n${trig.body}\nEND`);
+                    }
+                });
 
-            state.originalTriggers.forEach(trig => {
-                if (!state.triggers.find(t => t.name === trig.name)) {
-                    hasChanges = true;
-                    sql += `DROP TRIGGER IF EXISTS \`${trig.name}\`;\n`;
-                }
-            });
+                state.originalTriggers.forEach((trig) => {
+                    if (!state.triggers.find(t => t.name === trig.name)) {
+                        push(`DROP TRIGGER IF EXISTS ${quoteIdent(trig.name)}`);
+                    }
+                });
+            }
         }
 
-        if (!hasChanges) {
+        const planLines = [
+            `-- Schema Change Plan for ${state.database}.${state.tableName}`,
+            `-- Engine: ${state.activeDbType} | Strategy: ${state.schemaChangeStrategy}`
+        ];
+
+        notes.forEach((note) => planLines.push(`-- NOTE: ${note}`));
+        statements.forEach((stmt) => planLines.push(stmt));
+
+        state.generatedStatements = statements;
+        state.generatedSqlText = planLines.join('\n');
+
+        const oscPlan = buildOscExecutionPlan(statements);
+        state.externalOscCommands = oscPlan.commands;
+        state.unsupportedOscStatements = oscPlan.unsupported;
+        state.lockWarnings = buildLockRiskWarnings(statements, oscPlan.unsupported);
+
+        renderStrategyNote(strategyNote);
+        renderWarnings(warningsContainer);
+        renderExternalCommands(commandsContainer);
+
+        if (!statements.length && !notes.length) {
             codeBlock.innerHTML = `<span class="text-gray-500 italic">-- No changes detected.</span>`;
-        } else {
-            // Syntax Highlight
-            sql = sql
-                .replace(/(ALTER TABLE|ADD COLUMN|CHANGE COLUMN|DROP COLUMN|CREATE UNIQUE INDEX|CREATE INDEX|DROP INDEX|ADD CONSTRAINT|FOREIGN KEY|REFERENCES|DROP FOREIGN KEY|ON)/g, '<span class="text-sql-keyword">$1</span>')
-                .replace(/`(.*?)`/g, '<span class="text-sql-ident">`$1`</span>')
-                .replace(/\b(VARCHAR|BIGINT|INT|TEXT|DATETIME|BOOLEAN|JSON)\b/g, '<span class="text-sql-function">$1</span>')
-                .replace(/(--.*)/g, '<span class="text-sql-comment">$1</span>');
-
-            codeBlock.innerHTML = sql.replace(/\n/g, '<br/>');
+            return;
         }
+
+        let highlighted = escapeHtml(state.generatedSqlText)
+            .replace(/\b(ALTER TABLE|ADD COLUMN|CHANGE COLUMN|DROP COLUMN|RENAME COLUMN|ALTER COLUMN|TYPE|SET NOT NULL|DROP NOT NULL|CREATE UNIQUE INDEX|CREATE INDEX|DROP INDEX|CONCURRENTLY|ADD CONSTRAINT|DROP CONSTRAINT|FOREIGN KEY|REFERENCES|DROP FOREIGN KEY|ON|IF EXISTS)\b/g, '<span class="text-sql-keyword">$1</span>')
+            .replace(/(`[^`]+`|&quot;[^&]+&quot;)/g, '<span class="text-sql-ident">$1</span>')
+            .replace(/\b(VARCHAR|BIGINT|INT|TEXT|DATETIME|BOOLEAN|JSON|TIMESTAMP)\b/g, '<span class="text-sql-function">$1</span>')
+            .replace(/(--.*)/g, '<span class="text-sql-comment">$1</span>');
+
+        codeBlock.innerHTML = highlighted.replace(/\n/g, '<br/>');
     }
 
     function updateAll() {
@@ -1688,37 +1987,80 @@ END;\n`;
     container.querySelector('#tab-ddl').onclick = () => { state.activeTab = 'ddl'; updateAll(); };
     container.querySelector('#tab-stats').onclick = () => { state.activeTab = 'stats'; updateAll(); };
 
+    const strategySelect = container.querySelector('#schema-change-strategy');
+    if (strategySelect) {
+        strategySelect.onchange = () => {
+            state.schemaChangeStrategy = strategySelect.value;
+            generateSQL();
+        };
+    }
+
+    const lockGuardToggle = container.querySelector('#lock-guard-toggle');
+    if (lockGuardToggle) {
+        lockGuardToggle.onchange = () => {
+            state.lockGuardEnabled = lockGuardToggle.checked;
+            generateSQL();
+        };
+    }
+
     // Push Changes
     const btnPush = container.querySelector('#btn-push-changes');
     btnPush.onclick = async () => {
-        const sqlCode = container.querySelector('#sql-code-block');
-        const sqlHtml = sqlCode.innerHTML;
-        const sqlText = sqlCode.innerText || sqlCode.textContent;
-
-        if (sqlText.includes('No changes detected')) {
+        const statements = [...state.generatedStatements];
+        if (!statements.length) {
             Dialog.alert('No changes to push.');
             return;
         }
 
-        // Use new custom dialog with code block
-        if (!await Dialog.confirmCode(sqlHtml, "Review SQL Changes")) {
+        const previewHtml = escapeHtml(state.generatedSqlText || statements.join('\n')).replace(/\n/g, '<br/>');
+        if (!await Dialog.confirmCode(previewHtml, "Review SQL Changes")) {
             return;
         }
 
         try {
-            const statements = sqlText
-                .split('\n')
-                .filter(line => !line.trim().startsWith('--') && line.trim().length > 0)
-                .join('\n')
-                .split(';')
-                .map(s => s.trim())
-                .filter(s => s.length > 0);
-
             btnPush.disabled = true;
             btnPush.innerHTML = `<span class="material-symbols-outlined text-sm animate-spin">progress_activity</span> Pushing Changes...`;
 
-            for (const stmt of statements) {
-                await invoke('execute_query', { query: stmt + ';' });
+            if (state.lockGuardEnabled) {
+                const highRiskWarnings = state.lockWarnings.filter(w => String(w.severity).toLowerCase() === 'high');
+                if (highRiskWarnings.length > 0) {
+                    const riskPreview = highRiskWarnings.slice(0, 6).map(w => `- ${w.message}`).join('\n');
+                    const continueRisky = await Dialog.confirm(
+                        `High lock risk statements detected.\n\n${riskPreview}\n\nContinue anyway?`,
+                        'Lock Risk Warning'
+                    );
+                    if (!continueRisky) {
+                        return;
+                    }
+                }
+            }
+
+            if (state.activeDbType === 'mysql' && state.schemaChangeStrategy !== 'native') {
+                if (!state.externalOscCommands.length) {
+                    Dialog.alert('No compatible ALTER TABLE statements were found for external OSC mode. Switch to Native DDL or adjust changes.', 'OSC Plan Empty');
+                    return;
+                }
+
+                const commandScript = state.externalOscCommands.join('\n');
+                try {
+                    await navigator.clipboard.writeText(commandScript);
+                    toastSuccess('OSC command plan copied to clipboard.');
+                } catch (_copyError) {
+                    // Clipboard can fail in restricted desktop contexts; still show plan.
+                }
+
+                const unsupportedNote = state.unsupportedOscStatements.length > 0
+                    ? `<br><br><b>Unsupported statements:</b><br>${escapeHtml(state.unsupportedOscStatements.join('\n')).replace(/\n/g, '<br>')}`
+                    : '';
+                Dialog.alert(
+                    `External OSC mode selected.<br><br>Run generated ${state.schemaChangeStrategy === 'pt_osc' ? 'pt-online-schema-change' : 'gh-ost'} commands from your shell.${unsupportedNote}`,
+                    'OSC Command Plan'
+                );
+                return;
+            }
+
+            for (const statement of statements) {
+                await invoke('execute_query', { query: statement });
             }
 
             Dialog.alert('Changes pushed successfully! Reloading schema.', 'Success');

@@ -40,6 +40,17 @@ export const SchemaTrackerApi = {
     },
 
     /**
+     * Generates migration plan with strategy-specific online DDL hints.
+     * @param {SchemaDiff} diff
+     * @param {string} dbType - 'mysql' or 'postgresql'
+     * @param {string} strategy - 'native' | 'pt_osc' | 'gh_ost' | 'postgres_concurrently'
+     * @returns {Promise<{script: string, warnings: Array, external_commands: Array, unsupported_statements: Array, strategy: string}>}
+     */
+    async generateMigrationPlan(diff, dbType, strategy) {
+        return await invoke('generate_migration_plan', { diff, dbType, strategy });
+    },
+
+    /**
      * Adds a tag/annotation to a snapshot.
      * @param {number} snapshotId 
      * @param {string} tag 
