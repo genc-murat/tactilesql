@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { ThemeManager } from '../utils/ThemeManager.js';
 import { escapeHtml, formatBytes, formatDuration } from '../utils/helpers.js';
+import { CustomDropdown } from '../components/UI/CustomDropdown.js';
 
 export function CapacityPlanner() {
     let theme = ThemeManager.getCurrentTheme();
@@ -446,23 +447,15 @@ export function CapacityPlanner() {
                 <div class="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
                     <div>
                         <label class="text-[10px] font-bold uppercase tracking-widest ${classes.text.subtle}">Connection</label>
-                        <select id="select-connection" class="${classes.input} mt-1">
-                            <option value="">Select connection</option>
-                            ${state.connections.map(c => `<option value="${escapeHtml(c.id)}" ${state.selectedConnectionId === c.id ? 'selected' : ''}>${escapeHtml(c.name || c.host || 'Connection')}</option>`).join('')}
-                        </select>
+                        <div id="connection-dropdown-container" class="mt-1"></div>
                     </div>
                     <div>
                         <label class="text-[10px] font-bold uppercase tracking-widest ${classes.text.subtle}">Database / Schema</label>
-                        <select id="select-database" class="${classes.input} mt-1" ${state.selectedConnectionId ? '' : 'disabled'}>
-                            <option value="">Select</option>
-                            ${state.databases.map(db => `<option value="${escapeHtml(db)}" ${state.selectedDatabase === db ? 'selected' : ''}>${escapeHtml(db)}</option>`).join('')}
-                        </select>
+                        <div id="database-dropdown-container" class="mt-1"></div>
                     </div>
                     <div>
                         <label class="text-[10px] font-bold uppercase tracking-widest ${classes.text.subtle}">Interval</label>
-                        <select id="select-interval" class="${classes.input} mt-1">
-                            ${[5, 10, 20, 30].map(val => `<option value="${val}" ${state.intervalSec === val ? 'selected' : ''}>${val}s</option>`).join('')}
-                        </select>
+                        <div id="interval-dropdown-container" class="mt-1"></div>
                     </div>
                     <div>
                         <label class="text-[10px] font-bold uppercase tracking-widest ${classes.text.subtle}">Target Capacity (GB)</label>
@@ -524,10 +517,10 @@ export function CapacityPlanner() {
                             </div>
                         </div>
                         ${renderComparisonSparkline(
-                            'storage',
-                            chartConfigs.storage.series,
-                            { min: chartConfigs.storage.min, max: chartConfigs.storage.max }
-                        )}
+            'storage',
+            chartConfigs.storage.series,
+            { min: chartConfigs.storage.min, max: chartConfigs.storage.max }
+        )}
                         <div class="flex items-center gap-3 text-[10px] ${classes.text.secondary} mt-2">
                             <span><span class="inline-block w-2 h-2 rounded-full bg-sky-500 mr-1"></span>Total</span>
                             <span><span class="inline-block w-2 h-2 rounded-full bg-green-500 mr-1"></span>Data</span>
@@ -544,10 +537,10 @@ export function CapacityPlanner() {
                             <div class="text-xs font-mono ${classes.text.primary}">${hitRateText}</div>
                         </div>
                         ${renderComparisonSparkline(
-                            'hit',
-                            chartConfigs.hit.series,
-                            { min: chartConfigs.hit.min, max: chartConfigs.hit.max }
-                        )}
+            'hit',
+            chartConfigs.hit.series,
+            { min: chartConfigs.hit.min, max: chartConfigs.hit.max }
+        )}
                     </div>
 
                     <div class="${classes.card} p-5">
@@ -562,10 +555,10 @@ export function CapacityPlanner() {
                             </div>
                         </div>
                         ${renderComparisonSparkline(
-                            'io',
-                            chartConfigs.io.series,
-                            { min: chartConfigs.io.min, max: chartConfigs.io.max }
-                        )}
+            'io',
+            chartConfigs.io.series,
+            { min: chartConfigs.io.min, max: chartConfigs.io.max }
+        )}
                         <div class="flex items-center gap-3 text-[10px] ${classes.text.secondary} mt-2">
                             <span><span class="inline-block w-2 h-2 rounded-full bg-sky-400 mr-1"></span>Read</span>
                             <span><span class="inline-block w-2 h-2 rounded-full bg-orange-500 mr-1"></span>Write</span>
@@ -575,18 +568,60 @@ export function CapacityPlanner() {
             </div>
         `;
 
-        const connectionSelect = container.querySelector('#select-connection');
-        if (connectionSelect) {
-            connectionSelect.onchange = async (e) => {
-                await selectConnection(e.target.value);
-            };
+        const connectionContainer = container.querySelector('#connection-dropdown-container');
+        if (connectionContainer) {
+            const dropdown = new CustomDropdown({
+                items: [
+                    { value: '', label: 'Select connection', icon: 'link' },
+                    ...state.connections.map(c => ({
+                        value: c.id,
+                        label: c.name || c.host || 'Connection',
+                        icon: 'bolt'
+                    }))
+                ],
+                value: state.selectedConnectionId || '',
+                onSelect: async (val) => {
+                    await selectConnection(val);
+                }
+            });
+            connectionContainer.appendChild(dropdown.getElement());
         }
 
-        const databaseSelect = container.querySelector('#select-database');
-        if (databaseSelect) {
-            databaseSelect.onchange = async (e) => {
-                await selectDatabase(e.target.value);
-            };
+        const databaseContainer = container.querySelector('#database-dropdown-container');
+        if (databaseContainer) {
+            const dropdown = new CustomDropdown({
+                items: [
+                    { value: '', label: 'Select', icon: 'database' },
+                    ...state.databases.map(db => ({
+                        value: db,
+                        label: db,
+                        icon: 'database'
+                    }))
+                ],
+                value: state.selectedDatabase || '',
+                className: state.selectedConnectionId ? '' : 'opacity-50 pointer-events-none',
+                onSelect: async (val) => {
+                    await selectDatabase(val);
+                }
+            });
+            databaseContainer.appendChild(dropdown.getElement());
+        }
+
+        const intervalContainer = container.querySelector('#interval-dropdown-container');
+        if (intervalContainer) {
+            const dropdown = new CustomDropdown({
+                items: [5, 10, 20, 30].map(val => ({
+                    value: val,
+                    label: `${val}s`,
+                    icon: 'timer'
+                })),
+                value: state.intervalSec,
+                onSelect: (val) => {
+                    state.intervalSec = parseInt(val, 10) || DEFAULT_INTERVAL_SEC;
+                    startSampling();
+                }
+            });
+            intervalContainer.appendChild(dropdown.getElement());
         }
 
         const refreshBtn = container.querySelector('#btn-refresh');
@@ -601,14 +636,6 @@ export function CapacityPlanner() {
                 if (state.autoRefresh) startSampling();
                 else stopSampling();
                 render();
-            };
-        }
-
-        const intervalSelect = container.querySelector('#select-interval');
-        if (intervalSelect) {
-            intervalSelect.onchange = (e) => {
-                state.intervalSec = parseInt(e.target.value, 10) || DEFAULT_INTERVAL_SEC;
-                startSampling();
             };
         }
 
