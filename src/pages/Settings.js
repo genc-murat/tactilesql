@@ -1,6 +1,7 @@
 import { ThemeManager } from '../utils/ThemeManager.js';
 import { SettingsManager } from '../utils/SettingsManager.js';
 import { SETTINGS_PATHS } from '../constants/settingsKeys.js';
+import { Dialog } from '../components/UI/Dialog.js';
 import { invoke } from '@tauri-apps/api/core';
 import commandContractSnapshot from '../generated/command-contract.json';
 
@@ -532,6 +533,87 @@ export function Settings() {
                                 <span id="command-contract-error" class="text-red-500 ${commandContractState.error ? '' : 'hidden'}">${commandContractState.error ? escapeHtml(commandContractState.error) : ''}</span>
                             </div>
                         </div>
+
+                        <div class="pt-4 border-t ${isLight ? 'border-gray-200' : 'border-white/10'}">
+                            <div class="flex items-center justify-between gap-3 mb-3">
+                                <div>
+                                    <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Developer Quick Actions</h3>
+                                    <p class="text-xs text-gray-500 mt-1">Direct wiring for backend utility commands</p>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 text-xs">
+                                <div class="p-3 rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50' : 'border-white/10 bg-black/20'} space-y-2">
+                                    <div class="font-semibold ${isLight ? 'text-gray-800' : 'text-gray-200'}">Rust Greet</div>
+                                    <div class="flex items-center gap-2">
+                                        <input id="dev-greet-name" type="text" value="TactileSQL" class="flex-1 px-2 py-1 rounded border ${isLight ? 'bg-white border-gray-200 text-gray-700' : 'bg-black/20 border-white/10 text-gray-200'}" />
+                                        <button id="dev-greet-btn" class="px-3 py-1.5 rounded-md ${isLight ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-white/10 text-gray-300 hover:bg-white/20'} font-medium transition-all">
+                                            Greet
+                                        </button>
+                                    </div>
+                                    <div id="dev-greet-output" class="text-[11px] text-gray-500">Not called yet.</div>
+                                </div>
+
+                                <div class="p-3 rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50' : 'border-white/10 bg-black/20'} space-y-2">
+                                    <div class="font-semibold ${isLight ? 'text-gray-800' : 'text-gray-200'}">SSH Tunnel Controls</div>
+                                    <div id="dev-ssh-connection" class="text-[11px] text-gray-500">Active profile: Unknown</div>
+                                    <div class="flex items-center gap-2">
+                                        <button id="dev-open-ssh-btn" class="px-3 py-1.5 rounded-md ${isLight ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-white/10 text-gray-300 hover:bg-white/20'} font-medium transition-all">
+                                            Open Tunnel
+                                        </button>
+                                        <button id="dev-close-ssh-btn" class="px-3 py-1.5 rounded-md ${isLight ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-white/10 text-gray-300 hover:bg-white/20'} font-medium transition-all">
+                                            Close Tunnel
+                                        </button>
+                                    </div>
+                                    <div id="dev-ssh-status" class="text-[11px] text-gray-500">No SSH action yet.</div>
+                                </div>
+
+                                <div class="p-3 rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50' : 'border-white/10 bg-black/20'} space-y-3 lg:col-span-2">
+                                    <div class="flex items-center justify-between gap-3 flex-wrap">
+                                        <div>
+                                            <div class="font-semibold ${isLight ? 'text-gray-800' : 'text-gray-200'}">PostgreSQL Metadata Snapshot</div>
+                                            <div id="dev-pg-meta-status" class="text-[11px] text-gray-500 mt-1">No metadata loaded.</div>
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <select id="dev-schema-select" class="px-2 py-1 rounded border ${isLight ? 'bg-white border-gray-200 text-gray-700' : 'bg-black/20 border-white/10 text-gray-200'}">
+                                                <option value="public">public</option>
+                                            </select>
+                                            <button id="refresh-pg-meta-btn" class="flex items-center gap-1 px-2.5 py-1.5 rounded-md ${isLight ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-white/10 text-gray-300 hover:bg-white/20'} font-medium transition-all">
+                                                <span class="material-symbols-outlined text-sm">database</span>
+                                                Refresh
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div class="grid grid-cols-2 lg:grid-cols-5 gap-2">
+                                        <div class="p-2 rounded ${isLight ? 'bg-white border border-gray-200' : 'bg-black/20 border border-white/10'}">
+                                            <div class="text-[10px] uppercase tracking-wider text-gray-500">Schemas</div>
+                                            <div id="dev-schema-count" class="mt-1 text-sm font-mono ${isLight ? 'text-gray-900' : 'text-white'}">0</div>
+                                        </div>
+                                        <div class="p-2 rounded ${isLight ? 'bg-white border border-gray-200' : 'bg-black/20 border border-white/10'}">
+                                            <div class="text-[10px] uppercase tracking-wider text-gray-500">Extensions</div>
+                                            <div id="dev-extension-count" class="mt-1 text-sm font-mono ${isLight ? 'text-gray-900' : 'text-white'}">0</div>
+                                        </div>
+                                        <div class="p-2 rounded ${isLight ? 'bg-white border border-gray-200' : 'bg-black/20 border border-white/10'}">
+                                            <div class="text-[10px] uppercase tracking-wider text-gray-500">Tablespaces</div>
+                                            <div id="dev-tablespace-count" class="mt-1 text-sm font-mono ${isLight ? 'text-gray-900' : 'text-white'}">0</div>
+                                        </div>
+                                        <div class="p-2 rounded ${isLight ? 'bg-white border border-gray-200' : 'bg-black/20 border border-white/10'}">
+                                            <div class="text-[10px] uppercase tracking-wider text-gray-500">Sequences</div>
+                                            <div id="dev-sequence-count" class="mt-1 text-sm font-mono ${isLight ? 'text-gray-900' : 'text-white'}">0</div>
+                                        </div>
+                                        <div class="p-2 rounded ${isLight ? 'bg-white border border-gray-200' : 'bg-black/20 border border-white/10'}">
+                                            <div class="text-[10px] uppercase tracking-wider text-gray-500">Custom Types</div>
+                                            <div id="dev-custom-type-count" class="mt-1 text-sm font-mono ${isLight ? 'text-gray-900' : 'text-white'}">0</div>
+                                        </div>
+                                    </div>
+
+                                    <div id="dev-pg-meta-preview" class="text-[11px] ${isLight ? 'text-gray-600' : 'text-gray-400'} space-y-1">
+                                        <div>Preview: no metadata loaded yet.</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -698,6 +780,96 @@ export function Settings() {
         const runtimeDbTypeEl = container.querySelector('#runtime-db-type');
         const runtimeConnectionNameEl = container.querySelector('#runtime-connection-name');
         const disconnectBtn = container.querySelector('#disconnect-btn');
+        const devGreetNameInput = container.querySelector('#dev-greet-name');
+        const devGreetBtn = container.querySelector('#dev-greet-btn');
+        const devGreetOutput = container.querySelector('#dev-greet-output');
+        const devOpenSshBtn = container.querySelector('#dev-open-ssh-btn');
+        const devCloseSshBtn = container.querySelector('#dev-close-ssh-btn');
+        const devSshConnectionEl = container.querySelector('#dev-ssh-connection');
+        const devSshStatusEl = container.querySelector('#dev-ssh-status');
+        const devSchemaSelect = container.querySelector('#dev-schema-select');
+        const refreshPgMetaBtn = container.querySelector('#refresh-pg-meta-btn');
+        const devPgMetaStatusEl = container.querySelector('#dev-pg-meta-status');
+        const devPgMetaPreviewEl = container.querySelector('#dev-pg-meta-preview');
+        const devSchemaCountEl = container.querySelector('#dev-schema-count');
+        const devExtensionCountEl = container.querySelector('#dev-extension-count');
+        const devTablespaceCountEl = container.querySelector('#dev-tablespace-count');
+        const devSequenceCountEl = container.querySelector('#dev-sequence-count');
+        const devCustomTypeCountEl = container.querySelector('#dev-custom-type-count');
+
+        const setDisabled = (btn, disabled) => {
+            if (!btn) return;
+            btn.disabled = disabled;
+            btn.classList.toggle('opacity-50', disabled);
+            btn.classList.toggle('cursor-not-allowed', disabled);
+        };
+
+        const safeList = (value) => (Array.isArray(value) ? value : [])
+            .map((item) => String(item))
+            .filter(Boolean);
+
+        const getActiveConnectionConfig = () => {
+            try {
+                const parsed = JSON.parse(localStorage.getItem('activeConnection') || 'null');
+                return parsed && typeof parsed === 'object' ? parsed : null;
+            } catch {
+                return null;
+            }
+        };
+
+        const getActiveConnectionLabel = () => {
+            const activeConfig = getActiveConnectionConfig();
+            if (!activeConfig) return 'No active connection profile';
+            const target = activeConfig.database || activeConfig.schema || `${activeConfig.host || 'unknown-host'}:${activeConfig.port || ''}`;
+            return activeConfig.name ? `${activeConfig.name} (${target})` : target;
+        };
+
+        const setTextStatus = (el, message, tone = 'neutral') => {
+            if (!el) return;
+            const toneClass = tone === 'error'
+                ? 'text-red-500'
+                : (tone === 'success' ? 'text-emerald-500' : 'text-gray-500');
+            el.className = `text-[11px] ${toneClass}`;
+            el.textContent = message;
+        };
+
+        const updateSshPanelState = () => {
+            if (devSshConnectionEl) {
+                devSshConnectionEl.textContent = `Active profile: ${getActiveConnectionLabel()}`;
+            }
+            const activeConfig = getActiveConnectionConfig();
+            const hasProfile = Boolean(activeConfig);
+            const hasSsh = Boolean(activeConfig?.useSSHTunnel);
+            const hasId = Boolean(activeConfig?.id);
+            setDisabled(devOpenSshBtn, !(hasProfile && hasSsh && hasId));
+            setDisabled(devCloseSshBtn, !(hasProfile && hasId));
+        };
+
+        const updatePgMetricCounts = ({ schemas = 0, extensions = 0, tablespaces = 0, sequences = 0, customTypes = 0 }) => {
+            if (devSchemaCountEl) devSchemaCountEl.textContent = String(schemas);
+            if (devExtensionCountEl) devExtensionCountEl.textContent = String(extensions);
+            if (devTablespaceCountEl) devTablespaceCountEl.textContent = String(tablespaces);
+            if (devSequenceCountEl) devSequenceCountEl.textContent = String(sequences);
+            if (devCustomTypeCountEl) devCustomTypeCountEl.textContent = String(customTypes);
+        };
+
+        const formatPreviewItems = (items) => {
+            if (!Array.isArray(items) || items.length === 0) return 'None';
+            const preview = items.slice(0, 6).map(item => escapeHtml(item)).join(', ');
+            if (items.length > 6) return `${preview}, +${items.length - 6} more`;
+            return preview;
+        };
+
+        const renderPgMetadataPreview = ({ schema, schemas, extensions, tablespaces, sequences, customTypes }) => {
+            if (!devPgMetaPreviewEl) return;
+            devPgMetaPreviewEl.innerHTML = `
+                <div><span class="font-semibold">Schemas:</span> ${formatPreviewItems(schemas)}</div>
+                <div><span class="font-semibold">Extensions:</span> ${formatPreviewItems(extensions)}</div>
+                <div><span class="font-semibold">Tablespaces:</span> ${formatPreviewItems(tablespaces)}</div>
+                <div><span class="font-semibold">Sequences (${escapeHtml(schema || 'public')}):</span> ${formatPreviewItems(sequences)}</div>
+                <div><span class="font-semibold">Custom Types (${escapeHtml(schema || 'public')}):</span> ${formatPreviewItems(customTypes)}</div>
+            `;
+        };
 
         const setDevToolsStatus = (isOpen, isUnknown = false) => {
             if (!devToolsStatusEl) return;
@@ -778,6 +950,92 @@ export function Settings() {
             }
         };
 
+        const loadPgMetadata = async () => {
+            const originalHTML = refreshPgMetaBtn?.innerHTML || '';
+            if (refreshPgMetaBtn) {
+                refreshPgMetaBtn.disabled = true;
+                refreshPgMetaBtn.innerHTML = '<span class="material-symbols-outlined text-sm animate-spin">sync</span>Loading';
+            }
+
+            try {
+                const dbType = String(await invoke('get_active_db_type')).toLowerCase();
+                const schemas = safeList(await invoke('get_schemas'));
+
+                let selectedSchema = devSchemaSelect?.value || '';
+                if (devSchemaSelect) {
+                    devSchemaSelect.innerHTML = schemas.length > 0
+                        ? schemas.map((schemaName) => `<option value="${escapeHtml(schemaName)}">${escapeHtml(schemaName)}</option>`).join('')
+                        : '<option value="public">public</option>';
+                    selectedSchema = schemas.includes(selectedSchema) ? selectedSchema : (schemas[0] || 'public');
+                    devSchemaSelect.value = selectedSchema;
+                } else {
+                    selectedSchema = schemas[0] || 'public';
+                }
+
+                if (dbType !== 'postgresql') {
+                    updatePgMetricCounts({
+                        schemas: schemas.length,
+                        extensions: 0,
+                        tablespaces: 0,
+                        sequences: 0,
+                        customTypes: 0,
+                    });
+                    setTextStatus(
+                        devPgMetaStatusEl,
+                        dbType === 'disconnected'
+                            ? 'No active connection. Connect to PostgreSQL to load metadata.'
+                            : 'Connected DB is not PostgreSQL. Only schema list is available.',
+                        dbType === 'disconnected' ? 'neutral' : 'error'
+                    );
+                    renderPgMetadataPreview({
+                        schema: selectedSchema,
+                        schemas,
+                        extensions: [],
+                        tablespaces: [],
+                        sequences: [],
+                        customTypes: [],
+                    });
+                    return;
+                }
+
+                const [extensions, tablespaces, sequences, customTypes] = await Promise.all([
+                    invoke('get_extensions'),
+                    invoke('get_tablespaces'),
+                    invoke('get_sequences', { schema: selectedSchema }),
+                    invoke('get_custom_types', { schema: selectedSchema }),
+                ]);
+
+                const safeExtensions = safeList(extensions);
+                const safeTablespaces = safeList(tablespaces);
+                const safeSequences = safeList(sequences);
+                const safeCustomTypes = safeList(customTypes);
+
+                updatePgMetricCounts({
+                    schemas: schemas.length,
+                    extensions: safeExtensions.length,
+                    tablespaces: safeTablespaces.length,
+                    sequences: safeSequences.length,
+                    customTypes: safeCustomTypes.length,
+                });
+                setTextStatus(devPgMetaStatusEl, 'PostgreSQL metadata loaded successfully.', 'success');
+                renderPgMetadataPreview({
+                    schema: selectedSchema,
+                    schemas,
+                    extensions: safeExtensions,
+                    tablespaces: safeTablespaces,
+                    sequences: safeSequences,
+                    customTypes: safeCustomTypes,
+                });
+            } catch (error) {
+                setTextStatus(devPgMetaStatusEl, `Metadata load failed: ${String(error)}`, 'error');
+            } finally {
+                if (refreshPgMetaBtn) {
+                    refreshPgMetaBtn.disabled = false;
+                    refreshPgMetaBtn.innerHTML = originalHTML;
+                }
+            }
+        };
+
         devToolsToggleBtn?.addEventListener('click', async () => {
             try {
                 const isOpen = Boolean(await invoke('is_devtools_open'));
@@ -810,11 +1068,88 @@ export function Settings() {
                 disconnectBtn.classList.remove('opacity-70');
                 disconnectBtn.innerHTML = originalHTML;
                 await syncRuntimeConnectionState();
+                updateSshPanelState();
+                await loadPgMetadata();
             }
         });
 
+        devGreetBtn?.addEventListener('click', async () => {
+            const name = devGreetNameInput?.value?.trim() || 'TactileSQL';
+            const originalHTML = devGreetBtn.innerHTML;
+            setDisabled(devGreetBtn, true);
+            devGreetBtn.innerHTML = 'Calling...';
+            try {
+                const message = await invoke('greet', { name });
+                setTextStatus(devGreetOutput, String(message), 'success');
+            } catch (error) {
+                setTextStatus(devGreetOutput, `greet failed: ${String(error)}`, 'error');
+            } finally {
+                devGreetBtn.innerHTML = originalHTML;
+                setDisabled(devGreetBtn, false);
+            }
+        });
+
+        devOpenSshBtn?.addEventListener('click', async () => {
+            const activeConfig = getActiveConnectionConfig();
+            if (!activeConfig) {
+                Dialog.alert('No active connection profile. Connect first.', 'SSH Tunnel');
+                setTextStatus(devSshStatusEl, 'Open failed: no active connection profile.', 'error');
+                return;
+            }
+            if (!activeConfig.useSSHTunnel) {
+                Dialog.alert('Active connection does not have SSH tunnel enabled.', 'SSH Tunnel');
+                setTextStatus(devSshStatusEl, 'Open failed: SSH tunnel is not enabled in active profile.', 'error');
+                return;
+            }
+            if (!activeConfig.id) {
+                Dialog.alert('Active connection must be saved (with id) to manage tunnel lifecycle.', 'SSH Tunnel');
+                setTextStatus(devSshStatusEl, 'Open failed: active connection has no id.', 'error');
+                return;
+            }
+
+            const originalHTML = devOpenSshBtn.innerHTML;
+            setDisabled(devOpenSshBtn, true);
+            devOpenSshBtn.innerHTML = 'Opening...';
+            try {
+                const localPort = await invoke('open_ssh_tunnel', { config: activeConfig });
+                setTextStatus(devSshStatusEl, `Tunnel open on localhost:${localPort} (key: ${activeConfig.id}).`, 'success');
+            } catch (error) {
+                setTextStatus(devSshStatusEl, `Open failed: ${String(error)}`, 'error');
+            } finally {
+                devOpenSshBtn.innerHTML = originalHTML;
+                updateSshPanelState();
+            }
+        });
+
+        devCloseSshBtn?.addEventListener('click', async () => {
+            const activeConfig = getActiveConnectionConfig();
+            if (!activeConfig?.id) {
+                Dialog.alert('No active connection id found to close tunnel.', 'SSH Tunnel');
+                setTextStatus(devSshStatusEl, 'Close failed: active connection has no id.', 'error');
+                return;
+            }
+
+            const originalHTML = devCloseSshBtn.innerHTML;
+            setDisabled(devCloseSshBtn, true);
+            devCloseSshBtn.innerHTML = 'Closing...';
+            try {
+                await invoke('close_ssh_tunnel', { connection_id: activeConfig.id });
+                setTextStatus(devSshStatusEl, `Tunnel closed for key: ${activeConfig.id}.`, 'success');
+            } catch (error) {
+                setTextStatus(devSshStatusEl, `Close failed: ${String(error)}`, 'error');
+            } finally {
+                devCloseSshBtn.innerHTML = originalHTML;
+                updateSshPanelState();
+            }
+        });
+
+        refreshPgMetaBtn?.addEventListener('click', loadPgMetadata);
+        devSchemaSelect?.addEventListener('change', loadPgMetadata);
+
         syncDevToolsState();
         syncRuntimeConnectionState();
+        updateSshPanelState();
+        loadPgMetadata();
 
         const reloadBtn = container.querySelector('#reload-app-btn');
         reloadBtn?.addEventListener('click', () => {
