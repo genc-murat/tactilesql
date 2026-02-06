@@ -4,6 +4,7 @@ import { Dialog } from '../components/UI/Dialog.js';
 import { escapeHtml, formatBytes } from '../utils/helpers.js';
 import { AiService } from '../utils/AiService.js';
 import { AiAssistancePanel } from '../components/UI/AiAssistancePanel.js';
+import { CustomDropdown } from '../components/UI/CustomDropdown.js';
 
 export function IndexLifecycle() {
     let theme = ThemeManager.getCurrentTheme();
@@ -280,6 +281,13 @@ export function IndexLifecycle() {
         aiAnalyzedQueries: 0,
         isAiAnalyzing: false,
         aiError: null
+    };
+
+    // Dropdown instances
+    let dropdowns = {
+        connection: null,
+        database: null,
+        table: null
     };
 
     const selectConnection = async (connId) => {
@@ -571,26 +579,14 @@ export function IndexLifecycle() {
                     </div>
                 </div>
                 <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <div>
+                    <div id="conn-dropdown-container">
                         <label class="text-[10px] font-bold uppercase tracking-widest ${classes.text.subtle}">Connection</label>
-                        <select id="select-connection" class="${classes.input} mt-1">
-                            <option value="">Select connection</option>
-                            ${state.connections.map(c => `<option value="${escapeHtml(c.id)}" ${state.selectedConnectionId === c.id ? 'selected' : ''}>${escapeHtml(c.name || c.host || 'Connection')}</option>`).join('')}
-                        </select>
                     </div>
-                    <div>
+                    <div id="db-dropdown-container">
                         <label class="text-[10px] font-bold uppercase tracking-widest ${classes.text.subtle}">${state.activeDbType === 'postgresql' ? 'Schema' : 'Database'}</label>
-                        <select id="select-database" class="${classes.input} mt-1" ${state.selectedConnectionId ? '' : 'disabled'}>
-                            <option value="">Select ${state.activeDbType === 'postgresql' ? 'schema' : 'database'}</option>
-                            ${state.databases.map(db => `<option value="${escapeHtml(db)}" ${state.selectedDatabase === db ? 'selected' : ''}>${escapeHtml(db)}</option>`).join('')}
-                        </select>
                     </div>
-                    <div>
+                    <div id="table-dropdown-container">
                         <label class="text-[10px] font-bold uppercase tracking-widest ${classes.text.subtle}">Table</label>
-                        <select id="select-table" class="${classes.input} mt-1" ${state.selectedDatabase ? '' : 'disabled'}>
-                            <option value="">Select table</option>
-                            ${state.tables.map(t => `<option value="${escapeHtml(t)}" ${state.selectedTable === t ? 'selected' : ''}>${escapeHtml(t)}</option>`).join('')}
-                        </select>
                     </div>
                 </div>
             </div>
@@ -826,25 +822,52 @@ export function IndexLifecycle() {
             </div>
         `;
 
-        const connectionSelect = container.querySelector('#select-connection');
-        if (connectionSelect) {
-            connectionSelect.onchange = async (e) => {
-                await selectConnection(e.target.value);
-            };
+        // Initialize CustomDropdowns
+        const connContainer = container.querySelector('#conn-dropdown-container');
+        if (connContainer) {
+            const connItems = state.connections.map(c => ({ value: c.id, label: c.name || c.host || 'Connection', icon: 'database' }));
+            dropdowns.connection = new CustomDropdown({
+                items: connItems,
+                value: state.selectedConnectionId,
+                placeholder: 'Select connection',
+                className: 'w-full mt-1',
+                onSelect: (val) => selectConnection(val)
+            });
+            connContainer.appendChild(dropdowns.connection.getElement());
         }
 
-        const databaseSelect = container.querySelector('#select-database');
-        if (databaseSelect) {
-            databaseSelect.onchange = async (e) => {
-                await selectDatabase(e.target.value);
-            };
+        const dbContainer = container.querySelector('#db-dropdown-container');
+        if (dbContainer) {
+            const dbItems = state.databases.map(db => ({ value: db, label: db, icon: 'storage' }));
+            dropdowns.database = new CustomDropdown({
+                items: dbItems,
+                value: state.selectedDatabase,
+                placeholder: `Select ${state.activeDbType === 'postgresql' ? 'schema' : 'database'}`,
+                className: 'w-full mt-1',
+                onSelect: (val) => selectDatabase(val)
+            });
+            if (!state.selectedConnectionId) {
+                dbContainer.style.opacity = '0.5';
+                dbContainer.style.pointerEvents = 'none';
+            }
+            dbContainer.appendChild(dropdowns.database.getElement());
         }
 
-        const tableSelect = container.querySelector('#select-table');
-        if (tableSelect) {
-            tableSelect.onchange = async (e) => {
-                await selectTable(e.target.value);
-            };
+        const tableContainer = container.querySelector('#table-dropdown-container');
+        if (tableContainer) {
+            const tableItems = state.tables.map(t => ({ value: t, label: t, icon: 'table' }));
+            dropdowns.table = new CustomDropdown({
+                items: tableItems,
+                value: state.selectedTable,
+                placeholder: 'Select table',
+                className: 'w-full mt-1',
+                onSelect: (val) => selectTable(val)
+            });
+            if (!state.selectedDatabase) {
+                tableContainer.style.opacity = '0.5';
+                tableContainer.style.pointerEvents = 'none';
+            }
+            tableContainer.appendChild(dropdowns.table.getElement());
         }
 
         const refreshBtn = container.querySelector('#btn-refresh');
