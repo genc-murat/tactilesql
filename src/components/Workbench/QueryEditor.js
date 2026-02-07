@@ -22,6 +22,8 @@ import { detectSlowQuery, estimateQueryLatency, buildParamSuggestions } from './
 import { getActiveDbType, generateSampleQueries, buildWhatIfVariants } from './editor/sampleQueries.js';
 import { pickExecutionQuery, buildPostgresRetryCandidates } from './editor/executionHelpers.js';
 import { findDestructiveStatementsWithoutWhere, extractNamedParameters, applyNamedParameters } from './editor/executionSafety.js';
+import { findSymbolAtPosition, renameSymbol, getSymbolDescription } from '../../utils/symbolRename.js';
+
 
 // SQL Keywords for autocomplete
 // Imported from SqlHighlighter.js
@@ -1393,6 +1395,49 @@ export function QueryEditor() {
         }
     };
 
+    // Handle Symbol Rename (Shift+F6)
+    const handleSymbolRename = async (textarea, updateSyntaxHighlight, updateLineNumbers) => {
+        const query = textarea.value;
+        const cursorPos = textarea.selectionStart;
+
+        try {
+            // Find symbol at cursor position
+            const symbol = findSymbolAtPosition(query, cursorPos);
+
+            if (!symbol) {
+                toastWarning('No renameable symbol found at cursor position.');
+                return;
+            }
+
+            // Get symbol description for user
+            const description = getSymbolDescription(symbol);
+
+            // Prompt user for new name
+            const newName = await Dialog.prompt(
+                `Rename ${description} to:`,
+                'Rename Symbol',
+                symbol.name
+            );
+
+            if (!newName || newName === symbol.name) {
+                return; // User cancelled or no change
+            }
+
+            // Perform rename
+            const newQuery = renameSymbol(query, symbol.name, newName, symbol.type);
+
+            // Update editor
+            textarea.value = newQuery;
+            setActiveTabContent(newQuery, { forceSnapshot: true, historySource: 'symbol_rename' });
+            updateSyntaxHighlight(true);
+            updateLineNumbers();
+
+            toastSuccess(`Renamed ${description} to "${newName}"`);
+        } catch (error) {
+            Dialog.alert(error.message || 'Failed to rename symbol', 'Rename Error');
+        }
+    };
+
     async function attachEvents() {
         // Toggle menus on click
         const menuButtons = container.querySelectorAll('.toolbar-menu > button');
@@ -1906,6 +1951,12 @@ export function QueryEditor() {
                         setActiveTabContent(newText, { forceSnapshot: true, historySource: 'move_line_down' });
                         updateSyntaxHighlight(true);
                     }
+                }
+
+                // Shift+F6 to rename symbol (alias, CTE, variable)
+                if (e.shiftKey && e.key === 'F6') {
+                    e.preventDefault();
+                    handleSymbolRename(textarea, updateSyntaxHighlight, updateLineNumbers);
                 }
             });
 
@@ -2443,7 +2494,7 @@ export function QueryEditor() {
     };
     window.addEventListener('themechange', onThemeChange);
 
-        // --- Register Keyboard Shortcut Handlers ---
+    // --- Register Keyboard Shortcut Handlers ---
     const registerShortcutHandlers = () => {
         // Execute query using default run mode (Ctrl+Enter, F5)
         registerHandler('executeQuery', () => {

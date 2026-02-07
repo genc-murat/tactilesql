@@ -29,6 +29,7 @@ const SHORTCUTS = {
     'ctrl+l': { action: 'selectLine', description: 'Select line', category: 'Editor' },
     'ctrl+g': { action: 'gotoLine', description: 'Go to line', category: 'Editor' },
     'ctrl+space': { action: 'autocomplete', description: 'Autocomplete', category: 'Editor' },
+    'shift+f6': { action: 'renameSymbol', description: 'Rename symbol (alias/CTE)', category: 'Editor' },
     'alt+arrowup': { action: 'moveLineUp', description: 'Move line up', category: 'Editor' },
     'alt+arrowdown': { action: 'moveLineDown', description: 'Move line down', category: 'Editor' },
 
@@ -124,7 +125,7 @@ function handleKeydown(e) {
 
     // Editor shortcuts should work even when editing
     const editorShortcuts = ['formatSQL', 'toggleComment', 'duplicateLine', 'selectLine',
-        'gotoLine', 'autocomplete', 'moveLineUp', 'moveLineDown',
+        'gotoLine', 'autocomplete', 'renameSymbol', 'moveLineUp', 'moveLineDown',
         'find', 'findReplace', 'findNext', 'findPrev', 'saveSnippet'];
 
     // Check if we should handle this shortcut

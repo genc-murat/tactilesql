@@ -420,6 +420,7 @@ Common shortcuts (see the in-app help with `F1`):
 - `Ctrl+/` — Toggle comment
 - `Ctrl+S` — Save as snippet
 - `Ctrl+Space` — Autocomplete
+- `Shift+F6` — Rename symbol (alias/CTE)
 - `Ctrl+I` — Ask AI Assistant
 
 ### Navigation
