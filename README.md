@@ -4,7 +4,8 @@ TactileSQL is a modern, desktop-first SQL workbench for MySQL and PostgreSQL, bu
 
 ## Highlights
 
-- **SQL Workbench** with multi-tab editor, syntax highlighting, auto-format, and autocomplete.
+- **SQL Workbench** with multi-tab editor, syntax highlighting, auto-format, autocomplete, and **code folding**.
+- **Code Folding**: Collapse and expand code blocks (subqueries, CASE/END, BEGIN/END, block comments) for improved readability.
 - **Configurable SQL Execution Defaults**: Set default run mode (`current statement` / `selection first` / `run all`) and query timeout (`0 = unlimited`).
 - **Smart Autocomplete++** with context-aware suggestions, abbreviation matching (e.g. `tc` → `test_customers`), FK-based JOIN hints, database/schema qualification control (Never/Always/On collisions), and frequency learning.
 - **Intelligent JOIN Statements**: Automatically generate complete JOIN clauses (e.g., `JOIN orders o ON u.id = o.user_id`) based on foreign key relationships, with automatic alias generation and reverse FK detection.
@@ -425,6 +426,8 @@ Common shortcuts (see the in-app help with `F1`):
 - `Shift+F6` — Rename symbol (alias/CTE)
 - `Ctrl+Shift+E` — Expand wildcard (*)
 - `Ctrl+I` — Ask AI Assistant
+- `Ctrl+Shift+[` — Fold all regions
+- `Ctrl+Shift+]` — Unfold all regions
 
 ### Navigation
 - `Ctrl+Shift+O` — Focus Object Explorer

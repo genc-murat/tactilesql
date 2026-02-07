@@ -48,6 +48,10 @@ const SHORTCUTS = {
     // Editor refactoring
     'ctrl+shift+e': { action: 'expandWildcard', description: 'Expand wildcard (*)', category: 'Editor' },
 
+    // Code folding
+    'ctrl+shift+[': { action: 'foldAll', description: 'Fold all regions', category: 'Editor' },
+    'ctrl+shift+]': { action: 'unfoldAll', description: 'Unfold all regions', category: 'Editor' },
+
     // General
     'escape': { action: 'closeModal', description: 'Close modal/popup', category: 'General' },
     // 'f1': { action: 'showHelp', description: 'Shortcut help', category: 'General' },
@@ -129,7 +133,7 @@ function handleKeydown(e) {
     // Editor shortcuts should work even when editing
     const editorShortcuts = ['formatSQL', 'toggleComment', 'duplicateLine', 'selectLine',
         'gotoLine', 'autocomplete', 'renameSymbol', 'expandWildcard', 'moveLineUp', 'moveLineDown',
-        'find', 'findReplace', 'findNext', 'findPrev', 'saveSnippet'];
+        'find', 'findReplace', 'findNext', 'findPrev', 'saveSnippet', 'foldAll', 'unfoldAll'];
 
     // Check if we should handle this shortcut
     if (isEditing) {

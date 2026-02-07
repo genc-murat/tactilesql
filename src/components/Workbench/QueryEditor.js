@@ -25,6 +25,7 @@ import { findDestructiveStatementsWithoutWhere, extractNamedParameters, applyNam
 import { findSymbolAtPosition, renameSymbol, getSymbolDescription } from '../../utils/symbolRename.js';
 import { findWildcardAtCursor, expandWildcard, isNearWildcard } from '../../utils/wildcardExpander.js';
 import { parseQuery } from '../../utils/autocomplete/parser.js';
+import { FoldManager, renderFoldGutter } from './editor/codeFolding.js';
 
 
 // SQL Keywords for autocomplete
@@ -197,6 +198,9 @@ export function QueryEditor() {
     });
     tabHistory.syncTabs(tabs);
 
+    // --- Code Folding State ---
+    const foldManager = new FoldManager();
+
     // --- Syntax Worker State ---
     let syntaxWorker = null;
     let syntaxWorkerHealthy = true;
@@ -278,6 +282,30 @@ export function QueryEditor() {
             }
         }
 
+        // Apply fold indicators - add visual markers for collapsed regions
+        if (foldManager.regions.length > 0) {
+            const lines = renderedHtml.split('\n');
+            const resultLines = [];
+
+            for (let i = 0; i < lines.length; i++) {
+                // Check if this line starts a collapsed region
+                const region = foldManager.getRegionAtLine(i);
+                if (region && region.collapsed) {
+                    // Show first line with fold indicator
+                    const hiddenCount = region.endLine - region.startLine;
+                    const foldIndicator = `<span class="fold-indicator px-2 py-0.5 ml-2 text-[10px] rounded bg-mysql-teal/20 text-mysql-teal font-medium select-none">⋯ ${hiddenCount} lines</span>`;
+                    resultLines.push(lines[i] + foldIndicator);
+                    // Skip folded lines
+                    i = region.endLine;
+                } else if (!foldManager.isLineHidden(i)) {
+                    resultLines.push(lines[i]);
+                }
+                // Hidden lines are not added to resultLines
+            }
+
+            renderedHtml = resultLines.join('\n');
+        }
+
         syntaxHighlight.innerHTML = `${renderedHtml}\n`;
 
         if (Array.isArray(errors) && errors.length > 0) {
@@ -287,6 +315,7 @@ export function QueryEditor() {
             textarea.title = 'Enter your SQL query here... (Ctrl+Space for suggestions)';
         }
     };
+
 
     const ensureSyntaxWorker = () => {
         if (!syntaxWorkerHealthy) return null;
@@ -1025,12 +1054,16 @@ export function QueryEditor() {
                 </div>
             </div>
             <div class="flex-1 neu-inset rounded-xl ${isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0f1115]'))} overflow-hidden flex p-4 relative focus-within:ring-1 focus-within:ring-mysql-teal/50 transition-all" style="font-size:${typography.fontSize}px;line-height:${typography.lineHeight}px;font-family:${typography.fontFamily};">
-                ${lineNumbersEnabled ? `<div class="w-12 ${(isLight || isDawn) ? 'text-gray-300 border-gray-100' : (isOceanic ? 'text-ocean-text/30 border-ocean-border/30' : 'text-gray-600 border-white/5')} text-right pr-4 border-r select-none pt-1 overflow-hidden" id="line-numbers" style="font-size:${lineNumberFontSize}px;line-height:${typography.lineHeight}px;font-family:${typography.fontFamily};"></div>` : ''}
-                <div class="flex-1 relative ${lineNumbersEnabled ? 'pl-6' : 'pl-0'}">
-                    <pre id="syntax-highlight" class="absolute inset-0 ${lineNumbersEnabled ? 'pl-6' : 'pl-0'} pt-0 pointer-events-none overflow-hidden ${wrapClass}" style="font-size:${typography.fontSize}px;line-height:${typography.lineHeight}px;font-family:${typography.fontFamily};" aria-hidden="true"></pre>
+                ${lineNumbersEnabled ? `<div class="flex select-none pt-1 overflow-hidden">
+                    <div class="w-12 ${(isLight || isDawn) ? 'text-gray-300' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-600')} text-right pr-2" id="line-numbers" style="font-size:${lineNumberFontSize}px;line-height:${typography.lineHeight}px;font-family:${typography.fontFamily};"></div>
+                    <div class="w-5 flex flex-col items-center ${(isLight || isDawn) ? 'border-gray-100' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5')} border-r" id="fold-gutter" style="line-height:${typography.lineHeight}px;"></div>
+                </div>` : ''}
+                <div class="flex-1 relative ${lineNumbersEnabled ? 'pl-4' : 'pl-0'}">
+                    <pre id="syntax-highlight" class="absolute inset-0 ${lineNumbersEnabled ? 'pl-4' : 'pl-0'} pt-0 pointer-events-none overflow-hidden ${wrapClass}" style="font-size:${typography.fontSize}px;line-height:${typography.lineHeight}px;font-family:${typography.fontFamily};" aria-hidden="true"></pre>
                     <textarea id="query-input" class="relative w-full h-full bg-transparent border-none ${isLight ? 'text-transparent' : (isOceanic ? 'text-transparent' : 'text-transparent')} ${isLight ? 'caret-gray-800' : (isOceanic ? 'caret-white' : 'caret-white')} ${wrapClass} focus:ring-0 resize-none outline-none custom-scrollbar p-0 z-10 placeholder:text-gray-600/50" style="font-size:${typography.fontSize}px;line-height:${typography.lineHeight}px;font-family:${typography.fontFamily};" spellcheck="false" placeholder="Enter your SQL query here... (Ctrl+Space for suggestions)">${activeTab ? activeTab.content : ''}</textarea>
                 </div>
             </div>
+
 
             <!-- Inline AI Repair Bar (Hidden by default) -->
             <div id="repair-bar" class="${repairBarVisible ? 'h-16 opacity-100' : 'hidden h-0 opacity-0'} overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)]">
@@ -1655,14 +1688,77 @@ export function QueryEditor() {
             requestSyntaxRender(textarea, syntaxHighlight, immediate);
         };
 
-        // Update line numbers
+        // Update line numbers and fold gutter
         const updateLineNumbers = () => {
-            if (textarea && lineNumbers) {
-                const lines = textarea.value.split('\n').length;
-                const minContent = Math.max(lines, 20); // Minimum 20 lines
+            if (!textarea) return;
+
+            // Get current typography settings
+            const typography = getEditorTypography();
+
+            const content = textarea.value || '';
+            const lines = content.split('\n');
+            const lineCount = lines.length;
+            const minContent = Math.max(lineCount, 20); // Minimum 20 lines
+
+            // Detect fold regions
+            foldManager.detectRegions(content);
+            const foldMarkers = foldManager.getFoldMarkers();
+
+            // Update line numbers
+            if (lineNumbers) {
                 lineNumbers.innerHTML = Array.from({ length: minContent }, (_, i) => i + 1).join('<br>');
             }
+
+            // Update fold gutter
+            const foldGutter = container.querySelector('#fold-gutter');
+            if (foldGutter) {
+                const gutterHTML = [];
+                for (let i = 0; i < minContent; i++) {
+                    const marker = foldMarkers.find(m => m.line === i);
+                    if (marker) {
+                        const icon = marker.collapsed ? 'chevron_right' : 'expand_more';
+                        const title = marker.collapsed
+                            ? `Expand (${marker.endLine - marker.line + 1} lines)`
+                            : 'Collapse';
+                        gutterHTML.push(`<div class="fold-marker" data-fold-line="${i}" title="${title}" style="height:${typography.lineHeight}px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><span class="material-symbols-outlined ${marker.collapsed ? 'text-mysql-teal' : (isLight ? 'text-gray-400' : 'text-gray-500')} hover:text-mysql-teal transition-colors" style="font-size:12px;">${icon}</span></div>`);
+                    } else {
+                        gutterHTML.push(`<div style="height:${typography.lineHeight}px;"></div>`);
+                    }
+                }
+                foldGutter.innerHTML = gutterHTML.join('');
+
+
+                // Attach fold click handlers
+                foldGutter.querySelectorAll('.fold-marker').forEach(marker => {
+                    marker.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const lineNum = parseInt(marker.dataset.foldLine, 10);
+                        const region = foldManager.toggleFold(lineNum);
+                        if (region) {
+                            // Re-render just the gutter, don't re-detect regions
+                            const foldMarkers = foldManager.getFoldMarkers();
+                            const gutterHTML2 = [];
+                            for (let j = 0; j < minContent; j++) {
+                                const m = foldMarkers.find(x => x.line === j);
+                                if (m) {
+                                    const ic = m.collapsed ? 'chevron_right' : 'expand_more';
+                                    gutterHTML2.push(`<div class="fold-marker" data-fold-line="${j}" style="height:${typography.lineHeight}px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><span class="material-symbols-outlined ${m.collapsed ? 'text-mysql-teal' : (isLight ? 'text-gray-400' : 'text-gray-500')} hover:text-mysql-teal transition-colors" style="font-size:12px;">${ic}</span></div>`);
+                                } else {
+                                    gutterHTML2.push(`<div style="height:${typography.lineHeight}px;"></div>`);
+                                }
+                            }
+                            foldGutter.innerHTML = gutterHTML2.join('');
+                            // Update syntax highlighting to show/hide folded lines
+                            updateSyntaxHighlight(true);
+                            // Re-attach handlers recursively
+                            updateLineNumbers();
+                        }
+                    });
+                });
+            }
         };
+
 
         const showLocalHistory = async () => {
             const snapshots = tabHistory.getSnapshots(activeTabId, 12);
@@ -2670,7 +2766,70 @@ export function QueryEditor() {
                 }
             }
         });
+
+        // Fold All (Ctrl+Shift+[)
+        registerHandler('foldAll', () => {
+            foldManager.foldAll();
+            const textarea = container.querySelector('#query-input');
+            const syntaxHighlight = container.querySelector('#syntax-highlight');
+            if (textarea && syntaxHighlight) {
+                requestSyntaxRender(textarea, syntaxHighlight, true);
+            }
+            // Re-render fold gutter
+            const foldGutter = container.querySelector('#fold-gutter');
+            if (foldGutter) {
+                const typography = getEditorTypography();
+                const content = textarea?.value || '';
+                const lines = content.split('\n');
+                const minContent = Math.max(lines.length, 20);
+                const foldMarkers = foldManager.getFoldMarkers();
+                const gutterHTML = [];
+                for (let i = 0; i < minContent; i++) {
+                    const marker = foldMarkers.find(m => m.line === i);
+                    if (marker) {
+                        const icon = marker.collapsed ? 'chevron_right' : 'expand_more';
+                        gutterHTML.push(`<div class="fold-marker" data-fold-line="${i}" style="height:${typography.lineHeight}px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><span class="material-symbols-outlined text-mysql-teal" style="font-size:12px;">${icon}</span></div>`);
+                    } else {
+                        gutterHTML.push(`<div style="height:${typography.lineHeight}px;"></div>`);
+                    }
+                }
+                foldGutter.innerHTML = gutterHTML.join('');
+            }
+            toastSuccess('All regions folded');
+        });
+
+        // Unfold All (Ctrl+Shift+])
+        registerHandler('unfoldAll', () => {
+            foldManager.unfoldAll();
+            const textarea = container.querySelector('#query-input');
+            const syntaxHighlight = container.querySelector('#syntax-highlight');
+            if (textarea && syntaxHighlight) {
+                requestSyntaxRender(textarea, syntaxHighlight, true);
+            }
+            // Re-render fold gutter
+            const foldGutter = container.querySelector('#fold-gutter');
+            if (foldGutter) {
+                const typography = getEditorTypography();
+                const content = textarea?.value || '';
+                const lines = content.split('\n');
+                const minContent = Math.max(lines.length, 20);
+                const foldMarkers = foldManager.getFoldMarkers();
+                const gutterHTML = [];
+                for (let i = 0; i < minContent; i++) {
+                    const marker = foldMarkers.find(m => m.line === i);
+                    if (marker) {
+                        const icon = marker.collapsed ? 'chevron_right' : 'expand_more';
+                        gutterHTML.push(`<div class="fold-marker" data-fold-line="${i}" style="height:${typography.lineHeight}px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><span class="material-symbols-outlined ${isLight ? 'text-gray-400' : 'text-gray-500'}" style="font-size:12px;">${icon}</span></div>`);
+                    } else {
+                        gutterHTML.push(`<div style="height:${typography.lineHeight}px;"></div>`);
+                    }
+                }
+                foldGutter.innerHTML = gutterHTML.join('');
+            }
+            toastSuccess('All regions unfolded');
+        });
     };
+
 
     // Register handlers on mount
     registerShortcutHandlers();
@@ -2719,7 +2878,8 @@ export function QueryEditor() {
         // Unregister handlers
         ['executeQuery', 'executeAllQuery', 'newTab', 'closeTab', 'nextTab', 'prevTab',
             'goToTab1', 'goToTab2', 'goToTab3', 'goToTab4', 'goToTab5',
-            'formatSQL', 'saveSnippet', 'focusQuery', 'selectLine', 'gotoLine'].forEach(action => {
+            'formatSQL', 'saveSnippet', 'focusQuery', 'selectLine', 'gotoLine',
+            'foldAll', 'unfoldAll'].forEach(action => {
                 unregisterHandler(action);
             });
     };
