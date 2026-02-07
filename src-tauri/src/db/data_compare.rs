@@ -11,6 +11,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::sql_utils::{qualified_table_name, quote_column_name, value_to_sql_literal};
 use super::AppState;
+use tauri::State;
 
 // =====================================================
 // TYPES AND STRUCTS
@@ -1087,5 +1088,226 @@ pub fn build_data_compare_samples(
         });
     }
 
+
     samples
+}
+
+// =====================================================
+// EXPORTED FUNCTIONS
+// =====================================================
+
+pub async fn compare_table_data_with_state(
+    app_state: &AppState,
+    request: DataCompareRequest,
+) -> Result<DataCompareResult, String> {
+    let sample_limit = clamp_data_compare_sample_limit(request.sample_limit);
+    let internal = compute_data_compare_internal(app_state, &request).await?;
+    let key_columns =
+        canonical_list_to_display(&internal.key_canonicals, &internal.output_name_by_canonical);
+    let compare_columns = canonical_list_to_display(
+        &internal.compare_canonicals,
+        &internal.output_name_by_canonical,
+    );
+    let samples = build_data_compare_samples(&internal, sample_limit);
+
+    Ok(DataCompareResult {
+        source_database: internal.source_database.clone(),
+        source_table: internal.source_table.clone(),
+        target_database: internal.target_database.clone(),
+        target_table: internal.target_table.clone(),
+        key_columns,
+        compare_columns,
+        summary: internal.summary.clone(),
+        samples,
+        warnings: internal.warnings,
+    })
+}
+
+pub async fn generate_data_sync_script_with_state(
+    app_state: &AppState,
+    request: DataCompareRequest,
+) -> Result<DataSyncPlan, String> {
+    let include_inserts = request.include_inserts.unwrap_or(true);
+    let include_updates = request.include_updates.unwrap_or(true);
+    let include_deletes = request.include_deletes.unwrap_or(false);
+    let wrap_in_transaction = request.wrap_in_transaction.unwrap_or(true);
+    let statement_limit = clamp_data_compare_statement_limit(request.statement_limit);
+
+    if !include_inserts && !include_updates && !include_deletes {
+        return Err("At least one sync action must be enabled (insert/update/delete).".to_string());
+    }
+
+    let internal = compute_data_compare_internal(app_state, &request).await?;
+    let key_columns =
+        canonical_list_to_display(&internal.key_canonicals, &internal.output_name_by_canonical);
+    let compare_columns = canonical_list_to_display(
+        &internal.compare_canonicals,
+        &internal.output_name_by_canonical,
+    );
+
+    let mut warnings = internal.warnings.clone();
+    if include_deletes && internal.summary.extra_in_target > 0 {
+        warnings.push("Delete sync is enabled. Extra rows in target will be deleted.".to_string());
+    }
+    if !include_deletes && internal.summary.extra_in_target > 0 {
+        warnings.push(
+            "Delete sync is disabled. Extra target rows will remain after applying the script."
+                .to_string(),
+        );
+    }
+    if !include_inserts && internal.summary.missing_in_target > 0 {
+        warnings.push(
+            "Insert sync is disabled. Missing target rows will remain after applying the script."
+                .to_string(),
+        );
+    }
+    if !include_updates && internal.summary.changed > 0 {
+        warnings.push("Update sync is disabled. Changed rows will remain out of sync.".to_string());
+    }
+
+    let qualified_target_table = qualified_table_name(
+        &internal.db_type,
+        &internal.target_database,
+        &internal.target_table,
+    );
+
+    let mut lines = Vec::new();
+    lines.push("-- TactileSQL Data Compare Sync Script".to_string());
+    lines.push(format!(
+        "-- Source: {}.{}",
+        internal.source_database, internal.source_table
+    ));
+    lines.push(format!(
+        "-- Target: {}.{}",
+        internal.target_database, internal.target_table
+    ));
+    lines.push(format!(
+        "-- Generated at: {}",
+        chrono::Utc::now().to_rfc3339()
+    ));
+    lines.push(format!(
+        "-- Key Columns: {}",
+        if key_columns.is_empty() {
+            "(none)".to_string()
+        } else {
+            key_columns.join(", ")
+        }
+    ));
+    lines.push(format!(
+        "-- Compare Columns: {}",
+        if compare_columns.is_empty() {
+            "(none)".to_string()
+        } else {
+            compare_columns.join(", ")
+        }
+    ));
+    lines.push(String::new());
+
+    if wrap_in_transaction {
+        lines.push("BEGIN;".to_string());
+        lines.push(String::new());
+    }
+
+    let mut statement_counts = DataSyncStatementCounts {
+        inserts: 0,
+        updates: 0,
+        deletes: 0,
+        total: 0,
+    };
+    let mut truncated = false;
+
+    if include_inserts {
+        for row in &internal.missing_rows {
+            if statement_counts.total >= statement_limit {
+                truncated = true;
+                break;
+            }
+            lines.push(build_insert_statement_for_row(
+                &internal.db_type,
+                &qualified_target_table,
+                row,
+                &internal.insert_canonicals,
+                &internal.target_name_by_canonical,
+            )?);
+            statement_counts.inserts += 1;
+            statement_counts.total += 1;
+        }
+    }
+
+    if include_updates && !truncated {
+        for changed in &internal.changed_rows {
+            if statement_counts.total >= statement_limit {
+                truncated = true;
+                break;
+            }
+            if let Some(statement) = build_update_statement_for_row(
+                &internal.db_type,
+                &qualified_target_table,
+                &changed.source_row,
+                &changed.changed_canonicals,
+                &internal.key_canonicals,
+                &internal.target_name_by_canonical,
+            )? {
+                lines.push(statement);
+                statement_counts.updates += 1;
+                statement_counts.total += 1;
+            }
+        }
+    }
+
+    if include_deletes && !truncated {
+        for row in &internal.extra_rows {
+            if statement_counts.total >= statement_limit {
+                truncated = true;
+                break;
+            }
+            lines.push(build_delete_statement_for_row(
+                &internal.db_type,
+                &qualified_target_table,
+                row,
+                &internal.key_canonicals,
+                &internal.target_name_by_canonical,
+            )?);
+            statement_counts.deletes += 1;
+            statement_counts.total += 1;
+        }
+    }
+
+    if wrap_in_transaction {
+        lines.push(String::new());
+        lines.push("COMMIT;".to_string());
+    }
+
+    if truncated {
+        warnings.push(format!(
+            "Statement limit reached ({}). Generated script is truncated.",
+            statement_limit
+        ));
+    }
+
+    Ok(DataSyncPlan {
+        script: lines.join("\n"),
+        key_columns,
+        compare_columns,
+        summary: internal.summary,
+        statement_counts,
+        warnings,
+        truncated,
+    })
+}
+
+#[tauri::command]
+pub async fn compare_table_data(
+    app_state: State<'_, AppState>,
+    request: DataCompareRequest,
+) -> Result<DataCompareResult, String> {
+    compare_table_data_with_state(app_state.inner(), request).await
+}
+
+#[tauri::command]
+pub async fn generate_data_sync_script(
+    app_state: State<'_, AppState>,
+    request: DataCompareRequest,
+) -> Result<DataSyncPlan, String> {
+    generate_data_sync_script_with_state(app_state.inner(), request).await
 }
