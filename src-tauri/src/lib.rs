@@ -88,7 +88,7 @@ pub fn run() {
             // Initialize Encryption Key
             let app_handle = app.handle();
             let state = app.state::<db::AppState>();
-            match db::initialize_key(app_handle) {
+            match db::initialize_key(app_handle, db::get_connections_file_path) {
                 Ok(key) => {
                     let mut guard = futures::executor::block_on(state.encryption_key.lock());
                     *guard = Some(key);

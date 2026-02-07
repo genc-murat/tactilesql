@@ -3,13 +3,17 @@
 // Routes database operations to MySQL or PostgreSQL modules
 // =====================================================
 
-use aes_gcm::{
-    aead::{Aead, KeyInit},
-    Aes256Gcm, Nonce,
-};
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
-use keyring::Entry;
-use rand::Rng;
+mod crypto;
+mod helpers;
+mod sql_utils;
+
+// Re-export submodule functions
+use crypto::{decrypt_password_with_key, encrypt_password_with_key};
+use helpers::{collapse_whitespace, i64_to_u64, i64_to_usize, parse_warnings_json, truncate_chars, u64_to_i64, usize_to_i64, clamp_i32, round2};
+use sql_utils::{build_insert_statements, ensure_sql_terminated, escape_sql_string, qualified_table_name, quote_column_name, quote_identifier_mysql, value_to_csv_cell, value_to_sql_literal, write_text_file};
+
+pub use crypto::initialize_key;
+
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
@@ -38,140 +42,10 @@ static SYSTEM_QUERY_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     ").unwrap()
 });
 
-// Encryption constants
-const SERVICE_NAME: &str = "tactilesql";
-const USER_NAME: &str = "encryption_key";
-// LEGACY KEY for migration - DO NOT USE FOR NEW ENCRYPTION
-const LEGACY_KEY: &[u8; 32] = b"TactileSQL_SecretKey_32bytes!ok!";
+
 
 // =====================================================
-// KEY MANAGEMENT
-// =====================================================
-
-fn get_key_entry() -> Result<Entry, String> {
-    Entry::new(SERVICE_NAME, USER_NAME).map_err(|e| e.to_string())
-}
-
-fn get_key_file_path(app_handle: &AppHandle) -> PathBuf {
-    let app_data_dir = app_handle
-        .path()
-        .app_data_dir()
-        .expect("Failed to get app data directory");
-
-    if !app_data_dir.exists() {
-        let _ = fs::create_dir_all(&app_data_dir);
-    }
-
-    app_data_dir.join("encryption.key")
-}
-
-pub fn initialize_key(app_handle: &AppHandle) -> Result<Vec<u8>, String> {
-    let entry = get_key_entry()?;
-    let key_file_path = get_key_file_path(app_handle);
-
-    // Helper to save key to both locations
-    let save_key = |key_b64: &str| -> Result<(), String> {
-        // 1. Save to file (Primary fallback)
-        fs::write(&key_file_path, key_b64)
-            .map_err(|e| format!("Failed to save key to file: {}", e))?;
-
-        // 2. Try to save to keychain (Best effort)
-        if let Err(e) = entry.set_password(key_b64) {
-            println!("Warning: Failed to sync key to keychain: {}", e);
-        }
-
-        Ok(())
-    };
-
-    // 1. Try to load from Keychain
-    let key_from_keychain = entry.get_password().ok();
-
-    // 2. Try to load from File
-    let key_from_file = if key_file_path.exists() {
-        fs::read_to_string(&key_file_path).ok()
-    } else {
-        None
-    };
-
-    match (key_from_keychain, key_from_file) {
-        (Some(k), _) => {
-            // Found in keychain. Sync to file just in case.
-            if !key_file_path.exists() {
-                let _ = fs::write(&key_file_path, &k);
-            }
-            BASE64
-                .decode(&k)
-                .map_err(|e| format!("Failed to decode key from keychain: {}", e))
-        }
-        (None, Some(k)) => {
-            // Found in file but not keychain. Restore to keychain.
-            println!("Key found in file but not keychain. Restoring to keychain.");
-            let _ = entry.set_password(&k);
-            BASE64
-                .decode(&k)
-                .map_err(|e| format!("Failed to decode key from file: {}", e))
-        }
-        (None, None) => {
-            // Not found anywhere.
-            let connections_file = get_connections_file_path(app_handle);
-
-            if connections_file.exists() {
-                println!("Migrating legacy connections or recovering from lost key...");
-                // MIGRATION / RECOVERY SCENARIO
-                let new_key = generate_new_key();
-
-                // Read existing file
-                let content = fs::read_to_string(&connections_file)
-                    .map_err(|e| format!("Failed to read connections file: {}", e))?;
-
-                let mut connections: Vec<ConnectionConfig> = serde_json::from_str(&content)
-                    .map_err(|e| format!("Failed to parse JSON: {}", e))?;
-
-                // Re-encrypt passwords
-                for conn in &mut connections {
-                    if let Some(ref encrypted_pwd) = conn.password {
-                        match decrypt_password_with_key(encrypted_pwd, LEGACY_KEY) {
-                            Ok(plaintext) => {
-                                match encrypt_password_with_key(&plaintext, &new_key) {
-                                    Ok(new_encrypted) => conn.password = Some(new_encrypted),
-                                    Err(e) => println!("Failed to re-encrypt password: {}", e),
-                                }
-                            },
-                            Err(e) => println!("Failed to decrypt legacy password (key lost or already migrated): {}", e),
-                        }
-                    }
-                }
-
-                // Save new connections file
-                let json = serde_json::to_string_pretty(&connections)
-                    .map_err(|e| format!("Failed to serialize: {}", e))?;
-                fs::write(connections_file, json)
-                    .map_err(|e| format!("Failed to write migrated file: {}", e))?;
-
-                // Save NEW key to both locations
-                let key_base64 = BASE64.encode(&new_key);
-                save_key(&key_base64)?;
-
-                Ok(new_key)
-            } else {
-                // FRESH INSTALL SCENARIO
-                let new_key = generate_new_key();
-                let key_base64 = BASE64.encode(&new_key);
-                save_key(&key_base64)?;
-                Ok(new_key)
-            }
-        }
-    }
-}
-
-fn generate_new_key() -> Vec<u8> {
-    let mut key = vec![0u8; 32];
-    rand::thread_rng().fill(&mut key[..]);
-    key
-}
-
-// =====================================================
-// PASSWORD ENCRYPTION
+// PASSWORD ENCRYPTION (uses crypto module)
 // =====================================================
 
 fn encrypt_password(password: &str, app_state: &State<'_, AppState>) -> Result<String, String> {
@@ -180,59 +54,11 @@ fn encrypt_password(password: &str, app_state: &State<'_, AppState>) -> Result<S
     encrypt_password_with_key(password, key)
 }
 
-fn encrypt_password_with_key(password: &str, key: &[u8]) -> Result<String, String> {
-    if password.is_empty() {
-        return Ok(String::new());
-    }
-
-    let cipher =
-        Aes256Gcm::new_from_slice(key).map_err(|e| format!("Failed to create cipher: {}", e))?;
-
-    let mut rng = rand::thread_rng();
-    let nonce_bytes: [u8; 12] = rng.gen();
-    let nonce = Nonce::from_slice(&nonce_bytes);
-
-    let ciphertext = cipher
-        .encrypt(nonce, password.as_bytes())
-        .map_err(|e| format!("Encryption failed: {}", e))?;
-
-    let mut combined = nonce_bytes.to_vec();
-    combined.extend(ciphertext);
-
-    Ok(BASE64.encode(combined))
-}
-
-fn decrypt_password_with_key(encrypted: &str, key: &[u8]) -> Result<String, String> {
-    if encrypted.is_empty() {
-        return Ok(String::new());
-    }
-
-    let combined = BASE64
-        .decode(encrypted)
-        .map_err(|e| format!("Base64 decode failed: {}", e))?;
-
-    if combined.len() < 12 {
-        return Err("Invalid encrypted data".to_string());
-    }
-
-    let cipher =
-        Aes256Gcm::new_from_slice(key).map_err(|e| format!("Failed to create cipher: {}", e))?;
-
-    let nonce = Nonce::from_slice(&combined[..12]);
-    let ciphertext = &combined[12..];
-
-    let plaintext = cipher
-        .decrypt(nonce, ciphertext)
-        .map_err(|e| format!("Decryption failed: {}", e))?;
-
-    String::from_utf8(plaintext).map_err(|e| format!("UTF-8 conversion failed: {}", e))
-}
-
 // =====================================================
 // CONNECTION FILE STORAGE
 // =====================================================
 
-fn get_connections_file_path(app_handle: &AppHandle) -> PathBuf {
+pub fn get_connections_file_path(app_handle: &AppHandle) -> PathBuf {
     let app_data_dir = app_handle
         .path()
         .app_data_dir()
@@ -241,130 +67,6 @@ fn get_connections_file_path(app_handle: &AppHandle) -> PathBuf {
     fs::create_dir_all(&app_data_dir).expect("Failed to create app data directory");
 
     app_data_dir.join("connections.json")
-}
-
-fn quote_identifier_mysql(name: &str) -> String {
-    format!("`{}`", name.replace('`', "``"))
-}
-
-fn quote_identifier_postgres(name: &str) -> String {
-    format!("\"{}\"", name.replace('"', "\"\""))
-}
-
-fn qualified_table_name(db_type: &DatabaseType, database: &str, table: &str) -> String {
-    match db_type {
-        DatabaseType::PostgreSQL => format!(
-            "{}.{}",
-            quote_identifier_postgres(database),
-            quote_identifier_postgres(table)
-        ),
-        _ => format!(
-            "{}.{}",
-            quote_identifier_mysql(database),
-            quote_identifier_mysql(table)
-        ),
-    }
-}
-
-fn quote_column_name(db_type: &DatabaseType, column: &str) -> String {
-    match db_type {
-        DatabaseType::PostgreSQL => quote_identifier_postgres(column),
-        _ => quote_identifier_mysql(column),
-    }
-}
-
-fn escape_sql_string(value: &str) -> String {
-    value.replace('\\', "\\\\").replace('\'', "''")
-}
-
-fn value_to_sql_literal(value: &serde_json::Value) -> String {
-    match value {
-        serde_json::Value::Null => "NULL".to_string(),
-        serde_json::Value::Bool(v) => {
-            if *v {
-                "TRUE".to_string()
-            } else {
-                "FALSE".to_string()
-            }
-        }
-        serde_json::Value::Number(num) => num.to_string(),
-        serde_json::Value::String(s) => format!("'{}'", escape_sql_string(s)),
-        other => format!("'{}'", escape_sql_string(&other.to_string())),
-    }
-}
-
-fn value_to_csv_cell(value: &serde_json::Value) -> String {
-    match value {
-        serde_json::Value::Null => String::new(),
-        serde_json::Value::Bool(v) => {
-            if *v {
-                "true".to_string()
-            } else {
-                "false".to_string()
-            }
-        }
-        serde_json::Value::Number(num) => num.to_string(),
-        serde_json::Value::String(s) => s.clone(),
-        other => other.to_string(),
-    }
-}
-
-fn ensure_sql_terminated(statement: &str) -> String {
-    let trimmed = statement.trim();
-    if trimmed.is_empty() {
-        return String::new();
-    }
-    if trimmed.ends_with(';') {
-        trimmed.to_string()
-    } else {
-        format!("{};", trimmed)
-    }
-}
-
-fn write_text_file(file_path: &str, content: &str) -> Result<(), String> {
-    let target = Path::new(file_path);
-    if let Some(parent) = target.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create parent directory: {}", e))?;
-        }
-    }
-    fs::write(target, content).map_err(|e| format!("Failed to write file: {}", e))
-}
-
-fn build_insert_statements(
-    db_type: &DatabaseType,
-    database: &str,
-    table: &str,
-    result: &QueryResult,
-) -> Vec<String> {
-    if result.columns.is_empty() || result.rows.is_empty() {
-        return Vec::new();
-    }
-
-    let qualified_table = qualified_table_name(db_type, database, table);
-    let quoted_columns = result
-        .columns
-        .iter()
-        .map(|col| quote_column_name(db_type, col))
-        .collect::<Vec<String>>()
-        .join(", ");
-
-    result
-        .rows
-        .iter()
-        .map(|row| {
-            let values = row
-                .iter()
-                .map(value_to_sql_literal)
-                .collect::<Vec<String>>()
-                .join(", ");
-            format!(
-                "INSERT INTO {} ({}) VALUES ({});",
-                qualified_table, quoted_columns, values
-            )
-        })
-        .collect()
 }
 
 #[derive(Serialize)]
@@ -1512,33 +1214,7 @@ async fn clone_local_db_pool(app_state: &State<'_, AppState>) -> Option<sqlx::Po
     guard.clone()
 }
 
-fn usize_to_i64(value: usize) -> i64 {
-    i64::try_from(value).unwrap_or(i64::MAX)
-}
 
-fn u64_to_i64(value: u64) -> i64 {
-    i64::try_from(value).unwrap_or(i64::MAX)
-}
-
-fn i64_to_usize(value: i64) -> usize {
-    if value <= 0 {
-        0
-    } else {
-        usize::try_from(value).unwrap_or(usize::MAX)
-    }
-}
-
-fn i64_to_u64(value: i64) -> Option<u64> {
-    if value < 0 {
-        None
-    } else {
-        Some(u64::try_from(value).unwrap_or(u64::MAX))
-    }
-}
-
-fn parse_warnings_json(raw: &str) -> Vec<String> {
-    serde_json::from_str::<Vec<String>>(raw).unwrap_or_default()
-}
 
 fn row_to_mock_job_state(row: &sqlx::sqlite::SqliteRow) -> Result<MockDataJobState, String> {
     let warnings_json: String = row
@@ -4549,21 +4225,7 @@ pub async fn get_locks(app_state: State<'_, AppState>) -> Result<Vec<LockInfo>, 
     }
 }
 
-fn collapse_whitespace(value: &str) -> String {
-    value.split_whitespace().collect::<Vec<_>>().join(" ")
-}
 
-fn truncate_chars(value: &str, max_chars: usize) -> String {
-    let mut out = String::new();
-    for (idx, ch) in value.chars().enumerate() {
-        if idx >= max_chars {
-            out.push_str("...");
-            break;
-        }
-        out.push(ch);
-    }
-    out
-}
 
 fn normalize_query_sample(value: &Option<String>) -> Option<String> {
     value.as_ref().and_then(|raw| {
@@ -5774,13 +5436,7 @@ fn build_simulation_query_candidates(
     }
 }
 
-fn clamp_i32(value: i32, min: i32, max: i32) -> i32 {
-    value.max(min).min(max)
-}
 
-fn round2(value: f64) -> f64 {
-    (value * 100.0).round() / 100.0
-}
 
 fn compute_simulation_confidence(
     mode: &str,
