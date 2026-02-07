@@ -23,6 +23,8 @@ import { getActiveDbType, generateSampleQueries, buildWhatIfVariants } from './e
 import { pickExecutionQuery, buildPostgresRetryCandidates } from './editor/executionHelpers.js';
 import { findDestructiveStatementsWithoutWhere, extractNamedParameters, applyNamedParameters } from './editor/executionSafety.js';
 import { findSymbolAtPosition, renameSymbol, getSymbolDescription } from '../../utils/symbolRename.js';
+import { findWildcardAtCursor, expandWildcard, isNearWildcard } from '../../utils/wildcardExpander.js';
+import { parseQuery } from '../../utils/autocomplete/parser.js';
 
 
 // SQL Keywords for autocomplete
@@ -1438,6 +1440,53 @@ export function QueryEditor() {
         }
     };
 
+    // Handle Expand Wildcard (Ctrl+Shift+E)
+    const handleExpandWildcard = async (textarea, updateSyntaxHighlight, updateLineNumbers) => {
+        const query = textarea.value;
+        const cursorPos = textarea.selectionStart;
+
+        try {
+            // Find wildcard at cursor position
+            const wildcard = findWildcardAtCursor(query, cursorPos);
+
+            if (!wildcard) {
+                toastWarning('No wildcard (*) found near cursor position.');
+                return;
+            }
+
+            // Get current database from active connection
+            const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+            const dbType = localStorage.getItem('activeDbType') || 'mysql';
+            let currentDb = activeConfig.database;
+
+            // If no database selected, try to infer from query
+            if (!currentDb) {
+                const parsed = parseQuery(query);
+                if (parsed.tables.length > 0 && parsed.tables[0].database) {
+                    currentDb = parsed.tables[0].database;
+                } else {
+                    const dbLabel = dbType === 'postgresql' ? 'schema' : 'database';
+                    toastWarning(`Please select a ${dbLabel} first or use fully qualified table names (${dbLabel}.table).`);
+                    return;
+                }
+            }
+
+            // Expand wildcard
+            const expandedQuery = await expandWildcard(query, wildcard, currentDb, dbType);
+
+            // Update editor
+            textarea.value = expandedQuery;
+            setActiveTabContent(expandedQuery, { forceSnapshot: true, historySource: 'expand_wildcard' });
+            updateSyntaxHighlight(true);
+            updateLineNumbers();
+
+            const columnCount = (expandedQuery.length - query.length) / 10; // Rough estimate
+            toastSuccess(`Expanded wildcard to column list`);
+        } catch (error) {
+            Dialog.alert(error.message || 'Failed to expand wildcard', 'Expand Wildcard Error');
+        }
+    };
+
     async function attachEvents() {
         // Toggle menus on click
         const menuButtons = container.querySelectorAll('.toolbar-menu > button');
@@ -1957,6 +2006,12 @@ export function QueryEditor() {
                 if (e.shiftKey && e.key === 'F6') {
                     e.preventDefault();
                     handleSymbolRename(textarea, updateSyntaxHighlight, updateLineNumbers);
+                }
+
+                // Ctrl+Shift+E to expand wildcard
+                if (isCtrl && e.shiftKey && key === 'e') {
+                    e.preventDefault();
+                    handleExpandWildcard(textarea, updateSyntaxHighlight, updateLineNumbers);
                 }
             });
 

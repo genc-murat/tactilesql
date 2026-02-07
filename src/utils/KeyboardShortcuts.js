@@ -40,10 +40,13 @@ const SHORTCUTS = {
     'shift+f3': { action: 'findPrev', description: 'Find previous', category: 'Search' },
 
     // Navigation
-    'ctrl+shift+e': { action: 'focusExplorer', description: 'Focus Object Explorer', category: 'Navigation' },
+    'ctrl+shift+o': { action: 'focusExplorer', description: 'Focus Object Explorer', category: 'Navigation' },
     'ctrl+shift+q': { action: 'focusQuery', description: 'Focus Query Editor', category: 'Navigation' },
     'ctrl+shift+r': { action: 'focusResults', description: 'Focus Results', category: 'Navigation' },
     'ctrl+shift+s': { action: 'focusSnippets', description: 'Focus Snippets', category: 'Navigation' },
+
+    // Editor refactoring
+    'ctrl+shift+e': { action: 'expandWildcard', description: 'Expand wildcard (*)', category: 'Editor' },
 
     // General
     'escape': { action: 'closeModal', description: 'Close modal/popup', category: 'General' },
@@ -125,7 +128,7 @@ function handleKeydown(e) {
 
     // Editor shortcuts should work even when editing
     const editorShortcuts = ['formatSQL', 'toggleComment', 'duplicateLine', 'selectLine',
-        'gotoLine', 'autocomplete', 'renameSymbol', 'moveLineUp', 'moveLineDown',
+        'gotoLine', 'autocomplete', 'renameSymbol', 'expandWildcard', 'moveLineUp', 'moveLineDown',
         'find', 'findReplace', 'findNext', 'findPrev', 'saveSnippet'];
 
     // Check if we should handle this shortcut

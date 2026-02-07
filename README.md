@@ -421,10 +421,11 @@ Common shortcuts (see the in-app help with `F1`):
 - `Ctrl+S` — Save as snippet
 - `Ctrl+Space` — Autocomplete
 - `Shift+F6` — Rename symbol (alias/CTE)
+- `Ctrl+Shift+E` — Expand wildcard (*)
 - `Ctrl+I` — Ask AI Assistant
 
 ### Navigation
-- `Ctrl+Shift+E` — Focus Object Explorer
+- `Ctrl+Shift+O` — Focus Object Explorer
 - `Ctrl+Shift+Q` — Focus Query Editor
 - `Ctrl+Shift+R` — Focus Results
 - `Ctrl+Shift+S` — Focus Snippets
