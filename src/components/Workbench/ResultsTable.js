@@ -126,8 +126,21 @@ export function ResultsTable(options = {}) {
             
             <!-- Global Mode Selector (Floating but logically after tabs) -->
             ${!headless ? `
-            <div class="flex items-center gap-2 px-4 py-1.5 border-b ${isLight ? 'bg-gray-50 border-gray-200' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1]' : (isOceanic ? 'bg-[#2E3440] border-ocean-border/20' : 'bg-[#1a1d23] border-white/5'))}">
-                <div class="flex items-center gap-1 ${searchBg} border rounded-lg p-0.5">
+            <div class="flex items-center gap-2 px-2 py-1 border-b ${isLight ? 'bg-gray-50 border-gray-200' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1]' : (isOceanic ? 'bg-[#2E3440] border-ocean-border/20' : 'bg-[#1a1d23] border-white/5'))}">
+                <div class="flex-1"></div>
+                <div id="pending-indicator" class="flex items-center gap-2 px-2 py-1 rounded bg-amber-500/10 border border-amber-500/20 max-w-0 opacity-0 transition-all duration-300 pointer-events-none">
+                     <span class="material-symbols-outlined text-sm text-amber-500">warning</span>
+                     <span class="text-[9px] font-bold text-amber-500"><span id="pending-count">0</span> PENDING CHANGES</span>
+                     <div class="flex items-center gap-1 ml-1">
+                        <button id="commit-btn" class="px-1.5 py-0.5 rounded bg-amber-500 text-black text-[8px] font-black hover:brightness-110 active:scale-95 transition-all">SAVE</button>
+                        <button id="discard-btn" class="px-1.5 py-0.5 rounded bg-white/10 text-amber-500 text-[8px] font-black hover:bg-white/20 transition-all">DISCARD</button>
+                     </div>
+                </div>
+                <button id="insert-row-btn" class="flex items-center gap-1.5 px-3 py-1 rounded-md ${isDawn ? 'bg-[#9ccfd8] text-black hover:brightness-110' : 'bg-mysql-teal text-black hover:brightness-110'} text-[10px] font-bold transition-all shadow-lg active:scale-95 max-w-0 opacity-0 pointer-events-none overflow-hidden">
+                    <span class="material-symbols-outlined text-sm">add</span>
+                    INSERT ROW
+                </button>
+                <div class="flex items-center gap-0.5 ${searchBg} border rounded-lg p-0.5">
                     <button class="view-mode-btn flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold transition-all ${viewMode === 'table' ? (isDawn ? 'bg-[#ea9d34] text-white' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-400 hover:bg-white/5')}" data-mode="table">
                         <span class="material-symbols-outlined text-sm">table_chart</span>
                         TABLE
@@ -145,19 +158,6 @@ export function ResultsTable(options = {}) {
                         TEXT
                     </button>
                 </div>
-                <div class="flex-1"></div>
-                <div id="pending-indicator" class="flex items-center gap-2 px-2 py-1 rounded bg-amber-500/10 border border-amber-500/20 max-w-0 opacity-0 transition-all duration-300 pointer-events-none">
-                     <span class="material-symbols-outlined text-sm text-amber-500">warning</span>
-                     <span class="text-[9px] font-bold text-amber-500"><span id="pending-count">0</span> PENDING CHANGES</span>
-                     <div class="flex items-center gap-1 ml-1">
-                        <button id="commit-btn" class="px-1.5 py-0.5 rounded bg-amber-500 text-black text-[8px] font-black hover:brightness-110 active:scale-95 transition-all">SAVE</button>
-                        <button id="discard-btn" class="px-1.5 py-0.5 rounded bg-white/10 text-amber-500 text-[8px] font-black hover:bg-white/20 transition-all">DISCARD</button>
-                     </div>
-                </div>
-                <button id="insert-row-btn" class="flex items-center gap-1.5 px-3 py-1 rounded-md ${isDawn ? 'bg-[#9ccfd8] text-black hover:brightness-110' : 'bg-mysql-teal text-black hover:brightness-110'} text-[10px] font-bold transition-all shadow-lg active:scale-95 max-w-0 opacity-0 pointer-events-none overflow-hidden">
-                    <span class="material-symbols-outlined text-sm">add</span>
-                    INSERT ROW
-                </button>
             </div>
             ` : ''}
 
