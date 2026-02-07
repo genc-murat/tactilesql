@@ -1,0 +1,10 @@
+pub mod analysis;
+pub mod awareness;
+pub mod monitoring;
+pub mod storage;
+
+// Re-export specific items to match the old diagnostics.rs interface
+pub use analysis::*;
+pub use awareness::*;
+pub use monitoring::*;
+pub use storage::*;
