@@ -3,11 +3,20 @@
 // Mock data job management and persistence
 // =====================================================
 
+use super::clone_local_db_pool;
 use super::helpers::{i64_to_u64, i64_to_usize, parse_warnings_json, u64_to_i64, usize_to_i64};
+use crate::db::sql_utils::{
+    qualified_table_name, quote_column_name, value_to_sql_literal,
+};
+use crate::db_types::{AppState, DatabaseType};
+use crate::mock_data;
+use crate::mysql;
+use crate::postgres;
 use serde::Serialize;
 use sqlx::Row;
 use std::collections::HashMap;
 use std::sync::LazyLock;
+use tauri::State;
 
 // =====================================================
 // CONSTANTS
@@ -478,4 +487,494 @@ pub async fn is_mock_job_cancel_requested(operation_id: &str) -> bool {
         .get(operation_id)
         .map(|job| job.cancel_requested)
         .unwrap_or(false)
+}
+async fn execute_mock_data_job(
+    operation_id: String,
+    db_type: DatabaseType,
+    mysql_pool: Option<sqlx::Pool<sqlx::MySql>>,
+    postgres_pool: Option<sqlx::Pool<sqlx::Postgres>>,
+    local_pool: Option<sqlx::Pool<sqlx::Sqlite>>,
+    database: String,
+    table: String,
+    row_count: usize,
+    seed: Option<u64>,
+    include_nullable_columns: bool,
+    column_rules: HashMap<String, mock_data::MockColumnRule>,
+    dry_run: bool,
+) -> Result<(), String> {
+    let _ = update_mock_job(&operation_id, local_pool.as_ref(), |job| {
+        job.status = MOCK_JOB_STATUS_RUNNING.to_string();
+        job.progress_pct = 5;
+        job.error = None;
+    })
+    .await;
+
+    let schema_columns = match db_type {
+        DatabaseType::PostgreSQL => {
+            let pool = postgres_pool
+                .as_ref()
+                .ok_or("No PostgreSQL connection established")?;
+            postgres::get_table_schema(pool, &database, &table).await?
+        }
+        DatabaseType::MySQL => {
+            let pool = mysql_pool
+                .as_ref()
+                .ok_or("No MySQL connection established")?;
+            mysql::get_table_schema(pool, &database, &table).await?
+        }
+        DatabaseType::Disconnected => return Err("No connection established".into()),
+    };
+
+    let _ = update_mock_job(&operation_id, local_pool.as_ref(), |job| {
+        job.progress_pct = 15;
+    })
+    .await;
+
+    let generated = mock_data::generate_rows(
+        &schema_columns,
+        &mock_data::MockGenerationConfig {
+            row_count,
+            seed,
+            include_nullable_columns,
+            column_rules,
+        },
+    )?;
+
+    if generated.columns.is_empty() {
+        return Err("No writable columns available for mock generation".to_string());
+    }
+
+    let expected_column_count = generated.columns.len();
+    if generated
+        .rows
+        .iter()
+        .any(|row| row.len() != expected_column_count)
+    {
+        return Err("Generated row shape does not match selected columns".to_string());
+    }
+
+    let mut base_warnings = generated.warnings.clone();
+    let total_rows = generated.rows.len();
+
+    let _ = update_mock_job(&operation_id, local_pool.as_ref(), |job| {
+        job.progress_pct = 30;
+        job.seed = Some(generated.seed);
+        job.total_rows = total_rows;
+        job.warnings = base_warnings.clone();
+    })
+    .await;
+
+    if dry_run {
+        base_warnings.push("Dry run completed. No data was inserted.".to_string());
+        let _ = update_mock_job(&operation_id, local_pool.as_ref(), |job| {
+            job.status = MOCK_JOB_STATUS_COMPLETED.to_string();
+            job.progress_pct = 100;
+            job.inserted_rows = 0;
+            job.total_rows = total_rows;
+            job.seed = Some(generated.seed);
+            job.warnings = base_warnings.clone();
+            job.finished_at = Some(chrono::Utc::now().to_rfc3339());
+        })
+        .await;
+        return Ok(());
+    }
+
+    let qualified_table = qualified_table_name(&db_type, &database, &table);
+    let quoted_columns = generated
+        .columns
+        .iter()
+        .map(|col| quote_column_name(&db_type, col))
+        .collect::<Vec<String>>()
+        .join(", ");
+
+    let batch_size = 200usize;
+    let mut inserted_rows = 0usize;
+    let safe_total = total_rows.max(1);
+
+    match db_type {
+        DatabaseType::PostgreSQL => {
+            let pool = postgres_pool
+                .as_ref()
+                .ok_or("No PostgreSQL connection established")?;
+            let mut tx = pool
+                .begin()
+                .await
+                .map_err(|e| format!("Failed to start mock generation transaction: {}", e))?;
+
+            for batch in generated.rows.chunks(batch_size) {
+                if is_mock_job_cancel_requested(&operation_id).await {
+                    let mut warnings = base_warnings.clone();
+                    warnings
+                        .push("Operation cancelled. Insert transaction rolled back.".to_string());
+                    let _ = update_mock_job(&operation_id, local_pool.as_ref(), |job| {
+                        job.status = MOCK_JOB_STATUS_CANCELLED.to_string();
+                        job.progress_pct = job.progress_pct.min(99);
+                        job.inserted_rows = 0;
+                        job.warnings = warnings.clone();
+                        job.finished_at = Some(chrono::Utc::now().to_rfc3339());
+                    })
+                    .await;
+                    return Ok(());
+                }
+
+                let values_sql = batch
+                    .iter()
+                    .map(|row| {
+                        let rendered = row
+                            .iter()
+                            .map(value_to_sql_literal)
+                            .collect::<Vec<String>>()
+                            .join(", ");
+                        format!("({})", rendered)
+                    })
+                    .collect::<Vec<String>>()
+                    .join(", ");
+
+                let sql = format!(
+                    "INSERT INTO {} ({}) VALUES {}",
+                    qualified_table, quoted_columns, values_sql
+                );
+                sqlx::query(&sql)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(|e| format!("Mock data insert failed: {}", e))?;
+
+                inserted_rows += batch.len();
+                let progress = 30u8.saturating_add(
+                    (((inserted_rows as f64 / safe_total as f64) * 65.0).round() as u8).min(65),
+                );
+                let _ = update_mock_job(&operation_id, local_pool.as_ref(), |job| {
+                    job.progress_pct = progress;
+                    job.inserted_rows = inserted_rows;
+                })
+                .await;
+            }
+
+            tx.commit()
+                .await
+                .map_err(|e| format!("Failed to commit mock generation transaction: {}", e))?;
+        }
+        DatabaseType::MySQL => {
+            let pool = mysql_pool
+                .as_ref()
+                .ok_or("No MySQL connection established")?;
+            let mut tx = pool
+                .begin()
+                .await
+                .map_err(|e| format!("Failed to start mock generation transaction: {}", e))?;
+
+            for batch in generated.rows.chunks(batch_size) {
+                if is_mock_job_cancel_requested(&operation_id).await {
+                    let mut warnings = base_warnings.clone();
+                    warnings
+                        .push("Operation cancelled. Insert transaction rolled back.".to_string());
+                    let _ = update_mock_job(&operation_id, local_pool.as_ref(), |job| {
+                        job.status = MOCK_JOB_STATUS_CANCELLED.to_string();
+                        job.progress_pct = job.progress_pct.min(99);
+                        job.inserted_rows = 0;
+                        job.warnings = warnings.clone();
+                        job.finished_at = Some(chrono::Utc::now().to_rfc3339());
+                    })
+                    .await;
+                    return Ok(());
+                }
+
+                let values_sql = batch
+                    .iter()
+                    .map(|row| {
+                        let rendered = row
+                            .iter()
+                            .map(value_to_sql_literal)
+                            .collect::<Vec<String>>()
+                            .join(", ");
+                        format!("({})", rendered)
+                    })
+                    .collect::<Vec<String>>()
+                    .join(", ");
+
+                let sql = format!(
+                    "INSERT INTO {} ({}) VALUES {}",
+                    qualified_table, quoted_columns, values_sql
+                );
+                sqlx::query(&sql)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(|e| format!("Mock data insert failed: {}", e))?;
+
+                inserted_rows += batch.len();
+                let progress = 30u8.saturating_add(
+                    (((inserted_rows as f64 / safe_total as f64) * 65.0).round() as u8).min(65),
+                );
+                let _ = update_mock_job(&operation_id, local_pool.as_ref(), |job| {
+                    job.progress_pct = progress;
+                    job.inserted_rows = inserted_rows;
+                })
+                .await;
+            }
+
+            tx.commit()
+                .await
+                .map_err(|e| format!("Failed to commit mock generation transaction: {}", e))?;
+        }
+        DatabaseType::Disconnected => return Err("No connection established".into()),
+    }
+
+    let _ = update_mock_job(&operation_id, local_pool.as_ref(), |job| {
+        job.status = MOCK_JOB_STATUS_COMPLETED.to_string();
+        job.progress_pct = 100;
+        job.inserted_rows = inserted_rows;
+        job.warnings = base_warnings.clone();
+        job.finished_at = Some(chrono::Utc::now().to_rfc3339());
+    })
+    .await;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn start_mock_data_generation(
+    app_state: State<'_, AppState>,
+    database: String,
+    table: String,
+    row_count: Option<usize>,
+    seed: Option<u64>,
+    include_nullable_columns: Option<bool>,
+    column_rules: Option<HashMap<String, mock_data::MockColumnRule>>,
+    dry_run: Option<bool>,
+) -> Result<MockDataJobStatus, String> {
+    let row_count = row_count.unwrap_or(100).clamp(1, 100_000);
+    let include_nullable_columns = include_nullable_columns.unwrap_or(true);
+    let column_rules = column_rules.unwrap_or_default();
+    let dry_run = dry_run.unwrap_or(false);
+
+    let db_type = {
+        let guard = app_state.active_db_type.lock().await;
+        guard.clone()
+    };
+
+    if db_type == DatabaseType::Disconnected {
+        return Err("No connection established".to_string());
+    }
+
+    let mysql_pool = {
+        let guard = app_state.mysql_pool.lock().await;
+        guard.clone()
+    };
+    let postgres_pool = {
+        let guard = app_state.postgres_pool.lock().await;
+        guard.clone()
+    };
+    let local_pool = clone_local_db_pool(&app_state).await;
+    if let Some(pool) = local_pool.as_ref() {
+        if let Err(err) = prepare_mock_job_storage(pool).await {
+            eprintln!("{}", err);
+        }
+    }
+
+    let operation_id = uuid::Uuid::new_v4().to_string();
+    let started_at = chrono::Utc::now().to_rfc3339();
+
+    insert_mock_job(
+        MockDataJobState {
+            operation_id: operation_id.clone(),
+            status: MOCK_JOB_STATUS_QUEUED.to_string(),
+            database: database.clone(),
+            table: table.clone(),
+            progress_pct: 0,
+            inserted_rows: 0,
+            total_rows: row_count,
+            seed: None,
+            dry_run,
+            warnings: Vec::new(),
+            error: None,
+            started_at,
+            finished_at: None,
+            cancel_requested: false,
+            runtime_instance_id: MOCK_JOB_RUNTIME_INSTANCE_ID.clone(),
+        },
+        local_pool.as_ref(),
+    )
+    .await;
+
+    let operation_id_for_task = operation_id.clone();
+    let local_pool_for_task = local_pool.clone();
+    tauri::async_runtime::spawn(async move {
+        let result = execute_mock_data_job(
+            operation_id_for_task.clone(),
+            db_type,
+            mysql_pool,
+            postgres_pool,
+            local_pool_for_task.clone(),
+            database,
+            table,
+            row_count,
+            seed,
+            include_nullable_columns,
+            column_rules,
+            dry_run,
+        )
+        .await;
+
+        if let Err(err) = result {
+            let _ = update_mock_job(
+                &operation_id_for_task,
+                local_pool_for_task.as_ref(),
+                |job| {
+                    job.status = MOCK_JOB_STATUS_FAILED.to_string();
+                    job.error = Some(err.clone());
+                    job.progress_pct = job.progress_pct.min(99);
+                    job.finished_at = Some(chrono::Utc::now().to_rfc3339());
+                },
+            )
+            .await;
+        }
+    });
+
+    get_mock_job_status(&operation_id, local_pool.as_ref())
+        .await
+        .ok_or_else(|| "Failed to initialize mock generation job".to_string())
+}
+
+#[tauri::command]
+pub async fn get_mock_data_generation_status(
+    app_state: State<'_, AppState>,
+    operation_id: String,
+) -> Result<MockDataJobStatus, String> {
+    let local_pool = clone_local_db_pool(&app_state).await;
+    if let Some(pool) = local_pool.as_ref() {
+        if let Err(err) = prepare_mock_job_storage(pool).await {
+            eprintln!("{}", err);
+        }
+    }
+
+    get_mock_job_status(&operation_id, local_pool.as_ref())
+        .await
+        .ok_or_else(|| format!("Mock generation job '{}' not found", operation_id))
+}
+
+#[tauri::command]
+pub async fn list_mock_data_generation_history(
+    app_state: State<'_, AppState>,
+    limit: Option<usize>,
+) -> Result<Vec<MockDataJobStatus>, String> {
+    let local_pool = clone_local_db_pool(&app_state).await;
+    if let Some(pool) = local_pool.as_ref() {
+        if let Err(err) = prepare_mock_job_storage(pool).await {
+            eprintln!("{}", err);
+        }
+    }
+
+    list_mock_job_history(local_pool.as_ref(), limit.unwrap_or(20).clamp(1, 200)).await
+}
+
+#[tauri::command]
+pub async fn cancel_mock_data_generation(
+    app_state: State<'_, AppState>,
+    operation_id: String,
+) -> Result<MockDataJobStatus, String> {
+    let local_pool = clone_local_db_pool(&app_state).await;
+    if let Some(pool) = local_pool.as_ref() {
+        if let Err(err) = prepare_mock_job_storage(pool).await {
+            eprintln!("{}", err);
+        }
+    }
+
+    let updated_state = {
+        let mut guard = MOCK_DATA_JOB_STORE.lock().await;
+        if let Some(job) = guard.get_mut(&operation_id) {
+            if job.status != MOCK_JOB_STATUS_QUEUED && job.status != MOCK_JOB_STATUS_RUNNING {
+                return Err(format!(
+                    "Mock generation job '{}' is already '{}'",
+                    operation_id, job.status
+                ));
+            }
+
+            job.cancel_requested = true;
+            if !job
+                .warnings
+                .iter()
+                .any(|w| w == "Cancellation requested by user.")
+            {
+                job.warnings
+                    .push("Cancellation requested by user.".to_string());
+            }
+            Some(job.clone())
+        } else {
+            None
+        }
+    };
+
+    let Some(updated_state) = updated_state else {
+        if let Some(pool) = local_pool.as_ref() {
+            if let Ok(Some(status)) = get_persisted_mock_job_status(pool, &operation_id).await {
+                return Err(format!(
+                    "Mock generation job '{}' is '{}', cannot be cancelled.",
+                    operation_id, status.status
+                ));
+            }
+        }
+        return Err(format!("Mock generation job '{}' not found", operation_id));
+    };
+
+    if let Some(pool) = local_pool.as_ref() {
+        if let Err(err) = persist_mock_job(pool, &updated_state).await {
+            eprintln!("{}", err);
+        }
+    }
+
+    Ok(updated_state.to_status())
+}
+
+#[tauri::command]
+pub async fn preview_mock_data(
+    app_state: State<'_, AppState>,
+    database: String,
+    table: String,
+    row_count: Option<usize>,
+    seed: Option<u64>,
+    include_nullable_columns: Option<bool>,
+    column_rules: Option<HashMap<String, mock_data::MockColumnRule>>,
+) -> Result<MockDataPreviewResponse, String> {
+    let row_count = row_count.unwrap_or(20).clamp(1, 200);
+    let include_nullable_columns = include_nullable_columns.unwrap_or(true);
+    let column_rules = column_rules.unwrap_or_default();
+
+    let db_type = {
+        let guard = app_state.active_db_type.lock().await;
+        guard.clone()
+    };
+
+    let schema_columns = match db_type {
+        DatabaseType::PostgreSQL => {
+            let guard = app_state.postgres_pool.lock().await;
+            let pool = guard
+                .as_ref()
+                .ok_or("No PostgreSQL connection established")?;
+            postgres::get_table_schema(pool, &database, &table).await?
+        }
+        DatabaseType::MySQL => {
+            let guard = app_state.mysql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
+            mysql::get_table_schema(pool, &database, &table).await?
+        }
+        DatabaseType::Disconnected => return Err("No connection established".into()),
+    };
+
+    let generated = mock_data::generate_rows(
+        &schema_columns,
+        &mock_data::MockGenerationConfig {
+            row_count,
+            seed,
+            include_nullable_columns,
+            column_rules,
+        },
+    )?;
+
+    Ok(MockDataPreviewResponse {
+        seed: generated.seed,
+        columns: generated.columns,
+        rows: generated.rows,
+        skipped_columns: generated.skipped_columns,
+        warnings: generated.warnings,
+    })
 }
