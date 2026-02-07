@@ -126,7 +126,7 @@ export function ResultsTable(options = {}) {
             
             <!-- Global Mode Selector (Floating but logically after tabs) -->
             ${!headless ? `
-            <div class="flex items-center gap-2 px-2 py-1 border-b ${isLight ? 'bg-gray-50 border-gray-200' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1]' : (isOceanic ? 'bg-[#2E3440] border-ocean-border/20' : 'bg-[#1a1d23] border-white/5'))}">
+            <div class="flex items-center gap-1 pr-1 border-b ${isLight ? 'bg-gray-50 border-gray-200' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1]' : (isOceanic ? 'bg-[#2E3440] border-ocean-border/20' : 'bg-[#1a1d23] border-white/5'))}">
                 <div class="flex-1"></div>
                 <div id="pending-indicator" class="flex items-center gap-2 px-2 py-1 rounded bg-amber-500/10 border border-amber-500/20 max-w-0 opacity-0 transition-all duration-300 pointer-events-none">
                      <span class="material-symbols-outlined text-sm text-amber-500">warning</span>
