@@ -52,6 +52,80 @@ const STORAGE_KEYS = {
     SNIPPETS: 'tactilesql_user_snippets',
 };
 
+/**
+ * Abbreviation matching for autocomplete
+ * Matches input against the first letters of word boundaries in the target
+ * Supports: camelCase, snake_case, hyphenated-names, PascalCase, SCREAMING_SNAKE
+ * 
+ * Examples:
+ *   "gau" matches "getActiveUsers"
+ *   "ohn" matches "objects-with-hyphenated-names"
+ *   "uid" matches "user_id"
+ *   "cdt" matches "created_at" (first letters of parts)
+ */
+function getAbbreviation(str) {
+    if (!str) return '';
+
+    // Extract word boundaries: start char + chars after _, -, or uppercase transitions
+    const abbrev = [];
+    let prevWasLower = false;
+
+    for (let i = 0; i < str.length; i++) {
+        const char = str[i];
+        const isUpper = /[A-Z]/.test(char);
+        const isSeparator = char === '_' || char === '-';
+
+        if (i === 0 && !isSeparator) {
+            // Always include first character
+            abbrev.push(char.toLowerCase());
+        } else if (isSeparator) {
+            // Skip separator but mark next char as boundary
+            prevWasLower = false;
+            continue;
+        } else if ((prevWasLower && isUpper) || (i > 0 && (str[i - 1] === '_' || str[i - 1] === '-'))) {
+            // Boundary: lowercase→uppercase transition OR after separator
+            abbrev.push(char.toLowerCase());
+        }
+
+        prevWasLower = !isUpper && !isSeparator;
+    }
+
+    return abbrev.join('');
+}
+
+/**
+ * Check if input matches target via abbreviation
+ * @param {string} input - User's typed abbreviation (e.g., "gau")
+ * @param {string} target - Full name to match against (e.g., "getActiveUsers")
+ * @returns {boolean} - True if input matches the abbreviation pattern
+ */
+export function matchesAbbreviation(input, target) {
+    if (!input || !target) return false;
+
+    const inputLower = input.toLowerCase();
+    const targetLower = target.toLowerCase();
+
+    // First, check standard prefix match
+    if (targetLower.startsWith(inputLower)) {
+        return true;
+    }
+
+    // Then check abbreviation match
+    const abbrev = getAbbreviation(target);
+    const matches = abbrev.startsWith(inputLower);
+
+    // Abbreviation must start with input
+    return matches;
+}
+
+/**
+ * Enhanced filter that checks both prefix and abbreviation matching
+ * Use this instead of simple startsWith for autocomplete filtering
+ */
+export function matchesInput(input, target) {
+    return matchesAbbreviation(input, target);
+}
+
 // Note: SQL Snippets moved to ./autocomplete/snippets.js
 // Note: DB Functions moved to ./autocomplete/functions.js
 // Note: Parser utilities moved to ./autocomplete/parser.js
@@ -800,8 +874,6 @@ export class SmartAutocomplete {
         const prefixLower = prefix.toLowerCase();
         const suffix = (parts[1] || '').toLowerCase();
 
-        console.log('Dot suggestions for:', { prefix, suffix, aliases: this.#parsedQuery?.aliases, aliasToDb: this.#parsedQuery?.aliasToDb });
-
         // FIRST: For PostgreSQL, check if prefix is a schema name
         if (isPostgreSQL()) {
             await this.loadSchemas();
@@ -810,7 +882,7 @@ export class SmartAutocomplete {
                 console.log(`Prefix is a PostgreSQL schema: ${matchedSchema}`);
                 const tables = await this.loadTablesForSchema(matchedSchema);
                 for (const table of tables) {
-                    if (!suffix || table.toLowerCase().startsWith(suffix)) {
+                    if (!suffix || matchesInput(suffix, table)) {
                         suggestions.push({
                             type: 'table',
                             value: `${prefix}.${table}`,
@@ -832,7 +904,7 @@ export class SmartAutocomplete {
             console.log(`Prefix is a database: ${matchedDb}`);
             const tables = await this.loadTables(matchedDb);
             for (const table of tables) {
-                if (!suffix || table.toLowerCase().startsWith(suffix)) {
+                if (!suffix || matchesInput(suffix, table)) {
                     suggestions.push({
                         type: 'table',
                         value: `${prefix}.${table}`,
@@ -864,7 +936,7 @@ export class SmartAutocomplete {
             console.log(`Got ${columns.length} columns:`, columns);
 
             for (const col of columns) {
-                if (!suffix || col.toLowerCase().startsWith(suffix)) {
+                if (!suffix || matchesInput(suffix, col)) {
                     const details = this.#getColumnDetail(db, tableName, col);
                     suggestions.push(this.#createColumnSuggestion(col, details, `${prefix}.${col}`));
                 }
@@ -892,7 +964,7 @@ export class SmartAutocomplete {
             console.log(`Prefix is a table in current db: ${matchedTable}`);
             const columns = await this.loadColumns(this.#currentDb, matchedTable);
             for (const col of columns) {
-                if (!suffix || col.toLowerCase().startsWith(suffix)) {
+                if (!suffix || matchesInput(suffix, col)) {
                     const details = this.#getColumnDetail(this.#currentDb, matchedTable, col);
                     suggestions.push(this.#createColumnSuggestion(col, details, `${prefix}.${col}`));
                 }
@@ -922,7 +994,7 @@ export class SmartAutocomplete {
         if (this.#parsedQuery?.tables) {
             for (const ref of this.#parsedQuery.tables) {
                 const name = ref.alias || ref.table;
-                if (name.toLowerCase().startsWith(wordLower)) {
+                if (matchesInput(wordLower, name)) {
                     suggestions.push({
                         type: 'alias',
                         value: name,
@@ -941,7 +1013,7 @@ export class SmartAutocomplete {
         // Add aggregate functions
         const currentFuncs = this.#getCurrentFunctions();
         for (const func of currentFuncs.aggregate) {
-            if (func.toLowerCase().startsWith(wordLower)) {
+            if (matchesInput(wordLower, func)) {
                 suggestions.push({
                     type: 'function',
                     value: `${func}()`,
@@ -955,7 +1027,7 @@ export class SmartAutocomplete {
 
         // Add window functions
         for (const func of currentFuncs.window) {
-            if (func.toLowerCase().startsWith(wordLower)) {
+            if (matchesInput(wordLower, func)) {
                 suggestions.push({
                     type: 'function',
                     value: `${func}() OVER ()`,
@@ -979,7 +1051,7 @@ export class SmartAutocomplete {
 
         // Add CTEs first
         for (const cte of this.#parsedQuery?.ctes || []) {
-            if (cte.name.toLowerCase().startsWith(wordLower)) {
+            if (matchesInput(wordLower, cte.name)) {
                 suggestions.push({
                     type: 'cte',
                     value: cte.name,
@@ -1001,7 +1073,7 @@ export class SmartAutocomplete {
         // Add databases
         await this.loadDatabases();
         for (const db of this.#databases) {
-            if (db.toLowerCase().startsWith(wordLower)) {
+            if (matchesInput(wordLower, db)) {
                 suggestions.push({
                     type: 'database',
                     value: db,
@@ -1020,7 +1092,7 @@ export class SmartAutocomplete {
 
         const tables = await this.loadTables(this.#currentDb);
         for (const table of tables) {
-            if (table.toLowerCase().startsWith(wordLower) && !fkTableNames.includes(table.toLowerCase())) {
+            if (matchesInput(wordLower, table) && !fkTableNames.includes(table.toLowerCase())) {
                 suggestions.push({
                     type: 'table',
                     value: table,
@@ -1071,8 +1143,8 @@ export class SmartAutocomplete {
                 const fkColumn = fk.column_name;
 
                 if (!refTable || seenTables.has(refTable.toLowerCase())) continue;
-                // Allow all if word is empty, otherwise filter by prefix
-                if (wordLower && !refTable.toLowerCase().startsWith(wordLower)) continue;
+                // Allow all if word is empty, otherwise filter by prefix or abbreviation
+                if (wordLower && !matchesInput(wordLower, refTable)) continue;
 
                 seenTables.add(refTable.toLowerCase());
 
@@ -1117,8 +1189,8 @@ export class SmartAutocomplete {
                 const refColumn = fk.referenced_column;
 
                 if (!sourceTable || seenTables.has(sourceTable.toLowerCase())) continue;
-                // Allow all if word is empty, otherwise filter by prefix
-                if (wordLower && !sourceTable.toLowerCase().startsWith(wordLower)) continue;
+                // Allow all if word is empty, otherwise filter by prefix or abbreviation
+                if (wordLower && !matchesInput(wordLower, sourceTable)) continue;
 
                 seenTables.add(sourceTable.toLowerCase());
 
@@ -1207,7 +1279,7 @@ export class SmartAutocomplete {
             const alias = ref.alias || ref.table;
             const db = ref.database || this.#currentDb;
 
-            if (alias.toLowerCase().startsWith(wordLower)) {
+            if (matchesInput(wordLower, alias)) {
                 suggestions.push({
                     type: 'alias',
                     value: alias,
@@ -1221,7 +1293,7 @@ export class SmartAutocomplete {
             const columns = await this.loadColumns(db, ref.table);
             for (const col of columns) {
                 const fullName = `${alias}.${col}`;
-                if (fullName.toLowerCase().startsWith(wordLower) || col.toLowerCase().startsWith(wordLower)) {
+                if (matchesInput(wordLower, fullName) || matchesInput(wordLower, col)) {
                     const details = this.#getColumnDetail(db, ref.table, col);
                     suggestions.push(this.#createColumnSuggestion(col, details, fullName));
                 }
@@ -1280,7 +1352,7 @@ export class SmartAutocomplete {
         // Add aliases
         for (const ref of this.#parsedQuery?.tables || []) {
             const name = ref.alias || ref.table;
-            if (name.toLowerCase().startsWith(wordLower)) {
+            if (matchesInput(wordLower, name)) {
                 suggestions.push({
                     type: 'alias',
                     value: name,
@@ -1322,7 +1394,7 @@ export class SmartAutocomplete {
 
             const columns = await this.loadColumns(db, ref.table);
             for (const col of columns) {
-                if (col.toLowerCase().startsWith(wordLower)) {
+                if (matchesInput(wordLower, col)) {
                     const key = col.toLowerCase();
                     if (!addedCols.has(key)) {
                         addedCols.add(key);
@@ -1347,7 +1419,7 @@ export class SmartAutocomplete {
             const columns = await this.loadColumns(db, ref.table);
 
             for (const col of columns) {
-                if (col.toLowerCase().startsWith(word.toLowerCase())) {
+                if (matchesInput(word.toLowerCase(), col)) {
                     const details = this.#getColumnDetail(db, ref.table, col);
                     suggestions.push(this.#createColumnSuggestion(col, details, `${col} = `));
                 }
@@ -1381,7 +1453,7 @@ export class SmartAutocomplete {
         const allSnippets = [...builtinSnippets, ...dbSnippets, ...this.#userSnippets];
 
         for (const snippet of allSnippets) {
-            if (snippet.trigger.toLowerCase().startsWith(wordLower) ||
+            if (matchesInput(wordLower, snippet.trigger) ||
                 snippet.name.toLowerCase().includes(wordLower)) {
                 suggestions.push({
                     type: 'snippet',
@@ -1406,7 +1478,7 @@ export class SmartAutocomplete {
         const keywordList = keywords || getSqlKeywords();
 
         for (const kw of keywordList) {
-            if (kw.toLowerCase().startsWith(wordLower)) {
+            if (matchesInput(wordLower, kw)) {
                 suggestions.push({
                     type: 'keyword',
                     value: kw,
@@ -1427,7 +1499,7 @@ export class SmartAutocomplete {
 
         for (const [category, funcs] of Object.entries(currentFuncs)) {
             for (const func of funcs) {
-                if (func.toLowerCase().startsWith(wordLower)) {
+                if (matchesInput(wordLower, func)) {
                     suggestions.push({
                         type: 'function',
                         value: `${func}()`,
@@ -1473,7 +1545,7 @@ export class SmartAutocomplete {
 
         const operators = TYPE_OPERATORS[columnType] || TYPE_OPERATORS.string;
         for (const op of operators) {
-            if (op.toLowerCase().startsWith(word.toLowerCase())) {
+            if (matchesInput(word.toLowerCase(), op)) {
                 suggestions.push({
                     type: 'operator',
                     value: ` ${op} `,
@@ -1576,6 +1648,11 @@ export class SmartAutocomplete {
 
         // Starts with bonus
         if (valueLower.startsWith(wordLower)) score += 50;
+
+        // Abbreviation match bonus (slightly lower than prefix match)
+        else if (matchesAbbreviation(wordLower, suggestion.display || suggestion.value)) {
+            score += 40;
+        }
 
         // Priority bonus (for FK hints, snippets, etc.)
         score += suggestion.priority || 0;
