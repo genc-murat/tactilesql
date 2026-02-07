@@ -121,6 +121,7 @@ export class SmartAutocomplete {
 
     // Schema Cache
     #databases = [];
+    #schemas = [];  // PostgreSQL schemas
     #tables = {};
     #columns = {};
     #columnDetails = {};
@@ -442,6 +443,7 @@ export class SmartAutocomplete {
 
     clearCache() {
         this.#databases = [];
+        this.#schemas = [];
         this.#tables = {};
         this.#columns = {};
         this.#columnDetails = {};
@@ -449,6 +451,57 @@ export class SmartAutocomplete {
         this.#indexes = {};
         // Also clear centralized cache
         DatabaseCache.invalidateAll();
+    }
+
+    /**
+     * Load PostgreSQL schemas
+     */
+    async loadSchemas() {
+        if (!isPostgreSQL()) return [];
+        if (this.#schemas.length > 0) return this.#schemas;
+
+        // Try centralized cache first
+        const cached = DatabaseCache.get(CacheTypes.DATABASES, '_schemas');
+        if (cached && cached.length > 0) {
+            this.#schemas = cached;
+            return this.#schemas;
+        }
+
+        try {
+            this.#schemas = await invoke('get_schemas');
+            // Store in centralized cache
+            DatabaseCache.set(CacheTypes.DATABASES, '_schemas', this.#schemas);
+        } catch (e) {
+            console.error('Failed to load schemas:', e);
+            this.#schemas = [];
+        }
+        return this.#schemas;
+    }
+
+    /**
+     * Load tables for a PostgreSQL schema
+     */
+    async loadTablesForSchema(schema) {
+        if (!schema) return [];
+        const key = `schema:${schema}`;
+        if (this.#tables[key]) return this.#tables[key];
+
+        // Try centralized cache first
+        const cached = DatabaseCache.get(CacheTypes.TABLES, key);
+        if (cached && cached.length > 0) {
+            this.#tables[key] = cached;
+            return this.#tables[key];
+        }
+
+        try {
+            this.#tables[key] = await invoke('get_tables', { database: schema });
+            // Store in centralized cache
+            DatabaseCache.set(CacheTypes.TABLES, key, this.#tables[key]);
+        } catch (e) {
+            console.error('Failed to load tables for schema:', e);
+            this.#tables[key] = [];
+        }
+        return this.#tables[key] || [];
     }
 
     // ==================== QUERY PARSING ====================
@@ -749,7 +802,30 @@ export class SmartAutocomplete {
 
         console.log('Dot suggestions for:', { prefix, suffix, aliases: this.#parsedQuery?.aliases, aliasToDb: this.#parsedQuery?.aliasToDb });
 
-        // FIRST: Check if prefix is a database name (priority over aliases)
+        // FIRST: For PostgreSQL, check if prefix is a schema name
+        if (isPostgreSQL()) {
+            await this.loadSchemas();
+            const matchedSchema = this.#schemas.find(s => s.toLowerCase() === prefixLower);
+            if (matchedSchema) {
+                console.log(`Prefix is a PostgreSQL schema: ${matchedSchema}`);
+                const tables = await this.loadTablesForSchema(matchedSchema);
+                for (const table of tables) {
+                    if (!suffix || table.toLowerCase().startsWith(suffix)) {
+                        suggestions.push({
+                            type: 'table',
+                            value: `${prefix}.${table}`,
+                            display: table,
+                            detail: `schema: ${matchedSchema}`,
+                            icon: 'table_rows',
+                            color: 'text-cyan-400',
+                        });
+                    }
+                }
+                return suggestions;
+            }
+        }
+
+        // SECOND: Check if prefix is a database name (for MySQL)
         await this.loadDatabases();
         const matchedDb = this.#databases.find(d => d.toLowerCase() === prefixLower);
         if (matchedDb) {
