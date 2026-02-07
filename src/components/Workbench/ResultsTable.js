@@ -75,28 +75,28 @@ export function ResultsTable(options = {}) {
                         <input id="filter-input" class="bg-transparent border-none focus:ring-0 text-[11px] ${textColor} ${placeholderColor} w-full p-0" placeholder="Search in results..." type="text" />
                     </div>
                 </div>
-                <div class="flex items-center gap-3 flex-shrink-0">
+                <div class="flex items-center gap-2 flex-shrink-0">
                     <!-- Action Buttons Group -->
                     <div class="flex items-center ${searchBg} border rounded-lg overflow-visible">
                         <!-- Columns Toggle -->
                         <div class="relative">
-                            <button id="column-toggle-btn" class="flex items-center justify-center w-10 h-10 ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : 'text-gray-400')} ${buttonHover} transition-all border-r ${borderColor}" title="Toggle column visibility">
-                                <span class="material-symbols-outlined text-lg">view_column</span>
+                            <button id="column-toggle-btn" class="flex items-center justify-center w-8 h-8 ${isLight ? 'text-gray-500 hover:text-gray-700' : (isDawn ? 'text-[#9893a5] hover:text-[#575279]' : (isOceanic ? 'text-ocean-text/60 hover:text-ocean-text' : 'text-gray-500 hover:text-gray-300'))} ${buttonHover} transition-colors border-r ${borderColor}" title="Toggle column visibility">
+                                <span class="material-symbols-outlined text-[16px]">view_column</span>
                             </button>
-                            <div id="column-menu" class="hidden absolute right-0 top-full mt-1.5 ${isLight ? 'bg-white border-gray-200 shadow-xl' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-xl' : (isOceanic ? 'bg-ocean-panel border-ocean-border shadow-2xl' : 'bg-[#1a1d23] border-white/10 shadow-2xl'))} border rounded-lg py-2 z-[100] min-w-[200px] max-h-[320px] overflow-y-auto custom-scrollbar">
-                                <div class="px-3 py-2 text-[9px] font-bold tracking-wider ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-500'))} border-b ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5'))} mb-1">Column Visibility</div>
+                            <div id="column-menu" class="hidden absolute right-0 top-full mt-1 ${isLight ? 'bg-white border-gray-200 shadow-lg' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-lg' : (isOceanic ? 'bg-ocean-panel border-ocean-border shadow-xl' : 'bg-[#1a1d23] border-white/10 shadow-xl'))} border rounded-lg py-1.5 z-[100] min-w-[180px] max-h-[280px] overflow-y-auto custom-scrollbar">
+                                <div class="px-2.5 py-1.5 text-[9px] font-bold tracking-wider ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500')} border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')} mb-1">Column Visibility</div>
                                 <div id="column-list"></div>
                             </div>
                         </div>
                         
                         <!-- Export CSV -->
-                        <button id="export-csv-btn" class="flex items-center justify-center w-10 h-10 ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : 'text-gray-400')} ${buttonHover} transition-all border-r ${borderColor}" title="Export to CSV">
-                            <span class="material-symbols-outlined text-lg">download</span>
+                        <button id="export-csv-btn" class="flex items-center justify-center w-8 h-8 ${isLight ? 'text-gray-500 hover:text-gray-700' : (isDawn ? 'text-[#9893a5] hover:text-[#575279]' : (isOceanic ? 'text-ocean-text/60 hover:text-ocean-text' : 'text-gray-500 hover:text-gray-300'))} ${buttonHover} transition-colors border-r ${borderColor}" title="Export to CSV">
+                            <span class="material-symbols-outlined text-[16px]">download</span>
                         </button>
                         
                         <!-- Copy -->
-                        <button id="copy-btn" class="flex items-center justify-center w-10 h-10 ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : 'text-gray-400')} ${buttonHover} transition-all" title="Copy to clipboard">
-                            <span class="material-symbols-outlined text-lg">content_copy</span>
+                        <button id="copy-btn" class="flex items-center justify-center w-8 h-8 ${isLight ? 'text-gray-500 hover:text-gray-700' : (isDawn ? 'text-[#9893a5] hover:text-[#575279]' : (isOceanic ? 'text-ocean-text/60 hover:text-ocean-text' : 'text-gray-500 hover:text-gray-300'))} ${buttonHover} transition-colors" title="Copy to clipboard">
+                            <span class="material-symbols-outlined text-[16px]">content_copy</span>
                         </button>
                     </div>
                 </div>
