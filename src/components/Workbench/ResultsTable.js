@@ -21,6 +21,14 @@ export function ResultsTable(options = {}) {
     const container = document.createElement('div');
     container.className = "flex flex-col flex-1 min-h-[300px] max-h-full min-w-[600px] bg-transparent"; // bg-transparent ensures no flicker? Controls set bg.
 
+    // Theme Colors
+    const textColor = isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text' : 'text-gray-300'));
+    const borderColor = isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/50' : 'border-white/10'));
+    const labelColor = isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-500'));
+    const searchBg = isLight ? 'bg-white border-gray-300 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50 shadow-lg' : 'bg-[#0f1115] border-white/10 shadow-lg'));
+    const buttonHover = isLight ? 'hover:bg-gray-50' : (isDawn ? 'hover:bg-[#fffaf3] text-[#575279]' : (isOceanic ? 'hover:bg-ocean-panel' : 'hover:bg-white/5'));
+    const dividerColor = isLight ? 'bg-gray-300' : (isDawn ? 'bg-[#d8d1cf]' : (isOceanic ? 'bg-ocean-border' : 'bg-white/10'));
+
     const formatDurationValue = (value) => {
         if (value === null || value === undefined || value === '') return '0ms';
         if (typeof value === 'string') return value;
@@ -45,12 +53,7 @@ export function ResultsTable(options = {}) {
         const headerBg = isLight ? 'bg-gradient-to-b from-gray-50 to-gray-100/50 border-gray-200' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1]' : (isOceanic ? 'bg-gradient-to-b from-[#3B4252] to-[#2E3440] border-ocean-border/30' : 'bg-gradient-to-b from-[#16191e] to-[#13161b] border-white/5'));
         const iconBg = isLight ? 'bg-mysql-teal/10' : (isDawn ? 'bg-[#ea9d34]/20' : 'bg-mysql-teal/20');
         const iconColor = isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal';
-        const dividerColor = isLight ? 'bg-gray-300' : (isDawn ? 'bg-[#d8d1cf]' : (isOceanic ? 'bg-ocean-border' : 'bg-white/10'));
-        const searchBg = isLight ? 'bg-white border-gray-300 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50 shadow-lg' : 'bg-[#0f1115] border-white/10 shadow-lg'));
-        const textColor = isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text' : 'text-gray-300'));
         const placeholderColor = isLight ? 'placeholder:text-gray-400' : (isDawn ? 'placeholder:text-[#9893a5]' : 'placeholder:text-gray-500');
-        const buttonHover = isLight ? 'hover:bg-gray-50' : (isDawn ? 'hover:bg-[#fffaf3] text-[#575279]' : (isOceanic ? 'hover:bg-ocean-panel' : 'hover:bg-white/5'));
-        const borderColor = isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/50' : 'border-white/10'));
 
 
         const toolbarHtml = headless ? '' : `
@@ -133,11 +136,11 @@ export function ResultsTable(options = {}) {
                         <span class="material-symbols-outlined text-sm">swap_horiz</span>
                         TRANSPOSE
                     </button>
-                    <button disabled class="opacity-40 cursor-not-allowed flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold transition-all ${isLight ? 'text-gray-500' : 'text-gray-400'}">
+                    <button class="view-mode-btn flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold transition-all ${viewMode === 'tree' ? (isDawn ? 'bg-[#ea9d34] text-white' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-400 hover:bg-white/5')}" data-mode="tree">
                         <span class="material-symbols-outlined text-sm">account_tree</span>
                         TREE
                     </button>
-                    <button disabled class="opacity-40 cursor-not-allowed flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold transition-all ${isLight ? 'text-gray-500' : 'text-gray-400'}">
+                    <button class="view-mode-btn flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold transition-all ${viewMode === 'text' ? (isDawn ? 'bg-[#ea9d34] text-white' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-400 hover:bg-white/5')}" data-mode="text">
                         <span class="material-symbols-outlined text-sm">notes</span>
                         TEXT
                     </button>
@@ -967,6 +970,16 @@ export function ResultsTable(options = {}) {
             return;
         }
 
+        if (viewMode === 'tree') {
+            renderTreeView(data);
+            return;
+        }
+
+        if (viewMode === 'text') {
+            renderTextView(data);
+            return;
+        }
+
         // Update Metadata with performance indicator for large datasets
         const rowCountBadge = container.querySelector('#row-count-badge');
         if (rowCountBadge) {
@@ -1482,6 +1495,10 @@ export function ResultsTable(options = {}) {
         const table = container.querySelector('table');
         if (!table) return;
 
+        // Reset scroll for new view
+        const tableWrapper = container.querySelector('.flex-1.overflow-auto');
+        if (tableWrapper) tableWrapper.scrollLeft = 0;
+
         // In transpose view, we have:
         // Column 1: Row indices (empty or numbers)
         // Column 1+: Column Names as the first column, and data rows as subsequent columns
@@ -1513,6 +1530,105 @@ export function ResultsTable(options = {}) {
                 return `<tr class="${isDawn ? 'hover:bg-[#ea9d34]/5' : 'hover:bg-cyan-500/5'} transition-colors">${rowLabel + cells}</tr>`;
             }).join('');
         }
+    };
+
+    const renderTreeView = (data) => {
+        const { columns, rows } = data;
+        const table = container.querySelector('table');
+        if (!table) return;
+
+        // Tree view replaces the standard table with a list-like structure
+        const tableWrapper = container.querySelector('.flex-1.overflow-auto');
+        tableWrapper.innerHTML = `
+            <div class="p-4 flex flex-col gap-2 font-mono text-[11px]">
+                ${rows.map((row, rowIdx) => `
+                    <div class="tree-row border ${isLight ? 'border-gray-100 bg-gray-50/50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]/50' : (isOceanic ? 'border-ocean-border/30 bg-ocean-panel/10' : 'border-white/5 bg-white/[0.02]'))} rounded-lg overflow-hidden transition-all group/row" data-row-idx="${rowIdx}">
+                        <div class="flex items-center gap-3 px-4 py-3 cursor-pointer hover:${isLight ? 'bg-gray-100' : 'bg-white/5'} transition-colors tree-node-toggle">
+                            <span class="material-symbols-outlined text-sm transition-transform duration-200 toggle-icon ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500')}">chevron_right</span>
+                            <div class="flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-mysql-teal/10 text-mysql-teal text-[9px] font-bold">ROW ${rowIdx + 1}</span>
+                                <span class="text-xs font-bold ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">${columns[0]}: ${formatCellForTitle(row[0])}</span>
+                            </div>
+                            <div class="flex-1"></div>
+                            <button class="transpose-row-btn opacity-0 group-hover/row:opacity-100 p-1 rounded hover:bg-white/10 ${isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal'} transition-opacity" title="Transpose View" data-row-idx="${rowIdx}">
+                                <span class="material-symbols-outlined text-sm">swap_horiz</span>
+                            </button>
+                        </div>
+                        <div class="tree-content hidden border-t ${borderColor}/50 bg-black/5 p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-y-2 gap-x-6">
+                            ${columns.map((col, colIdx) => `
+                                <div class="flex items-start gap-2 min-w-0">
+                                    <span class="text-[10px] font-bold ${labelColor} uppercase tracking-tighter whitespace-nowrap">${col}:</span>
+                                    <span class="truncate ${textColor}" title="${formatCellForTitle(row[colIdx])}">${formatCell(row[colIdx])}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `).join('')}
+                ${rows.length === 0 ? `<div class="p-8 text-center text-gray-500 italic">No results to display</div>` : ''}
+            </div>
+        `;
+
+        // Attach tree toggle events
+        tableWrapper.querySelectorAll('.tree-node-toggle').forEach(toggle => {
+            toggle.addEventListener('click', () => {
+                const content = toggle.nextElementSibling;
+                const icon = toggle.querySelector('.toggle-icon');
+                const isHidden = content.classList.contains('hidden');
+
+                if (isHidden) {
+                    content.classList.remove('hidden');
+                    icon.classList.add('rotate-90');
+                } else {
+                    content.classList.add('hidden');
+                    icon.classList.remove('rotate-90');
+                }
+            });
+        });
+
+        // Attach transpose button events for tree view
+        tableWrapper.querySelectorAll('.transpose-row-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openTranspose(parseInt(btn.dataset.rowIdx));
+            });
+        });
+    };
+
+    const renderTextView = (data) => {
+        const { columns, rows } = data;
+        const tableWrapper = container.querySelector('.flex-1.overflow-auto');
+
+        // Text view shows a raw representation (JSON for now)
+        const rowObjects = rows.map(row => {
+            const obj = {};
+            columns.forEach((col, i) => obj[col] = row[i]);
+            return obj;
+        });
+
+        const jsonStr = JSON.stringify(rowObjects, null, 2);
+
+        tableWrapper.innerHTML = `
+            <div class="flex flex-col h-full bg-[#08090c]">
+                <div class="flex items-center justify-between px-4 py-2 bg-black/30 border-b border-white/5">
+                    <span class="text-[10px] font-bold text-gray-500 tracking-widest uppercase">JSON Output</span>
+                    <button id="copy-text-view" class="flex items-center gap-1.5 px-3 py-1 rounded bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white text-[10px] font-bold transition-all">
+                        <span class="material-symbols-outlined text-sm">content_copy</span>
+                        COPY JSON
+                    </button>
+                </div>
+                <div class="flex-1 relative overflow-hidden">
+                    <textarea readonly spellcheck="false" class="absolute inset-0 w-full h-full p-6 bg-transparent text-mysql-teal/90 font-mono text-[12px] leading-relaxed resize-none outline-none custom-scrollbar">${jsonStr}</textarea>
+                </div>
+            </div>
+        `;
+
+        tableWrapper.querySelector('#copy-text-view').onclick = () => {
+            navigator.clipboard.writeText(jsonStr);
+            const btn = tableWrapper.querySelector('#copy-text-view');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<span class="material-symbols-outlined text-sm">check</span> COPIED';
+            setTimeout(() => btn.innerHTML = originalText, 2000);
+        };
     };
 
     renderControls();
