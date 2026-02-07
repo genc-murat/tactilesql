@@ -20,17 +20,17 @@ import { SettingsManager } from './SettingsManager.js';
 import { SETTINGS_PATHS } from '../constants/settingsKeys.js';
 
 // Import modularized components
-import { 
-    getAllBuiltinSnippets, 
-    findSnippets 
+import {
+    getAllBuiltinSnippets,
+    findSnippets
 } from './autocomplete/snippets.js';
-import { 
-    getFunctionsForDb, 
+import {
+    getFunctionsForDb,
     getAllFunctionNames,
     MYSQL_FUNCTIONS,
     POSTGRESQL_FUNCTIONS
 } from './autocomplete/functions.js';
-import { 
+import {
     CONTEXT,
     TYPE_OPERATORS,
     isKeyword,
@@ -55,7 +55,7 @@ const STORAGE_KEYS = {
 // Note: SQL Snippets moved to ./autocomplete/snippets.js
 // Note: DB Functions moved to ./autocomplete/functions.js
 // Note: Parser utilities moved to ./autocomplete/parser.js
-    
+
 class NGramModel {
     constructor(n = 2) {
         this.n = n;
@@ -138,7 +138,7 @@ export class SmartAutocomplete {
     #cursorPos = 0;
     #currentDb = '';
     #parsedQuery = null;
-    
+
     // Database type (mysql or postgres)
     #dbType = 'mysql';
 
@@ -326,14 +326,14 @@ export class SmartAutocomplete {
 
     async loadDatabases() {
         if (this.#databases.length > 0) return this.#databases;
-        
+
         // Try centralized cache first
         const cached = DatabaseCache.get(CacheTypes.DATABASES, '_default');
         if (cached && cached.length > 0) {
             this.#databases = cached;
             return this.#databases;
         }
-        
+
         try {
             this.#databases = await invoke('get_databases');
             // Store in centralized cache
@@ -348,14 +348,14 @@ export class SmartAutocomplete {
     async loadTables(database) {
         if (!database) return [];
         if (this.#tables[database]) return this.#tables[database];
-        
+
         // Try centralized cache first
         const cached = DatabaseCache.get(CacheTypes.TABLES, database);
         if (cached && cached.length > 0) {
             this.#tables[database] = cached;
             return this.#tables[database];
         }
-        
+
         try {
             this.#tables[database] = await invoke('get_tables', { database });
             // Store in centralized cache
@@ -371,14 +371,14 @@ export class SmartAutocomplete {
         if (!database || !table) return [];
         const key = `${database}.${table}`;
         if (this.#columns[key]) return this.#columns[key];
-        
+
         // Try centralized cache first
         const cached = DatabaseCache.get(CacheTypes.COLUMNS, key);
         if (cached && cached.length > 0) {
             this.#columns[key] = cached;
             return this.#columns[key];
         }
-        
+
         try {
             const details = await invoke('get_table_schema', { database, table });
             this.#columnDetails[key] = details;
@@ -398,14 +398,14 @@ export class SmartAutocomplete {
         if (!database || !table) return [];
         const key = `${database}.${table}`;
         if (this.#foreignKeys[key]) return this.#foreignKeys[key];
-        
+
         // Try centralized cache first
         const cached = DatabaseCache.get(CacheTypes.FOREIGN_KEYS, key);
         if (cached) {
             this.#foreignKeys[key] = cached;
             return this.#foreignKeys[key];
         }
-        
+
         try {
             this.#foreignKeys[key] = await invoke('get_foreign_keys', { database, table });
             DatabaseCache.set(CacheTypes.FOREIGN_KEYS, key, this.#foreignKeys[key]);
@@ -419,14 +419,14 @@ export class SmartAutocomplete {
         if (!database || !table) return [];
         const key = `${database}.${table}`;
         if (this.#indexes[key]) return this.#indexes[key];
-        
+
         // Try centralized cache first
         const cached = DatabaseCache.get(CacheTypes.INDEXES, key);
         if (cached) {
             this.#indexes[key] = cached;
             return this.#indexes[key];
         }
-        
+
         try {
             this.#indexes[key] = await invoke('get_indexes', { database, table });
             DatabaseCache.set(CacheTypes.INDEXES, key, this.#indexes[key]);
@@ -527,8 +527,9 @@ export class SmartAutocomplete {
         const seen = new Set();
 
         // Pattern for: FROM/JOIN db.table alias or db.table AS alias
-        // Use lookahead to stop before keywords
-        const dbTablePattern = /\b(?:FROM|JOIN|UPDATE|INTO)\s+`?(\w+)`?\.`?(\w+)`?(?:\s+(?:AS\s+)?`?(\w+)`?)?(?=\s|,|;|$|\)|WHERE|ON|SET|LEFT|RIGHT|INNER|OUTER|CROSS|NATURAL|ORDER|GROUP|HAVING|LIMIT)/gi;
+        // Supports both backticks (MySQL) and double quotes (PostgreSQL)
+        // Quote pattern: [`"]?(\w+)[`"]? matches both `name` and "name"
+        const dbTablePattern = /\b(?:FROM|JOIN|UPDATE|INTO)\s+[`"]?(\w+)[`"]?\.[`"]?(\w+)[`"]?(?:\s+(?:AS\s+)?[`"]?(\w+)[`"]?)?(?=\s|,|;|$|\)|WHERE|ON|SET|LEFT|RIGHT|INNER|OUTER|CROSS|NATURAL|ORDER|GROUP|HAVING|LIMIT)/gi;
 
         // First pass: find db.table references
         let match;
@@ -559,7 +560,8 @@ export class SmartAutocomplete {
         }
 
         // Pattern for simple table: FROM/JOIN table alias
-        const simpleTablePattern = /\b(?:FROM|JOIN|UPDATE|INTO)\s+`?(\w+)`?(?:\s+(?:AS\s+)?`?(\w+)`?)?(?=\s|,|;|$|\)|WHERE|ON|SET|LEFT|RIGHT|INNER|OUTER|CROSS|NATURAL|ORDER|GROUP|HAVING|LIMIT)/gi;
+        // Supports both backticks (MySQL) and double quotes (PostgreSQL)
+        const simpleTablePattern = /\b(?:FROM|JOIN|UPDATE|INTO)\s+[`"]?(\w+)[`"]?(?:\s+(?:AS\s+)?[`"]?(\w+)[`"]?)?(?=\s|,|;|$|\)|WHERE|ON|SET|LEFT|RIGHT|INNER|OUTER|CROSS|NATURAL|ORDER|GROUP|HAVING|LIMIT)/gi;
 
         // Second pass: find simple table references (avoid db.table matches)
         while ((match = simpleTablePattern.exec(query)) !== null) {
@@ -913,6 +915,13 @@ export class SmartAutocomplete {
             }
         }
 
+        // FK-aware: Get FK-related tables first (if we have tables in query)
+        const queryTables = this.#parsedQuery?.tables || [];
+        if (queryTables.length > 0) {
+            const fkSuggestions = await this.#getFKRelatedTableSuggestions(word, queryTables);
+            suggestions.push(...fkSuggestions);
+        }
+
         // Add databases
         await this.loadDatabases();
         for (const db of this.#databases) {
@@ -928,10 +937,14 @@ export class SmartAutocomplete {
             }
         }
 
-        // Add tables from current database
+        // Add tables from current database (skip FK-related ones already added)
+        const fkTableNames = suggestions
+            .filter(s => s.type === 'fk_table' || s.type === 'fk_join')
+            .map(s => s.tableName?.toLowerCase());
+
         const tables = await this.loadTables(this.#currentDb);
         for (const table of tables) {
-            if (table.toLowerCase().startsWith(wordLower)) {
+            if (table.toLowerCase().startsWith(wordLower) && !fkTableNames.includes(table.toLowerCase())) {
                 suggestions.push({
                     type: 'table',
                     value: table,
@@ -947,6 +960,166 @@ export class SmartAutocomplete {
         suggestions.push(...this.#getKeywordSuggestions(word, ['INNER', 'LEFT', 'RIGHT', 'OUTER', 'CROSS', 'NATURAL', 'JOIN', 'ON']));
 
         return suggestions;
+    }
+
+    /**
+     * Get FK-related table suggestions with complete JOIN statements
+     */
+    async #getFKRelatedTableSuggestions(word, queryTables) {
+        const suggestions = [];
+        // If word is a SQL keyword (like JOIN, INNER, etc.), treat as empty
+        const sqlKeywords = ['join', 'inner', 'left', 'right', 'outer', 'cross', 'natural', 'on', 'and', 'or'];
+        const wordLower = sqlKeywords.includes(word.toLowerCase()) ? '' : word.toLowerCase();
+        const seenTables = new Set();
+
+        console.log('[FK-JOIN] Getting FK suggestions for tables:', queryTables.map(t => `${t.database}.${t.table}`));
+        console.log('[FK-JOIN] Word filter (after keyword check):', wordLower || '(empty)');
+
+        // Get FKs for all tables in the query
+        for (const tableRef of queryTables) {
+            const db = tableRef.database || this.#currentDb;
+            if (!db) {
+                console.log('[FK-JOIN] Skipping table, no database:', tableRef.table);
+                continue;
+            }
+
+            console.log(`[FK-JOIN] Loading FKs for ${db}.${tableRef.table}`);
+            const fks = await this.loadForeignKeys(db, tableRef.table);
+            console.log(`[FK-JOIN] Found ${fks.length} FKs:`, fks);
+
+            const tableAlias = tableRef.alias || tableRef.table;
+
+            for (const fk of fks) {
+                const refTable = fk.referenced_table_name || fk.referenced_table;
+                const refColumn = fk.referenced_column_name || fk.referenced_column;
+                const fkColumn = fk.column_name;
+
+                if (!refTable || seenTables.has(refTable.toLowerCase())) continue;
+                // Allow all if word is empty, otherwise filter by prefix
+                if (wordLower && !refTable.toLowerCase().startsWith(wordLower)) continue;
+
+                seenTables.add(refTable.toLowerCase());
+
+                // Generate alias (first letter + number if needed)
+                const refAlias = this.#generateAlias(refTable, queryTables);
+
+                // Complete JOIN statement - include JOIN keyword since we're replacing it
+                const joinStatement = `JOIN ${refTable} ${refAlias} ON ${tableAlias}.${fkColumn} = ${refAlias}.${refColumn}`;
+
+                suggestions.push({
+                    type: 'fk_join',
+                    value: joinStatement,
+                    display: `${refTable} (via ${fkColumn})`,
+                    detail: `🔗 JOIN ${tableRef.table}.${fkColumn} → ${refTable}.${refColumn}`,
+                    icon: 'link',
+                    color: 'text-green-400',
+                    priority: 150,
+                    tableName: refTable,
+                });
+
+                // Also add just the table name for simple completion
+                suggestions.push({
+                    type: 'fk_table',
+                    value: refTable,
+                    display: refTable,
+                    detail: `🔗 FK from ${tableRef.table}`,
+                    icon: 'table_rows',
+                    color: 'text-green-400',
+                    priority: 100,
+                    tableName: refTable,
+                });
+            }
+
+            // Also check reverse relationships (tables that reference this table)
+            console.log(`[FK-JOIN] Checking reverse FKs for ${tableRef.table}`);
+            const reverseFks = await this.#getReverseForeignKeys(db, tableRef.table);
+            console.log(`[FK-JOIN] Found ${reverseFks.length} reverse FKs:`, reverseFks);
+
+            for (const fk of reverseFks) {
+                const sourceTable = fk.source_table;
+                const sourceColumn = fk.source_column;
+                const refColumn = fk.referenced_column;
+
+                if (!sourceTable || seenTables.has(sourceTable.toLowerCase())) continue;
+                // Allow all if word is empty, otherwise filter by prefix
+                if (wordLower && !sourceTable.toLowerCase().startsWith(wordLower)) continue;
+
+                seenTables.add(sourceTable.toLowerCase());
+
+                const sourceAlias = this.#generateAlias(sourceTable, queryTables);
+                // Include JOIN keyword
+                const joinStatement = `JOIN ${sourceTable} ${sourceAlias} ON ${tableAlias}.${refColumn} = ${sourceAlias}.${sourceColumn}`;
+
+                suggestions.push({
+                    type: 'fk_join',
+                    value: joinStatement,
+                    display: `${sourceTable} (via ${sourceColumn})`,
+                    detail: `🔗 JOIN ${sourceTable}.${sourceColumn} → ${tableRef.table}.${refColumn}`,
+                    icon: 'link',
+                    color: 'text-green-400',
+                    priority: 140,
+                    tableName: sourceTable,
+                });
+            }
+        }
+
+        console.log(`[FK-JOIN] Total FK suggestions: ${suggestions.length}`);
+        return suggestions;
+    }
+
+    /**
+     * Generate a unique alias for a table
+     */
+    #generateAlias(tableName, existingTables) {
+        const usedAliases = new Set(
+            existingTables.map(t => (t.alias || t.table).toLowerCase())
+        );
+
+        // Try first letter
+        let alias = tableName[0].toLowerCase();
+        if (!usedAliases.has(alias)) return alias;
+
+        // Try first two letters
+        alias = tableName.substring(0, 2).toLowerCase();
+        if (!usedAliases.has(alias)) return alias;
+
+        // Try with numbers
+        for (let i = 1; i <= 9; i++) {
+            alias = `${tableName[0].toLowerCase()}${i}`;
+            if (!usedAliases.has(alias)) return alias;
+        }
+
+        return tableName.substring(0, 3).toLowerCase();
+    }
+
+    /**
+     * Get tables that have FK pointing to this table
+     */
+    async #getReverseForeignKeys(database, table) {
+        const reverseFks = [];
+        const tables = await this.loadTables(database);
+
+        for (const otherTable of tables) {
+            if (otherTable === table) continue;
+
+            try {
+                const fks = await this.loadForeignKeys(database, otherTable);
+                for (const fk of fks) {
+                    const refTable = fk.referenced_table_name || fk.referenced_table;
+                    if (refTable?.toLowerCase() === table.toLowerCase()) {
+                        reverseFks.push({
+                            source_table: otherTable,
+                            source_column: fk.column_name,
+                            referenced_column: fk.referenced_column_name || fk.referenced_column,
+                        });
+                    }
+                }
+            } catch (e) {
+                // Skip tables we can't get FKs for
+            }
+        }
+
+        return reverseFks;
     }
 
     async #getJoinConditionSuggestions(word) {
@@ -1335,6 +1508,8 @@ export class SmartAutocomplete {
         const typePriority = {
             'snippet': 45,
             'join_hint': 40,
+            'fk_join': 45,
+            'fk_table': 42,
             'alias': 35,
             'column': 30,
             'table': 25,

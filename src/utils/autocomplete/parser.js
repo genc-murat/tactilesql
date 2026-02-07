@@ -86,7 +86,8 @@ export const parseTableReferences = (query) => {
     const seen = new Set();
 
     // Pattern for: FROM/JOIN db.table alias or db.table AS alias
-    const dbTablePattern = /\b(?:FROM|JOIN|UPDATE|INTO)\s+`?(\w+)`?\.`?(\w+)`?(?:\s+(?:AS\s+)?`?(\w+)`?)?(?=\s|,|;|$|\)|WHERE|ON|SET|LEFT|RIGHT|INNER|OUTER|CROSS|NATURAL|ORDER|GROUP|HAVING|LIMIT)/gi;
+    // Supports both backticks (MySQL) and double quotes (PostgreSQL)
+    const dbTablePattern = /\b(?:FROM|JOIN|UPDATE|INTO)\s+[`"]?(\w+)[`"]?\.[`"]?(\w+)[`"]?(?:\s+(?:AS\s+)?[`"]?(\w+)[`"]?)?(?=\s|,|;|$|\)|WHERE|ON|SET|LEFT|RIGHT|INNER|OUTER|CROSS|NATURAL|ORDER|GROUP|HAVING|LIMIT)/gi;
 
     let match;
     while ((match = dbTablePattern.exec(query)) !== null) {
@@ -107,7 +108,8 @@ export const parseTableReferences = (query) => {
     }
 
     // Pattern for simple table: FROM/JOIN table alias
-    const simpleTablePattern = /\b(?:FROM|JOIN|UPDATE|INTO)\s+`?(\w+)`?(?:\s+(?:AS\s+)?`?(\w+)`?)?(?=\s|,|;|$|\)|WHERE|ON|SET|LEFT|RIGHT|INNER|OUTER|CROSS|NATURAL|ORDER|GROUP|HAVING|LIMIT)/gi;
+    // Supports both backticks (MySQL) and double quotes (PostgreSQL)
+    const simpleTablePattern = /\b(?:FROM|JOIN|UPDATE|INTO)\s+[`"]?(\w+)[`"]?(?:\s+(?:AS\s+)?[`"]?(\w+)[`"]?)?(?=\s|,|;|$|\)|WHERE|ON|SET|LEFT|RIGHT|INNER|OUTER|CROSS|NATURAL|ORDER|GROUP|HAVING|LIMIT)/gi;
 
     while ((match = simpleTablePattern.exec(query)) !== null) {
         const fullMatch = match[0];

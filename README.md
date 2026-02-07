@@ -7,6 +7,8 @@ TactileSQL is a modern, desktop-first SQL workbench for MySQL and PostgreSQL, bu
 - **SQL Workbench** with multi-tab editor, syntax highlighting, auto-format, and autocomplete.
 - **Configurable SQL Execution Defaults**: Set default run mode (`current statement` / `selection first` / `run all`) and query timeout (`0 = unlimited`).
 - **Smart Autocomplete++** with context-aware suggestions, FK-based JOIN hints, and frequency learning.
+- **Intelligent JOIN Statements**: Automatically generate complete JOIN clauses (e.g., `JOIN orders o ON u.id = o.user_id`) based on foreign key relationships, with automatic alias generation and reverse FK detection.
+- **Expand Wildcard**: Replace `SELECT *` or `alias.*` with a comma-separated list of actual column names (`Ctrl+Shift+E`), automatically resolving potential name conflicts by qualifying ambiguous columns.
 - **Query Audit Trail** for compliance tracking with exportable logs, statistics, and filtering.
 - **Visual Explain** and **Query Profiler** for performance insights.
 - **AI Assistant**: SQL generation and natural language query support powered by multiple providers (OpenAI, Gemini, Anthropic, DeepSeek, Groq, Mistral, and Local AI).
