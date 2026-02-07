@@ -163,7 +163,7 @@ impl TaskManagerStore {
             CREATE INDEX IF NOT EXISTS idx_task_runs_task_started ON task_runs(task_id, started_at DESC);
             CREATE INDEX IF NOT EXISTS idx_task_triggers_next_enabled ON task_triggers(next_run_at, enabled);
             CREATE INDEX IF NOT EXISTS idx_task_triggers_task ON task_triggers(task_id);
-            CREATE INDEX IF NOT EXISTS idx_task_triggers_claim_until ON task_triggers(claim_until);
+            -- Index on claim_until moved to ensure_trigger_claim_columns to avoid init errors on existing tables
             CREATE INDEX IF NOT EXISTS idx_task_run_logs_run ON task_run_logs(run_id, created_at ASC);
             CREATE INDEX IF NOT EXISTS idx_task_run_logs_created ON task_run_logs(created_at);
             CREATE INDEX IF NOT EXISTS idx_composite_steps_task ON composite_steps(composite_task_id, position ASC);
@@ -209,6 +209,12 @@ impl TaskManagerStore {
                 .await
                 .map_err(|e| format!("Failed to migrate claim_until column: {}", e))?;
         }
+
+        // Create index on claim_until after ensuring column exists
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_task_triggers_claim_until ON task_triggers(claim_until)")
+            .execute(&self.pool)
+            .await
+            .map_err(|e| format!("Failed to create index on claim_until: {}", e))?;
 
         Ok(())
     }

@@ -1529,7 +1529,12 @@ pub async fn get_index_sizes(
             Ok(sizes)
         }
         Err(e) => {
-            eprintln!("InnoDB index stats unavailable: {}", e);
+            let msg = e.to_string();
+            if msg.contains("1109") || msg.contains("Unknown table") {
+                // Squelch error on systems without InnoDB stats
+            } else {
+                eprintln!("InnoDB index stats unavailable: {}", msg);
+            }
             Ok(vec![])
         }
     }
