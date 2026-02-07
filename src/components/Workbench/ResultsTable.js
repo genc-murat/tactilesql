@@ -10,6 +10,8 @@ import { toastSuccess, toastError } from '../../utils/Toast.js';
 const VIRTUAL_SCROLL_THRESHOLD = 500;
 
 import { RelatedDataPopup } from './RelatedDataPopup.js';
+import { showTransposeViewModal } from '../UI/TransposeViewModal.js';
+
 export function ResultsTable(options = {}) {
     const { headless = false } = options;
     let theme = ThemeManager.getCurrentTheme();
@@ -112,9 +114,50 @@ export function ResultsTable(options = {}) {
             </div>
             ` : '');
 
+        const currentViewModeIcon = viewMode === 'table' ? 'table_chart' : (viewMode === 'transpose' ? 'swap_horiz' : (viewMode === 'tree' ? 'account_tree' : 'notes'));
+        const currentViewModeLabel = viewMode === 'table' ? 'Table' : (viewMode === 'transpose' ? 'Transpose' : (viewMode === 'tree' ? 'Tree' : 'Text'));
+
         container.innerHTML = `
             ${toolbarHtml}
             ${tabsHtml}
+            
+            <!-- Global Mode Selector (Floating but logically after tabs) -->
+            ${!headless ? `
+            <div class="flex items-center gap-2 px-4 py-1.5 border-b ${isLight ? 'bg-gray-50 border-gray-200' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1]' : (isOceanic ? 'bg-[#2E3440] border-ocean-border/20' : 'bg-[#1a1d23] border-white/5'))}">
+                <div class="flex items-center gap-1 ${searchBg} border rounded-lg p-0.5">
+                    <button class="view-mode-btn flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold transition-all ${viewMode === 'table' ? (isDawn ? 'bg-[#ea9d34] text-white' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-400 hover:bg-white/5')}" data-mode="table">
+                        <span class="material-symbols-outlined text-sm">table_chart</span>
+                        TABLE
+                    </button>
+                    <button class="view-mode-btn flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold transition-all ${viewMode === 'transpose' ? (isDawn ? 'bg-[#ea9d34] text-white' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-400 hover:bg-white/5')}" data-mode="transpose">
+                        <span class="material-symbols-outlined text-sm">swap_horiz</span>
+                        TRANSPOSE
+                    </button>
+                    <button disabled class="opacity-40 cursor-not-allowed flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold transition-all ${isLight ? 'text-gray-500' : 'text-gray-400'}">
+                        <span class="material-symbols-outlined text-sm">account_tree</span>
+                        TREE
+                    </button>
+                    <button disabled class="opacity-40 cursor-not-allowed flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold transition-all ${isLight ? 'text-gray-500' : 'text-gray-400'}">
+                        <span class="material-symbols-outlined text-sm">notes</span>
+                        TEXT
+                    </button>
+                </div>
+                <div class="flex-1"></div>
+                <div id="pending-indicator" class="flex items-center gap-2 px-2 py-1 rounded bg-amber-500/10 border border-amber-500/20 max-w-0 opacity-0 transition-all duration-300 pointer-events-none">
+                     <span class="material-symbols-outlined text-sm text-amber-500">warning</span>
+                     <span class="text-[9px] font-bold text-amber-500"><span id="pending-count">0</span> PENDING CHANGES</span>
+                     <div class="flex items-center gap-1 ml-1">
+                        <button id="commit-btn" class="px-1.5 py-0.5 rounded bg-amber-500 text-black text-[8px] font-black hover:brightness-110 active:scale-95 transition-all">SAVE</button>
+                        <button id="discard-btn" class="px-1.5 py-0.5 rounded bg-white/10 text-amber-500 text-[8px] font-black hover:bg-white/20 transition-all">DISCARD</button>
+                     </div>
+                </div>
+                <button id="insert-row-btn" class="flex items-center gap-1.5 px-3 py-1 rounded-md ${isDawn ? 'bg-[#9ccfd8] text-black hover:brightness-110' : 'bg-mysql-teal text-black hover:brightness-110'} text-[10px] font-bold transition-all shadow-lg active:scale-95 max-w-0 opacity-0 pointer-events-none overflow-hidden">
+                    <span class="material-symbols-outlined text-sm">add</span>
+                    INSERT ROW
+                </button>
+            </div>
+            ` : ''}
+
             <div class="flex-1 overflow-auto custom-scrollbar ${isLight ? 'bg-white' : (isDawn ? 'bg-[#faf4ed]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0f1115]'))}">
                 <table id="results-table" class="w-full text-left font-mono text-[11px] border-collapse">
                     <thead class="sticky top-0 ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel' : 'bg-[#16191e]'))} z-10 transition-colors">
@@ -179,6 +222,7 @@ export function ResultsTable(options = {}) {
     let foreignKeys = []; // Array of {column_name, referenced_table, referenced_column}
     let tableName = '';
     let databaseName = '';
+    let viewMode = 'table'; // 'table', 'transpose', 'tree', 'text'
 
     // Multi-select and column visibility state
     let selectedRows = new Set();
@@ -266,6 +310,20 @@ export function ResultsTable(options = {}) {
             selectedRows.clear();
             hiddenColumns.clear();
         }
+    };
+
+    const openTranspose = (idx) => {
+        const row = currentData.rows[idx];
+        if (!row) return;
+
+        showTransposeViewModal({
+            columns: currentData.columns,
+            row: row,
+            rowIndex: idx,
+            totalRows: currentData.rows.length,
+            onNext: idx < currentData.rows.length - 1 ? () => openTranspose(idx + 1) : null,
+            onPrev: idx > 0 ? () => openTranspose(idx - 1) : null
+        });
     };
 
     // --- Helpers ---
@@ -781,16 +839,19 @@ export function ResultsTable(options = {}) {
                        ${isSelected ? 'checked' : ''}>
             </td>
             <td class="p-2 border-r ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5'))} text-center font-mono relative group/row">
-                <span class="text-[10px] ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]/70' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-500'))} ${isEditable ? 'group-hover/row:opacity-0 transition-opacity' : ''}">
+                <span class="text-[10px] ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]/70' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-500'))} group-hover/row:opacity-0 transition-opacity">
                     ${idx + 1}
                 </span>
-                ${isEditable ? `
-                <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover/row:opacity-100 transition-opacity">
-                    <button class="delete-row-btn text-red-400 hover:text-red-300 p-0.5 rounded hover:bg-red-500/10" data-row-idx="${idx}" ${isDeleted ? 'disabled' : ''}>
+                <div class="absolute inset-0 flex items-center justify-center gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity">
+                    <button class="transpose-row-btn ${isDawn ? 'text-[#ea9d34] hover:bg-[#ea9d34]/10' : 'text-mysql-teal hover:bg-mysql-teal/10'} p-0.5 rounded transition-colors" title="Transpose View" data-row-idx="${idx}">
+                        <span class="material-symbols-outlined text-sm">swap_horiz</span>
+                    </button>
+                    ${isEditable ? `
+                    <button class="delete-row-btn text-red-500 hover:text-red-400 p-0.5 rounded hover:bg-red-500/10 transition-colors" data-row-idx="${idx}" ${isDeleted ? 'disabled' : ''}>
                         <span class="material-symbols-outlined text-sm">delete</span>
                     </button>
+                    ` : ''}
                 </div>
-                ` : ''}
             </td>
             ${cells}
         </tr>`;
@@ -798,6 +859,19 @@ export function ResultsTable(options = {}) {
 
     const attachRowEvents = (tbody) => {
         // Cell edit events
+        if (isEditable) {
+            // ... logic moved ... 
+        }
+
+        // Transpose buttons
+        tbody.querySelectorAll('.transpose-row-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const rowIdx = parseInt(btn.dataset.rowIdx);
+                openTranspose(rowIdx);
+            });
+        });
+
         if (isEditable) {
             tbody.querySelectorAll('td[data-row-idx][data-col-idx]').forEach(cell => {
                 cell.addEventListener('dblclick', () => {
@@ -878,7 +952,7 @@ export function ResultsTable(options = {}) {
             isEditable = await checkIfEditable(query);
             const insertBtn = container.querySelector('#insert-row-btn');
             if (insertBtn) {
-                if (isEditable) {
+                if (isEditable && viewMode === 'table') {
                     insertBtn.classList.remove('max-w-0', 'opacity-0', 'pointer-events-none');
                     insertBtn.classList.add('max-w-full', 'opacity-100', 'pointer-events-auto');
                 } else {
@@ -886,6 +960,11 @@ export function ResultsTable(options = {}) {
                     insertBtn.classList.remove('max-w-full', 'opacity-100', 'pointer-events-auto');
                 }
             }
+        }
+
+        if (viewMode === 'transpose') {
+            renderTransposeView(data);
+            return;
         }
 
         // Update Metadata with performance indicator for large datasets
@@ -1018,16 +1097,19 @@ export function ResultsTable(options = {}) {
                                    ${isSelected ? 'checked' : ''}>
                         </td>
                         <td class="p-2 border-r ${isLight ? 'border-gray-100' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5')} text-center font-mono relative group/row">
-                            <span class="text-[10px] ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-500')} ${isEditable ? 'group-hover/row:opacity-0 transition-opacity' : ''}">
+                            <span class="text-[10px] ${isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-500')} group-hover/row:opacity-0 transition-opacity">
                                 ${idx + 1}
                             </span>
-                            ${isEditable ? `
-                            <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover/row:opacity-100 transition-opacity">
-                                <button class="delete-row-btn text-red-400 hover:text-red-300 p-0.5 rounded hover:bg-red-500/10" data-row-idx="${idx}" ${isDeleted ? 'disabled' : ''}>
+                            <div class="absolute inset-0 flex items-center justify-center gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity">
+                                <button class="transpose-row-btn ${isDawn ? 'text-[#ea9d34] hover:bg-[#ea9d34]/10' : 'text-mysql-teal hover:bg-mysql-teal/10'} p-0.5 rounded transition-colors" title="Transpose View" data-row-idx="${idx}">
+                                    <span class="material-symbols-outlined text-sm">swap_horiz</span>
+                                </button>
+                                ${isEditable ? `
+                                <button class="delete-row-btn text-red-500 hover:text-red-400 p-0.5 rounded hover:bg-red-500/10 transition-colors" data-row-idx="${idx}" ${isDeleted ? 'disabled' : ''}>
                                     <span class="material-symbols-outlined text-sm">delete</span>
                                 </button>
+                                ` : ''}
                             </div>
-                            ` : ''}
                         </td>
                         ${cells}
                     </tr>`;
@@ -1158,6 +1240,18 @@ export function ResultsTable(options = {}) {
         const clearSelectionBtn = container.querySelector('#clear-selection-btn');
         const columnToggleBtn = container.querySelector('#column-toggle-btn');
         const columnMenu = container.querySelector('#column-menu');
+
+        // View Mode buttons
+        container.querySelectorAll('.view-mode-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const mode = btn.dataset.mode;
+                if (viewMode !== mode) {
+                    viewMode = mode;
+                    renderControls(); // Re-render controls to update tab styling
+                    if (currentData.rows.length) renderTable(currentData);
+                }
+            });
+        });
 
         if (exportCsvBtn) {
             exportCsvBtn.addEventListener('click', () => {
@@ -1382,6 +1476,44 @@ export function ResultsTable(options = {}) {
     window.addEventListener('tactilesql:query-executing', () => {
         showLoadingSkeleton();
     });
+
+    const renderTransposeView = (data) => {
+        const { columns, rows } = data;
+        const table = container.querySelector('table');
+        if (!table) return;
+
+        // In transpose view, we have:
+        // Column 1: Row indices (empty or numbers)
+        // Column 1+: Column Names as the first column, and data rows as subsequent columns
+
+        const thead = table.querySelector('thead tr');
+        if (thead) {
+            // Header shows "Column" and then "1", "2", "3..." for each row
+            const baseHeader = `<th class="p-3 font-bold border-r ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5'))} border-b ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5'))} whitespace-nowrap text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text/70' : 'text-gray-400'))} sticky left-0 z-20 ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#f2e9e1]' : 'bg-[#16191e]')}">Field</th>`;
+            const rowHeaders = rows.map((_, idx) => {
+                return `<th class="p-3 font-bold border-r ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5'))} border-b ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5'))} whitespace-nowrap text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text/70' : 'text-gray-400'))} text-center min-w-[200px]">${idx + 1}</th>`;
+            }).join('');
+            thead.innerHTML = baseHeader + rowHeaders;
+        }
+
+        const tbody = table.querySelector('tbody');
+        if (tbody) {
+            // Each row in tbody represents one database column
+            tbody.innerHTML = columns.map((col, colIdx) => {
+                if (hiddenColumns.has(colIdx)) return '';
+
+                const rowLabel = `<td class="p-3 font-bold border-r ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5'))} ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text' : 'text-gray-300'))} sticky left-0 z-10 ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#faf4ed]' : 'bg-[#111418]')} min-w-[150px] shadow-[1px_0_0_0_rgba(0,0,0,0.1)]">${col}</td>`;
+
+                const cells = rows.map((row, rowIdx) => {
+                    const displayValue = row[colIdx];
+                    const contentHtml = formatCell(displayValue);
+                    return `<td class="p-3 border-r ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5'))} ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text' : 'text-gray-300'))} whitespace-nowrap overflow-hidden text-ellipsis max-w-md" title="${formatCellForTitle(displayValue)}">${contentHtml}</td>`;
+                }).join('');
+
+                return `<tr class="${isDawn ? 'hover:bg-[#ea9d34]/5' : 'hover:bg-cyan-500/5'} transition-colors">${rowLabel + cells}</tr>`;
+            }).join('');
+        }
+    };
 
     renderControls();
 
