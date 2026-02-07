@@ -13,12 +13,14 @@ export const SETTINGS_PATHS = Object.freeze({
     PROFILER_EXPLAIN_ANALYZE: 'profiler.explainAnalyze',
     WORKBENCH_SNIPPETS: 'workbench.snippets',
     WORKBENCH_HISTORY: 'workbench.history',
+    AUTOCOMPLETE_QUALIFY_OBJECTS: 'autocomplete.qualifyObjects',
 });
 
 export const DEFAULT_SETTINGS = Object.freeze({
     autocomplete: Object.freeze({
         enabled: true,
         snippets: true,
+        qualifyObjects: 'collisions', // 'never', 'always', 'collisions'
     }),
     editor: Object.freeze({
         lineNumbers: true,
@@ -61,4 +63,5 @@ export const SETTING_DEFAULTS = Object.freeze({
     [SETTINGS_PATHS.PROFILER_EXPLAIN_ANALYZE]: true,
     [SETTINGS_PATHS.WORKBENCH_SNIPPETS]: true,
     [SETTINGS_PATHS.WORKBENCH_HISTORY]: true,
+    [SETTINGS_PATHS.AUTOCOMPLETE_QUALIFY_OBJECTS]: 'collisions',
 });

@@ -32,10 +32,16 @@ const EXECUTION_RUN_MODE_OPTIONS = Object.freeze([
     Object.freeze({ value: 'selection', label: 'Selection First' }),
     Object.freeze({ value: 'all', label: 'Run All' }),
 ]);
+const AUTOCOMPLETE_QUALIFY_OPTIONS = Object.freeze([
+    Object.freeze({ value: 'never', label: 'Never' }),
+    Object.freeze({ value: 'always', label: 'Always' }),
+    Object.freeze({ value: 'collisions', label: 'On Collisions' }),
+]);
 const DEFAULT_EDITOR_FONT_SIZE = 13;
 const DEFAULT_EDITOR_FONT_FAMILY = 'jetbrains';
 const DEFAULT_EDITOR_LINE_WRAP = 'on';
 const DEFAULT_EXECUTION_RUN_MODE = 'statement';
+const DEFAULT_AUTOCOMPLETE_QUALIFY_OBJECTS = 'collisions';
 const DEFAULT_QUERY_TIMEOUT_SECONDS = 30;
 const DEFAULT_MAX_ROWS_PER_QUERY = 5000;
 
@@ -151,7 +157,7 @@ export function Settings() {
         lastCheckedAt: null,
         liveReport: null,
     };
-    let settingsUiCleanup = () => {};
+    let settingsUiCleanup = () => { };
 
     const updateThemeState = (newTheme) => {
         theme = newTheme;
@@ -165,6 +171,8 @@ export function Settings() {
     const render = () => {
         const currentTheme = ThemeManager.getCurrentTheme();
         const autocompleteEnabled = SettingsManager.get(SETTINGS_PATHS.AUTOCOMPLETE_ENABLED);
+        const autocompleteQualifyObjects = SettingsManager.get(SETTINGS_PATHS.AUTOCOMPLETE_QUALIFY_OBJECTS) || DEFAULT_AUTOCOMPLETE_QUALIFY_OBJECTS;
+        const autocompleteQualifyObjectsLabel = AUTOCOMPLETE_QUALIFY_OPTIONS.find(option => option.value === autocompleteQualifyObjects)?.label || 'On Collisions';
         const snippetSuggestionsEnabled = SettingsManager.get(SETTINGS_PATHS.AUTOCOMPLETE_SNIPPETS);
         const lineNumbersEnabled = SettingsManager.get(SETTINGS_PATHS.EDITOR_LINE_NUMBERS);
         const editorFontSize = getEditorFontSizeSetting();
@@ -569,6 +577,30 @@ export function Settings() {
 
                         <div data-settings-item class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
                             <div>
+                                <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Qualify Objects</h3>
+                                <p class="text-xs text-gray-500 mt-1">When to add schema/database prefixes</p>
+                            </div>
+                            <div class="relative" id="qualify-objects-dropdown-container">
+                                <button id="qualify-objects-trigger" class="flex items-center gap-2 px-3 py-1.5 text-sm ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800 hover:bg-gray-100' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] hover:bg-[#faf4ed]' : 'bg-black/20 border-white/10 text-gray-300 hover:bg-white/5')} rounded-lg border transition-all outline-none focus:border-mysql-teal shadow-sm min-w-[150px] justify-between group">
+                                    <span id="current-qualify-objects">${escapeHtml(autocompleteQualifyObjectsLabel)}</span>
+                                    <span class="material-symbols-outlined text-gray-500 group-hover:text-mysql-teal transition-transform duration-200" id="qualify-objects-arrow">expand_more</span>
+                                </button>
+
+                                <div id="qualify-objects-options" class="hidden absolute top-full right-0 mt-2 w-48 ${isLight ? 'bg-white border-gray-100 shadow-2xl' : 'bg-[#1a1d23] border-white/10 shadow-2xl'} rounded-xl overflow-hidden z-[100] animate-in fade-in slide-in-from-top-2 duration-200 backdrop-blur-xl">
+                                    <div class="p-1">
+                                        ${AUTOCOMPLETE_QUALIFY_OPTIONS.map(option => `
+                                            <div class="qualify-objects-option px-3 py-2 flex items-center justify-between cursor-pointer rounded-lg transition-colors ${autocompleteQualifyObjects === option.value ? (isLight ? 'bg-mysql-teal/10 text-mysql-teal font-bold' : 'bg-mysql-teal/20 text-mysql-teal font-bold') : (isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5')}" data-value="${option.value}">
+                                                <span class="text-sm">${escapeHtml(option.label)}</span>
+                                                ${autocompleteQualifyObjects === option.value ? '<span class="material-symbols-outlined text-mysql-teal text-sm">check_circle</span>' : ''}
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div data-settings-item class="flex items-center justify-between py-4 border-b ${isLight ? 'border-gray-200' : 'border-white/5'}">
+                            <div>
                                 <h3 class="text-sm font-medium ${isLight ? 'text-gray-800' : 'text-gray-200'}">Workbench Snippets</h3>
                                 <p class="text-xs text-gray-500 mt-1">Show the snippets panel in the workbench sidebar</p>
                             </div>
@@ -763,8 +795,8 @@ export function Settings() {
                                     <div class="font-semibold mb-2 ${isLight ? 'text-gray-800' : 'text-gray-200'}">Missing In Backend</div>
                                     <div id="command-contract-missing-list" class="space-y-1 ${isLight ? 'text-gray-600' : 'text-gray-400'}">
                                         ${missingInBackend.length === 0
-                                            ? '<div>None</div>'
-                                            : missingInBackend.slice(0, 8).map(cmd => `<div class="font-mono">${escapeHtml(cmd)}</div>`).join('')}
+                ? '<div>None</div>'
+                : missingInBackend.slice(0, 8).map(cmd => `<div class="font-mono">${escapeHtml(cmd)}</div>`).join('')}
                                         ${missingInBackend.length > 8 ? `<div class="text-gray-500">+${missingInBackend.length - 8} more</div>` : ''}
                                     </div>
                                 </div>
@@ -772,8 +804,8 @@ export function Settings() {
                                     <div class="font-semibold mb-2 ${isLight ? 'text-gray-800' : 'text-gray-200'}">Unused In Frontend</div>
                                     <div id="command-contract-unused-list" class="space-y-1 ${isLight ? 'text-gray-600' : 'text-gray-400'}">
                                         ${unusedInFrontend.length === 0
-                                            ? '<div>None</div>'
-                                            : unusedInFrontend.slice(0, 8).map(cmd => `<div class="font-mono">${escapeHtml(cmd)}</div>`).join('')}
+                ? '<div>None</div>'
+                : unusedInFrontend.slice(0, 8).map(cmd => `<div class="font-mono">${escapeHtml(cmd)}</div>`).join('')}
                                         ${unusedInFrontend.length > 8 ? `<div class="text-gray-500">+${unusedInFrontend.length - 8} more</div>` : ''}
                                     </div>
                                 </div>
@@ -875,7 +907,7 @@ export function Settings() {
 
     const attachEvents = () => {
         settingsUiCleanup();
-        settingsUiCleanup = () => {};
+        settingsUiCleanup = () => { };
 
         const darkBtn = container.querySelector('#theme-dark');
         const lightBtn = container.querySelector('#theme-light');
@@ -1749,6 +1781,10 @@ export function Settings() {
         const runModeDropdown = container.querySelector('#run-mode-options');
         const runModeArrow = container.querySelector('#run-mode-arrow');
         const currentRunModeSpan = container.querySelector('#current-run-mode');
+        const qualifyObjectsTrigger = container.querySelector('#qualify-objects-trigger');
+        const qualifyObjectsDropdown = container.querySelector('#qualify-objects-options');
+        const qualifyObjectsArrow = container.querySelector('#qualify-objects-arrow');
+        const currentQualifyObjectsSpan = container.querySelector('#current-qualify-objects');
         const queryTimeoutInput = container.querySelector('#execution-query-timeout-input');
         const maxRowsInput = container.querySelector('#results-max-rows-input');
 
@@ -2051,6 +2087,51 @@ export function Settings() {
                 });
             }
 
+            if (qualifyObjectsTrigger && qualifyObjectsDropdown) {
+                qualifyObjectsTrigger.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const isHidden = qualifyObjectsDropdown.classList.contains('hidden');
+                    container.querySelectorAll('#ai-provider-options, #ai-model-options, #font-size-options, #font-family-options, #line-wrap-options, #run-mode-options').forEach(d => d.classList.add('hidden'));
+                    container.querySelectorAll('#ai-provider-arrow, #ai-model-arrow, #font-size-arrow, #font-family-arrow, #line-wrap-arrow, #run-mode-arrow').forEach(a => a.style.transform = '');
+                    if (isHidden) {
+                        qualifyObjectsDropdown.classList.remove('hidden');
+                        if (qualifyObjectsArrow) qualifyObjectsArrow.style.transform = 'rotate(180deg)';
+                    } else {
+                        qualifyObjectsDropdown.classList.add('hidden');
+                        if (qualifyObjectsArrow) qualifyObjectsArrow.style.transform = '';
+                    }
+                });
+
+                qualifyObjectsDropdown.querySelectorAll('.qualify-objects-option').forEach(option => {
+                    option.addEventListener('click', () => {
+                        const val = String(option.dataset.value || '');
+                        if (!val) return;
+                        const selectedLabel = option.querySelector('span')?.textContent || 'On Collisions';
+                        if (currentQualifyObjectsSpan) currentQualifyObjectsSpan.textContent = selectedLabel;
+                        qualifyObjectsDropdown.classList.add('hidden');
+                        if (qualifyObjectsArrow) qualifyObjectsArrow.style.transform = '';
+                        SettingsManager.set(SETTINGS_PATHS.AUTOCOMPLETE_QUALIFY_OBJECTS, val);
+                        qualifyObjectsDropdown.querySelectorAll('.qualify-objects-option').forEach(opt => {
+                            const isSelected = opt.dataset.value === val;
+                            opt.className = `qualify-objects-option px-3 py-2 flex items-center justify-between cursor-pointer rounded-lg transition-colors ${isSelected ? (isLight ? 'bg-mysql-teal/10 text-mysql-teal font-bold' : 'bg-mysql-teal/20 text-mysql-teal font-bold') : (isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5')}`;
+                            let check = opt.querySelector('.material-symbols-outlined');
+                            if (isSelected) {
+                                if (!check) {
+                                    check = document.createElement('span');
+                                    check.className = 'material-symbols-outlined text-mysql-teal text-sm';
+                                    check.textContent = 'check_circle';
+                                    opt.appendChild(check);
+                                } else {
+                                    check.style.display = 'block';
+                                }
+                            } else if (check) {
+                                check.style.display = 'none';
+                            }
+                        });
+                    });
+                });
+            }
+
             if (maxRowsInput) {
                 const commitMaxRowsValue = () => {
                     const next = clampMaxRowsPerQuery(maxRowsInput.value);
@@ -2073,10 +2154,10 @@ export function Settings() {
 
             document.addEventListener('click', (e) => {
                 if (!container.contains(e.target)) return;
-                const matchesTrigger = e.target.closest('#ai-provider-trigger, #ai-model-trigger, #font-size-trigger, #font-family-trigger, #line-wrap-trigger, #run-mode-trigger');
+                const matchesTrigger = e.target.closest('#ai-provider-trigger, #ai-model-trigger, #font-size-trigger, #font-family-trigger, #line-wrap-trigger, #run-mode-trigger, #qualify-objects-trigger');
                 if (!matchesTrigger) {
-                    container.querySelectorAll('#ai-provider-options, #ai-model-options, #font-size-options, #font-family-options, #line-wrap-options, #run-mode-options').forEach(d => d.classList.add('hidden'));
-                    container.querySelectorAll('#ai-provider-arrow, #ai-model-arrow, #font-size-arrow, #font-family-arrow, #line-wrap-arrow, #run-mode-arrow').forEach(a => a.style.transform = '');
+                    container.querySelectorAll('#ai-provider-options, #ai-model-options, #font-size-options, #font-family-options, #line-wrap-options, #run-mode-options, #qualify-objects-options').forEach(d => d.classList.add('hidden'));
+                    container.querySelectorAll('#ai-provider-arrow, #ai-model-arrow, #font-size-arrow, #font-family-arrow, #line-wrap-arrow, #run-mode-arrow, #qualify-objects-arrow').forEach(a => a.style.transform = '');
                 }
             });
 

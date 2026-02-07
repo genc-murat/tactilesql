@@ -578,6 +578,44 @@ export class SmartAutocomplete {
         return this.#tables[key] || [];
     }
 
+    /**
+     * Get all tables from all accessible schemas/databases
+     * Returns array of { table, schema }
+     */
+    async #getAllTables() {
+        const results = [];
+
+        if (isPostgreSQL()) {
+            await this.loadSchemas();
+            // Use Promise.all for parallelism
+            const promises = this.#schemas.map(async schema => {
+                try {
+                    const tables = await this.loadTablesForSchema(schema);
+                    return tables.map(t => ({ table: t, schema }));
+                } catch (e) {
+                    return [];
+                }
+            });
+            const schemaTables = await Promise.all(promises);
+            schemaTables.forEach(t => results.push(...t));
+        } else {
+            // MySQL - scan all databases
+            await this.loadDatabases();
+            const promises = this.#databases.map(async db => {
+                try {
+                    const tables = await this.loadTables(db);
+                    return tables.map(t => ({ table: t, schema: db }));
+                } catch (e) {
+                    return [];
+                }
+            });
+            const dbTables = await Promise.all(promises);
+            dbTables.forEach(t => results.push(...t));
+        }
+
+        return results;
+    }
+
     // ==================== QUERY PARSING ====================
 
     #parseQuery() {
@@ -1085,23 +1123,49 @@ export class SmartAutocomplete {
             }
         }
 
-        // Add tables from current database (skip FK-related ones already added)
-        const fkTableNames = suggestions
-            .filter(s => s.type === 'fk_table' || s.type === 'fk_join')
-            .map(s => s.tableName?.toLowerCase());
+        // Identify FK-related tables to avoid duplicates (optional, but good UX)
+        const fkTableNames = new Set(
+            suggestions
+                .filter(s => s.type === 'fk_table' || s.type === 'fk_join')
+                .map(s => s.tableName?.toLowerCase())
+        );
 
-        const tables = await this.loadTables(this.#currentDb);
-        for (const table of tables) {
-            if (matchesInput(wordLower, table) && !fkTableNames.includes(table.toLowerCase())) {
-                suggestions.push({
-                    type: 'table',
-                    value: table,
-                    display: table,
-                    detail: this.#currentDb,
-                    icon: 'table_rows',
-                    color: 'text-cyan-400',
-                });
-            }
+        // Get Qualification Setting
+        const qualifyMode = SettingsManager.get(SETTINGS_PATHS.AUTOCOMPLETE_QUALIFY_OBJECTS) || 'collisions';
+
+        // Load all tables
+        // Performance note: This parallel fetches all schemas/dbs.
+        const allTables = await this.#getAllTables();
+
+        // Filter matches first
+        const matchedTables = allTables.filter(item =>
+            matchesInput(wordLower, item.table) && !fkTableNames.has(item.table.toLowerCase())
+        );
+
+        // Group by table name to detect collisions
+        const tableCounts = {};
+        allTables.forEach(item => {
+            const low = item.table.toLowerCase();
+            tableCounts[low] = (tableCounts[low] || 0) + 1;
+        });
+
+        for (const item of matchedTables) {
+            const isCollision = tableCounts[item.table.toLowerCase()] > 1;
+            const shouldQualify =
+                qualifyMode === 'always' ||
+                (qualifyMode === 'collisions' && isCollision);
+
+            const qualifiedName = `${item.schema}.${item.table}`;
+            const simpleName = item.table;
+
+            suggestions.push({
+                type: 'table',
+                value: shouldQualify ? qualifiedName : simpleName,
+                display: shouldQualify ? qualifiedName : simpleName, // Visual parity with insert value
+                detail: item.schema,
+                icon: 'table_rows',
+                color: 'text-cyan-400',
+            });
         }
 
         // Add JOIN keywords if in JOIN context
