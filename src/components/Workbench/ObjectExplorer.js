@@ -1980,9 +1980,7 @@ export function ObjectExplorer() {
     // --- Data Loading ---
     const loadConnections = async () => {
         try {
-            console.log('[ObjectExplorer] Loading connections...');
             connections = await invoke('load_connections');
-            console.log('[ObjectExplorer] Loaded connections:', connections);
             connectionKeyById.clear();
             connections.forEach(c => {
                 const key = deriveStateKey(c);

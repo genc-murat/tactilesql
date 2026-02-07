@@ -77,13 +77,13 @@ export function ResultsTable(options = {}) {
                 </div>
                 <div class="flex items-center gap-3 flex-shrink-0">
                     <!-- Action Buttons Group -->
-                    <div class="flex items-center ${searchBg} border rounded-lg overflow-hidden">
+                    <div class="flex items-center ${searchBg} border rounded-lg overflow-visible">
                         <!-- Columns Toggle -->
                         <div class="relative">
                             <button id="column-toggle-btn" class="flex items-center justify-center w-10 h-10 ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : 'text-gray-400')} ${buttonHover} transition-all border-r ${borderColor}" title="Toggle column visibility">
                                 <span class="material-symbols-outlined text-lg">view_column</span>
                             </button>
-                            <div id="column-menu" class="hidden absolute right-0 top-full mt-1.5 ${isLight ? 'bg-white border-gray-200 shadow-xl' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-xl' : (isOceanic ? 'bg-ocean-panel border-ocean-border shadow-2xl' : 'bg-[#1a1d23] border-white/10 shadow-2xl'))} border rounded-lg py-2 z-50 min-w-[200px] max-h-[320px] overflow-y-auto custom-scrollbar">
+                            <div id="column-menu" class="hidden absolute right-0 top-full mt-1.5 ${isLight ? 'bg-white border-gray-200 shadow-xl' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-xl' : (isOceanic ? 'bg-ocean-panel border-ocean-border shadow-2xl' : 'bg-[#1a1d23] border-white/10 shadow-2xl'))} border rounded-lg py-2 z-[100] min-w-[200px] max-h-[320px] overflow-y-auto custom-scrollbar">
                                 <div class="px-3 py-2 text-[9px] font-bold tracking-wider ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-500'))} border-b ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5'))} mb-1">Column Visibility</div>
                                 <div id="column-list"></div>
                             </div>
@@ -435,7 +435,7 @@ export function ResultsTable(options = {}) {
         // Attach column toggle events
         columnList.querySelectorAll('.column-toggle-checkbox').forEach(checkbox => {
             checkbox.addEventListener('change', (e) => {
-                const colIdx = parseInt(e.target.dataset.col - idx);
+                const colIdx = parseInt(e.target.dataset.colIdx);
                 if (e.target.checked) {
                     hiddenColumns.delete(colIdx);
                 } else {
@@ -1344,13 +1344,18 @@ export function ResultsTable(options = {}) {
                 columnMenu.classList.toggle('hidden', !showColumnMenu);
             });
 
-            // Close menu when clicking outside
-            document.addEventListener('click', (e) => {
-                if (!columnMenu.contains(e.target) && e.target !== columnToggleBtn) {
-                    showColumnMenu = false;
-                    columnMenu.classList.add('hidden');
-                }
-            });
+            // Close menu when clicking outside - only add once
+            if (!container._columnMenuClickHandler) {
+                container._columnMenuClickHandler = (e) => {
+                    const menu = container.querySelector('#column-menu');
+                    const btn = container.querySelector('#column-toggle-btn');
+                    if (menu && btn && !menu.contains(e.target) && !btn.contains(e.target)) {
+                        showColumnMenu = false;
+                        menu.classList.add('hidden');
+                    }
+                };
+                document.addEventListener('click', container._columnMenuClickHandler);
+            }
         }
 
         if (filterInput) {
