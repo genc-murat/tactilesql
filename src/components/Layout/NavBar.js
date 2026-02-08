@@ -129,9 +129,7 @@ export function NavBar() {
         nav.innerHTML = `
             <div class="flex items-center gap-3">
                 <a href="#/workbench" class="flex items-center gap-2 mr-4">
-                    <div class="w-6 h-6 rounded-lg overflow-hidden flex items-center justify-center shadow-lg shadow-mysql-teal/20">
-                        <img src="/logo.png" alt="TactileSQL Logo" class="w-full h-full object-cover" />
-                    </div>
+
                     <div class="text-[10px] font-black tracking-[0.2em] ${(isLight || isDawn) ? 'text-gray-800' : (isOceanic ? 'text-ocean-text' : (isNeon ? 'text-neon-text' : 'text-white/80'))} uppercase transition-colors duration-300">TactileSQL</div>
                 </a>
             </div>
