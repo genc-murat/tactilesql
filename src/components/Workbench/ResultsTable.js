@@ -179,28 +179,22 @@ export function ResultsTable(options = {}) {
             <div id="selection-action-bar" class="flex items-center justify-between px-4 h-0 overflow-hidden opacity-0 ${isLight ? 'bg-cyan-50 border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-cyan-900/20 border-ocean-border' : 'bg-cyan-900/20 border-white/10'))} border-t transition-all duration-300">
                 <div class="flex items-center gap-3">
                     <div class="flex items-center gap-2">
-                        <div class="flex items-center justify-center w-8 h-8 rounded-lg ${isDawn ? 'bg-[#ea9d34]/20' : 'bg-cyan-500/20'}">
-                            <span class="material-symbols-outlined text-lg ${isDawn ? 'text-[#ea9d34]' : 'text-cyan-500'}">check_circle</span>
+                        <div class="flex items-center justify-center w-6 h-6 rounded-md ${isDawn ? 'bg-[#ea9d34]/20' : 'bg-cyan-500/20'}">
+                            <span class="material-symbols-outlined text-[16px] ${isDawn ? 'text-[#ea9d34]' : 'text-cyan-500'}">check_circle</span>
                         </div>
-                        <div class="flex flex-col">
-                            <span class="text-[10px] font-bold tracking-wider ${isLight ? 'text-cyan-700' : (isDawn ? 'text-[#ea9d34]' : 'text-cyan-400')}"><span id="selection-count-bottom">0</span> Row(s) Selected</span>
-                            <span class="text-[9px] ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Choose an action below</span>
-                        </div>
+                        <span class="text-[10px] font-bold tracking-wider ${isLight ? 'text-cyan-700' : (isDawn ? 'text-[#ea9d34]' : 'text-cyan-400')}"><span id="selection-count-bottom">0</span> Selected</span>
                     </div>
                 </div>
-                <div class="flex items-center gap-2">
-                    <button id="delete-selected-btn" class="flex items-center gap-2 px-4 py-2 ${isDawn ? 'bg-[#eb6f92]/10 hover:bg-[#eb6f92]/20 border border-[#eb6f92]/30 text-[#eb6f92]' : 'bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-600 dark:text-red-400'} rounded-lg transition-all shadow-sm" title="Delete selected rows">
-                        <span class="material-symbols-outlined text-base">delete</span>
-                        <span>Delete Selected</span>
+                <div class="flex items-center gap-1">
+                    <button id="delete-selected-btn" class="flex items-center justify-center w-7 h-7 ${isDawn ? 'bg-[#eb6f92]/10 hover:bg-[#eb6f92]/20 border border-[#eb6f92]/30 text-[#eb6f92]' : 'bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-600 dark:text-red-400'} rounded-md transition-all shadow-sm" title="Delete selected rows">
+                        <span class="material-symbols-outlined text-lg">delete</span>
                     </button>
-                    <button id="copy-selected-btn" class="flex items-center gap-2 px-4 py-2 ${searchBg} ${buttonHover} border text-[11px] font-bold rounded-lg transition-all shadow-sm" title="Copy selected rows">
-                        <span class="material-symbols-outlined text-base">content_copy</span>
-                        <span>Copy Selected</span>
+                    <button id="copy-selected-btn" class="flex items-center justify-center w-7 h-7 ${searchBg} ${buttonHover} border rounded-md transition-all shadow-sm" title="Copy selected rows">
+                        <span class="material-symbols-outlined text-lg">content_copy</span>
                     </button>
-                    <div class="h-8 w-px ${dividerColor}"></div>
-                    <button id="clear-selection-btn" class="flex items-center gap-2 px-4 py-2 ${searchBg} ${buttonHover} border text-[11px] font-bold rounded-lg transition-all" title="Clear selection">
-                        <span class="material-symbols-outlined text-base">close</span>
-                        <span>Clear Selection</span>
+                    <div class="h-5 w-px ${dividerColor} mx-1"></div>
+                    <button id="clear-selection-btn" class="flex items-center justify-center w-7 h-7 ${searchBg} ${buttonHover} border rounded-md transition-all" title="Clear selection">
+                        <span class="material-symbols-outlined text-lg">close</span>
                     </button>
                 </div>
             </div>
@@ -402,12 +396,12 @@ export function ResultsTable(options = {}) {
 
         if (selectedRows.size > 0) {
             actionBar.classList.remove('h-0', 'opacity-0');
-            actionBar.classList.add('h-14', 'opacity-100');
+            actionBar.classList.add('h-10', 'opacity-100');
             const countElement = container.querySelector('#selection-count-bottom');
             if (countElement) countElement.textContent = selectedRows.size;
         } else {
             actionBar.classList.add('h-0', 'opacity-0');
-            actionBar.classList.remove('h-14', 'opacity-100');
+            actionBar.classList.remove('h-10', 'opacity-100');
         }
     };
 
