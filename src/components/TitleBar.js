@@ -25,7 +25,7 @@ export function TitleBar() {
     titleDiv.className = "flex items-center gap-2";
 
     const logoImg = document.createElement('img');
-    logoImg.src = "/src/assets/logo.png";
+    logoImg.src = "/logo.png";
     logoImg.className = "w-4 h-4 rounded-sm object-cover opacity-80";
     titleDiv.appendChild(logoImg);
 

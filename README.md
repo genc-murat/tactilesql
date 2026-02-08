@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="src/assets/logo.png" width="200" alt="TactileSQL Logo">
+  <img src="public/logo.png" width="200" alt="TactileSQL Logo">
 </p>
 
 # TactileSQL
