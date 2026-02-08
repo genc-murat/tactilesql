@@ -7,6 +7,7 @@ export function SchemaTimeline({ snapshots, onSelectSnapshot, selectedSnapshotId
     const isOceanic = theme === 'oceanic';
     const isEmber = theme === 'ember';
     const isAurora = theme === 'aurora';
+    const isNeon = theme === 'neon';
 
     const container = document.createElement('div');
     const getContainerBg = () => {
@@ -15,6 +16,7 @@ export function SchemaTimeline({ snapshots, onSelectSnapshot, selectedSnapshotId
         if (isOceanic) return 'bg-[#2E3440] border-[#4C566A]';
         if (isEmber) return 'bg-[#140c12] border-[#2c1c27]';
         if (isAurora) return 'bg-[#0b1214] border-[#1b2e33]';
+        if (isNeon) return 'bg-neon-bg border-neon-border/20';
         return 'bg-[#0a0c10] border-white/5';
     };
     container.className = `w-72 border-r transition-colors duration-300 ${getContainerBg()} h-full flex flex-col flex-shrink-0`;
@@ -27,12 +29,13 @@ export function SchemaTimeline({ snapshots, onSelectSnapshot, selectedSnapshotId
         if (isOceanic) return 'border-[#4C566A]';
         if (isEmber) return 'border-[#2c1c27]';
         if (isAurora) return 'border-[#1b2e33]';
+        if (isNeon) return 'border-neon-border/20';
         return 'border-white/5';
     };
     header.className = `px-4 py-3 border-b transition-colors duration-300 ${getHeaderBorder()} flex justify-between items-center`;
     header.innerHTML = `
-        <span class="text-xs font-bold tracking-wider ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">TIMELINE</span>
-        <span class="text-[10px] ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500')}">${snapshots.length} Snapshots</span>
+        <span class="text-xs font-bold tracking-wider ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-text/60' : 'text-gray-400'))}">TIMELINE</span>
+        <span class="text-[10px] ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-text/40' : 'text-gray-500'))}">${snapshots.length} Snapshots</span>
     `;
     container.appendChild(header);
 
@@ -43,9 +46,9 @@ export function SchemaTimeline({ snapshots, onSelectSnapshot, selectedSnapshotId
     if (snapshots.length === 0) {
         list.innerHTML = `
             <div class="flex flex-col items-center justify-center h-48 text-center px-4 opacity-50">
-                <span class="material-symbols-outlined text-3xl mb-2 ${isLight ? 'text-gray-300' : 'text-white/10'}">history_toggle_off</span>
-                <p class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">No snapshots found</p>
-                <p class="text-[10px] mt-1 ${isLight ? 'text-gray-400' : 'text-gray-600'}">Capture a snapshot to start tracking schema changes.</p>
+                <span class="material-symbols-outlined text-3xl mb-2 ${isLight ? 'text-gray-300' : (isNeon ? 'text-neon-text/20' : 'text-white/10')}">history_toggle_off</span>
+                <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-text/60' : 'text-gray-400'))}">No snapshots found</p>
+                <p class="text-[10px] mt-1 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]/60' : (isNeon ? 'text-neon-text/40' : 'text-gray-600'))}">Capture a snapshot to start tracking schema changes.</p>
             </div>
         `;
     } else {
@@ -63,6 +66,7 @@ export function SchemaTimeline({ snapshots, onSelectSnapshot, selectedSnapshotId
                 else if (isOceanic) selectionClasses = 'bg-[#3B4252] border-blue-500/50 shadow-lg shadow-blue-500/10';
                 else if (isEmber) selectionClasses = 'bg-[#1d141c] border-purple-500/50 shadow-lg shadow-purple-500/10';
                 else if (isAurora) selectionClasses = 'bg-[#0f1a1d] border-cyan-500/50 shadow-lg shadow-cyan-500/10';
+                else if (isNeon) selectionClasses = 'bg-neon-panel border-cyan-400 shadow-[0_0_15px_rgba(0,243,255,0.2)]';
                 else selectionClasses = 'bg-white/5 border-blue-500/50 shadow-lg shadow-blue-500/10';
             } else {
                 if (isLight) selectionClasses = 'hover:bg-white hover:border-gray-300 border-transparent text-gray-500';
@@ -70,6 +74,7 @@ export function SchemaTimeline({ snapshots, onSelectSnapshot, selectedSnapshotId
                 else if (isOceanic) selectionClasses = 'hover:bg-[#3B4252] hover:border-[#4C566A] border-transparent text-gray-400';
                 else if (isEmber) selectionClasses = 'hover:bg-[#1d141c] hover:border-[#2c1c27] border-transparent text-gray-400';
                 else if (isAurora) selectionClasses = 'hover:bg-[#0f1a1d] hover:border-[#1b2e33] border-transparent text-gray-400';
+                else if (isNeon) selectionClasses = 'hover:bg-neon-panel hover:border-neon-border/40 border-transparent text-neon-text/70';
                 else selectionClasses = 'hover:bg-white/5 hover:border-white/10 border-transparent text-gray-400';
             }
 
@@ -82,11 +87,11 @@ export function SchemaTimeline({ snapshots, onSelectSnapshot, selectedSnapshotId
             item.innerHTML = `
                 <div class="flex items-start justify-between mb-1">
                     <span class="text-[10px] font-mono opacity-60">#${snap.id}</span>
-                    <span class="text-[10px] font-bold ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">${dateStr}</span>
+                    <span class="text-[10px] font-bold ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text/80' : 'text-gray-300'))}">${dateStr}</span>
                 </div>
                 <div class="flex items-center gap-2 mb-2">
-                    <span class="material-symbols-outlined text-[14px] ${isSelected ? (isDawn ? 'text-[#ea9d34]' : 'text-blue-400') : 'text-gray-500'}">schedule</span>
-                    <span class="text-xs font-medium ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-200')}">${timeStr}</span>
+                    <span class="material-symbols-outlined text-[14px] ${isSelected ? (isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-cyan-400' : 'text-blue-400')) : 'text-gray-500'}">schedule</span>
+                    <span class="text-xs font-medium ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-gray-200'))}">${timeStr}</span>
                 </div>
                 <div class="flex items-center gap-3 text-[10px]">
                     <span class="flex items-center gap-1 opacity-60" title="Tables">
@@ -102,7 +107,7 @@ export function SchemaTimeline({ snapshots, onSelectSnapshot, selectedSnapshotId
                 </div>
                 
                 ${isSelected ? `
-                    <div class="absolute -right-[1px] top-1/2 -translate-y-1/2 w-1 h-8 ${isDawn ? 'bg-[#ea9d34]' : (isAurora ? 'bg-cyan-500' : (isEmber ? 'bg-purple-500' : 'bg-blue-500'))} rounded-l"></div>
+                    <div class="absolute -right-[1px] top-1/2 -translate-y-1/2 w-1 h-8 ${isDawn ? 'bg-[#ea9d34]' : (isAurora ? 'bg-cyan-500' : (isEmber ? 'bg-purple-500' : (isNeon ? 'bg-cyan-400' : 'bg-blue-500')))} rounded-l"></div>
                 ` : ''}
             `;
 

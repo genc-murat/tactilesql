@@ -3,24 +3,25 @@ export const renderToolbar = ({
     isLight,
     isDawn,
     isOceanic,
+    isNeon,
     isPg,
     estimatedExecutionTime,
     lastExecutionTime,
     defaultRunModeLabel
 }) => {
     return `
-        <div class="px-1.5 py-0.5 flex items-center justify-between gap-1.5 ${isLight ? 'bg-gray-50/80' : (isDawn ? 'bg-[#faf4ed]/80' : (isOceanic ? 'bg-ocean-bg/50' : 'bg-[#16191e]/80'))} backdrop-blur-md relative z-30">
+        <div class="px-1.5 py-0.5 flex items-center justify-between gap-1.5 ${isLight ? 'bg-gray-50/80' : (isDawn ? 'bg-[#faf4ed]/80' : (isOceanic ? 'bg-ocean-bg/50' : (isNeon ? 'bg-neon-bg/50' : 'bg-[#16191e]/80')))} backdrop-blur-md relative z-30">
             <div class="flex items-center gap-3">
                 ${!isPg ? `
                     <div class="relative group/db-selector" id="db-selector-container">
-                        <button id="db-selector-trigger" class="flex items-center gap-2 px-3 py-1 ${isLight ? 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279] hover:bg-[#faf4ed]' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50 text-ocean-text hover:bg-ocean-border/20' : 'bg-[#0f1115] border-white/5 text-gray-300 hover:bg-white/5'))} border text-[11px] font-bold rounded-lg transition-all duration-200 outline-none focus:ring-2 focus:ring-mysql-teal/30 min-w-[140px] shadow-sm">
+                        <button id="db-selector-trigger" class="flex items-center gap-2 px-3 py-1 ${isLight ? 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279] hover:bg-[#faf4ed]' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50 text-ocean-text hover:bg-ocean-border/20' : (isNeon ? 'bg-neon-bg border-neon-border/50 text-neon-text hover:bg-neon-accent/10' : 'bg-[#0f1115] border-white/5 text-gray-300 hover:bg-white/5')))} border text-[11px] font-bold rounded-lg transition-all duration-200 outline-none focus:ring-2 focus:ring-mysql-teal/30 min-w-[140px] shadow-sm">
                             <span class="material-symbols-outlined text-gray-500 group-hover/db-selector:text-mysql-teal transition-colors" style="font-size: 16px;">database</span>
                             <span id="current-db-name" class="flex-1 text-left truncate">Select Database</span>
                             <span class="material-symbols-outlined text-[14px] text-gray-500 group-hover/db-selector:text-mysql-teal transition-transform duration-200" id="db-selector-arrow">expand_more</span>
                         </button>
                         
-                        <div id="db-selector-dropdown" class="hidden absolute top-full left-0 mt-2 w-64 ${isLight ? 'bg-white border-gray-200 shadow-2xl' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-2xl' : (isOceanic ? 'bg-ocean-panel border-ocean-border shadow-2xl' : 'bg-[#1a1d23] border border-white/10 shadow-2xl'))} rounded-xl overflow-hidden z-[1000] animate-in fade-in slide-in-from-top-2 duration-200 backdrop-blur-xl">
-                            <div class="p-2 border-b ${isLight ? 'border-gray-100 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border/30 bg-ocean-bg/50' : 'border-white/5 bg-[#16191e]'))}">
+                        <div id="db-selector-dropdown" class="hidden absolute top-full left-0 mt-2 w-64 ${isLight ? 'bg-white border-gray-200 shadow-2xl' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-2xl' : (isOceanic ? 'bg-ocean-panel border-ocean-border shadow-2xl' : (isNeon ? 'bg-neon-panel border-neon-border shadow-2xl' : 'bg-[#1a1d23] border border-white/10 shadow-2xl')))} rounded-xl overflow-hidden z-[1000] animate-in fade-in slide-in-from-top-2 duration-200 backdrop-blur-xl">
+                            <div class="p-2 border-b ${isLight ? 'border-gray-100 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border/30 bg-ocean-bg/50' : (isNeon ? 'border-neon-border/30 bg-neon-bg/50' : 'border-white/5 bg-[#16191e]')))}">
                                 <div class="relative">
                                     <span class="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-sm text-gray-500">search</span>
                                     <input type="text" id="db-search-input" placeholder="Search databases..." class="w-full pl-8 pr-3 py-1.5 text-[11px] bg-transparent border-none outline-none ${isLight ? 'text-gray-700 placeholder-gray-400' : 'text-gray-300 placeholder-gray-600'} font-medium">
@@ -53,7 +54,7 @@ export const renderToolbar = ({
 
             <div class="flex items-center gap-1">
                 <!-- Utility Actions -->
-                <button id="format-btn" class="flex items-center justify-center w-6 h-6 ${isLight ? 'bg-white border-gray-200 text-gray-600 hover:text-mysql-teal' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279] hover:text-mysql-teal' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text hover:text-ocean-frost' : 'bg-[#1a1d23] border-white/10 text-gray-400 hover:text-mysql-teal'))} border rounded hover:shadow-sm active:scale-90 transition-all" title="Format SQL (Ctrl+Shift+F)">
+                <button id="format-btn" class="flex items-center justify-center w-6 h-6 ${isLight ? 'bg-white border-gray-200 text-gray-600 hover:text-mysql-teal' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279] hover:text-mysql-teal' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text hover:text-ocean-frost' : (isNeon ? 'bg-neon-bg border-neon-border/50 text-neon-text hover:text-neon-accent' : 'bg-[#1a1d23] border-white/10 text-gray-400 hover:text-mysql-teal')))} border rounded hover:shadow-sm active:scale-90 transition-all" title="Format SQL (Ctrl+Shift+F)">
                     <span class="material-symbols-outlined text-[14px]">auto_fix</span>
                 </button>
 
@@ -61,14 +62,14 @@ export const renderToolbar = ({
 
                 <!-- Analysis Menu -->
                 <div class="relative toolbar-menu" id="analysis-menu-container">
-                    <button id="analysis-menu-btn" class="flex items-center gap-0.5 px-1 py-1 ${isLight ? 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279] hover:bg-white/5' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text hover:bg-white/5' : 'bg-[#1a1d23] border-white/10 text-gray-400 hover:bg-white/5'))} border rounded transition-all" title="Analysis Tools">
+                    <button id="analysis-menu-btn" class="flex items-center gap-0.5 px-1 py-1 ${isLight ? 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279] hover:bg-white/5' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text hover:bg-white/5' : (isNeon ? 'bg-neon-bg border-neon-border/50 text-neon-text hover:bg-neon-accent/10' : 'bg-[#1a1d23] border-white/10 text-gray-400 hover:bg-white/5')))} border rounded transition-all" title="Analysis Tools">
                         <span class="material-symbols-outlined text-[15px]">query_stats</span>
                         <span class="material-symbols-outlined text-[10px]">expand_more</span>
                     </button>
                     
                     <!-- Dropdown -->
                     <div class="menu-dropdown absolute right-0 top-full mt-1 w-44 hidden z-[500] animate-in fade-in slide-in-from-top-1 duration-200">
-                        <div class="p-0.5 rounded border ${isLight ? 'bg-white border-gray-200 shadow-lg' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-lg' : (isOceanic ? 'bg-ocean-panel border-ocean-border shadow-xl' : 'bg-[#1a1d23] border-white/10 shadow-xl'))} backdrop-blur-xl">
+                        <div class="p-0.5 rounded border ${isLight ? 'bg-white border-gray-200 shadow-lg' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-lg' : (isOceanic ? 'bg-ocean-panel border-ocean-border shadow-xl' : (isNeon ? 'bg-neon-panel border-neon-border shadow-xl' : 'bg-[#1a1d23] border-white/10 shadow-xl')))} backdrop-blur-xl">
                             <button id="execution-plan-btn" class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors ${isLight ? 'text-gray-700 hover:bg-gray-100' : 'text-gray-300 hover:bg-white/10'}">
                                 <span class="material-symbols-outlined text-[14px] text-cyan-400">data_object</span>
                                 <span class="text-[10px] font-bold">Execution Plan (Raw)</span>
@@ -91,7 +92,7 @@ export const renderToolbar = ({
 
                 <!-- AI Tools Menu -->
                 <div class="relative toolbar-menu" id="ai-menu-container">
-                    <button id="ai-tools-menu-btn" class="flex items-center gap-0.5 px-1 py-1 ${isLight ? 'bg-white border-gray-200 text-blue-600 hover:bg-blue-50' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-blue-400 hover:bg-white/5' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-blue-400 hover:bg-white/5' : 'bg-[#1a1d23] border-white/10 text-blue-400 hover:bg-white/5'))} border rounded transition-all group/btn relative overflow-hidden group/menu" title="AI Assistant">
+                    <button id="ai-tools-menu-btn" class="flex items-center gap-0.5 px-1 py-1 ${isLight ? 'bg-white border-gray-200 text-blue-600 hover:bg-blue-50' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-blue-400 hover:bg-white/5' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-blue-400 hover:bg-white/5' : (isNeon ? 'bg-neon-bg border-neon-border/50 text-neon-accent hover:bg-neon-accent/10' : 'bg-[#1a1d23] border-white/10 text-blue-400 hover:bg-white/5')))} border rounded transition-all group/btn relative overflow-hidden group/menu" title="AI Assistant">
                         <div class="absolute inset-0 bg-blue-500/5 group-hover/btn:bg-blue-500/10 transition-colors"></div>
                         <span class="material-symbols-outlined text-[15px] relative z-10">psychology_alt</span>
                         <span class="material-symbols-outlined text-[10px] relative z-10">expand_more</span>
@@ -99,7 +100,7 @@ export const renderToolbar = ({
                     
                     <!-- Dropdown -->
                     <div class="menu-dropdown absolute right-0 top-full mt-1 w-40 hidden z-[500] animate-in fade-in slide-in-from-top-1 duration-200">
-                        <div class="p-0.5 rounded border ${isLight ? 'bg-white border-gray-200 shadow-lg' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-lg' : (isOceanic ? 'bg-ocean-panel border-ocean-border shadow-xl' : 'bg-[#1a1d23] border-white/10 shadow-xl'))} backdrop-blur-xl">
+                        <div class="p-0.5 rounded border ${isLight ? 'bg-white border-gray-200 shadow-lg' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-lg' : (isOceanic ? 'bg-ocean-panel border-ocean-border shadow-xl' : (isNeon ? 'bg-neon-panel border-neon-border shadow-xl' : 'bg-[#1a1d23] border-white/10 shadow-xl')))} backdrop-blur-xl">
                             <button id="ai-explain-btn" class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors ${isLight ? 'text-gray-700 hover:bg-gray-100' : 'text-gray-300 hover:bg-white/10'}">
                                 <span class="material-symbols-outlined text-[14px] text-blue-400">psychology</span>
                                 <span class="text-[10px] font-bold">AI Explain</span>
@@ -123,7 +124,7 @@ export const renderToolbar = ({
 
                 <div class="h-4 w-px ${isLight ? 'bg-gray-200' : 'bg-white/5'} mx-1"></div>
 
-                <button id="ask-ai-btn" class="flex items-center gap-1 px-2 py-0.5 ${isLight ? 'bg-rose-50 border-rose-100 text-rose-600 hover:bg-rose-100' : (isDawn ? 'bg-rose-500/5 border-rose-500/20 text-rose-400 hover:bg-rose-500/10' : (isOceanic ? 'bg-rose-500/5 border-rose-500/20 text-rose-400 hover:bg-rose-500/10' : 'bg-rose-500/5 border-rose-500/20 text-rose-500 hover:bg-rose-500/10'))} border rounded active:scale-95 transition-all group overflow-hidden relative shadow-sm" title="Ask AI to Generate SQL (Ctrl+I)">
+                <button id="ask-ai-btn" class="flex items-center gap-1 px-2 py-0.5 ${isLight ? 'bg-rose-50 border-rose-100 text-rose-600 hover:bg-rose-100' : (isDawn ? 'bg-rose-500/5 border-rose-500/20 text-rose-400 hover:bg-rose-500/10' : (isOceanic ? 'bg-rose-500/5 border-rose-500/20 text-rose-400 hover:bg-rose-500/10' : (isNeon ? 'bg-neon-bg border-rose-500/30 text-rose-500 hover:bg-rose-500/10' : 'bg-rose-500/5 border-rose-500/20 text-rose-500 hover:bg-rose-500/10')))} border rounded active:scale-95 transition-all group overflow-hidden relative shadow-sm" title="Ask AI to Generate SQL (Ctrl+I)">
                     <span class="material-symbols-outlined text-[14px] group-hover:rotate-12 transition-transform duration-300 relative z-10">auto_awesome</span>
                     <span class="text-[8px] font-black uppercase tracking-widest relative z-10">Generate SQL</span>
                 </button>

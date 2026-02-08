@@ -8,11 +8,12 @@ export function Sidebar() {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isNeon = theme === 'neon';
 
         sidebar.className = "w-80 flex flex-col gap-6";
 
         sidebar.innerHTML = `
-            <div class="tactile-card rounded-2xl flex-1 flex flex-col p-6 overflow-hidden ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] border' : (isOceanic ? 'bg-[#2E3440] border-ocean-border border' : ''))}">
+            <div class="tactile-card rounded-2xl flex-1 flex flex-col p-6 overflow-hidden ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] border' : (isOceanic ? 'bg-[#2E3440] border-ocean-border border' : (isNeon ? 'bg-neon-panel border-neon-border border' : '')))}">
                 <div class="flex items-center justify-between mb-8">
                     <div class="flex items-center gap-3">
                         <div class="w-2 h-2 rounded-full ${isDawn ? 'bg-[#ea9d34] shadow-[0_0_8px_rgba(234,157,52,0.4)]' : 'bg-cyan-400 neon-cyan'}"></div>

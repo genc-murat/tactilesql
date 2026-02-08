@@ -300,16 +300,17 @@ export function DataLineage() {
         const isLight = currentTheme === 'light';
         const isDawn = currentTheme === 'dawn';
         const isOceanic = currentTheme === 'oceanic' || currentTheme === 'ember' || currentTheme === 'aurora';
+        const isNeon = currentTheme === 'neon';
 
         return {
-            container: `h-full overflow-hidden flex flex-col ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]'))}`,
-            headerCard: `${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#13161b] border-white/10'))} border rounded-xl p-5`,
-            title: `${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')}`,
-            subtitle: `${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}`,
-            input: `${isLight ? 'bg-white border-gray-300 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-300')} border rounded-lg px-3 py-2 text-sm outline-none focus:border-mysql-teal`,
-            statCard: `${isLight ? 'bg-white border-gray-200 text-gray-900' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-panel border-ocean-border text-ocean-text' : 'bg-[#13161b] border-white/10 text-white'))} border rounded-lg px-3 py-2`,
-            graphShell: `${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#13161b] border-white/10'))} border rounded-xl overflow-hidden`,
-            sidebar: `${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#13161b] border-white/10'))}`,
+            container: `h-full overflow-hidden flex flex-col ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : (isNeon ? 'bg-neon-bg' : 'bg-[#0a0c10]')))}`,
+            headerCard: `${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : (isNeon ? 'bg-neon-panel border-neon-border/30' : 'bg-[#13161b] border-white/10')))} border rounded-xl p-5`,
+            title: `${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-white'))}`,
+            subtitle: `${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : (isNeon ? 'text-neon-text/60' : 'text-gray-400'))}`,
+            input: `${isLight ? 'bg-white border-gray-300 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isNeon ? 'bg-neon-bg border-neon-border/40 text-neon-text focus:border-cyan-400' : 'bg-black/20 border-white/10 text-gray-300'))} border rounded-lg px-3 py-2 text-sm outline-none focus:border-mysql-teal`,
+            statCard: `${isLight ? 'bg-white border-gray-200 text-gray-900' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-panel border-ocean-border text-ocean-text' : (isNeon ? 'bg-neon-panel border-neon-border/20 text-neon-text' : 'bg-[#13161b] border-white/10 text-white')))} border rounded-lg px-3 py-2`,
+            graphShell: `${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : (isNeon ? 'bg-neon-bg border-neon-border/20' : 'bg-[#13161b] border-white/10')))} border rounded-xl overflow-hidden`,
+            sidebar: `${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : (isNeon ? 'bg-neon-panel border-neon-border/30' : 'bg-[#13161b] border-white/10')))}`,
         };
     };
 
@@ -600,16 +601,16 @@ export function DataLineage() {
                             <p class="text-xs mt-1 ${cls.subtitle}">Window: ${escapeHtml(state.timeWindowLabel)}</p>
                         </div>
                         <div class="flex flex-wrap items-center gap-2">
-                            <button id="lineage-export-json" class="px-3 py-2 rounded-lg border text-xs font-bold uppercase tracking-wider transition-all ${hasGraphData ? '' : 'opacity-40 cursor-not-allowed'} ${theme === 'light' ? 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50' : 'bg-white/5 text-white border-white/10 hover:bg-white/10'}" ${hasGraphData ? '' : 'disabled'}>
+                            <button id="lineage-export-json" class="px-3 py-2 rounded-lg border text-xs font-bold uppercase tracking-wider transition-all ${hasGraphData ? '' : 'opacity-40 cursor-not-allowed'} ${theme === 'light' ? 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50' : (theme === 'neon' ? 'bg-neon-accent/10 text-neon-accent border-neon-accent/20 hover:bg-neon-accent/20' : 'bg-white/5 text-white border-white/10 hover:bg-white/10')}" ${hasGraphData ? '' : 'disabled'}>
                                 Export JSON
                             </button>
-                            <button id="lineage-export-mermaid" class="px-3 py-2 rounded-lg border text-xs font-bold uppercase tracking-wider transition-all ${hasGraphData ? '' : 'opacity-40 cursor-not-allowed'} ${theme === 'light' ? 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50' : 'bg-white/5 text-white border-white/10 hover:bg-white/10'}" ${hasGraphData ? '' : 'disabled'}>
+                            <button id="lineage-export-mermaid" class="px-3 py-2 rounded-lg border text-xs font-bold uppercase tracking-wider transition-all ${hasGraphData ? '' : 'opacity-40 cursor-not-allowed'} ${theme === 'light' ? 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50' : (theme === 'neon' ? 'bg-neon-accent/10 text-neon-accent border-neon-accent/20 hover:bg-neon-accent/20' : 'bg-white/5 text-white border-white/10 hover:bg-white/10')}" ${hasGraphData ? '' : 'disabled'}>
                                 Export Mermaid
                             </button>
-                            <button id="lineage-export-png" class="px-3 py-2 rounded-lg border text-xs font-bold uppercase tracking-wider transition-all ${hasGraphData ? '' : 'opacity-40 cursor-not-allowed'} ${theme === 'light' ? 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50' : 'bg-white/5 text-white border-white/10 hover:bg-white/10'}" ${hasGraphData ? '' : 'disabled'}>
+                            <button id="lineage-export-png" class="px-3 py-2 rounded-lg border text-xs font-bold uppercase tracking-wider transition-all ${hasGraphData ? '' : 'opacity-40 cursor-not-allowed'} ${theme === 'light' ? 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50' : (theme === 'neon' ? 'bg-neon-accent/10 text-neon-accent border-neon-accent/20 hover:bg-neon-accent/20' : 'bg-white/5 text-white border-white/10 hover:bg-white/10')}" ${hasGraphData ? '' : 'disabled'}>
                                 Export PNG
                             </button>
-                            <button id="lineage-build-btn" class="px-4 py-2 rounded-lg border text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${state.isLoading ? 'opacity-50 cursor-wait' : 'hover:brightness-110'} ${theme === 'light' ? 'bg-mysql-teal text-white border-mysql-teal' : 'bg-mysql-teal text-white border-mysql-teal shadow-lg shadow-mysql-teal/20'}" ${state.isLoading ? 'disabled' : ''}>
+                            <button id="lineage-build-btn" class="px-4 py-2 rounded-lg border text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${state.isLoading ? 'opacity-50 cursor-wait' : (theme === 'neon' ? 'shadow-[0_0_15px_rgba(0,243,255,0.4)] hover:bg-cyan-300' : 'hover:brightness-110')} ${theme === 'light' ? 'bg-mysql-teal text-white border-mysql-teal' : (theme === 'neon' ? 'bg-cyan-400 text-black border-cyan-400' : 'bg-mysql-teal text-white border-mysql-teal shadow-lg shadow-mysql-teal/20')}" ${state.isLoading ? 'disabled' : ''}>
                                 <span class="material-symbols-outlined text-sm ${state.isLoading ? 'animate-spin' : ''}">${state.isLoading ? 'sync' : 'account_tree'}</span>
                                 ${state.isLoading ? 'Building...' : 'Build Lineage'}
                             </button>

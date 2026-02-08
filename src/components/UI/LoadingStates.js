@@ -35,11 +35,11 @@ export const LoadingManager = {
         try {
             // Mark as loading
             activeLoadingStates.set(key, true);
-            
+
             // Create loading indicator
             if (container) {
                 container.style.position = 'relative';
-                
+
                 switch (type) {
                     case 'overlay':
                         loadingElement = LoadingStates.overlay(message);
@@ -58,11 +58,11 @@ export const LoadingManager = {
                     default:
                         loadingElement = LoadingStates.overlay(message);
                 }
-                
+
                 loadingElement.dataset.loadingKey = key;
                 container.appendChild(loadingElement);
             }
-            
+
             // Dispatch loading start event
             window.dispatchEvent(new CustomEvent('loading:start', { detail: { key, message } }));
             onStart?.();
@@ -80,12 +80,12 @@ export const LoadingManager = {
         } finally {
             // Remove loading state
             activeLoadingStates.delete(key);
-            
+
             // Remove loading indicator
             if (loadingElement && loadingElement.parentNode) {
                 loadingElement.remove();
             }
-            
+
             // Dispatch loading end event
             window.dispatchEvent(new CustomEvent('loading:end', { detail: { key } }));
             onEnd?.();
@@ -123,15 +123,17 @@ export const LoadingManager = {
      * @returns {Function} Dismiss function
      */
     showGlobal(message = 'Loading...') {
+        const theme = ThemeManager.getCurrentTheme();
+        const isNeon = theme === 'neon';
         const overlay = document.createElement('div');
         overlay.id = 'global-loading-overlay';
         overlay.className = 'fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999]';
         overlay.innerHTML = `
-            <div class="bg-[#16191e] border border-white/10 rounded-xl p-6 flex flex-col items-center gap-4 shadow-2xl">
+            <div class="${isNeon ? 'bg-neon-panel border-neon-border/50' : 'bg-[#16191e] border border-white/10'} rounded-xl p-6 flex flex-col items-center gap-4 shadow-2xl">
                 <div class="relative">
-                    <div class="w-12 h-12 rounded-full border-4 border-white/10 border-t-mysql-teal animate-spin"></div>
+                    <div class="w-12 h-12 rounded-full border-4 ${isNeon ? 'border-white/5 border-t-neon-accent' : 'border-white/10 border-t-mysql-teal'} animate-spin"></div>
                 </div>
-                <span class="text-sm text-gray-300">${message}</span>
+                <span class="text-sm ${isNeon ? 'text-neon-text' : 'text-gray-300'}">${message}</span>
             </div>
         `;
         document.body.appendChild(overlay);
@@ -147,7 +149,7 @@ export const LoadingManager = {
      */
     setButtonLoading(button, loading, loadingText = 'Loading...') {
         if (!button) return;
-        
+
         if (loading) {
             button.dataset.originalText = button.innerHTML;
             button.disabled = true;
@@ -175,9 +177,10 @@ export const LoadingStates = {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isNeon = theme === 'neon';
 
         const el = document.createElement('div');
-        el.className = `animate-pulse ${isLight ? 'bg-gray-200' : (isDawn ? 'bg-[#e4ddd5]' : (isOceanic ? 'bg-ocean-border/30' : 'bg-white/10'))} rounded-${rounded} ${className}`;
+        el.className = `animate-pulse ${isLight ? 'bg-gray-200' : (isDawn ? 'bg-[#e4ddd5]' : (isOceanic ? 'bg-ocean-border/30' : (isNeon ? 'bg-neon-accent/10' : 'bg-white/10')))} rounded-${rounded} ${className}`;
         el.style.width = width;
         el.style.height = height;
         return el;
@@ -194,17 +197,18 @@ export const LoadingStates = {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isNeon = theme === 'neon';
 
         const container = document.createElement('div');
         container.className = 'w-full';
 
         // Header
         const header = document.createElement('div');
-        header.className = `flex gap-4 p-3 border-b ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border bg-ocean-panel' : 'border-white/5 bg-[#16191e]'))}`;
+        header.className = `flex gap-4 p-3 border-b ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border bg-ocean-panel' : (isNeon ? 'border-neon-border/20 bg-neon-panel' : 'border-white/5 bg-[#16191e]')))}`;
 
         for (let i = 0; i < cols; i++) {
             const headerCell = document.createElement('div');
-            headerCell.className = `animate-pulse ${isLight ? 'bg-gray-300/50' : (isDawn ? 'bg-[#d8d1cf]' : (isOceanic ? 'bg-ocean-border/40' : 'bg-white/10'))} rounded h-4 flex-1`;
+            headerCell.className = `animate-pulse ${isLight ? 'bg-gray-300/50' : (isDawn ? 'bg-[#d8d1cf]' : (isOceanic ? 'bg-ocean-border/40' : (isNeon ? 'bg-neon-accent/10' : 'bg-white/10')))} rounded h-4 flex-1`;
             headerCell.style.animationDelay = `${i * 100}ms`;
             header.appendChild(headerCell);
         }
@@ -213,12 +217,12 @@ export const LoadingStates = {
         // Rows
         for (let r = 0; r < rows; r++) {
             const row = document.createElement('div');
-            row.className = `flex gap-4 p-3 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]/50' : (isOceanic ? 'border-ocean-border/30' : 'border-white/[0.03]'))}`;
+            row.className = `flex gap-4 p-3 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]/50' : (isOceanic ? 'border-ocean-border/30' : (isNeon ? 'border-neon-border/10' : 'border-white/[0.03]')))}`;
             row.style.opacity = `${1 - (r * 0.08)}`;
 
             for (let c = 0; c < cols; c++) {
                 const cell = document.createElement('div');
-                cell.className = `animate-pulse ${isLight ? 'bg-gray-200/60' : (isDawn ? 'bg-[#e4ddd5]/60' : (isOceanic ? 'bg-ocean-border/20' : 'bg-white/5'))} rounded h-3 flex-1`;
+                cell.className = `animate-pulse ${isLight ? 'bg-gray-200/60' : (isDawn ? 'bg-[#e4ddd5]/60' : (isOceanic ? 'bg-ocean-border/20' : (isNeon ? 'bg-neon-accent/5' : 'bg-white/5')))} rounded h-3 flex-1`;
                 cell.style.width = `${40 + Math.random() * 50}%`;
                 cell.style.animationDelay = `${(r * cols + c) * 50}ms`;
                 row.appendChild(cell);
@@ -238,20 +242,21 @@ export const LoadingStates = {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isNeon = theme === 'neon';
 
         const card = document.createElement('div');
-        card.className = `p-4 rounded-xl border ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border' : 'bg-[#16191e] border-white/5'))}`;
+        card.className = `p-4 rounded-xl border ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border' : (isNeon ? 'bg-neon-panel border-neon-border/50' : 'bg-[#16191e] border-white/5')))}`;
         card.innerHTML = `
             <div class="flex items-center gap-3 mb-4">
-                <div class="animate-pulse w-10 h-10 rounded-lg ${isLight ? 'bg-gray-200' : (isDawn ? 'bg-[#e4ddd5]' : (isOceanic ? 'bg-ocean-border/30' : 'bg-white/10'))}"></div>
+                <div class="animate-pulse w-10 h-10 rounded-lg ${isLight ? 'bg-gray-200' : (isDawn ? 'bg-[#e4ddd5]' : (isOceanic ? 'bg-ocean-border/30' : (isNeon ? 'bg-neon-accent/10' : 'bg-white/10')))}"></div>
                 <div class="flex-1">
-                    <div class="animate-pulse h-4 ${isLight ? 'bg-gray-200' : (isDawn ? 'bg-[#e4ddd5]' : (isOceanic ? 'bg-ocean-border/30' : 'bg-white/10'))} rounded w-3/4 mb-2"></div>
-                    <div class="animate-pulse h-3 ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#f2e9e1]' : (isOceanic ? 'bg-ocean-border/20' : 'bg-white/5'))} rounded w-1/2"></div>
+                    <div class="animate-pulse h-4 ${isLight ? 'bg-gray-200' : (isDawn ? 'bg-[#e4ddd5]' : (isOceanic ? 'bg-ocean-border/30' : (isNeon ? 'bg-neon-accent/10' : 'bg-white/10')))} rounded w-3/4 mb-2"></div>
+                    <div class="animate-pulse h-3 ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#f2e9e1]' : (isOceanic ? 'bg-ocean-border/20' : (isNeon ? 'bg-neon-accent/5' : 'bg-white/5')))} rounded w-1/2"></div>
                 </div>
             </div>
             <div class="space-y-2">
-                <div class="animate-pulse h-3 ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#f2e9e1]' : (isOceanic ? 'bg-ocean-border/20' : 'bg-white/5'))} rounded"></div>
-                <div class="animate-pulse h-3 ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#f2e9e1]' : (isOceanic ? 'bg-ocean-border/20' : 'bg-white/5'))} rounded w-5/6"></div>
+                <div class="animate-pulse h-3 ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#f2e9e1]' : (isOceanic ? 'bg-ocean-border/20' : (isNeon ? 'bg-neon-accent/5' : 'bg-white/5')))} rounded"></div>
+                <div class="animate-pulse h-3 ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#f2e9e1]' : (isOceanic ? 'bg-ocean-border/20' : (isNeon ? 'bg-neon-accent/5' : 'bg-white/5')))} rounded w-5/6"></div>
             </div>
         `;
         return card;
@@ -293,12 +298,13 @@ export const LoadingStates = {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isNeon = theme === 'neon';
 
         const container = document.createElement('div');
-        container.className = `w-full h-2 rounded-full ${isLight ? 'bg-gray-200' : (isDawn ? 'bg-[#e4ddd5]' : (isOceanic ? 'bg-ocean-border/30' : 'bg-white/10'))} overflow-hidden`;
+        container.className = `w-full h-2 rounded-full ${isLight ? 'bg-gray-200' : (isDawn ? 'bg-[#e4ddd5]' : (isOceanic ? 'bg-ocean-border/30' : (isNeon ? 'bg-neon-accent/10' : 'bg-white/10')))} overflow-hidden`;
 
         const bar = document.createElement('div');
-        bar.className = `h-full bg-gradient-to-r from-mysql-teal to-mysql-cyan rounded-full transition-all duration-300 ${animated ? 'animate-pulse' : ''}`;
+        bar.className = `h-full bg-gradient-to-r ${isNeon ? 'from-neon-accent to-neon-cyan' : 'from-mysql-teal to-mysql-cyan'} rounded-full transition-all duration-300 ${animated ? 'animate-pulse' : ''}`;
         bar.style.width = `${Math.min(100, Math.max(0, progress))}%`;
 
         container.appendChild(bar);
@@ -315,15 +321,16 @@ export const LoadingStates = {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isNeon = theme === 'neon';
 
         const overlay = document.createElement('div');
-        overlay.className = `absolute inset-0 ${isLight ? 'bg-white/80' : (isDawn ? 'bg-[#faf4ed]/80' : (isOceanic ? 'bg-ocean-bg/80' : 'bg-black/60'))} backdrop-blur-sm flex flex-col items-center justify-center gap-4 z-50`;
+        overlay.className = `absolute inset-0 ${isLight ? 'bg-white/80' : (isDawn ? 'bg-[#faf4ed]/80' : (isOceanic ? 'bg-ocean-bg/80' : (isNeon ? 'bg-neon-bg/80' : 'bg-black/60')))} backdrop-blur-sm flex flex-col items-center justify-center gap-4 z-50`;
         overlay.innerHTML = `
             <div class="relative">
-                <div class="w-12 h-12 rounded-full border-4 ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border' : 'border-white/10'))} border-t-mysql-teal animate-spin"></div>
-                <div class="absolute inset-0 w-12 h-12 rounded-full border-4 border-transparent border-r-mysql-cyan animate-spin" style="animation-duration: 1.5s; animation-direction: reverse;"></div>
+                <div class="w-12 h-12 rounded-full border-4 ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border' : (isNeon ? 'border-neon-border/20' : 'border-white/10')))} border-t-mysql-teal animate-spin"></div>
+                <div class="absolute inset-0 w-12 h-12 rounded-full border-4 border-transparent ${isNeon ? 'border-r-neon-accent' : 'border-r-mysql-cyan'} animate-spin" style="animation-duration: 1.5s; animation-direction: reverse;"></div>
             </div>
-            <span class="text-sm font-medium ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text' : 'text-gray-400'))}">${message}</span>
+            <span class="text-sm font-medium ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text' : (isNeon ? 'text-neon-text' : 'text-gray-400')))}">${message}</span>
         `;
         return overlay;
     },
@@ -333,12 +340,14 @@ export const LoadingStates = {
      * @returns {HTMLElement}
      */
     dotPulse() {
+        const theme = ThemeManager.getCurrentTheme();
+        const isNeon = theme === 'neon';
         const container = document.createElement('div');
         container.className = 'flex items-center gap-1';
         container.innerHTML = `
-            <div class="w-2 h-2 rounded-full bg-mysql-teal animate-bounce" style="animation-delay: 0ms;"></div>
-            <div class="w-2 h-2 rounded-full bg-mysql-teal animate-bounce" style="animation-delay: 150ms;"></div>
-            <div class="w-2 h-2 rounded-full bg-mysql-teal animate-bounce" style="animation-delay: 300ms;"></div>
+            <div class="w-2 h-2 rounded-full ${isNeon ? 'bg-neon-accent' : 'bg-mysql-teal'} animate-bounce" style="animation-delay: 0ms;"></div>
+            <div class="w-2 h-2 rounded-full ${isNeon ? 'bg-neon-accent' : 'bg-mysql-teal'} animate-bounce" style="animation-delay: 150ms;"></div>
+            <div class="w-2 h-2 rounded-full ${isNeon ? 'bg-neon-accent' : 'bg-mysql-teal'} animate-bounce" style="animation-delay: 300ms;"></div>
         `;
         return container;
     },
@@ -349,10 +358,12 @@ export const LoadingStates = {
      * @returns {HTMLElement}
      */
     inlineText(text = 'Loading') {
+        const theme = ThemeManager.getCurrentTheme();
+        const isNeon = theme === 'neon';
         const span = document.createElement('span');
-        span.className = 'inline-flex items-center gap-2 text-gray-500';
+        span.className = `inline-flex items-center gap-2 ${isNeon ? 'text-neon-text/60' : 'text-gray-500'}`;
         span.innerHTML = `
-            <span class="material-symbols-outlined text-sm animate-spin">progress_activity</span>
+            <span class="material-symbols-outlined text-sm animate-spin ${isNeon ? 'text-neon-accent' : ''}">progress_activity</span>
             <span class="animate-pulse">${text}</span>
         `;
         return span;

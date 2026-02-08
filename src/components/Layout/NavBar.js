@@ -9,6 +9,7 @@ export function NavBar() {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isNeon = theme === 'neon';
         const taskCenterEnabled = isFeatureEnabled('taskCenter');
         // Get current path from hash
         const currentPath = window.location.hash.split('?')[0].slice(1) || '/';
@@ -66,7 +67,9 @@ export function NavBar() {
                                 ? 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                                 : isOceanic
                                     ? 'text-ocean-text/70 hover:text-ocean-text hover:bg-white/5'
-                                    : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+                                    : isNeon
+                                        ? 'text-neon-text/70 hover:text-neon-text hover:bg-neon-accent/10'
+                                        : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
                         }">
                             <span class="material-symbols-outlined text-sm">${item.icon}</span>
                             ${item.label}
@@ -106,7 +109,9 @@ export function NavBar() {
                                     ? 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                                     : isOceanic
                                         ? 'text-ocean-text/70 hover:bg-white/5 hover:text-ocean-text'
-                                        : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'
+                                        : isNeon
+                                            ? 'text-neon-text/70 hover:bg-neon-accent/10 hover:text-neon-text'
+                                            : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'
                             }">
                                         <span class="material-symbols-outlined text-sm opacity-70">${child.icon}</span>
                                         ${child.label}
@@ -119,7 +124,7 @@ export function NavBar() {
             }).join('');
         };
 
-        nav.className = `h-10 ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#0a0c10] border-white/5'))} border-b px-4 flex items-center justify-between z-40 relative transition-all duration-300`;
+        nav.className = `h-10 ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : (isNeon ? 'bg-neon-panel border-neon-border/50' : 'bg-[#0a0c10] border-white/5')))} border-b px-4 flex items-center justify-between z-40 relative transition-all duration-300`;
 
         nav.innerHTML = `
             <div class="flex items-center gap-3">
@@ -127,7 +132,7 @@ export function NavBar() {
                     <div class="w-6 h-6 rounded-lg overflow-hidden flex items-center justify-center shadow-lg shadow-mysql-teal/20">
                         <img src="/logo.png" alt="TactileSQL Logo" class="w-full h-full object-cover" />
                     </div>
-                    <div class="text-[10px] font-black tracking-[0.2em] ${(isLight || isDawn) ? 'text-gray-800' : (isOceanic ? 'text-ocean-text' : 'text-white/80')} uppercase transition-colors duration-300">TactileSQL</div>
+                    <div class="text-[10px] font-black tracking-[0.2em] ${(isLight || isDawn) ? 'text-gray-800' : (isOceanic ? 'text-ocean-text' : (isNeon ? 'text-neon-text' : 'text-white/80'))} uppercase transition-colors duration-300">TactileSQL</div>
                 </a>
             </div>
 
@@ -156,7 +161,9 @@ export function NavBar() {
                     ? 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
                     : isOceanic
                         ? 'text-ocean-text/50 hover:text-ocean-text hover:bg-white/5'
-                        : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+                        : isNeon
+                            ? 'text-neon-text/50 hover:text-neon-text hover:bg-neon-accent/10'
+                            : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
             }" title="Help & Documentation">
                     <span class="material-symbols-outlined text-lg">help</span>
                 </a>
@@ -166,7 +173,9 @@ export function NavBar() {
                     ? 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
                     : isOceanic
                         ? 'text-ocean-text/50 hover:text-ocean-text hover:bg-white/5'
-                        : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+                        : isNeon
+                            ? 'text-neon-text/50 hover:text-neon-text hover:bg-neon-accent/10'
+                            : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
             }" title="Settings">
                     <span class="material-symbols-outlined text-lg">settings</span>
                 </a>

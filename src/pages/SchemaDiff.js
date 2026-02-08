@@ -9,10 +9,11 @@ export function SchemaDiff() {
     let isLight = theme === 'light';
     let isDawn = theme === 'dawn';
     let isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+    let isNeon = theme === 'neon';
 
     const container = document.createElement('div');
     const updateContainerClass = () => {
-        container.className = `min-h-full flex flex-col transition-colors duration-200 font-sans ${isLight ? 'bg-gray-50 text-gray-800' : (isDawn ? 'bg-[#fffaf3] text-[#575279]' : (isOceanic ? 'bg-ocean-bg text-ocean-text' : 'bg-base-dark text-gray-300'))}`;
+        container.className = `min-h-full flex flex-col transition-colors duration-200 font-sans ${isLight ? 'bg-gray-50 text-gray-800' : (isDawn ? 'bg-[#fffaf3] text-[#575279]' : (isOceanic ? 'bg-ocean-bg text-ocean-text' : (isNeon ? 'bg-neon-bg text-neon-text' : 'bg-base-dark text-gray-300')))}`;
     };
     updateContainerClass();
 
@@ -228,6 +229,11 @@ export function SchemaDiff() {
             if (type === 'drop') return 'text-red-400';
             return 'text-yellow-400';
         }
+        if (isNeon) {
+            if (type === 'create') return 'text-neon-text';
+            if (type === 'drop') return 'text-neon-accent';
+            return 'text-cyan-400';
+        }
         // Dark
         if (type === 'create') return 'text-green-400';
         if (type === 'drop') return 'text-red-400';
@@ -283,6 +289,22 @@ export function SchemaDiff() {
             iconPrimary: 'bg-[#ea9d34]/20 text-[#ea9d34]',
             buttonPrimary: 'bg-[#ea9d34] hover:bg-[#d7827e] text-[#fffaf3] shadow-[0_2px_10px_rgba(234,157,52,0.2)]'
         };
+        if (isNeon) return {
+            panel: 'bg-neon-panel border-neon-border/40',
+            border: 'border-neon-border/30',
+            headerBg: 'bg-neon-panel',
+            sectionBg: 'bg-neon-bg',
+            textMain: 'text-neon-text',
+            textMuted: 'text-neon-text/50',
+            selectBg: 'bg-neon-bg',
+            card: 'bg-neon-panel border-neon-border/40 hover:border-neon-accent/50',
+            itemHover: 'hover:bg-neon-accent/10',
+            codeBg: 'bg-neon-bg',
+            codeText: 'text-neon-text/90',
+            badgeNeutral: 'bg-neon-accent/10 text-neon-accent',
+            iconPrimary: 'bg-neon-accent/20 text-neon-accent',
+            buttonPrimary: 'bg-neon-accent hover:bg-neon-accent/80 text-white shadow-[0_0_15px_rgba(255,0,153,0.3)]'
+        };
         // Dark (Default)
         return {
             panel: 'bg-panel-dark border-white/5',
@@ -321,10 +343,10 @@ export function SchemaDiff() {
                     
                      <!-- Mode Toggle -->
                      <div class="flex items-center gap-1 bg-black/5 dark:bg-white/5 p-0.5 rounded-md">
-                        <button id="mode-full" class="px-2.5 py-1 text-[11px] font-bold rounded transition-all ${comparisonMode === 'full' ? (isLight ? 'bg-white shadow text-indigo-600' : (isDawn ? 'bg-white shadow text-[#ea9d34]' : 'bg-mysql-teal text-black')) : themeClasses.textMuted}">
+                        <button id="mode-full" class="px-2.5 py-1 text-[11px] font-bold rounded transition-all ${comparisonMode === 'full' ? (isLight ? 'bg-white shadow text-indigo-600' : (isDawn ? 'bg-white shadow text-[#ea9d34]' : (isNeon ? 'bg-neon-accent text-white shadow-[0_0_8px_rgba(255,0,153,0.3)]' : 'bg-mysql-teal text-black'))) : themeClasses.textMuted}">
                             Full DB
                         </button>
-                        <button id="mode-table" class="px-2.5 py-1 text-[11px] font-bold rounded transition-all ${comparisonMode === 'table' ? (isLight ? 'bg-white shadow text-indigo-600' : (isDawn ? 'bg-white shadow text-[#ea9d34]' : 'bg-mysql-teal text-black')) : themeClasses.textMuted}">
+                        <button id="mode-table" class="px-2.5 py-1 text-[11px] font-bold rounded transition-all ${comparisonMode === 'table' ? (isLight ? 'bg-white shadow text-indigo-600' : (isDawn ? 'bg-white shadow text-[#ea9d34]' : (isNeon ? 'bg-neon-accent text-white shadow-[0_0_8px_rgba(255,0,153,0.3)]' : 'bg-mysql-teal text-black'))) : themeClasses.textMuted}">
                             Single Table
                         </button>
                     </div>
@@ -395,9 +417,9 @@ export function SchemaDiff() {
                         ` : `
                             <div class="divide-y ${themeClasses.border}">
                             ${diffResults.map(diff => `
-                                <div class="group px-4 py-2.5 ${themeClasses.itemHover} transition-colors cursor-pointer border-l-2 ${diff.type === 'create' ? (isDawn ? 'border-l-[#286983]' : 'border-l-emerald-500') :
-                diff.type === 'drop' ? (isDawn ? 'border-l-[#eb6f92]' : 'border-l-red-500') :
-                    (isDawn ? 'border-l-[#ea9d34]' : 'border-l-amber-500')
+                                <div class="group px-4 py-2.5 ${themeClasses.itemHover} transition-colors cursor-pointer border-l-2 ${diff.type === 'create' ? (isDawn ? 'border-l-[#286983]' : (isNeon ? 'border-l-neon-text shadow-[inset_4px_0_10px_-4px_rgba(0,243,255,0.3)]' : 'border-l-emerald-500')) :
+                diff.type === 'drop' ? (isDawn ? 'border-l-[#eb6f92]' : (isNeon ? 'border-l-neon-accent shadow-[inset_4px_0_10px_-4px_rgba(255,0,153,0.3)]' : 'border-l-red-500')) :
+                    (isDawn ? 'border-l-[#ea9d34]' : (isNeon ? 'border-l-cyan-400' : 'border-l-amber-500'))
             }">
                                     <div class="flex items-start justify-between mb-1">
                                         <div class="flex items-center gap-2 min-w-0">
@@ -412,7 +434,7 @@ export function SchemaDiff() {
                                         <div class="mt-2 pl-6 space-y-1">
                                             ${diff.changes.map(c => `
                                                 <div class="flex items-center gap-1.5 text-[11px]">
-                                                    <span class="material-symbols-outlined text-[10px] ${c.type === 'add_col' ? (isDawn ? 'text-[#286983]' : 'text-emerald-500') : (c.type === 'drop_col' ? (isDawn ? 'text-[#eb6f92]' : 'text-red-500') : (isDawn ? 'text-[#ea9d34]' : 'text-amber-500'))}">
+                                                    <span class="material-symbols-outlined text-[10px] ${c.type === 'add_col' ? (isDawn ? 'text-[#286983]' : (isNeon ? 'text-neon-text' : 'text-emerald-500')) : (c.type === 'drop_col' ? (isDawn ? 'text-[#eb6f92]' : (isNeon ? 'text-neon-accent' : 'text-red-500')) : (isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-cyan-400' : 'text-amber-500')))}">
                                                         ${c.type === 'add_col' ? 'add' : (c.type === 'drop_col' ? 'remove' : 'edit')}
                                                     </span>
                                                     <span class="font-mono ${themeClasses.textMuted} text-[10px] truncate max-w-[120px]">${c.column}</span>
@@ -563,6 +585,7 @@ export function SchemaDiff() {
         isLight = theme === 'light';
         isDawn = theme === 'dawn';
         isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        isNeon = theme === 'neon';
         updateContainerClass();
         render();
     };

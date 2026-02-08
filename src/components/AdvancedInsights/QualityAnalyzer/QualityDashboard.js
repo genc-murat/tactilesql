@@ -16,36 +16,40 @@ export function QualityDashboard() {
         const isOceanic = t === 'oceanic';
         const isEmber = t === 'ember';
         const isAurora = t === 'aurora';
+        const isNeon = t === 'neon';
 
         return {
-            container: `quality-dashboard flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-[#2E3440]' : (isEmber ? 'bg-[#140c12]' : (isAurora ? 'bg-[#0b1214]' : 'bg-[#0a0c10]'))))} transition-colors duration-300`,
-            header: `px-6 py-4 flex flex-col gap-4 border-b ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-[#3B4252] border-[#4C566A]' : (isEmber ? 'bg-[#1d141c] border-[#2c1c27]' : (isAurora ? 'bg-[#0f1a1d] border-[#1b2e33]' : 'bg-[#13161b] border-white/10'))))}`,
-            content: `flex-1 overflow-y-auto custom-scrollbar p-6 ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-[#2E3440]' : (isEmber ? 'bg-[#140c12]' : (isAurora ? 'bg-[#0b1214]' : 'bg-[#0a0c10]'))))}`,
-            card: `rounded-xl border shadow-sm p-5 ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-sm shadow-[#ea9d34]/5' : (isOceanic ? 'bg-[#3B4252] border-[#4C566A]' : (isEmber ? 'bg-[#1d141c] border-[#2c1c27]' : (isAurora ? 'bg-[#0f1a1d] border-[#1b2e33]' : 'bg-[#13161b] border-white/10'))))}`,
+            container: `quality-dashboard flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-[#2E3440]' : (isEmber ? 'bg-[#140c12]' : (isAurora ? 'bg-[#0b1214]' : (isNeon ? 'bg-neon-bg' : 'bg-[#0a0c10]')))))} transition-colors duration-300`,
+            header: `px-6 py-4 flex flex-col gap-4 border-b ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-[#3B4252] border-[#4C566A]' : (isEmber ? 'bg-[#1d141c] border-[#2c1c27]' : (isAurora ? 'bg-[#0f1a1d] border-[#1b2e33]' : (isNeon ? 'bg-neon-panel border-neon-border/30' : 'bg-[#13161b] border-white/10')))))}`,
+            content: `flex-1 overflow-y-auto custom-scrollbar p-6 ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-[#2E3440]' : (isEmber ? 'bg-[#140c12]' : (isAurora ? 'bg-[#0b1214]' : (isNeon ? 'bg-neon-bg' : 'bg-[#0a0c10]')))))}`,
+            card: `rounded-xl border shadow-sm p-5 ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-sm shadow-[#ea9d34]/5' : (isOceanic ? 'bg-[#3B4252] border-[#4C566A]' : (isEmber ? 'bg-[#1d141c] border-[#2c1c27]' : (isAurora ? 'bg-[#0f1a1d] border-[#1b2e33]' : (isNeon ? 'bg-neon-panel border-neon-border/40' : 'bg-[#13161b] border-white/10')))))}`,
             text: {
-                primary: isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white'),
-                secondary: isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400'),
-                label: isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400'),
-                accent: isDawn ? 'text-[#ea9d34]' : (isEmber ? 'text-purple-400' : (isAurora ? 'text-cyan-400' : 'text-mysql-teal'))
+                primary: isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-white')),
+                secondary: isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-text/60' : 'text-gray-400')),
+                label: isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-text/50' : 'text-gray-400')),
+                accent: isDawn ? 'text-[#ea9d34]' : (isEmber ? 'text-purple-400' : (isAurora ? 'text-cyan-400' : (isNeon ? 'text-cyan-400' : 'text-mysql-teal')))
             },
             input: `w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 transition-all cursor-pointer ${isLight
                 ? 'bg-white border-gray-300 text-gray-900 focus:border-mysql-teal focus:ring-mysql-teal/20'
                 : (isDawn
                     ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] focus:border-[#ea9d34] focus:ring-[#ea9d34]/20'
-                    : 'bg-black/20 border-white/10 text-white focus:border-mysql-teal focus:ring-mysql-teal/20')
+                    : (isNeon
+                        ? 'bg-neon-bg border-neon-border/40 text-neon-text focus:border-cyan-400 focus:ring-cyan-400/20'
+                        : 'bg-black/20 border-white/10 text-white focus:border-mysql-teal focus:ring-mysql-teal/20'))
                 }`,
             tabBtn: (active) => {
                 let accentColor = 'text-mysql-teal';
                 if (isDawn) accentColor = 'text-[#ea9d34]';
                 if (isEmber) accentColor = 'text-purple-400';
                 if (isAurora) accentColor = 'text-cyan-400';
+                if (t === 'neon') accentColor = 'text-cyan-400';
 
                 return `relative px-1 py-3 text-sm font-medium transition-colors ${active
                     ? accentColor
-                    : (isLight ? 'text-gray-500 hover:text-gray-700' : (isDawn ? 'text-[#9893a5] hover:text-[#575279]' : 'text-gray-400 hover:text-white'))
+                    : (isLight ? 'text-gray-500 hover:text-gray-700' : (isDawn ? 'text-[#9893a5] hover:text-[#575279]' : (t === 'neon' ? 'text-neon-text/40 hover:text-neon-text' : 'text-gray-400 hover:text-white')))
                     } ${active ? 'border-b-2' : ''}`;
             },
-            tabBorder: isDawn ? 'border-[#ea9d34]' : (isEmber ? 'border-purple-500' : (isAurora ? 'border-cyan-500' : 'border-mysql-teal'))
+            tabBorder: isDawn ? 'border-[#ea9d34]' : (isEmber ? 'border-purple-500' : (isAurora ? 'border-cyan-500' : (isNeon ? 'border-cyan-400' : 'border-mysql-teal')))
         };
     };
 
@@ -468,7 +472,7 @@ export function QualityDashboard() {
         runBtn.id = 'run-btn';
         runBtn.className = `px-5 py-2.5 rounded-lg text-sm font-bold uppercase tracking-wide transition-all ${(!state.selectedTable || state.isLoading)
             ? 'opacity-50 cursor-not-allowed bg-gray-300 text-gray-500'
-            : (theme === 'dawn' ? 'bg-[#ea9d34] text-[#fffaf3] hover:bg-[#d7821a] shadow-lg shadow-[#ea9d34]/20' : 'bg-mysql-teal text-white hover:bg-mysql-cyan shadow-lg shadow-mysql-teal/20')
+            : (theme === 'dawn' ? 'bg-[#ea9d34] text-[#fffaf3] hover:bg-[#d7821a] shadow-lg shadow-[#ea9d34]/20' : (theme === 'neon' ? 'bg-cyan-400 text-black hover:bg-cyan-300 shadow-[0_0_15px_rgba(0,243,255,0.4)]' : 'bg-mysql-teal text-white hover:bg-mysql-cyan shadow-lg shadow-mysql-teal/20'))
             }`;
         runBtn.innerHTML = state.isLoading
             ? '<span class="material-symbols-outlined text-sm animate-spin align-bottom mr-1">sync</span> Analyzing...'
@@ -489,7 +493,7 @@ export function QualityDashboard() {
                 const isActive = state.activeTab === id;
                 const btn = document.createElement('button');
                 btn.className = classes.tabBtn(isActive);
-                if (isActive) btn.style.borderColor = theme === 'dawn' ? '#ea9d34' : '#00c8ff';
+                if (isActive) btn.style.borderColor = theme === 'dawn' ? '#ea9d34' : (theme === 'neon' ? '#00f3ff' : '#00c8ff');
                 btn.textContent = label;
                 btn.onclick = () => switchTab(id);
                 return btn;
@@ -641,7 +645,9 @@ export function QualityDashboard() {
                 ? 'opacity-60 cursor-not-allowed bg-gray-300 text-gray-600'
                 : (theme === 'dawn'
                     ? 'bg-[#ea9d34]/10 text-[#ea9d34] hover:bg-[#ea9d34]/20'
-                    : 'bg-mysql-teal/10 text-mysql-teal hover:bg-mysql-teal/20')
+                    : (theme === 'neon'
+                        ? 'bg-neon-accent/20 text-neon-accent border border-neon-accent/30 hover:bg-neon-accent/30'
+                        : 'bg-mysql-teal/10 text-mysql-teal hover:bg-mysql-teal/20'))
             }" ${isAiLoadingForReport ? 'disabled' : ''}>
                 ${isAiLoadingForReport ? 'Analyzing...' : (hasAiAnalysisForReport ? 'Re-Analyze' : 'Analyze with AI')}
             </button>
@@ -821,9 +827,9 @@ export function QualityDashboard() {
         const points = dataPoints.map(d => `${xScale(d.date)},${yScale(d.score)}`).join(' ');
 
         // Colors base on theme
-        const gridColor = theme === 'light' ? '#e5e7eb' : (theme === 'dawn' ? '#f2e9e1' : '#ffffff20');
-        const textColor = theme === 'light' ? '#9ca3af' : (theme === 'dawn' ? '#9893a5' : '#6b7280');
-        const lineColor = theme === 'dawn' ? '#ea9d34' : '#0ea5e9';
+        const gridColor = theme === 'light' ? '#e5e7eb' : (theme === 'dawn' ? '#f2e9e1' : (theme === 'neon' ? '#ffffff10' : '#ffffff20'));
+        const textColor = theme === 'light' ? '#9ca3af' : (theme === 'dawn' ? '#9893a5' : (theme === 'neon' ? '#00f3ff60' : '#6b7280'));
+        const lineColor = theme === 'dawn' ? '#ea9d34' : (theme === 'neon' ? '#00f3ff' : '#0ea5e9');
 
         const yGrid = [0, 25, 50, 75, 100].map(val => `
             <line x1="${padding}" y1="${yScale(val)}" x2="${width - padding}" y2="${yScale(val)}" stroke="${gridColor}" stroke-dasharray="4" />

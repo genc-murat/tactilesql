@@ -166,18 +166,19 @@ const mergeGraphWithOverrides = (baseGraph, overrides) => {
 const getClasses = (theme) => {
     const isLight = theme === 'light';
     const isDawn = theme === 'dawn';
-    const isOceanic = theme === 'oceanic';
+    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+    const isNeon = theme === 'neon';
 
     return {
-        container: `h-full p-6 lg:p-8 flex flex-col gap-4 overflow-hidden ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]'))}`,
-        headerCard: `rounded-2xl border p-4 lg:p-5 ${isLight ? 'bg-white border-gray-200 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#13161b] border-white/10'))}`,
-        graphCard: `flex-1 rounded-2xl border overflow-hidden ${isLight ? 'bg-white border-gray-200 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#13161b] border-white/10'))}`,
-        title: isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white'),
-        subtitle: isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-300'),
-        label: isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400'),
-        errorText: isLight ? 'text-red-700 bg-red-50 border-red-200' : (isDawn ? 'text-[#b4637a] bg-[#fff1f2] border-[#f2e9e1]' : 'text-red-300 bg-red-500/10 border-red-500/20'),
-        ghostBtn: isLight ? 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50' : 'bg-white/5 text-white border-white/10 hover:bg-white/10',
-        panelCard: isLight ? 'bg-gray-50 border-gray-200' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1]' : 'bg-black/20 border-white/10'),
+        container: `h-full p-6 lg:p-8 flex flex-col gap-4 overflow-hidden ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : (isNeon ? 'bg-neon-bg' : 'bg-[#0a0c10]')))}`,
+        headerCard: `rounded-2xl border p-4 lg:p-5 ${isLight ? 'bg-white border-gray-200 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : (isNeon ? 'bg-neon-panel border-neon-border/30' : 'bg-[#13161b] border-white/10')))}`,
+        graphCard: `flex-1 rounded-2xl border overflow-hidden ${isLight ? 'bg-white border-gray-200 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : (isNeon ? 'bg-neon-panel border-neon-border/40' : 'bg-[#13161b] border-white/10')))}`,
+        title: isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-white')),
+        subtitle: isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : (isNeon ? 'text-neon-text/60' : 'text-gray-300')),
+        label: isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : (isNeon ? 'text-neon-text/50' : 'text-gray-400')),
+        errorText: isLight ? 'text-red-700 bg-red-50 border-red-200' : (isDawn ? 'text-[#b4637a] bg-[#fff1f2] border-[#f2e9e1]' : (isNeon ? 'text-neon-pink bg-neon-pink/10 border-neon-pink/20' : 'text-red-300 bg-red-500/10 border-red-500/20')),
+        ghostBtn: isLight ? 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50' : (isNeon ? 'bg-neon-accent/10 text-neon-accent border-neon-accent/20 hover:bg-neon-accent/20' : 'bg-white/5 text-white border-white/10 hover:bg-white/10'),
+        panelCard: isLight ? 'bg-gray-50 border-gray-200' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1]' : (isNeon ? 'bg-black/40 border-neon-border/20' : 'bg-black/20 border-white/10')),
     };
 };
 
@@ -1061,7 +1062,7 @@ export function ERDiagram() {
                         <button id="erd-export-mermaid" class="px-3 py-2 rounded-lg border text-xs font-bold uppercase tracking-wider transition-all ${hasGraph ? '' : 'opacity-40 cursor-not-allowed'} ${classes.ghostBtn}" ${hasGraph ? '' : 'disabled'}>Export Mermaid</button>
                         <button id="erd-export-png" class="px-3 py-2 rounded-lg border text-xs font-bold uppercase tracking-wider transition-all ${hasGraph ? '' : 'opacity-40 cursor-not-allowed'} ${classes.ghostBtn}" ${hasGraph ? '' : 'disabled'}>Export PNG</button>
                         <button id="erd-export-graphml" class="px-3 py-2 rounded-lg border text-xs font-bold uppercase tracking-wider transition-all ${hasGraph ? '' : 'opacity-40 cursor-not-allowed'} ${classes.ghostBtn}" ${hasGraph ? '' : 'disabled'}>Export GraphML</button>
-                        <button id="erd-build-btn" class="px-4 py-2 rounded-lg border text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${state.isLoading ? 'opacity-50 cursor-wait' : 'hover:brightness-110'} ${theme === 'light' ? 'bg-mysql-teal text-white border-mysql-teal' : 'bg-mysql-teal text-white border-mysql-teal shadow-lg shadow-mysql-teal/20'}" ${(state.isLoading || !state.selectedConnectionId || !state.selectedDatabase) ? 'disabled' : ''}>
+                        <button id="erd-build-btn" class="px-4 py-2 rounded-lg border text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${state.isLoading ? 'opacity-50 cursor-wait' : (theme === 'neon' ? 'bg-cyan-400 text-black border-cyan-400 shadow-[0_0_15px_rgba(0,243,255,0.4)] hover:bg-cyan-300' : 'hover:brightness-110')} ${theme === 'light' ? 'bg-mysql-teal text-white border-mysql-teal' : (theme === 'neon' ? '' : 'bg-mysql-teal text-white border-mysql-teal shadow-lg shadow-mysql-teal/20')}" ${(state.isLoading || !state.selectedConnectionId || !state.selectedDatabase) ? 'disabled' : ''}>
                             <span class="material-symbols-outlined text-sm ${state.isLoading ? 'animate-spin' : ''}">${state.isLoading ? 'sync' : 'schema'}</span>
                             ${state.isLoading ? 'Building...' : 'Build ER'}
                         </button>

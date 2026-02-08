@@ -21,20 +21,23 @@ export function DependencyExplorer() {
         const isOceanic = t === 'oceanic';
         const isEmber = t === 'ember';
         const isAurora = t === 'aurora';
+        const isNeon = t === 'neon';
 
         return {
-            container: `dependency-explorer flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-[#2E3440]' : (isEmber ? 'bg-[#140c12]' : (isAurora ? 'bg-[#0b1214]' : 'bg-[#0a0c10]'))))} transition-colors duration-300`,
-            header: `px-6 py-4 flex flex-col gap-4 border-b ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-[#3B4252] border-[#4C566A]' : (isEmber ? 'bg-[#1d141c] border-[#2c1c27]' : (isAurora ? 'bg-[#0f1a1d] border-[#1b2e33]' : 'bg-[#13161b] border-white/10'))))}`,
-            content: `flex-1 relative overflow-hidden ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-[#2E3440]' : (isEmber ? 'bg-[#140c12]' : (isAurora ? 'bg-[#0b1214]' : 'bg-[#0a0c10]'))))}`,
+            container: `dependency-explorer flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-[#2E3440]' : (isEmber ? 'bg-[#140c12]' : (isAurora ? 'bg-[#0b1214]' : (isNeon ? 'bg-neon-bg' : 'bg-[#0a0c10]')))))} transition-colors duration-300`,
+            header: `px-6 py-4 flex flex-col gap-4 border-b ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-[#3B4252] border-[#4C566A]' : (isEmber ? 'bg-[#1d141c] border-[#2c1c27]' : (isAurora ? 'bg-[#0f1a1d] border-[#1b2e33]' : (isNeon ? 'bg-neon-panel border-neon-border/30' : 'bg-[#13161b] border-white/10')))))}`,
+            content: `flex-1 relative overflow-hidden ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-[#2E3440]' : (isEmber ? 'bg-[#140c12]' : (isAurora ? 'bg-[#0b1214]' : (isNeon ? 'bg-neon-bg' : 'bg-[#0a0c10]')))))}`,
             input: `w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 transition-all cursor-pointer ${isLight
                 ? 'bg-white border-gray-300 text-gray-900 focus:border-mysql-teal focus:ring-mysql-teal/20'
                 : (isDawn
                     ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] focus:border-[#ea9d34] focus:ring-[#ea9d34]/20'
-                    : 'bg-black/20 border-white/10 text-white focus:border-mysql-teal focus:ring-mysql-teal/20')
+                    : (isNeon
+                        ? 'bg-neon-bg border-neon-border/40 text-neon-text focus:border-cyan-400 focus:ring-cyan-400/20'
+                        : 'bg-black/20 border-white/10 text-white focus:border-mysql-teal focus:ring-mysql-teal/20'))
                 }`,
             text: {
-                primary: isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white'),
-                label: isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')
+                primary: isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-white')),
+                label: isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-text/60' : 'text-gray-400'))
             }
         };
     };
@@ -282,7 +285,11 @@ export function DependencyExplorer() {
         const canBuild = state.selectedConnectionId && state.selectedDatabase && !state.isLoading;
         buildBtn.className = `px-4 py-2 rounded-lg border text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 self-end mb-[1px] ${!canBuild
             ? 'opacity-40 cursor-not-allowed grayscale'
-            : (theme === 'light' ? 'bg-mysql-teal text-white border-mysql-teal shadow-lg hover:shadow-mysql-teal/20' : 'bg-mysql-teal text-white border-mysql-teal shadow-lg shadow-mysql-teal/10 hover:shadow-mysql-teal/30 hover:scale-[1.02]')
+            : (theme === 'light'
+                ? 'bg-mysql-teal text-white border-mysql-teal shadow-lg hover:shadow-mysql-teal/20'
+                : (theme === 'neon'
+                    ? 'bg-cyan-400 text-black border-cyan-400 shadow-[0_0_15px_rgba(0,243,255,0.4)] hover:bg-cyan-300'
+                    : 'bg-mysql-teal text-white border-mysql-teal shadow-lg shadow-mysql-teal/10 hover:shadow-mysql-teal/30 hover:scale-[1.02]'))
             }`;
         buildBtn.innerHTML = `
             <span class="material-symbols-outlined text-base">${state.graphData ? 'refresh' : 'account_tree'}</span>
@@ -297,7 +304,9 @@ export function DependencyExplorer() {
             const exportBtn = document.createElement('button');
             exportBtn.className = `px-4 py-2 rounded-lg border text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 self-end mb-[1px] ${theme === 'light'
                 ? 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                : 'bg-white/5 text-white border-white/10 hover:bg-white/10'
+                : (theme === 'neon'
+                    ? 'bg-neon-accent/20 text-neon-accent border-neon-accent/30 hover:bg-neon-accent/30'
+                    : 'bg-white/5 text-white border-white/10 hover:bg-white/10')
                 }`;
             exportBtn.innerHTML = `
                 <span class="material-symbols-outlined text-base">download</span>
@@ -361,7 +370,12 @@ export function DependencyExplorer() {
         // Focus indicator & Clear button
         if (state.focusedTable) {
             const focusDiv = document.createElement('div');
-            focusDiv.className = `flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm animate-in slide-in-from-left duration-300 ${isLight ? 'bg-rose-50 border-rose-100 text-rose-600' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'}`;
+            const focusColors = isLight
+                ? 'bg-rose-50 border-rose-100 text-rose-600'
+                : (theme === 'neon'
+                    ? 'bg-neon-pink/10 border-neon-pink/20 text-neon-pink'
+                    : 'bg-rose-500/10 border-rose-500/20 text-rose-400');
+            focusDiv.className = `flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm animate-in slide-in-from-left duration-300 ${focusColors}`;
             focusDiv.innerHTML = `
                 <span class="material-symbols-outlined text-sm">filter_alt</span>
                 <span class="font-bold">Focus: ${state.focusedTable}</span>
@@ -410,7 +424,7 @@ export function DependencyExplorer() {
 
         // Sidebar (Impact Details) - Hidden by default
         const sidebar = document.createElement('div');
-        const sidebarBg = isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (theme === 'oceanic' ? 'bg-[#3B4252] border-[#4C566A]' : (theme === 'ember' ? 'bg-[#1d141c] border-[#2c1c27]' : (theme === 'aurora' ? 'bg-[#0f1a1d] border-[#1b2e33]' : 'bg-[#1a202c] border-white/10'))));
+        const sidebarBg = isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (theme === 'oceanic' ? 'bg-[#3B4252] border-[#4C566A]' : (theme === 'ember' ? 'bg-[#1d141c] border-[#2c1c27]' : (theme === 'aurora' ? 'bg-[#0f1a1d] border-[#1b2e33]' : (theme === 'neon' ? 'bg-neon-panel border-neon-border/30' : 'bg-[#1a202c] border-white/10')))));
         sidebar.className = `h-full border-l transition-all duration-300 overflow-hidden shrink-0 flex flex-col ${sidebarBg}`;
         sidebar.style.width = '0px';
         sidebar.style.minWidth = '0px';
@@ -489,7 +503,7 @@ export function DependencyExplorer() {
             sidebar.style.minWidth = '300px';
             sidebar.innerHTML = `
                 <div class="h-full flex flex-col">
-                    <div class="p-4 border-b ${isLight ? 'border-gray-100' : (theme === 'dawn' ? 'border-[#f2e9e1]' : (theme === 'oceanic' ? 'border-[#4C566A]' : (theme === 'ember' ? 'border-[#2c1c27]' : (theme === 'aurora' ? 'border-[#1b2e33]' : 'border-white/5'))))}">
+                    <div class="p-4 border-b ${isLight ? 'border-gray-100' : (theme === 'dawn' ? 'border-[#f2e9e1]' : (theme === 'oceanic' ? 'border-[#4C566A]' : (theme === 'ember' ? 'border-[#2c1c27]' : (theme === 'aurora' ? 'border-[#1b2e33]' : (theme === 'neon' ? 'border-neon-border/20' : 'border-white/5')))))}">
                         <div class="text-[10px] font-bold uppercase tracking-wider ${classes.text.label} mb-1">${data.type}</div>
                         <h2 class="text-lg font-bold break-all ${classes.text.primary}">${data.name}</h2>
                         ${data.qualityScore !== undefined ? `
@@ -503,7 +517,9 @@ export function DependencyExplorer() {
                         
                         <button id="sidebar-export-mermaid" class="mt-3 w-full py-2 flex items-center justify-center gap-2 rounded border text-xs font-bold uppercase tracking-wider transition-all ${isLight
                     ? 'bg-white border-gray-200 hover:bg-gray-50 text-gray-700'
-                    : 'bg-white/5 border-white/10 hover:bg-white/10 text-white'
+                    : (theme === 'neon'
+                        ? 'bg-neon-accent/10 border-neon-accent/30 hover:bg-neon-accent/20 text-neon-accent'
+                        : 'bg-white/5 border-white/10 hover:bg-white/10 text-white')
                 }">
                             <span class="material-symbols-outlined text-sm">download</span>
                             Export Lineage
@@ -519,7 +535,7 @@ export function DependencyExplorer() {
 
                         <!-- Upstream -->
                         <div>
-                             <h3 class="text-xs font-bold uppercase tracking-wider text-red-400 mb-2 flex items-center gap-2">
+                             <h3 class="text-xs font-bold uppercase tracking-wider ${theme === 'neon' ? 'text-neon-pink' : 'text-red-400'} mb-2 flex items-center gap-2">
                                 <span class="material-symbols-outlined text-sm">arrow_upward</span>
                                 Depends On (${data.upstreamCount})
                              </h3>
@@ -533,7 +549,7 @@ export function DependencyExplorer() {
                         
                         <!-- Downstream -->
                         <div>
-                             <h3 class="text-xs font-bold uppercase tracking-wider text-green-400 mb-2 flex items-center gap-2">
+                             <h3 class="text-xs font-bold uppercase tracking-wider ${theme === 'neon' ? 'text-cyan-400' : 'text-green-400'} mb-2 flex items-center gap-2">
                                 <span class="material-symbols-outlined text-sm">arrow_downward</span>
                                 Impacted (${data.downstreamCount})
                              </h3>
@@ -547,7 +563,7 @@ export function DependencyExplorer() {
 
                         <!-- Blast Radius -->
                         <div>
-                             <h3 class="text-xs font-bold uppercase tracking-wider text-orange-400 mb-2 flex items-center gap-2">
+                             <h3 class="text-xs font-bold uppercase tracking-wider ${theme === 'neon' ? 'text-neon-accent' : 'text-orange-400'} mb-2 flex items-center gap-2">
                                 <span class="material-symbols-outlined text-sm">crisis_alert</span>
                                 Blast Radius (${blastRadius.totalImpacted})
                              </h3>
@@ -576,7 +592,7 @@ export function DependencyExplorer() {
 
                         <!-- Path Explorer -->
                         <div>
-                             <h3 class="text-xs font-bold uppercase tracking-wider text-sky-400 mb-2 flex items-center gap-2">
+                             <h3 class="text-xs font-bold uppercase tracking-wider ${theme === 'neon' ? 'text-cyan-400' : 'text-sky-400'} mb-2 flex items-center gap-2">
                                 <span class="material-symbols-outlined text-sm">route</span>
                                 Impact Path Finder
                              </h3>
@@ -601,7 +617,7 @@ export function DependencyExplorer() {
                     ` : ''}
 
                     ${blastRadius.hasMore ? `
-                        <button id="load-more-blast" class="mx-4 mt-3 py-2 border rounded-lg text-xs font-bold uppercase tracking-wider transition-colors ${isLight ? 'bg-orange-50 border-orange-100 text-orange-700 hover:bg-orange-100' : 'bg-orange-500/10 border-orange-500/20 text-orange-300 hover:bg-orange-500/20'}">
+                        <button id="load-more-blast" class="mx-4 mt-3 py-2 border rounded-lg text-xs font-bold uppercase tracking-wider transition-colors ${isLight ? 'bg-orange-50 border-orange-100 text-orange-700 hover:bg-orange-100' : (theme === 'neon' ? 'bg-neon-accent/10 border-neon-accent/30 text-neon-accent hover:bg-neon-accent/20' : 'bg-orange-500/10 border-orange-500/20 text-orange-300 hover:bg-orange-500/20')}">
                             Load More Blast Radius (${blastLoadMoreLimit})
                         </button>
                     ` : ''}

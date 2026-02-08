@@ -84,13 +84,37 @@ const TOAST_TYPES_DAWN = {
     }
 };
 
+// Neon theme overrides
+const TOAST_TYPES_NEON = {
+    success: {
+        bgClass: 'bg-neon-accent/10 border-neon-accent/30',
+        iconClass: 'text-neon-accent',
+        titleClass: 'text-neon-accent'
+    },
+    error: {
+        bgClass: 'bg-neon-pink/10 border-neon-pink/30',
+        iconClass: 'text-neon-pink',
+        titleClass: 'text-neon-pink'
+    },
+    warning: {
+        bgClass: 'bg-neon-accent/10 border-neon-accent/30',
+        iconClass: 'text-neon-accent',
+        titleClass: 'text-neon-accent'
+    },
+    info: {
+        bgClass: 'bg-neon-cyan/10 border-neon-cyan/30',
+        iconClass: 'text-neon-cyan',
+        titleClass: 'text-neon-cyan'
+    }
+};
+
 /**
  * Get or create toast container
  * @returns {HTMLElement} Toast container element
  */
 const getContainer = () => {
     let container = document.getElementById(TOAST_CONTAINER_ID);
-    
+
     if (!container) {
         container = document.createElement('div');
         container.id = TOAST_CONTAINER_ID;
@@ -98,7 +122,7 @@ const getContainer = () => {
         container.style.maxWidth = '400px';
         document.body.appendChild(container);
     }
-    
+
     return container;
 };
 
@@ -110,13 +134,15 @@ const getContainer = () => {
 const getTypeConfig = (type) => {
     const theme = ThemeManager.getCurrentTheme();
     const baseConfig = TOAST_TYPES[type] || TOAST_TYPES.info;
-    
+
     if (theme === 'light') {
         return { ...baseConfig, ...TOAST_TYPES_LIGHT[type] };
     } else if (theme === 'dawn') {
         return { ...baseConfig, ...TOAST_TYPES_DAWN[type] };
+    } else if (theme === 'neon') {
+        return { ...baseConfig, ...TOAST_TYPES_NEON[type] };
     }
-    
+
     return baseConfig;
 };
 
@@ -140,52 +166,52 @@ export const showToast = (message, type = 'info', options = {}) => {
         onClick = null,
         onClose = null
     } = options;
-    
+
     const container = getContainer();
     const config = getTypeConfig(type);
     const theme = ThemeManager.getCurrentTheme();
     const isLight = theme === 'light';
     const isDawn = theme === 'dawn';
-    
+
     // Create toast element
     const toast = document.createElement('div');
     toast.className = `
         pointer-events-auto flex items-start gap-3 p-4 rounded-lg border shadow-lg
         backdrop-blur-sm transform translate-x-full opacity-0 transition-all duration-300
         ${config.bgClass}
-        ${isLight ? 'shadow-gray-200' : (isDawn ? 'shadow-[#dfdad9]/20' : 'shadow-black/40')}
+        ${isLight ? 'shadow-gray-200' : (isDawn ? 'shadow-[#dfdad9]/20' : (theme === 'neon' ? 'shadow-neon-accent/10' : 'shadow-black/40'))}
         ${onClick ? 'cursor-pointer hover:scale-[1.02]' : ''}
     `.trim().replace(/\s+/g, ' ');
-    
+
     // Build toast content
     const titleHtml = title ? `
         <div class="font-semibold text-sm ${config.titleClass}">${title}</div>
     ` : '';
-    
+
     const closeButtonHtml = closable ? `
-        <button class="toast-close flex-shrink-0 p-1 rounded hover:bg-white/10 transition-colors ${isLight ? 'text-gray-400 hover:text-gray-600' : (isDawn ? 'text-[#9893a5] hover:text-[#575279]' : 'text-gray-500 hover:text-gray-300')}">
+        <button class="toast-close flex-shrink-0 p-1 rounded hover:bg-white/10 transition-colors ${isLight ? 'text-gray-400 hover:text-gray-600' : (isDawn ? 'text-[#9893a5] hover:text-[#575279]' : (theme === 'neon' ? 'text-neon-text/40 hover:text-neon-accent' : 'text-gray-500 hover:text-gray-300'))}">
             <span class="material-symbols-outlined text-base">close</span>
         </button>
     ` : '';
-    
+
     toast.innerHTML = `
         <span class="material-symbols-outlined text-xl ${config.iconClass} flex-shrink-0 mt-0.5">${config.icon}</span>
         <div class="flex-1 min-w-0">
             ${titleHtml}
-            <div class="text-sm ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : 'text-gray-300')} ${title ? 'mt-1' : ''}">${message}</div>
+            <div class="text-sm ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (theme === 'neon' ? 'text-neon-text' : 'text-gray-300'))} ${title ? 'mt-1' : ''}">${message}</div>
         </div>
         ${closeButtonHtml}
     `;
-    
+
     // Add to container
     container.appendChild(toast);
-    
+
     // Trigger entrance animation
     requestAnimationFrame(() => {
         toast.classList.remove('translate-x-full', 'opacity-0');
         toast.classList.add('translate-x-0', 'opacity-100');
     });
-    
+
     // Dismiss function
     const dismiss = () => {
         toast.classList.add('translate-x-full', 'opacity-0');
@@ -194,7 +220,7 @@ export const showToast = (message, type = 'info', options = {}) => {
             onClose?.();
         }, 300);
     };
-    
+
     // Event handlers
     if (closable) {
         const closeBtn = toast.querySelector('.toast-close');
@@ -203,7 +229,7 @@ export const showToast = (message, type = 'info', options = {}) => {
             dismiss();
         });
     }
-    
+
     if (onClick) {
         toast.addEventListener('click', (e) => {
             if (!e.target.closest('.toast-close')) {
@@ -212,22 +238,22 @@ export const showToast = (message, type = 'info', options = {}) => {
             }
         });
     }
-    
+
     // Auto dismiss
     let timeoutId = null;
     if (duration > 0) {
         timeoutId = setTimeout(dismiss, duration);
-        
+
         // Pause on hover
         toast.addEventListener('mouseenter', () => {
             if (timeoutId) clearTimeout(timeoutId);
         });
-        
+
         toast.addEventListener('mouseleave', () => {
             timeoutId = setTimeout(dismiss, duration / 2);
         });
     }
-    
+
     return { dismiss };
 };
 
@@ -284,10 +310,10 @@ export const toastPromise = async (promise, messages = {}) => {
         success = 'Success!',
         error = 'An error occurred'
     } = messages;
-    
+
     // Show loading toast
     const loadingToast = showToast(loading, 'info', { duration: 0, closable: false });
-    
+
     try {
         const result = await promise;
         loadingToast.dismiss();

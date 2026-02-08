@@ -13,15 +13,16 @@ export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGen
     const isOceanic = theme === 'oceanic';
     const isEmber = theme === 'ember';
     const isAurora = theme === 'aurora';
+    const isNeon = theme === 'neon';
 
     const container = document.createElement('div');
     container.className = `flex-1 h-full flex flex-col overflow-hidden`;
 
     if (!diff) {
         container.innerHTML = `
-            <div class="flex-1 flex flex-col items-center justify-center opacity-40 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500')}">
-                <span class="material-symbols-outlined text-6xl mb-4">compare_arrows</span>
-                <p class="text-lg font-medium">Select a snapshot to compare</p>
+            <div class="flex-1 flex flex-col items-center justify-center opacity-40 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-text/40' : 'text-gray-500'))}">
+                <span class="material-symbols-outlined text-6xl mb-4 ${isNeon ? 'text-neon-text/20' : ''}">compare_arrows</span>
+                <p class="text-lg font-medium ${isNeon ? 'text-neon-text' : ''}">Select a snapshot to compare</p>
                 <p class="text-sm mt-2">Compare with the previous version to see changes.</p>
             </div>
         `;
@@ -38,7 +39,7 @@ export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGen
     let loadingAiImpact = false;
     let loadingMigrationPlan = false;
     let migrationPlanError = '';
-    let renderScriptPanel = () => {};
+    let renderScriptPanel = () => { };
 
     const normalizeDbType = (value) => {
         const normalized = String(value || '').toLowerCase();
@@ -230,22 +231,22 @@ export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGen
 
     // Header / Stats
     const header = document.createElement('div');
-    header.className = `px-6 py-4 border-b flex flex-col gap-4 transition-colors duration-300 ${isLight ? 'border-gray-200 bg-white' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3]' : (isOceanic ? 'border-[#4C566A] bg-[#3B4252]' : (isEmber ? 'border-[#2c1c27] bg-[#1d141c]' : (isAurora ? 'border-[#1b2e33] bg-[#0f1a1d]' : 'border-white/5 bg-[#1a1d23]'))))}`;
+    header.className = `px-6 py-4 border-b flex flex-col gap-4 transition-colors duration-300 ${isLight ? 'border-gray-200 bg-white' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3]' : (isNeon ? 'border-neon-border/30 bg-neon-panel' : (isOceanic ? 'border-[#4C566A] bg-[#3B4252]' : (isEmber ? 'border-[#2c1c27] bg-[#1d141c]' : (isAurora ? 'border-[#1b2e33] bg-[#0f1a1d]' : 'border-white/5 bg-[#1a1d23]')))))}`;
 
     const renderHeader = () => {
         const statsHtml = `
             <div class="flex gap-6">
                 <div class="flex flex-col">
-                    <span class="text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500')}">New Tables</span>
-                    <span class="text-2xl font-light ${new_tables.length > 0 ? 'text-emerald-400' : 'opacity-30'}">${new_tables.length}</span>
+                    <span class="text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-text/50' : 'text-gray-500'))}">New Tables</span>
+                    <span class="text-2xl font-light ${new_tables.length > 0 ? (isNeon ? 'text-cyan-400' : 'text-emerald-400') : 'opacity-30'}">${new_tables.length}</span>
                 </div>
                 <div class="flex flex-col">
-                    <span class="text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500')}">Modified</span>
-                    <span class="text-2xl font-light ${modified_tables.length > 0 ? (isDawn ? 'text-[#ea9d34]' : 'text-amber-400') : 'opacity-30'}">${modified_tables.length}</span>
+                    <span class="text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-text/50' : 'text-gray-500'))}">Modified</span>
+                    <span class="text-2xl font-light ${modified_tables.length > 0 ? (isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-amber-400' : 'text-amber-400')) : 'opacity-30'}">${modified_tables.length}</span>
                 </div>
                 <div class="flex flex-col">
-                    <span class="text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500')}">Dropped</span>
-                    <span class="text-2xl font-light ${dropped_tables.length > 0 ? 'text-red-400' : 'opacity-30'}">${dropped_tables.length}</span>
+                    <span class="text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-text/50' : 'text-gray-500'))}">Dropped</span>
+                    <span class="text-2xl font-light ${dropped_tables.length > 0 ? (isNeon ? 'text-neon-pink' : 'text-red-400') : 'opacity-30'}">${dropped_tables.length}</span>
                 </div>
             </div>
         `;
@@ -299,10 +300,10 @@ export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGen
             `;
         } else if (aiImpactAnalysis) {
             aiImpactHtml = `
-                <div class="px-3 py-3 rounded ${isLight ? 'bg-slate-50 border-slate-200 text-slate-700' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-cyan-500/10 border-cyan-500/20 text-cyan-300')} border max-w-4xl">
+                <div class="px-3 py-3 rounded ${isLight ? 'bg-slate-50 border-slate-200 text-slate-700' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isNeon ? 'bg-neon-bg border-cyan-400/20 text-neon-text' : 'bg-cyan-500/10 border-cyan-500/20 text-cyan-300'))} border max-w-4xl shadow-inner shadow-black/20">
                     <div class="flex items-center gap-2 mb-2">
-                        <span class="material-symbols-outlined text-sm">psychology</span>
-                        <h4 class="text-xs font-bold uppercase">AI Impact Analysis</h4>
+                        <span class="material-symbols-outlined text-sm ${isNeon ? 'text-cyan-400' : ''}">psychology</span>
+                        <h4 class="text-xs font-bold uppercase ${isNeon ? 'text-cyan-400' : ''}">AI Impact Analysis</h4>
                     </div>
                     <pre class="text-[11px] whitespace-pre-wrap leading-relaxed font-mono max-h-64 overflow-y-auto custom-scrollbar pr-2">${escapeHtml(aiImpactAnalysis)}</pre>
                 </div>
@@ -410,7 +411,7 @@ export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGen
 
     // Left: Visual Diff List
     const diffList = document.createElement('div');
-    diffList.className = `flex-1 overflow-y-auto custom-scrollbar p-6 space-y-4 transition-colors duration-300 ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-[#2E3440]' : (isEmber ? 'bg-[#140c12]' : (isAurora ? 'bg-[#0b1214]' : 'bg-[#0f1115]'))))}`;
+    diffList.className = `flex-1 overflow-y-auto custom-scrollbar p-6 space-y-4 transition-colors duration-300 ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isNeon ? 'bg-neon-bg' : (isOceanic ? 'bg-[#2E3440]' : (isEmber ? 'bg-[#140c12]' : (isAurora ? 'bg-[#0b1214]' : 'bg-[#0f1115]')))))}`;
 
     if (!hasChanges) {
         diffList.innerHTML = `
@@ -449,7 +450,7 @@ export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGen
     // Right: Migration Script Preview
     if (hasChanges || migrationScript) {
         const scriptPanel = document.createElement('div');
-        scriptPanel.className = `w-1/3 border-l transition-colors duration-300 ${isLight ? 'border-gray-200 bg-white' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3]' : (isOceanic ? 'border-[#4C566A] bg-[#3B4252]' : (isEmber ? 'border-[#2c1c27] bg-[#1d141c]' : (isAurora ? 'border-[#1b2e33] bg-[#0f1a1d]' : 'border-white/5 bg-[#0b0d10]'))))} flex flex-col font-mono text-xs overflow-hidden`;
+        scriptPanel.className = `w-1/3 border-l transition-colors duration-300 ${isLight ? 'border-gray-200 bg-white' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3]' : (isNeon ? 'border-neon-border/30 bg-neon-panel' : (isOceanic ? 'border-[#4C566A] bg-[#3B4252]' : (isEmber ? 'border-[#2c1c27] bg-[#1d141c]' : (isAurora ? 'border-[#1b2e33] bg-[#0f1a1d]' : 'border-white/5 bg-[#0b0d10]')))))} flex flex-col font-mono text-xs overflow-hidden`;
 
         renderScriptPanel = () => {
             const strategyOptions = resolvedDbType === 'postgresql'
@@ -481,20 +482,20 @@ export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGen
             const warningHtml = warnings.length > 0
                 ? `<div class="mb-3 space-y-2">
                         ${warnings.map((warning) => {
-                            const severity = String(warning.severity || 'low').toLowerCase();
-                            const severityClass = severity === 'high'
-                                ? (isLight ? 'bg-red-50 border-red-200 text-red-700' : 'bg-red-500/10 border-red-500/20 text-red-400')
-                                : severity === 'medium'
-                                    ? (isLight ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-amber-500/10 border-amber-500/20 text-amber-400')
-                                    : (isLight ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-blue-500/10 border-blue-500/20 text-blue-300');
-                            const icon = severity === 'high' ? 'error' : (severity === 'medium' ? 'warning' : 'info');
-                            return `
+                    const severity = String(warning.severity || 'low').toLowerCase();
+                    const severityClass = severity === 'high'
+                        ? (isLight ? 'bg-red-50 border-red-200 text-red-700' : 'bg-red-500/10 border-red-500/20 text-red-400')
+                        : severity === 'medium'
+                            ? (isLight ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-amber-500/10 border-amber-500/20 text-amber-400')
+                            : (isLight ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-blue-500/10 border-blue-500/20 text-blue-300');
+                    const icon = severity === 'high' ? 'error' : (severity === 'medium' ? 'warning' : 'info');
+                    return `
                                 <div class="px-3 py-2 rounded border ${severityClass} flex items-start gap-2 text-[10px] leading-relaxed">
                                     <span class="material-symbols-outlined text-[14px]">${icon}</span>
                                     <span>${escapeHtml(warning.message || '')}</span>
                                 </div>
                             `;
-                        }).join('')}
+                }).join('')}
                    </div>`
                 : '';
 
@@ -506,7 +507,7 @@ export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGen
                 : '';
 
             scriptPanel.innerHTML = `
-                <div class="px-4 py-2 border-b ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-[#4C566A] bg-[#2E3440]' : (isEmber ? 'border-[#2c1c27] bg-[#140c12]' : (isAurora ? 'border-[#1b2e33] bg-[#0b1214]' : 'border-white/5 bg-black/20'))))}">
+                <div class="px-4 py-2 border-b ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isNeon ? 'border-neon-border/20 bg-neon-panel' : (isOceanic ? 'border-[#4C566A] bg-[#2E3440]' : (isEmber ? 'border-[#2c1c27] bg-[#140c12]' : (isAurora ? 'border-[#1b2e33] bg-[#0b1214]' : 'border-white/5 bg-black/20')))))}">
                     <div class="flex justify-between items-center">
                         <span class="font-bold opacity-50 ${isLight || isDawn ? 'text-gray-600' : 'text-gray-400'} uppercase">MIGRATION SQL</span>
                         <span class="text-[10px] font-bold ${isLight || isDawn ? 'text-gray-500' : 'text-gray-400'} uppercase">${resolvedDbType}</span>
@@ -527,8 +528,8 @@ export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGen
                     ${warningHtml}
                     ${externalCommandsHtml}
                     ${loadingMigrationPlan
-                        ? `<div class="text-[11px] ${isLight ? 'text-gray-500' : 'text-gray-400'} flex items-center gap-2"><span class="material-symbols-outlined text-sm animate-spin">progress_activity</span>Generating migration plan...</div>`
-                        : `<pre class="${isLight || isDawn ? 'text-gray-700' : 'text-gray-300'} leading-relaxed">${highlightSQL(effectiveScript, theme)}</pre>`}
+                    ? `<div class="text-[11px] ${isLight ? 'text-gray-500' : 'text-gray-400'} flex items-center gap-2"><span class="material-symbols-outlined text-sm animate-spin">progress_activity</span>Generating migration plan...</div>`
+                    : `<pre class="${isLight || isDawn ? 'text-gray-700' : 'text-gray-300'} leading-relaxed">${highlightSQL(effectiveScript, theme)}</pre>`}
                 </div>
             `;
 
@@ -574,27 +575,27 @@ export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGen
 
     function createDiffCard(type, title, items) {
         const card = document.createElement('div');
-        const borderColor = type === 'create' ? 'border-emerald-500/50' : (type === 'drop' ? 'border-red-500/50' : (isDawn ? 'border-[#ea9d34]/50' : 'border-amber-500/50'));
-        const bgColor = isLight ? 'bg-white shadow-sm' : (isDawn ? 'bg-[#faf4ed]/50' : 'bg-white/5');
+        const borderColor = type === 'create' ? (isNeon ? 'border-cyan-400' : 'border-emerald-500/50') : (type === 'drop' ? (isNeon ? 'border-neon-pink' : 'border-red-500/50') : (isNeon ? 'border-amber-400' : (isDawn ? 'border-[#ea9d34]/50' : 'border-amber-500/50')));
+        const bgColor = isLight ? 'bg-white shadow-sm' : (isDawn ? 'bg-[#faf4ed]/50' : (isNeon ? 'bg-neon-panel/50 backdrop-blur-sm' : 'bg-white/5'));
         const icon = type === 'create' ? 'add_circle' : (type === 'drop' ? 'remove_circle' : 'edit');
-        const iconColor = type === 'create' ? 'text-emerald-500' : (type === 'drop' ? 'text-red-500' : (isDawn ? 'text-[#ea9d34]' : 'text-amber-500'));
+        const iconColor = type === 'create' ? (isNeon ? 'text-cyan-400' : 'text-emerald-500') : (type === 'drop' ? (isNeon ? 'text-neon-pink' : 'text-red-500') : (isNeon ? 'text-amber-400' : (isDawn ? 'text-[#ea9d34]' : 'text-amber-500')));
 
         card.className = `rounded-lg border-l-4 transition-all duration-300 ${borderColor} ${bgColor} overflow-hidden`;
         card.innerHTML = `
-            <div class="px-4 py-3 flex items-center justify-between border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
+            <div class="px-4 py-3 flex items-center justify-between border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : (isNeon ? 'border-neon-border/20' : 'border-white/5'))}">
                 <div class="flex items-center gap-2">
                     <span class="material-symbols-outlined text-base ${iconColor}">${icon}</span>
-                    <span class="font-bold text-sm ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-200')}">${title}</span>
+                    <span class="font-bold text-sm ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-gray-200'))}">${title}</span>
                 </div>
-                <span class="text-[10px] font-bold uppercase opacity-50 ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">${type}</span>
+                <span class="text-[10px] font-bold uppercase opacity-50 ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-text/40' : 'text-gray-400'))}">${type}</span>
             </div>
             ${items.length > 0 ? `
                 <div class="px-4 py-3 text-[11px] font-mono space-y-1 opacity-80">
                     ${items.map(item => {
             let color = '';
-            if (item.startsWith('+')) color = 'text-emerald-500';
-            else if (item.startsWith('-')) color = 'text-red-500';
-            else color = isDawn ? 'text-[#ea9d34]' : 'text-amber-500';
+            if (item.startsWith('+')) color = isNeon ? 'text-cyan-400' : 'text-emerald-500';
+            else if (item.startsWith('-')) color = isNeon ? 'text-neon-pink' : 'text-red-500';
+            else color = isNeon ? 'text-amber-400' : (isDawn ? 'text-[#ea9d34]' : 'text-amber-500');
             return `<div class="truncate ${color}">${item}</div>`;
         }).join('')}
                 </div>

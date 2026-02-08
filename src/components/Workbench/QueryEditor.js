@@ -164,8 +164,9 @@ export function QueryEditor() {
     let isLight = theme === 'light';
     let isDawn = theme === 'dawn';
     let isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+    let isNeon = theme === 'neon';
     const container = document.createElement('div');
-    container.className = `flex flex-col h-full border-b ${isLight ? 'border-gray-200 bg-white' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3]' : (isOceanic ? 'border-ocean-border/50 bg-ocean-bg' : 'border-white/5 bg-[#0f1115]'))}`;
+    container.className = `flex flex-col h-full border-b ${isLight ? 'border-gray-200 bg-white' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3]' : (isOceanic ? 'border-ocean-border/50 bg-ocean-bg' : (isNeon ? 'border-neon-border/50 bg-neon-bg' : 'border-white/5 bg-[#0f1115]')))}`;
 
     // Local State
     let lastExecutionTime = null;
@@ -275,7 +276,7 @@ export function QueryEditor() {
                     const title = marker.collapsed
                         ? `Expand (${marker.endLine - marker.line + 1} lines)`
                         : 'Collapse';
-                    gutterHTML.push(`<div class="fold-marker" data-fold-line="${i}" title="${title}" style="height:${typography.lineHeight}px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><span class="material-symbols-outlined ${marker.collapsed ? 'text-mysql-teal' : (isLight ? 'text-gray-400' : 'text-gray-500')} hover:text-mysql-teal transition-colors" style="font-size:12px;">${icon}</span></div>`);
+                    gutterHTML.push(`<div class="fold-marker" data-fold-line="${i}" title="${title}" style="height:${typography.lineHeight}px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><span class="material-symbols-outlined ${marker.collapsed ? 'text-mysql-teal' : (isLight ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/40' : (isNeon ? 'text-neon-text/40' : 'text-gray-500')))} hover:text-mysql-teal transition-colors" style="font-size:12px;">${icon}</span></div>`);
                 } else {
                     gutterHTML.push(`<div style="height:${typography.lineHeight}px;"></div>`);
                 }
@@ -785,7 +786,7 @@ export function QueryEditor() {
         if (!popup) {
             popup = document.createElement('div');
             popup.id = 'autocomplete-popup';
-            popup.className = `absolute z-[100] ${isLight ? 'bg-white border-gray-200 shadow-xl' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-xl' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50 shadow-2xl' : 'bg-[#1a1d23] border border-white/10 shadow-2xl'))} rounded-lg py-1 min-w-[250px] max-w-[400px] max-h-[250px] overflow-y-auto custom-scrollbar transition-all duration-200`;
+            popup.className = `absolute z-[100] ${isLight ? 'bg-white border-gray-200 shadow-xl' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-xl' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50 shadow-2xl' : (isNeon ? 'bg-neon-panel border border-neon-border/50 shadow-2xl' : 'bg-[#1a1d23] border border-white/10 shadow-2xl')))} rounded-lg py-1 min-w-[250px] max-w-[400px] max-h-[250px] overflow-y-auto custom-scrollbar transition-all duration-200`;
             const editorContainer = container.querySelector('.neu-inset');
             if (editorContainer) {
                 editorContainer.style.position = 'relative';
@@ -798,13 +799,13 @@ export function QueryEditor() {
         popup.style.left = `${Math.min(coords.left, 300)}px`;
 
         popup.innerHTML = suggestions.map((s, i) => `
-            <div class="autocomplete-item px-3 py-1.5 flex items-center gap-2 cursor-pointer transition-colors ${i === selectedIndex ? (isLight ? 'bg-mysql-teal/10 text-mysql-teal' : (isDawn ? 'bg-[#ea9d34]/20 text-[#ea9d34]' : 'bg-mysql-teal/20 text-white')) : (isLight ? 'text-gray-700 hover:bg-gray-50' : (isDawn ? 'text-[#575279] hover:bg-[#faf4ed]' : 'text-gray-400 hover:bg-white/5'))}" data-index="${i}">
+            <div class="autocomplete-item px-3 py-1.5 flex items-center gap-2 cursor-pointer transition-colors ${i === selectedIndex ? (isLight ? 'bg-mysql-teal/10 text-mysql-teal' : (isDawn ? 'bg-[#ea9d34]/20 text-[#ea9d34]' : (isNeon ? 'bg-neon-accent/10 text-neon-accent' : 'bg-mysql-teal/20 text-white'))) : (isLight ? 'text-gray-700 hover:bg-gray-50' : (isDawn ? 'text-[#575279] hover:bg-[#faf4ed]' : (isNeon ? 'text-neon-text hover:bg-white/5' : 'text-gray-400 hover:bg-white/5')))}" data-index="${i}">
                 <span class="material-symbols-outlined text-sm ${s.color}">${s.icon}</span>
                 <div class="flex-1 min-w-0">
                     <div class="font-mono text-[12px] truncate">${s.display || s.value}</div>
-                    ${s.detail ? `<div class="text-[9px] ${isLight ? 'text-gray-400' : 'text-gray-500'} truncate">${s.detail}</div>` : ''}
+                    ${s.detail ? `<div class="text-[9px] ${isLight ? 'text-gray-400' : (isNeon ? 'text-neon-text/40' : 'text-gray-500')} truncate">${s.detail}</div>` : ''}
                 </div>
-                <span class="text-[9px] ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-600'))} uppercase flex-shrink-0">${s.type}</span>
+                <span class="text-[9px] ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : (isNeon ? 'text-neon-text/40' : 'text-gray-600')))} uppercase flex-shrink-0">${s.type}</span>
             </div>
         `).join('');
 
@@ -898,11 +899,11 @@ export function QueryEditor() {
 
         const menu = document.createElement('div');
         menu.id = 'tab-context-menu';
-        menu.className = `fixed z-[9999] py-1 rounded-lg border shadow-xl ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-[#1a1f26] border-ocean-border/50' : 'bg-[#16191e] border-white/10'))} min-w-[160px] animate-in fade-in zoom-in-95 duration-100`;
+        menu.className = `fixed z-[9999] py-1 rounded-lg border shadow-xl ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-[#1a1f26] border-ocean-border/50' : (isNeon ? 'bg-neon-panel border-neon-border/50' : 'bg-[#16191e] border-white/10')))} min-w-[160px] animate-in fade-in zoom-in-95 duration-100`;
         menu.style.left = `${contextMenu.x}px`;
         menu.style.top = `${contextMenu.y}px`;
 
-        const itemClass = `px-4 py-2 text-xs flex items-center gap-2 cursor-pointer transition-colors ${isLight ? 'text-gray-700 hover:bg-gray-50' : (isDawn ? 'text-[#575279] hover:bg-[#faf4ed]' : (isOceanic ? 'text-ocean-text hover:bg-white/5' : 'text-gray-300 hover:bg-white/5'))}`;
+        const itemClass = `px-4 py-2 text-xs flex items-center gap-2 cursor-pointer transition-colors ${isLight ? 'text-gray-700 hover:bg-gray-50' : (isDawn ? 'text-[#575279] hover:bg-[#faf4ed]' : (isOceanic ? 'text-ocean-text hover:bg-white/5' : (isNeon ? 'text-neon-text hover:bg-white/5' : 'text-gray-300 hover:bg-white/5')))}`;
         const dangerClass = `px-4 py-2 text-xs flex items-center gap-2 cursor-pointer transition-colors ${isLight ? 'text-red-600 hover:bg-red-50' : 'text-red-400 hover:bg-red-500/10'}`;
         const separatorClass = `h-px my-1 ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#f2e9e1]' : 'bg-white/5')}`;
 
@@ -969,6 +970,7 @@ export function QueryEditor() {
             isLight,
             isDawn,
             isOceanic,
+            isNeon,
             visibleTabs,
             activeTabId,
             overflowTabs
@@ -978,6 +980,7 @@ export function QueryEditor() {
             isLight,
             isDawn,
             isOceanic,
+            isNeon,
             isPg,
             estimatedExecutionTime,
             lastExecutionTime,
@@ -988,6 +991,7 @@ export function QueryEditor() {
             isLight,
             isDawn,
             isOceanic,
+            isNeon,
             lineNumbersEnabled,
             lineNumberFontSize,
             typography,
@@ -1005,7 +1009,7 @@ export function QueryEditor() {
 
             <!-- Inline AI Repair Bar (Hidden by default) -->
             <div id="repair-bar" class="${repairBarVisible ? 'h-16 opacity-100' : 'hidden h-0 opacity-0'} overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)]">
-                <div class="mx-4 mt-2 p-3 rounded-xl border flex items-center justify-between gap-4 ${isLight ? 'bg-rose-50 border-rose-100' : (isDawn ? 'bg-[#fff1f0] border-[#f2e9e1]' : (isOceanic ? 'bg-[#3b4252]/50 border-rose-500/20' : 'bg-rose-500/5 border-rose-500/20'))}">
+                <div class="mx-4 mt-2 p-3 rounded-xl border flex items-center justify-between gap-4 ${isLight ? 'bg-rose-50 border-rose-100' : (isDawn ? 'bg-[#fff1f0] border-[#f2e9e1]' : (isOceanic ? 'bg-[#3b4252]/50 border-rose-500/20' : (isNeon ? 'bg-neon-bg border-rose-500/20' : 'bg-rose-500/5 border-rose-500/20')))}">
                     <div class="flex items-center gap-3 overflow-hidden">
                         <div class="w-8 h-8 rounded-lg bg-rose-500/10 flex items-center justify-center shrink-0">
                             <span class="material-symbols-outlined text-rose-500 text-lg">error</span>
@@ -1027,7 +1031,7 @@ export function QueryEditor() {
 
             <!-- AI Fix Preview Bar (Hidden by default) -->
             <div id="repair-preview-bar" class="${repairPreviewVisible ? 'h-16 opacity-100' : 'hidden h-0 opacity-0'} overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)]">
-                <div class="mx-4 mt-2 p-3 rounded-xl border flex items-center justify-between gap-4 ${isLight ? 'bg-emerald-50 border-emerald-100' : (isDawn ? 'bg-[#f0f9f4] border-[#f2e9e1]' : (isOceanic ? 'bg-[#3b4252]/50 border-emerald-500/20' : 'bg-emerald-500/5 border-emerald-500/20'))}">
+                <div class="mx-4 mt-2 p-3 rounded-xl border flex items-center justify-between gap-4 ${isLight ? 'bg-emerald-50 border-emerald-100' : (isDawn ? 'bg-[#f0f9f4] border-[#f2e9e1]' : (isOceanic ? 'bg-[#3b4252]/50 border-emerald-500/20' : (isNeon ? 'bg-neon-bg border-emerald-500/30' : 'bg-emerald-500/5 border-emerald-500/20')))}">
                     <div class="flex items-center gap-3 overflow-hidden">
                         <div class="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
                             <span class="material-symbols-outlined text-emerald-500 text-lg animate-pulse">check_circle</span>
@@ -2980,8 +2984,10 @@ export function QueryEditor() {
     const onThemeChange = (e) => {
         theme = e.detail.theme;
         isLight = theme === 'light';
+        isDawn = theme === 'dawn';
         isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
-        container.className = `flex flex-col h-full border-b ${isLight ? 'border-gray-200 bg-white' : (isOceanic ? 'border-ocean-border/50 bg-ocean-bg' : 'border-white/5 bg-[#0f1115]')} `;
+        isNeon = theme === 'neon';
+        container.className = `flex flex-col h-full border-b ${isLight ? 'border-gray-200 bg-white' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3]' : (isOceanic ? 'border-ocean-border/50 bg-ocean-bg' : (isNeon ? 'border-neon-border/50 bg-neon-bg' : 'border-white/5 bg-[#0f1115]')))}`;
         render();
     };
     window.addEventListener('themechange', onThemeChange);

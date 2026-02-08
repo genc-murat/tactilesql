@@ -18,16 +18,18 @@ export function ResultsTable(options = {}) {
     let isLight = theme === 'light';
     let isDawn = theme === 'dawn';
     let isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+    let isNeon = theme === 'neon';
     const container = document.createElement('div');
     container.className = "flex flex-col flex-1 min-h-[300px] max-h-full min-w-[600px] bg-transparent"; // bg-transparent ensures no flicker? Controls set bg.
 
     // Theme Colors
-    const textColor = isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text' : 'text-gray-300'));
-    const borderColor = isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/50' : 'border-white/10'));
-    const labelColor = isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-500'));
-    const searchBg = isLight ? 'bg-white border-gray-300 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50 shadow-lg' : 'bg-[#0f1115] border-white/10 shadow-lg'));
-    const buttonHover = isLight ? 'hover:bg-gray-50' : (isDawn ? 'hover:bg-[#fffaf3] text-[#575279]' : (isOceanic ? 'hover:bg-ocean-panel' : 'hover:bg-white/5'));
-    const dividerColor = isLight ? 'bg-gray-300' : (isDawn ? 'bg-[#d8d1cf]' : (isOceanic ? 'bg-ocean-border' : 'bg-white/10'));
+    // Theme Colors
+    let textColor = isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text' : (isNeon ? 'text-neon-text' : 'text-gray-300')));
+    let borderColor = isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/50' : (isNeon ? 'border-neon-border/50' : 'border-white/10')));
+    let labelColor = isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/50' : (isNeon ? 'text-neon-text/50' : 'text-gray-500')));
+    let searchBg = isLight ? 'bg-white border-gray-300 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50 shadow-lg' : (isNeon ? 'bg-neon-bg border-neon-border/50 shadow-lg' : 'bg-[#0f1115] border-white/10 shadow-lg')));
+    let buttonHover = isLight ? 'hover:bg-gray-50' : (isDawn ? 'hover:bg-[#fffaf3] text-[#575279]' : (isOceanic ? 'hover:bg-ocean-panel' : (isNeon ? 'hover:bg-neon-accent/10' : 'hover:bg-white/5')));
+    let dividerColor = isLight ? 'bg-gray-300' : (isDawn ? 'bg-[#d8d1cf]' : (isOceanic ? 'bg-ocean-border' : (isNeon ? 'bg-neon-border/50' : 'bg-white/10')));
 
     const formatDurationValue = (value) => {
         if (value === null || value === undefined || value === '') return '0ms';
@@ -45,15 +47,15 @@ export function ResultsTable(options = {}) {
         if (Number.isNaN(originalRows) || originalRows <= shownRows) return '';
         const badgeClass = isLight
             ? 'bg-amber-100 text-amber-700'
-            : (isDawn ? 'bg-[#ea9d34]/20 text-[#ea9d34]' : (isOceanic ? 'bg-amber-400/20 text-amber-300' : 'bg-amber-500/20 text-amber-300'));
+            : (isDawn ? 'bg-[#ea9d34]/20 text-[#ea9d34]' : (isOceanic ? 'bg-amber-400/20 text-amber-300' : (isNeon ? 'bg-neon-accent/20 text-neon-accent' : 'bg-amber-500/20 text-amber-300')));
         return `<span class="ml-1 px-1.5 py-0.5 rounded ${badgeClass} text-[8px] font-bold">${shownRows.toLocaleString()}/${originalRows.toLocaleString()} SHOWN</span>`;
     };
 
     const renderControls = () => {
-        const headerBg = isLight ? 'bg-gradient-to-b from-gray-50 to-gray-100/50 border-gray-200' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1]' : (isOceanic ? 'bg-gradient-to-b from-[#3B4252] to-[#2E3440] border-ocean-border/30' : 'bg-gradient-to-b from-[#16191e] to-[#13161b] border-white/5'));
-        const iconBg = isLight ? 'bg-mysql-teal/10' : (isDawn ? 'bg-[#ea9d34]/20' : 'bg-mysql-teal/20');
-        const iconColor = isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal';
-        const placeholderColor = isLight ? 'placeholder:text-gray-400' : (isDawn ? 'placeholder:text-[#9893a5]' : 'placeholder:text-gray-500');
+        const headerBg = isLight ? 'bg-gradient-to-b from-gray-50 to-gray-100/50 border-gray-200' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1]' : (isOceanic ? 'bg-gradient-to-b from-[#3B4252] to-[#2E3440] border-ocean-border/30' : (isNeon ? 'bg-gradient-to-b from-neon-panel to-neon-bg border-neon-border/30' : 'bg-gradient-to-b from-[#16191e] to-[#13161b] border-white/5')));
+        const iconBg = isLight ? 'bg-mysql-teal/10' : (isDawn ? 'bg-[#ea9d34]/20' : (isNeon ? 'bg-neon-text/10' : 'bg-mysql-teal/20'));
+        const iconColor = isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-text' : 'text-mysql-teal');
+        const placeholderColor = isLight ? 'placeholder:text-gray-400' : (isDawn ? 'placeholder:text-[#9893a5]' : (isNeon ? 'placeholder:text-neon-text/40' : 'placeholder:text-gray-500'));
 
 
         const toolbarHtml = headless ? '' : `
@@ -66,7 +68,7 @@ export function ResultsTable(options = {}) {
                         </div>
                         <div class="flex flex-col">
                             <h2 class="text-[10px] font-black tracking-[0.15em] ${textColor}">Result Set</h2>
-                            <span id="row-count-badge" class="text-[9px] font-semibold ${isLight ? 'text-mysql-teal' : (isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal/90')}">0 rows</span>
+                            <span id="row-count-badge" class="text-[9px] font-semibold ${isLight ? 'text-mysql-teal' : (isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-text' : 'text-mysql-teal/90'))}">0 rows</span>
                         </div>
                     </div>
                     <div class="h-6 w-px ${dividerColor} flex-shrink-0"></div>
@@ -81,7 +83,7 @@ export function ResultsTable(options = {}) {
                     <!-- Pending Changes Indicator (Relocated to Right Group) -->
 
 
-                    <button id="insert-row-btn" class="flex items-center justify-center gap-1.5 w-8 h-8 rounded-lg ${isDawn ? 'bg-[#9ccfd8] text-black hover:brightness-110' : 'bg-mysql-teal text-black hover:brightness-110'} transition-all shadow-md active:scale-95 opacity-0 pointer-events-none scale-90" title="Insert Row">
+                    <button id="insert-row-btn" class="flex items-center justify-center gap-1.5 w-8 h-8 rounded-lg ${isDawn ? 'bg-[#9ccfd8] text-black hover:brightness-110' : (isNeon ? 'bg-neon-accent text-white hover:brightness-110' : 'bg-mysql-teal text-black hover:brightness-110')} transition-all shadow-md active:scale-95 opacity-0 pointer-events-none scale-90" title="Insert Row">
                         <span class="material-symbols-outlined text-lg">add</span>
                     </button>
 
@@ -89,16 +91,16 @@ export function ResultsTable(options = {}) {
 
                     <!-- View Modes -->
                     <div class="flex items-center gap-0.5 ${searchBg} border rounded-lg p-0.5">
-                        <button class="view-mode-btn flex items-center justify-center w-7 h-7 rounded-md transition-all ${viewMode === 'table' ? (isDawn ? 'bg-[#ea9d34] text-white' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-400 hover:bg-white/5')}" data-mode="table" title="Table View">
+                        <button class="view-mode-btn flex items-center justify-center w-7 h-7 rounded-md transition-all ${viewMode === 'table' ? (isDawn ? 'bg-[#ea9d34] text-white' : (isNeon ? 'bg-neon-accent text-white shadow-[0_0_8px_rgba(255,0,153,0.3)]' : 'bg-mysql-teal text-black')) : (isLight ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-400 hover:bg-white/5')}" data-mode="table" title="Table View">
                             <span class="material-symbols-outlined text-lg">table_chart</span>
                         </button>
-                        <button class="view-mode-btn flex items-center justify-center w-7 h-7 rounded-md transition-all ${viewMode === 'transpose' ? (isDawn ? 'bg-[#ea9d34] text-white' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-400 hover:bg-white/5')}" data-mode="transpose" title="Transpose View">
+                        <button class="view-mode-btn flex items-center justify-center w-7 h-7 rounded-md transition-all ${viewMode === 'transpose' ? (isDawn ? 'bg-[#ea9d34] text-white' : (isNeon ? 'bg-neon-accent text-white shadow-[0_0_8px_rgba(255,0,153,0.3)]' : 'bg-mysql-teal text-black')) : (isLight ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-400 hover:bg-white/5')}" data-mode="transpose" title="Transpose View">
                             <span class="material-symbols-outlined text-lg">swap_horiz</span>
                         </button>
-                        <button class="view-mode-btn flex items-center justify-center w-7 h-7 rounded-md transition-all ${viewMode === 'tree' ? (isDawn ? 'bg-[#ea9d34] text-white' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-400 hover:bg-white/5')}" data-mode="tree" title="Tree View">
+                        <button class="view-mode-btn flex items-center justify-center w-7 h-7 rounded-md transition-all ${viewMode === 'tree' ? (isDawn ? 'bg-[#ea9d34] text-white' : (isNeon ? 'bg-neon-accent text-white shadow-[0_0_8px_rgba(255,0,153,0.3)]' : 'bg-mysql-teal text-black')) : (isLight ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-400 hover:bg-white/5')}" data-mode="tree" title="Tree View">
                             <span class="material-symbols-outlined text-lg">account_tree</span>
                         </button>
-                        <button class="view-mode-btn flex items-center justify-center w-7 h-7 rounded-md transition-all ${viewMode === 'text' ? (isDawn ? 'bg-[#ea9d34] text-white' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-400 hover:bg-white/5')}" data-mode="text" title="Text View">
+                        <button class="view-mode-btn flex items-center justify-center w-7 h-7 rounded-md transition-all ${viewMode === 'text' ? (isDawn ? 'bg-[#ea9d34] text-white' : (isNeon ? 'bg-neon-accent text-white shadow-[0_0_8px_rgba(255,0,153,0.3)]' : 'bg-mysql-teal text-black')) : (isLight ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-400 hover:bg-white/5')}" data-mode="text" title="Text View">
                             <span class="material-symbols-outlined text-lg">notes</span>
                         </button>
                     </div>
@@ -137,8 +139,8 @@ export function ResultsTable(options = {}) {
             <div class="flex items-center gap-1 px-4 py-1.5 ${isLight ? 'bg-gray-100 border-gray-200' : (isDawn ? 'bg-[#f2e9e1] border-[#f2e9e1]' : (isOceanic ? 'bg-[#2E3440] border-ocean-border/20' : 'bg-[#13161b] border-white/5'))} border-b overflow-x-auto custom-scrollbar">
                 ${resultTabs.map(tab => `
                     <div class="result-tab flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium cursor-pointer transition-all ${tab.id === activeTabId
-                ? (isLight ? 'bg-white border-gray-200 text-gray-700 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#ea9d34] shadow-sm' : (isOceanic ? 'bg-ocean-bg border-ocean-frost/30 text-ocean-text' : 'bg-[#1a1d23] border-mysql-teal/30 text-white')))
-                : (isLight ? 'bg-gray-50 border-transparent text-gray-500 hover:bg-gray-100' : (isDawn ? 'bg-[#fffaf3]/50 border-transparent text-[#797593] hover:bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg/50 border-transparent text-ocean-text/60 hover:bg-ocean-bg' : 'bg-white/5 border-transparent text-gray-400 hover:bg-white/10')))
+                ? (isLight ? 'bg-white border-gray-200 text-gray-700 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#ea9d34] shadow-sm' : (isOceanic ? 'bg-ocean-bg border-ocean-frost/30 text-ocean-text' : (isNeon ? 'bg-neon-bg border-neon-accent/30 text-neon-text shadow-[0_0_10px_rgba(0,243,255,0.1)]' : 'bg-[#1a1d23] border-mysql-teal/30 text-white'))))
+                : (isLight ? 'bg-gray-50 border-transparent text-gray-500 hover:bg-gray-100' : (isDawn ? 'bg-[#fffaf3]/50 border-transparent text-[#797593] hover:bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg/50 border-transparent text-ocean-text/60 hover:bg-ocean-bg' : (isNeon ? 'bg-neon-panel/50 border-transparent text-neon-text/50 hover:bg-neon-panel' : 'bg-white/5 border-transparent text-gray-400 hover:bg-white/10'))))
             } border group" data-tab-id="${tab.id}" title="${escapeHtml(tab.query)}">
                         <span class="truncate max-w-[120px]">${escapeHtml(tab.title)}</span>
                     </div>
@@ -152,14 +154,14 @@ export function ResultsTable(options = {}) {
         container.innerHTML = `
             ${toolbarHtml}
             ${tabsHtml}
-            <div class="flex-1 overflow-auto custom-scrollbar ${isLight ? 'bg-white' : (isDawn ? 'bg-[#faf4ed]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0f1115]'))}">
+            <div class="flex-1 overflow-auto custom-scrollbar ${isLight ? 'bg-white' : (isDawn ? 'bg-[#faf4ed]' : (isOceanic ? 'bg-ocean-bg' : (isNeon ? 'bg-neon-bg' : 'bg-[#0f1115]')))}">
                 <table id="results-table" class="w-full text-left font-mono text-[11px] border-collapse">
-                    <thead class="sticky top-0 ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel' : 'bg-[#16191e]'))} z-10 transition-colors">
+                    <thead class="sticky top-0 ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel' : (isNeon ? 'bg-neon-panel' : 'bg-[#16191e]')))} z-10 transition-colors">
                         <tr class="text-gray-500 tracking-tighter">
                              <!-- Columns will be injected here -->
                         </tr>
                     </thead>
-                    <tbody class="divide-y ${isLight ? 'divide-gray-100' : (isDawn ? 'divide-[#f2e9e1]/50' : (isOceanic ? 'divide-ocean-border/30' : 'divide-white/5'))}">
+                    <tbody class="divide-y ${isLight ? 'divide-gray-100' : (isDawn ? 'divide-[#f2e9e1]/50' : (isOceanic ? 'divide-ocean-border/30' : (isNeon ? 'divide-neon-border/30' : 'divide-white/5')))}">
                         <tr>
                             <td class="p-8 text-center text-gray-500 italic">
                                 <div class="flex flex-col items-center gap-2">
@@ -354,9 +356,9 @@ export function ResultsTable(options = {}) {
     };
 
     const formatCell = (cell) => {
-        if (cell === null || cell === undefined) return `<span class="px-1.5 py-0.5 rounded text-[10px] font-mono ${isLight ? 'bg-gray-100 text-gray-400' : (isDawn ? 'bg-[#f2e9e1] text-[#797593]' : (isOceanic ? 'bg-ocean-border/30 text-ocean-text/50' : 'bg-white/5 text-gray-500'))} italic">NULL</span>`;
+        if (cell === null || cell === undefined) return `<span class="px-1.5 py-0.5 rounded text-[10px] font-mono ${isLight ? 'bg-gray-100 text-gray-400' : (isDawn ? 'bg-[#f2e9e1] text-[#797593]' : (isOceanic ? 'bg-ocean-border/30 text-ocean-text/50' : (isNeon ? 'bg-neon-border/30 text-neon-text/50' : 'bg-white/5 text-gray-500')))} italic">NULL</span>`;
         if (typeof cell === 'boolean') return cell ? '<span class="text-green-400 font-bold">TRUE</span>' : '<span class="text-red-400 font-bold">FALSE</span>';
-        if (typeof cell === 'number') return `<span class="text-mysql-teal">${cell}</span>`;
+        if (typeof cell === 'number') return `<span class="${isNeon ? 'text-neon-text' : 'text-mysql-teal'}">${cell}</span>`;
         return escapeHtml(String(cell));
     };
 
@@ -439,11 +441,11 @@ export function ResultsTable(options = {}) {
         columnList.innerHTML = currentData.columns.map((col, idx) => {
             const isHidden = hiddenColumns.has(idx);
             return `
-                <label class="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#faf4ed]' : (isOceanic ? 'bg-ocean-bg' : 'bg-white/5'))} transition-colors">
-                    <input type="checkbox" class="column-toggle-checkbox w-3.5 h-3.5 rounded border ${isLight ? 'border-gray-300 bg-white' : (isDawn ? 'border-[#f2e9e1] bg-white' : (isOceanic ? 'border-ocean-border bg-ocean-bg' : 'border-white/20 bg-white/5'))} text-mysql-teal focus:ring-mysql-teal focus:ring-offset-0" 
+                <label class="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#faf4ed]' : (isOceanic ? 'bg-ocean-bg' : (isNeon ? 'bg-neon-accent/10' : 'bg-white/5')))} transition-colors">
+                    <input type="checkbox" class="column-toggle-checkbox w-3.5 h-3.5 rounded border ${isLight ? 'border-gray-300 bg-white' : (isDawn ? 'border-[#f2e9e1] bg-white' : (isOceanic ? 'border-ocean-border bg-ocean-bg' : (isNeon ? 'border-neon-border bg-neon-bg' : 'border-white/20 bg-white/5')))} text-mysql-teal focus:ring-mysql-teal focus:ring-offset-0" 
                            data-col-idx="${idx}" 
                            ${!isHidden ? 'checked' : ''}>
-                    <span class="text-[11px] ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text' : 'text-gray-300'))} ${isHidden ? 'line-through opacity-50' : ''}">${col}</span>
+                    <span class="text-[11px] ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text' : (isNeon ? 'text-neon-text' : 'text-gray-300')))} ${isHidden ? 'line-through opacity-50' : ''}">${col}</span>
                 </label>
             `;
         }).join('');
@@ -559,7 +561,7 @@ export function ResultsTable(options = {}) {
         const input = document.createElement('input');
         input.type = 'text';
         input.value = currentValue === null ? '' : currentValue;
-        input.className = `${isLight ? 'bg-white border-mysql-teal text-gray-800' : (isDawn ? 'bg-white border-[#ea9d34] text-[#575279]' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text' : 'bg-gray-900 border-cyan-500 text-white'))} border rounded px-2 py-1 w-full outline-none shadow-sm`;
+        input.className = `${isLight ? 'bg-white border-mysql-teal text-gray-800' : (isDawn ? 'bg-white border-[#ea9d34] text-[#575279]' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text' : (isNeon ? 'bg-neon-bg border-neon-accent text-neon-text' : 'bg-gray-900 border-cyan-500 text-white')))} border rounded px-2 py-1 w-full outline-none shadow-sm`;
 
         const save = () => {
             const newValue = input.value === '' ? null : input.value;
@@ -710,7 +712,7 @@ export function ResultsTable(options = {}) {
             // Update row styling
             const row = container.querySelector(`tr[data-row-idx="${rowIdx}"]`);
             if (row) {
-                row.classList.add(`${isLight ? 'bg-red-50' : (isDawn ? 'bg-[#eb6f92]/10' : (isOceanic ? 'bg-red-900/20' : 'bg-red-500/10'))} opacity-50`);
+                row.classList.add(`${isLight ? 'bg-red-50' : (isDawn ? 'bg-[#eb6f92]/10' : (isOceanic ? 'bg-red-900/20' : (isNeon ? 'bg-red-900/20' : 'bg-red-500/10')))} opacity-50`);
                 row.querySelectorAll('td').forEach(td => {
                     td.classList.add('line-through');
                 });
@@ -756,7 +758,7 @@ export function ResultsTable(options = {}) {
                 countText = `${filteredRows.length.toLocaleString()} / ${rows.length.toLocaleString()} ROWS`;
             }
 
-            rowCountBadge.innerHTML = `${countText} ${rowLimitBadge} ${vsIndicator}<span class="${isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]/60' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'))} font-normal ml-1">• ${formatDurationValue(currentData.duration)}</span>`;
+            rowCountBadge.innerHTML = `${countText} ${rowLimitBadge} ${vsIndicator}<span class="${isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]/60' : (isOceanic ? 'text-ocean-text/40' : (isNeon ? 'text-neon-text/40' : 'text-gray-500')))} font-normal ml-1">• ${formatDurationValue(currentData.duration)}</span>`;
         }
     };
 
@@ -1718,6 +1720,27 @@ export function ResultsTable(options = {}) {
             setTimeout(() => btn.innerHTML = originalText, 2000);
         };
     };
+
+    // --- Theme Handling ---
+    const onThemeChange = (e) => {
+        theme = e.detail.theme;
+        isLight = theme === 'light';
+        isDawn = theme === 'dawn';
+        isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        isNeon = theme === 'neon';
+
+        // Update Theme Colors
+        textColor = isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text' : (isNeon ? 'text-neon-text' : 'text-gray-300')));
+        borderColor = isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/50' : (isNeon ? 'border-neon-border/50' : 'border-white/10')));
+        labelColor = isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/50' : (isNeon ? 'text-neon-text/50' : 'text-gray-500')));
+        searchBg = isLight ? 'bg-white border-gray-300 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50 shadow-lg' : (isNeon ? 'bg-neon-bg border-neon-border/50 shadow-lg' : 'bg-[#0f1115] border-white/10 shadow-lg')));
+        buttonHover = isLight ? 'hover:bg-gray-50' : (isDawn ? 'hover:bg-[#fffaf3] text-[#575279]' : (isOceanic ? 'hover:bg-ocean-panel' : (isNeon ? 'hover:bg-neon-accent/10' : 'hover:bg-white/5')));
+        dividerColor = isLight ? 'bg-gray-300' : (isDawn ? 'bg-[#d8d1cf]' : (isOceanic ? 'bg-ocean-border' : (isNeon ? 'bg-neon-border/50' : 'bg-white/10')));
+
+        renderControls();
+        if (currentData.rows.length) renderTable(currentData);
+    };
+    window.addEventListener('themechange', onThemeChange);
 
     renderControls();
 

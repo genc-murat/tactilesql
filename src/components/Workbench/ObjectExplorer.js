@@ -12,6 +12,7 @@ export function ObjectExplorer() {
     let theme = ThemeManager.getCurrentTheme();
     let isLight = theme === 'light';
     let isDawn = theme === 'dawn';
+    let isNeon = theme === 'neon';
     let isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
 
     const explorer = document.createElement('div');
@@ -19,7 +20,8 @@ export function ObjectExplorer() {
         const isL = t === 'light';
         const isD = t === 'dawn';
         const isO = t === 'oceanic' || t === 'ember' || t === 'aurora';
-        return `h-full border-r ${isL ? 'bg-white border-gray-200' : (isD ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isO ? 'bg-ocean-panel border-ocean-border' : 'bg-[#0f1115] border-white/5'))} flex flex-col p-3 gap-4 overflow-hidden relative`;
+        const isN = t === 'neon';
+        return `h-full border-r ${isL ? 'bg-white border-gray-200' : (isD ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isO ? 'bg-ocean-panel border-ocean-border' : (isN ? 'bg-neon-bg border-neon-border/50' : 'bg-[#0f1115] border-white/5')))} flex flex-col p-3 gap-4 overflow-hidden relative`;
     };
     explorer.className = getExplorerClass(theme);
 
@@ -207,10 +209,10 @@ export function ObjectExplorer() {
             } else if (renderingConnectionId === activeConnectionId) {
                 // Only auto-load for active connection; otherwise show placeholder
                 loadTableDetails(db, table);
-                const loadingColor = isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-700'));
+                const loadingColor = isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]' : (isOceanic ? 'text-ocean-text/40' : (isNeon ? 'text-neon-text/40' : 'text-gray-700')));
                 return `<div class="pl-4 py-1 ${loadingColor} italic text-[10px]">Loading...</div>`;
             } else {
-                return `<div class="pl-4 py-1 ${isLight ? 'text-gray-300' : (isDawn ? 'text-[#cecacd]' : 'text-gray-700')} italic text-[10px]">Switch to this connection to load details</div>`;
+                return `<div class="pl-4 py-1 ${isLight ? 'text-gray-300' : (isDawn ? 'text-[#cecacd]' : (isNeon ? 'text-neon-text/20' : 'text-gray-700'))} italic text-[10px]">Switch to this connection to load details</div>`;
             }
         }
 
@@ -221,22 +223,22 @@ export function ObjectExplorer() {
             constraints = []
         } = details || {};
         return `
-            <div class="pl-4 space-y-1 border-l ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/30' : 'border-white/10'))} ml-2">
+            <div class="pl-4 space-y-1 border-l ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/30' : (isNeon ? 'border-neon-border/30' : 'border-white/10')))} ml-2">
                 <div class="py-0.5">
-                    <div class="flex items-center gap-1.5 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'))} text-[10px]">
-                        <span class="material-symbols-outlined text-[12px] ${isDawn ? 'text-[#c6a0f6]' : 'text-purple-400'}">view_column</span>
+                    <div class="flex items-center gap-1.5 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : (isNeon ? 'text-neon-text/40' : 'text-gray-500')))} text-[10px]">
+                        <span class="material-symbols-outlined text-[12px] ${isDawn ? 'text-[#c6a0f6]' : (isNeon ? 'text-neon-accent' : 'text-purple-400')}">view_column</span>
                         <span class="tracking-wider font-semibold">Columns</span>
-                        <span class="${isLight ? 'text-gray-300' : (isDawn ? 'text-[#ea9d34]' : 'text-gray-700')}">(${columns.length})</span>
+                        <span class="${isLight ? 'text-gray-300' : (isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent/50' : 'text-gray-700'))}">(${columns.length})</span>
                     </div>
                     <div class="pl-4 space-y-0.5 mt-0.5">
                         ${columns.map(col => `
-                            <div class="grid items-center gap-1.5 min-w-0 w-full overflow-hidden text-[10px] ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-600'))}" style="grid-template-columns: 12px minmax(0,1fr) minmax(0,45%);">
-                                ${col.column_key === 'PRI' ? `<span class="material-symbols-outlined text-[10px] shrink-0 ${isDawn ? 'text-[#ea9d34]' : 'text-yellow-500'}">key</span>` :
-                col.column_key === 'UNI' ? `<span class="material-symbols-outlined text-[10px] shrink-0 ${isDawn ? 'text-[#3e8fb0]' : 'text-blue-400'}">fingerprint</span>` :
-                    col.column_key === 'MUL' ? '<span class="material-symbols-outlined text-[10px] shrink-0 text-gray-500">link</span>' :
+                            <div class="grid items-center gap-1.5 min-w-0 w-full overflow-hidden text-[10px] ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text/60' : (isNeon ? 'text-neon-text/60' : 'text-gray-600')))}" style="grid-template-columns: 12px minmax(0,1fr) minmax(0,45%);">
+                                ${col.column_key === 'PRI' ? `<span class="material-symbols-outlined text-[10px] shrink-0 ${isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-yellow-500')}">key</span>` :
+                col.column_key === 'UNI' ? `<span class="material-symbols-outlined text-[10px] shrink-0 ${isDawn ? 'text-[#3e8fb0]' : (isNeon ? 'text-neon-pink' : 'text-blue-400')}">fingerprint</span>` :
+                    col.column_key === 'MUL' ? `<span class="material-symbols-outlined text-[10px] shrink-0 ${isNeon ? 'text-neon-accent/60' : 'text-gray-500'}">link</span>` :
                         '<span class="w-[10px] shrink-0"></span>'}
-                                <span class="${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279] font-medium' : (isOceanic ? 'text-ocean-text' : 'text-gray-400'))} ${highlightClass(`col-${db}-${table}-${col.name}`)} min-w-0 truncate" title="${escapeHtml(col.name || '')}" data-search-id="col-${db}-${table}-${col.name}">${escapeHtml(col.name || '')}</span>
-                                <span class="${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-700'))} text-[9px] min-w-0 truncate text-right" title="${escapeHtml(col.data_type || '')}">${escapeHtml(col.data_type || '')}</span>
+                                <span class="${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279] font-medium' : (isOceanic ? 'text-ocean-text' : (isNeon ? 'text-neon-text' : 'text-gray-400')))} ${highlightClass(`col-${db}-${table}-${col.name}`)} min-w-0 truncate" title="${escapeHtml(col.name || '')}" data-search-id="col-${db}-${table}-${col.name}">${escapeHtml(col.name || '')}</span>
+                                <span class="${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : (isNeon ? 'text-neon-text/40' : 'text-gray-700')))} text-[9px] min-w-0 truncate text-right" title="${escapeHtml(col.data_type || '')}">${escapeHtml(col.data_type || '')}</span>
                             </div>
                         `).join('')}
                     </div>
@@ -276,7 +278,7 @@ export function ObjectExplorer() {
         return `
             <div>
                 <div class="table-item flex items-center gap-2 min-w-0 w-full ${baseText} ${hoverText} cursor-grab py-1 group" data-table="${table}" data-db="${db}" data-conn-id="${renderingConnectionId || activeConnectionId}" draggable="true">
-                    <span class="material-symbols-outlined text-[10px] shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''} ${isDawn ? 'text-[#ea9d34]' : iconColor}">arrow_right</span>
+                    <span class="material-symbols-outlined text-[10px] shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''} ${isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : iconColor)}">arrow_right</span>
                     <span class="material-symbols-outlined text-[14px] shrink-0 ${iconColor} ${iconHover}">table_rows</span>
                     <span class="${highlightClass(`table-${db}-${table}`)} flex-1 min-w-0 truncate" title="${escapeHtml(table || '')}" data-search-id="table-${db}-${table}">${table}</span>
                 </div>
@@ -299,7 +301,7 @@ export function ObjectExplorer() {
                 <div class="pl-5 space-y-0.5 mt-0.5">
                     ${items.slice(0, objectsLimit).map(item => renderItem(db, item)).join('')}
                     ${items.length > objectsLimit ? `
-                        <button class="show-more-objects w-full text-left px-5 py-1 text-[9px] font-bold ${isDawn ? 'text-[#ea9d34] hover:text-[#c48c2b]' : 'text-mysql-teal hover:text-mysql-teal-light'} opacity-80 hover:opacity-100 transition-all flex items-center gap-1" data-db="${db}" data-type="${type}">
+                        <button class="show-more-objects w-full text-left px-5 py-1 text-[9px] font-bold ${isDawn ? 'text-[#ea9d34] hover:text-[#c48c2b]' : (isNeon ? 'text-neon-accent hover:text-neon-cyan' : 'text-mysql-teal hover:text-mysql-teal-light')} opacity-80 hover:opacity-100 transition-all flex items-center gap-1" data-db="${db}" data-type="${type}">
                             <span class="material-symbols-outlined text-[12px]">add_circle</span>
                             Show ${items.length - objectsLimit} more...
                         </button>
@@ -352,30 +354,30 @@ export function ObjectExplorer() {
             <div class="pl-6 space-y-1 border-l ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')} ml-2.5">
                 ${renderObjectCategory(db, 'tables', 'Tables', 'table_rows', isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal', filteredTables,
             (db, t) => renderTable(db, t))}
-                ${renderObjectCategory(db, 'views', 'Views', 'visibility', isDawn ? 'text-[#3e8fb0]' : 'text-blue-400', filteredViews,
-                (db, v) => `<div class="view-item flex items-center gap-2 min-w-0 w-full text-[10px] ${mainText} ${isLight ? 'hover:text-mysql-teal' : (isDawn ? 'hover:text-[#ea9d34]' : (isOceanic ? 'hover:text-ocean-frost' : 'hover:text-white'))} py-0.5 cursor-pointer" data-view="${v}" data-db="${db}">
-                        <span class="material-symbols-outlined text-[12px] shrink-0 ${isDawn ? 'text-[#3e8fb0]' : 'text-blue-400'}">visibility</span>
+                ${renderObjectCategory(db, 'views', 'Views', 'visibility', isDawn ? 'text-[#3e8fb0]' : (isNeon ? 'text-neon-pink' : 'text-blue-400'), filteredViews,
+                (db, v) => `<div class="view-item flex items-center gap-2 min-w-0 w-full text-[10px] ${mainText} ${isLight ? 'hover:text-mysql-teal' : (isDawn ? 'hover:text-[#ea9d34]' : (isOceanic ? 'hover:text-ocean-frost' : (isNeon ? 'hover:text-neon-accent' : 'hover:text-white')))} py-0.5 cursor-pointer" data-view="${v}" data-db="${db}">
+                        <span class="material-symbols-outlined text-[12px] shrink-0 ${isDawn ? 'text-[#3e8fb0]' : (isNeon ? 'text-neon-pink' : 'text-blue-400')}">visibility</span>
                         <span class="${highlightClass(`view-${db}-${v}`)} flex-1 min-w-0 truncate" title="${escapeHtml(v || '')}" data-search-id="view-${db}-${v}">${v}</span>
                     </div>`)}
-                ${renderObjectCategory(db, 'triggers', 'Triggers', 'bolt', isDawn ? 'text-[#f6c177]' : 'text-yellow-400', filteredTriggers,
+                ${renderObjectCategory(db, 'triggers', 'Triggers', 'bolt', isDawn ? 'text-[#f6c177]' : (isNeon ? 'text-neon-accent' : 'text-yellow-400'), filteredTriggers,
                     (db, t) => `<div class="grid items-center gap-2 min-w-0 w-full overflow-hidden text-[10px] ${mainText} py-0.5" style="grid-template-columns: 12px minmax(0,1fr) minmax(0,45%);">
-                        <span class="material-symbols-outlined text-[12px] shrink-0 ${isDawn ? 'text-[#f6c177]' : 'text-yellow-400'}">bolt</span>
+                        <span class="material-symbols-outlined text-[12px] shrink-0 ${isDawn ? 'text-[#f6c177]' : (isNeon ? 'text-neon-accent' : 'text-yellow-400')}">bolt</span>
                         <span class="${highlightClass(`trigger-${db}-${t.name}`)} min-w-0 truncate" title="${escapeHtml(t.name || '')}" data-search-id="trigger-${db}-${t.name}">${escapeHtml(t.name || '')}</span>
                         <span class="${subText} text-[9px] min-w-0 truncate text-right" title="${escapeHtml(`${t.timing || ''} ${t.event || ''}`.trim())}">${escapeHtml(`${t.timing || ''} ${t.event || ''}`.trim())}</span>
                     </div>`)}
-                ${renderObjectCategory(db, 'procedures', 'Procedures', 'code_blocks', isDawn ? 'text-[#9ccfd8]' : 'text-green-400', filteredProcedures,
+                ${renderObjectCategory(db, 'procedures', 'Procedures', 'code_blocks', isDawn ? 'text-[#9ccfd8]' : (isNeon ? 'text-neon-cyan' : 'text-green-400'), filteredProcedures,
                         (db, p) => `<div class="flex items-center gap-2 min-w-0 w-full text-[10px] ${mainText} py-0.5">
-                        <span class="material-symbols-outlined text-[12px] shrink-0 ${isDawn ? 'text-[#9ccfd8]' : 'text-green-400'}">code_blocks</span>
+                        <span class="material-symbols-outlined text-[12px] shrink-0 ${isDawn ? 'text-[#9ccfd8]' : (isNeon ? 'text-neon-cyan' : 'text-green-400')}">code_blocks</span>
                         <span class="${highlightClass(`procedure-${db}-${p.name}`)} flex-1 min-w-0 truncate" title="${escapeHtml(p.name || '')}" data-search-id="procedure-${db}-${p.name}">${p.name}</span>
                     </div>`)}
-                ${renderObjectCategory(db, 'functions', 'Functions', 'function', isDawn ? 'text-[#eb6f92]' : 'text-pink-400', filteredFunctions,
+                ${renderObjectCategory(db, 'functions', 'Functions', 'function', isDawn ? 'text-[#eb6f92]' : (isNeon ? 'text-neon-pink' : 'text-pink-400'), filteredFunctions,
                             (db, f) => `<div class="flex items-center gap-2 min-w-0 w-full text-[10px] ${mainText} py-0.5">
-                        <span class="material-symbols-outlined text-[12px] shrink-0 ${isDawn ? 'text-[#eb6f92]' : 'text-pink-400'}">function</span>
+                        <span class="material-symbols-outlined text-[12px] shrink-0 ${isDawn ? 'text-[#eb6f92]' : (isNeon ? 'text-neon-pink' : 'text-pink-400')}">function</span>
                         <span class="${highlightClass(`function-${db}-${f.name}`)} flex-1 min-w-0 truncate" title="${escapeHtml(f.name || '')}" data-search-id="function-${db}-${f.name}">${f.name}</span>
                     </div>`)}
-                ${renderObjectCategory(db, 'events', 'Events', 'schedule', isDawn ? 'text-[#ea9d34]' : 'text-orange-400', filteredEvents,
+                ${renderObjectCategory(db, 'events', 'Events', 'schedule', isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-orange-400'), filteredEvents,
                                 (db, e) => `<div class="grid items-center gap-2 min-w-0 w-full overflow-hidden text-[10px] ${mainText} py-0.5" style="grid-template-columns: 12px minmax(0,1fr) minmax(0,45%);">
-                        <span class="material-symbols-outlined text-[12px] shrink-0 ${isDawn ? 'text-[#ea9d34]' : 'text-orange-400'}">schedule</span>
+                        <span class="material-symbols-outlined text-[12px] shrink-0 ${isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-orange-400')}">schedule</span>
                         <span class="${highlightClass(`event-${db}-${e.name}`)} min-w-0 truncate" title="${escapeHtml(e.name || '')}" data-search-id="event-${db}-${e.name}">${escapeHtml(e.name || '')}</span>
                         <span class="${subText} text-[9px] min-w-0 truncate text-right" title="${escapeHtml(e.status || '')}">${escapeHtml(e.status || '')}</span>
                     </div>`)}
@@ -386,10 +388,10 @@ export function ObjectExplorer() {
     // --- Helper to render a database item ---
     const renderDatabase = (db) => {
         const isExpanded = expandedDbs.has(db);
-        const baseColor = isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text/70' : 'text-gray-400'));
-        const hoverColor = isLight ? 'hover:text-mysql-teal' : (isDawn ? 'hover:text-[#ea9d34]' : (isOceanic ? 'hover:text-ocean-frost' : 'hover:text-white'));
-        const dotColor = isExpanded ? (isDawn ? 'bg-[#ea9d34] shadow-[0_0_8px_rgba(234,157,52,0.6)]' : 'bg-mysql-teal glow-node') : (isLight ? 'bg-gray-300' : (isDawn ? 'bg-[#cecacd]' : (isOceanic ? 'bg-[#4C566A]' : 'bg-gray-700')));
-        const activeText = isExpanded ? (isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal') : '';
+        const baseColor = isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text/70' : (isNeon ? 'text-neon-text/70' : 'text-gray-400')));
+        const hoverColor = isLight ? 'hover:text-mysql-teal' : (isDawn ? 'hover:text-[#ea9d34]' : (isOceanic ? 'hover:text-ocean-frost' : (isNeon ? 'hover:text-neon-accent' : 'hover:text-white')));
+        const dotColor = isExpanded ? (isDawn ? 'bg-[#ea9d34] shadow-[0_0_8px_rgba(234,157,52,0.6)]' : (isNeon ? 'bg-neon-accent shadow-[0_0_8px_rgba(0,243,255,0.6)]' : 'bg-mysql-teal glow-node')) : (isLight ? 'bg-gray-300' : (isDawn ? 'bg-[#cecacd]' : (isOceanic ? 'bg-[#4C566A]' : (isNeon ? 'bg-white/10' : 'bg-gray-700'))));
+        const activeText = isExpanded ? (isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-mysql-teal')) : '';
 
         return `
             <div>
@@ -425,11 +427,11 @@ export function ObjectExplorer() {
             return `<div class="pl-6 py-1 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-600')} italic text-[10px]">${noDataText}</div>`;
         }
 
-        const borderClass = isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5');
-        const headerText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9797a2]' : 'text-gray-600');
-        const countText = isLight ? 'text-gray-300' : (isDawn ? 'text-[#ea9d34]' : 'text-gray-700');
-        const iconColor = isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal';
-        const sysIconColor = isDawn ? 'text-[#f6c177]' : 'text-amber-500';
+        const borderClass = isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isNeon ? 'border-white/5' : 'border-white/5'));
+        const headerText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9797a2]' : (isNeon ? 'text-neon-text/40' : 'text-gray-600'));
+        const countText = isLight ? 'text-gray-300' : (isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent/50' : 'text-gray-700'));
+        const iconColor = isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-mysql-teal');
+        const sysIconColor = isDawn ? 'text-[#f6c177]' : (isNeon ? 'text-neon-accent/60' : 'text-amber-500');
 
         const currentConnId = renderingConnectionId || activeConnectionId;
         // Labels based on database type (fallback to active db type)
@@ -455,7 +457,7 @@ export function ObjectExplorer() {
                             <div class="space-y-0.5 pl-1">
                                 ${truncatedUserDbs.map(db => renderDatabase(db)).join('')}
                                 ${hasMoreUserDbs ? `
-                                    <button class="show-more-dbs w-full text-left px-7 py-1.5 text-[9px] font-bold ${isDawn ? 'text-[#ea9d34] hover:text-[#c48c2b]' : 'text-mysql-teal hover:text-mysql-teal-light'} opacity-80 hover:opacity-100 transition-all flex items-center gap-1" data-conn-id="${currentConnId || ''}">
+                                    <button class="show-more-dbs w-full text-left px-7 py-1.5 text-[9px] font-bold ${isDawn ? 'text-[#ea9d34] hover:text-[#c48c2b]' : (isNeon ? 'text-neon-accent hover:text-neon-cyan' : 'text-mysql-teal hover:text-mysql-teal-light')} opacity-80 hover:opacity-100 transition-all flex items-center gap-1" data-conn-id="${currentConnId || ''}">
                                         <span class="material-symbols-outlined text-[12px]">add_circle</span>
                                         Show ${userDbs.length - userDbsLimit} more...
                                     </button>
@@ -565,11 +567,11 @@ export function ObjectExplorer() {
             ? (connColor ? '' : (isLight ? 'bg-blue-50' : (isDawn ? 'bg-[#ea9d34]/10' : 'bg-white/5')))
             : ((isLight || isDawn) ? (isDawn ? 'hover:bg-[#fffaf3] border border-transparent hover:border-[#f2e9e1]' : 'hover:bg-gray-100') : 'hover:bg-white/5');
 
-        let nameColor = isActive ? (isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-white')) : (isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400'));
-        let subText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-600'));
-        let arrowColor = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-600');
-        let iconColor = isActive ? (isDawn ? 'text-[#56949f]' : 'text-green-400') : (isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-600'));
-        let activeDot = isActive ? `<div class="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full ${isDawn ? 'bg-[#56949f] border border-[#fffaf3]' : 'bg-green-500 border-2 border-[#0b0d11]'}"></div>` : '';
+        let nameColor = isActive ? (isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-white'))) : (isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : (isNeon ? 'text-neon-text/40' : 'text-gray-400')));
+        let subText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : (isNeon ? 'text-neon-text/30' : 'text-gray-600')));
+        let arrowColor = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-accent/60' : 'text-gray-600'));
+        let iconColor = isActive ? (isDawn ? 'text-[#56949f]' : (isNeon ? 'text-neon-accent' : 'text-green-400')) : (isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-text/20' : 'text-gray-600')));
+        let activeDot = isActive ? `<div class="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full ${isDawn ? 'bg-[#56949f] border border-[#fffaf3]' : (isNeon ? 'bg-neon-accent border-2 border-neon-panel' : 'bg-green-500 border-2 border-[#0b0d11]')}"></div>` : '';
 
         let customStyle = '';
         if (connColor) {
@@ -630,14 +632,14 @@ export function ObjectExplorer() {
         const renderTypeBadge = (type) => {
             const base = 'px-1.5 py-0.5 rounded text-[8px] font-bold';
             switch (type) {
-                case 'database': return `<span class="${base} ${isDawn ? 'bg-[#f6c177]/20 text-[#c48c2b]' : 'bg-amber-500/20 text-amber-400'}">DB</span>`;
-                case 'table': return `<span class="${base} ${isDawn ? 'bg-[#ea9d34]/20 text-[#c77b22]' : 'bg-mysql-teal/20 text-mysql-teal'}">TABLE</span>`;
-                case 'column': return `<span class="${base} ${isDawn ? 'bg-[#c6a0f6]/20 text-[#7c6f9b]' : 'bg-purple-500/20 text-purple-300'}">COLUMN</span>`;
-                case 'view': return `<span class="${base} ${isDawn ? 'bg-[#3e8fb0]/20 text-[#2c6d8a]' : 'bg-blue-500/20 text-blue-300'}">VIEW</span>`;
-                case 'trigger': return `<span class="${base} ${isDawn ? 'bg-[#f6c177]/20 text-[#c48c2b]' : 'bg-yellow-500/20 text-yellow-300'}">TRIGGER</span>`;
-                case 'procedure': return `<span class="${base} ${isDawn ? 'bg-[#9ccfd8]/20 text-[#5f97a3]' : 'bg-green-500/20 text-green-300'}">PROC</span>`;
-                case 'function': return `<span class="${base} ${isDawn ? 'bg-[#eb6f92]/20 text-[#b45573]' : 'bg-pink-500/20 text-pink-300'}">FUNC</span>`;
-                case 'event': return `<span class="${base} ${isDawn ? 'bg-[#ea9d34]/20 text-[#c77b22]' : 'bg-orange-500/20 text-orange-300'}">EVENT</span>`;
+                case 'database': return `<span class="${base} ${isDawn ? 'bg-[#f6c177]/20 text-[#c48c2b]' : (isNeon ? 'bg-neon-accent/20 text-neon-accent' : 'bg-amber-500/20 text-amber-400')}">DB</span>`;
+                case 'table': return `<span class="${base} ${isDawn ? 'bg-[#ea9d34]/20 text-[#c77b22]' : (isNeon ? 'bg-neon-accent/20 text-neon-accent' : 'bg-mysql-teal/20 text-mysql-teal')}">TABLE</span>`;
+                case 'column': return `<span class="${base} ${isDawn ? 'bg-[#c6a0f6]/20 text-[#7c6f9b]' : (isNeon ? 'bg-neon-cyan/20 text-neon-cyan' : 'bg-purple-500/20 text-purple-300')}">COLUMN</span>`;
+                case 'view': return `<span class="${base} ${isDawn ? 'bg-[#3e8fb0]/20 text-[#2c6d8a]' : (isNeon ? 'bg-neon-pink/20 text-neon-pink' : 'bg-blue-500/20 text-blue-300')}">VIEW</span>`;
+                case 'trigger': return `<span class="${base} ${isDawn ? 'bg-[#f6c177]/20 text-[#c48c2b]' : (isNeon ? 'bg-neon-accent/20 text-neon-accent' : 'bg-yellow-500/20 text-yellow-300')}">TRIGGER</span>`;
+                case 'procedure': return `<span class="${base} ${isDawn ? 'bg-[#9ccfd8]/20 text-[#5f97a3]' : (isNeon ? 'bg-neon-cyan/20 text-neon-cyan' : 'bg-green-500/20 text-green-300')}">PROC</span>`;
+                case 'function': return `<span class="${base} ${isDawn ? 'bg-[#eb6f92]/20 text-[#b45573]' : (isNeon ? 'bg-neon-pink/20 text-neon-pink' : 'bg-pink-500/20 text-pink-300')}">FUNC</span>`;
+                case 'event': return `<span class="${base} ${isDawn ? 'bg-[#ea9d34]/20 text-[#c77b22]' : (isNeon ? 'bg-neon-accent/20 text-neon-accent' : 'bg-orange-500/20 text-orange-300')}">EVENT</span>`;
                 default: return '';
             }
         };
@@ -683,8 +685,8 @@ export function ObjectExplorer() {
                     const isCurrent = idx === currentMatchIndex;
                     const path = [m.db, m.table, m.column].filter(Boolean).join(' • ');
                     const activeItemBg = isCurrent
-                        ? (isDawn ? 'bg-[#ea9d34]/20 ring-1 ring-[#ea9d34]/30' : 'bg-mysql-teal/20 ring-1 ring-mysql-teal/30')
-                        : (isLight ? 'hover:bg-gray-100' : (isDawn ? 'hover:bg-[#f2e9e1]' : 'hover:bg-white/5'));
+                        ? (isDawn ? 'bg-[#ea9d34]/20 ring-1 ring-[#ea9d34]/30' : (isNeon ? 'bg-neon-accent/20 ring-1 ring-neon-accent/30' : 'bg-mysql-teal/20 ring-1 ring-mysql-teal/30'))
+                        : (isLight ? 'hover:bg-gray-100' : (isDawn ? 'hover:bg-[#f2e9e1]' : (isNeon ? 'hover:bg-white/5' : 'hover:bg-white/5')));
 
                     return `
                                     <button class="search-result-item w-full text-left px-3 py-2 rounded-lg transition-all flex items-center justify-between group ${activeItemBg}" data-index="${idx}">
@@ -701,15 +703,15 @@ export function ObjectExplorer() {
                 `;
             };
 
-            const glassBg = isLight ? 'bg-white/95' : (isDawn ? 'bg-[#fffaf3]/95' : 'bg-[#1a1d23]/95');
-            const glassBorder = isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/10');
+            const glassBg = isLight ? 'bg-white/95' : (isDawn ? 'bg-[#fffaf3]/95' : (isNeon ? 'bg-neon-panel/95' : 'bg-[#1a1d23]/95'));
+            const glassBorder = isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isNeon ? 'border-neon-border/50' : 'border-white/10'));
 
             return `
                 <div id="floating-search-results" class="absolute left-2 right-2 top-24 bottom-4 z-[100] flex flex-col pointer-events-none group/floating">
                     <div class="flex-1 overflow-y-auto custom-scrollbar rounded-2xl border ${glassBorder} ${glassBg} backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.3)] p-2 pointer-events-auto animate-search-in">
                         <div class="flex items-center justify-between px-3 mb-3 sticky top-0 ${glassBg} py-2 border-b ${glassBorder} z-10 rounded-t-xl">
                             <div class="flex items-center gap-2">
-                                <span class="text-[10px] font-bold ${isLight ? 'text-gray-800' : 'text-white'} tracking-tight">${totalResults} matching objects</span>
+                                <span class="text-[10px] font-bold ${isLight ? 'text-gray-800' : (isNeon ? 'text-neon-text' : 'text-white')} tracking-tight">${totalResults} matching objects</span>
                                 ${totalResults > MAX_DISPLAY ? `<span class="text-[8px] px-1.5 py-0.5 rounded bg-white/5 border border-white/10 ${headerText}">Showing top ${MAX_DISPLAY}</span>` : ''}
                             </div>
                             <div class="flex items-center gap-3">
@@ -752,15 +754,15 @@ export function ObjectExplorer() {
             <div class="px-2 mt-2">
                 <div class="relative group">
                     <input type="text" id="explorer-search" placeholder="Search objects..." 
-                        class="w-full ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#fcf9f2] border-[#f2e9e1]' : 'bg-white/5 border-white/10')} border rounded px-7 py-1.5 text-[10px] focus:outline-none ${isDawn ? 'focus:border-[#ea9d34]/50' : 'focus:border-mysql-teal/50'} transition-colors pr-24"
+                        class="w-full ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#fcf9f2] border-[#f2e9e1]' : (isNeon ? 'bg-neon-bg border-neon-border/30' : 'bg-white/5 border-white/10'))} border rounded px-7 py-1.5 text-[10px] focus:outline-none ${isDawn ? 'focus:border-[#ea9d34]/50' : (isNeon ? 'focus:border-neon-accent/50' : 'focus:border-mysql-teal/50')} transition-colors pr-24"
                         value="${escapeHtml(searchQuery)}">
                     <span class="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-[14px] ${iconColor}">search</span>
                     
                     <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
                         <div class="flex items-center bg-black/5 dark:bg-white/5 rounded-md p-0.5 border border-white/5">
-                            <button id="search-case-toggle" class="px-1 py-0.5 rounded text-[9px] font-black transition-all ${isCaseSensitive ? 'bg-mysql-teal text-black' : (isLight ? 'text-gray-400 hover:text-gray-600' : 'text-gray-500 hover:text-gray-300')}" title="Match Case (Aa)">Aa</button>
-                            <button id="search-exact-toggle" class="px-1 py-0.5 rounded text-[9px] font-black transition-all ${isExactMatch ? 'bg-mysql-teal text-black' : (isLight ? 'text-gray-400 hover:text-gray-600' : 'text-gray-500 hover:text-gray-300')}" title="Exact Match (Abc)">Abc</button>
-                            <button id="search-regex-toggle" class="px-1 py-0.5 rounded text-[9px] font-black transition-all ${isRegexMatch ? 'bg-mysql-teal text-black' : (isLight ? 'text-gray-400 hover:text-gray-600' : 'text-gray-500 hover:text-gray-300')}" title="Regex Match (.*)">.*</button>
+                            <button id="search-case-toggle" class="px-1 py-0.5 rounded text-[9px] font-black transition-all ${isCaseSensitive ? (isNeon ? 'bg-neon-accent text-black' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-400 hover:text-gray-600' : 'text-gray-500 hover:text-gray-300')}" title="Match Case (Aa)">Aa</button>
+                            <button id="search-exact-toggle" class="px-1 py-0.5 rounded text-[9px] font-black transition-all ${isExactMatch ? (isNeon ? 'bg-neon-accent text-black' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-400 hover:text-gray-600' : 'text-gray-500 hover:text-gray-300')}" title="Exact Match (Abc)">Abc</button>
+                            <button id="search-regex-toggle" class="px-1 py-0.5 rounded text-[9px] font-black transition-all ${isRegexMatch ? (isNeon ? 'bg-neon-accent text-black' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-400 hover:text-gray-600' : 'text-gray-500 hover:text-gray-300')}" title="Regex Match (.*)">.*</button>
                         </div>
                         <div id="search-controls-container" class="flex items-center gap-1">
                             ${searchQuery ? `
@@ -2310,6 +2312,7 @@ export function ObjectExplorer() {
         isLight = theme === 'light';
         isDawn = theme === 'dawn';
         isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        isNeon = theme === 'neon';
         explorer.className = getExplorerClass(theme);
         render();
     };

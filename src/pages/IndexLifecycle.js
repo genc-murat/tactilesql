@@ -14,34 +14,41 @@ export function IndexLifecycle() {
         const isLight = t === 'light';
         const isDawn = t === 'dawn';
         const isOceanic = t === 'oceanic' || t === 'ember' || t === 'aurora';
+        const isNeon = t === 'neon';
 
         return {
-            container: `flex-1 flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]'))} transition-colors duration-300`,
-            header: `px-6 py-4 border-b ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#13161b] border-white/10'))}`,
-            content: `flex-1 overflow-y-auto custom-scrollbar p-6 ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]'))}`,
-            card: `rounded-xl border shadow-sm ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#13161b] border-white/10'))}`,
+            container: `flex-1 flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : (isNeon ? 'bg-neon-bg' : 'bg-[#0a0c10]')))} transition-colors duration-300`,
+            header: `px-6 py-4 border-b ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : (isNeon ? 'bg-neon-panel border-neon-border/30' : 'bg-[#13161b] border-white/10')))}`,
+            content: `flex-1 overflow-y-auto custom-scrollbar p-6 ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : (isNeon ? 'bg-neon-bg' : 'bg-[#0a0c10]')))}`,
+            card: `rounded-xl border shadow-sm ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : (isNeon ? 'bg-neon-panel border-neon-border/40' : 'bg-[#13161b] border-white/10')))}`,
             text: {
-                primary: isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white'),
-                secondary: isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400'),
-                subtle: isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500'),
+                primary: isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-white')),
+                secondary: isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : (isNeon ? 'text-neon-text/60' : 'text-gray-400')),
+                subtle: isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-text/40' : 'text-gray-500')),
             },
             input: `w-full px-3 py-2 rounded-lg border text-xs focus:outline-none focus:ring-2 transition-all ${isLight
                 ? 'bg-white border-gray-200 text-gray-900 focus:border-mysql-teal focus:ring-mysql-teal/20'
                 : (isDawn
                     ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] focus:border-[#ea9d34] focus:ring-[#ea9d34]/20'
-                    : 'bg-black/20 border-white/10 text-white focus:border-mysql-teal focus:ring-mysql-teal/20')
+                    : (isNeon
+                        ? 'bg-neon-bg border-neon-border/40 text-neon-text focus:border-cyan-400 focus:ring-cyan-400/20'
+                        : 'bg-black/20 border-white/10 text-white focus:border-mysql-teal focus:ring-mysql-teal/20'))
                 }`,
             buttonPrimary: `px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${isLight
                 ? 'bg-mysql-teal/90 text-black hover:bg-mysql-teal'
                 : (isDawn
                     ? 'bg-[#ea9d34] text-white hover:brightness-110'
-                    : 'bg-mysql-teal text-black hover:brightness-110')
+                    : (isNeon
+                        ? 'bg-cyan-400 text-black hover:bg-cyan-300 shadow-[0_0_15px_rgba(0,243,255,0.4)]'
+                        : 'bg-mysql-teal text-black hover:brightness-110'))
                 }`,
             buttonGhost: `px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${isLight
                 ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 : (isDawn
                     ? 'bg-[#f2e9e1] text-[#575279] hover:bg-[#efe6dc]'
-                    : 'bg-white/10 text-gray-200 hover:bg-white/20')
+                    : (isNeon
+                        ? 'bg-neon-panel border border-neon-border/40 text-neon-text hover:bg-neon-border/20'
+                        : 'bg-white/10 text-gray-200 hover:bg-white/20'))
                 }`
         };
     };
@@ -210,34 +217,38 @@ export function IndexLifecycle() {
     const scoreBadge = (score, mode) => {
         const high = score >= 70;
         const mid = score >= 40;
+        const isNeon = theme === 'neon';
+
         if (mode === 'risk') {
-            if (high) return 'text-red-500 bg-red-500/10 border-red-500/20';
+            if (high) return isNeon ? 'text-neon-pink bg-neon-pink/10 border-neon-pink/20' : 'text-red-500 bg-red-500/10 border-red-500/20';
             if (mid) return 'text-amber-500 bg-amber-500/10 border-amber-500/20';
-            return 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20';
+            return isNeon ? 'text-cyan-400 bg-cyan-400/10 border-cyan-400/20' : 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20';
         }
-        if (high) return 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20';
+        if (high) return isNeon ? 'text-cyan-400 bg-cyan-400/10 border-cyan-400/20' : 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20';
         if (mid) return 'text-amber-500 bg-amber-500/10 border-amber-500/20';
-        return 'text-gray-500 bg-gray-500/10 border-gray-500/20';
+        return isNeon ? 'text-neon-text/40 bg-neon-text/5 border-neon-text/10' : 'text-gray-500 bg-gray-500/10 border-gray-500/20';
     };
 
     const confidenceBadge = (score) => {
-        if (score >= 75) return 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20';
+        const isNeon = theme === 'neon';
+        if (score >= 75) return isNeon ? 'text-cyan-400 bg-cyan-400/10 border-cyan-400/20' : 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20';
         if (score >= 45) return 'text-amber-500 bg-amber-500/10 border-amber-500/20';
-        return 'text-red-500 bg-red-500/10 border-red-500/20';
+        return isNeon ? 'text-neon-pink bg-neon-pink/10 border-neon-pink/20' : 'text-red-500 bg-red-500/10 border-red-500/20';
     };
 
     const signalBadge = (signal) => {
+        const isNeon = theme === 'neon';
         switch (signal.label) {
             case 'unused':
-                return 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20';
+                return isNeon ? 'text-cyan-400 bg-cyan-400/10 border-cyan-400/20' : 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20';
             case 'low-utility':
                 return 'text-amber-500 bg-amber-500/10 border-amber-500/20';
             case 'protected':
-                return 'text-red-500 bg-red-500/10 border-red-500/20';
+                return isNeon ? 'text-neon-pink bg-neon-pink/10 border-neon-pink/20' : 'text-red-500 bg-red-500/10 border-red-500/20';
             case 'active':
                 return 'text-blue-500 bg-blue-500/10 border-blue-500/20';
             default:
-                return 'text-gray-500 bg-gray-500/10 border-gray-500/20';
+                return isNeon ? 'text-neon-text/40 bg-neon-text/5 border-neon-text/10' : 'text-gray-500 bg-gray-500/10 border-gray-500/20';
         }
     };
 
@@ -548,17 +559,17 @@ export function IndexLifecycle() {
             : 0;
         const worstSimulationRegression = selectedSimulations.reduce((max, sim) => Math.max(max, sim.worst_regression_pct || 0), 0);
         const writeGain = totalIndexes > 0 ? Math.min(60, Math.round((selectedCount / totalIndexes) * 60)) : 0;
-        const tableBorder = theme === 'light' ? 'border-gray-200' : (theme === 'dawn' ? 'border-[#f2e9e1]' : 'border-white/10');
-        const tableHeader = theme === 'light' ? 'bg-gray-50 text-gray-500' : (theme === 'dawn' ? 'bg-[#faf4ed] text-[#797593]' : 'bg-white/5 text-gray-400');
-        const tableAltRow = theme === 'light' ? 'bg-gray-50/60' : 'bg-white/[0.02]';
-        const tableBg = theme === 'light' ? 'bg-white' : (theme === 'dawn' ? 'bg-[#fffaf3]' : 'bg-transparent');
+        const tableBorder = theme === 'light' ? 'border-gray-200' : (theme === 'dawn' ? 'border-[#f2e9e1]' : (theme === 'neon' ? 'border-neon-border/30' : 'border-white/10'));
+        const tableHeader = theme === 'light' ? 'bg-gray-50 text-gray-500' : (theme === 'dawn' ? 'bg-[#faf4ed] text-[#797593]' : (theme === 'neon' ? 'bg-neon-panel/50 text-neon-text/50' : 'bg-white/5 text-gray-400'));
+        const tableAltRow = theme === 'light' ? 'bg-gray-50/60' : (theme === 'neon' ? 'bg-neon-panel/20' : 'bg-white/[0.02]');
+        const tableBg = theme === 'light' ? 'bg-white' : (theme === 'dawn' ? 'bg-[#fffaf3]' : (theme === 'neon' ? 'bg-neon-panel/10' : 'bg-transparent'));
         const renderSlider = (label, scope, key, value) => `
             <div>
                 <div class="flex items-center justify-between text-[10px] ${classes.text.secondary}">
                     <span>${label}</span>
                     <span class="font-mono ${classes.text.primary}">${Number(value).toFixed(2)}</span>
                 </div>
-                <input data-score-slider="true" data-scope="${scope}" data-key="${key}" type="range" min="0" max="1" step="0.05" value="${value}" class="w-full mt-2 accent-mysql-teal">
+                <input data-score-slider="true" data-scope="${scope}" data-key="${key}" type="range" min="0" max="1" step="0.05" value="${value}" class="w-full mt-2 ${theme === 'neon' ? 'accent-cyan-400' : 'accent-mysql-teal'}">
             </div>
         `;
 
@@ -668,12 +679,12 @@ export function IndexLifecycle() {
                                         ${filteredIndexes.length === 0 ? `
                                             <tr><td colspan="5" class="p-4 text-center text-xs ${classes.text.secondary}">No indexes to show.</td></tr>
                                         ` : filteredIndexes.map((idx, i) => {
-                                            const usage = usageMap.get(idx.name);
-                                            const sim = simulationByIndex.get(idx.name);
-                                            const usageLabel = usage ? `${(usage.total_ops ?? 0).toLocaleString()} ops` : 'usage n/a';
-                                            const sizeBytes = sizeMap.get(idx.name);
-                                            const sizeLabel = sizeBytes ? formatBytes(sizeBytes) : (perIndexSize ? `~${formatBytes(perIndexSize)}` : '-');
-                                            return `
+            const usage = usageMap.get(idx.name);
+            const sim = simulationByIndex.get(idx.name);
+            const usageLabel = usage ? `${(usage.total_ops ?? 0).toLocaleString()} ops` : 'usage n/a';
+            const sizeBytes = sizeMap.get(idx.name);
+            const sizeLabel = sizeBytes ? formatBytes(sizeBytes) : (perIndexSize ? `~${formatBytes(perIndexSize)}` : '-');
+            return `
                                             <tr class="${i % 2 === 0 ? '' : tableAltRow}">
                                                 <td class="p-3">
                                                     <input type="checkbox" class="index-toggle" data-index="${escapeHtml(idx.name)}" ${state.selectedIndexes.has(idx.name) && idx.signal.label !== 'protected' ? 'checked' : ''} ${idx.signal.label === 'protected' ? 'disabled' : ''}/>
@@ -708,7 +719,7 @@ export function IndexLifecycle() {
                                                 </td>
                                             </tr>
                                         `;
-                                        }).join('')}
+        }).join('')}
                                     </tbody>
                                 </table>
                             </div>
@@ -743,7 +754,7 @@ export function IndexLifecycle() {
                             </div>
                             <div class="mt-4">
                                 <div class="text-[10px] uppercase tracking-widest ${classes.text.subtle} mb-2">Drop Plan (Simulation)</div>
-                                <pre class="text-[10px] font-mono p-3 rounded-lg border ${classes.text.primary} ${theme === 'light' ? 'bg-gray-50 border-gray-200' : (theme === 'dawn' ? 'bg-[#faf4ed] border-[#f2e9e1]' : 'bg-black/20 border-white/10')} overflow-auto max-h-40">${escapeHtml(selectedCount ? selectedList.map(idx => buildDropStatement(idx.name, state.activeDbType, state.selectedDatabase)).join('\n') : '-- Select indexes to generate a drop plan')}</pre>
+                                <pre class="text-[10px] font-mono p-3 rounded-lg border ${classes.text.primary} ${theme === 'light' ? 'bg-gray-50 border-gray-200' : (theme === 'dawn' ? 'bg-[#faf4ed] border-[#f2e9e1]' : (theme === 'neon' ? 'bg-neon-bg border-neon-border/30' : 'bg-black/20 border-white/10'))} overflow-auto max-h-40">${escapeHtml(selectedCount ? selectedList.map(idx => buildDropStatement(idx.name, state.activeDbType, state.selectedDatabase)).join('\n') : '-- Select indexes to generate a drop plan')}</pre>
                             </div>
                             <div class="flex items-center gap-2 mt-3">
                                 <button id="btn-run-simulation" class="${classes.buttonPrimary}" ${selectedCount && !state.isSimulating ? '' : 'disabled'}>${state.isSimulating ? 'Simulating...' : 'Run What-if'}</button>
@@ -758,7 +769,7 @@ export function IndexLifecycle() {
                                 ` : `
                                     <div class="space-y-3">
                                         ${state.simulationResults.map((sim) => `
-                                            <div class="p-3 rounded-lg border ${tableBorder} ${theme === 'light' ? 'bg-gray-50' : (theme === 'dawn' ? 'bg-[#faf4ed]' : 'bg-black/20')}">
+                                            <div class="p-3 rounded-lg border ${tableBorder} ${theme === 'light' ? 'bg-gray-50' : (theme === 'dawn' ? 'bg-[#faf4ed]' : (theme === 'neon' ? 'bg-neon-panel/20' : 'bg-black/20'))}">
                                                 <div class="flex items-center justify-between gap-2">
                                                     <div>
                                                         <div class="text-xs font-bold ${classes.text.primary}">${escapeHtml(sim.index_name || 'index')}</div>
@@ -1167,7 +1178,7 @@ export function IndexLifecycle() {
             <div class="${classes.card} p-5 mb-6">
                 <div class="flex items-center justify-between mb-4">
                     <div class="flex items-center gap-2">
-                        <span class="material-symbols-outlined text-mysql-teal">auto_awesome</span>
+                        <span class="material-symbols-outlined ${theme === 'neon' ? 'text-neon-accent' : 'text-mysql-teal'}">auto_awesome</span>
                         <div>
                             <div class="text-[11px] font-bold uppercase tracking-widest ${classes.text.primary}">AI Index Recommendations</div>
                             <div class="text-[10px] ${classes.text.secondary}">${state.aiAnalyzedQueries} queries analyzed</div>
@@ -1180,7 +1191,7 @@ export function IndexLifecycle() {
 
                 ${state.isAiAnalyzing ? `
                     <div class="flex items-center justify-center py-8">
-                        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-mysql-teal"></div>
+                        <div class="animate-spin rounded-full h-8 w-8 border-b-2 ${theme === 'neon' ? 'border-neon-accent' : 'border-mysql-teal'}"></div>
                         <span class="ml-3 text-sm ${classes.text.secondary}">AI analyzing query patterns...</span>
                     </div>
                 ` : ''}
@@ -1192,7 +1203,7 @@ export function IndexLifecycle() {
                 ` : ''}
 
                 ${state.aiAnalysisSummary ? `
-                    <div class="text-[11px] ${classes.text.secondary} mb-4 p-3 rounded-lg ${theme === 'light' ? 'bg-gray-50' : 'bg-white/5'}">
+                    <div class="text-[11px] ${classes.text.secondary} mb-4 p-3 rounded-lg ${theme === 'light' ? 'bg-gray-50' : (theme === 'neon' ? 'bg-neon-panel/30' : 'bg-white/5')}">
                         ${escapeHtml(state.aiAnalysisSummary)}
                     </div>
                 ` : ''}
@@ -1239,7 +1250,7 @@ export function IndexLifecycle() {
                                 </div>
 
                                 <div class="relative">
-                                    <pre class="text-[10px] font-mono p-3 rounded-lg ${theme === 'light' ? 'bg-gray-100' : 'bg-black/30'} ${classes.text.primary} overflow-x-auto">${escapeHtml(rec.create_sql)}</pre>
+                                    <pre class="text-[10px] font-mono p-3 rounded-lg ${theme === 'light' ? 'bg-gray-100' : (theme === 'neon' ? 'bg-neon-bg border border-neon-border/30' : 'bg-black/30')} ${classes.text.primary} overflow-x-auto">${escapeHtml(rec.create_sql)}</pre>
                                     <button class="btn-copy-index absolute top-2 right-2 p-1 rounded ${classes.buttonGhost}" data-sql="${escapeHtml(rec.create_sql)}" title="Copy SQL">
                                         <span class="material-symbols-outlined text-[14px]">content_copy</span>
                                     </button>

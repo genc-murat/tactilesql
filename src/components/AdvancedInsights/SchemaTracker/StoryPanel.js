@@ -7,15 +7,16 @@ export function StoryPanel({ story, isLoading }) {
     const isOceanic = theme === 'oceanic';
     const isEmber = theme === 'ember';
     const isAurora = theme === 'aurora';
+    const isNeon = theme === 'neon';
 
     const container = document.createElement('div');
-    container.className = `flex-1 flex flex-col h-full overflow-hidden transition-colors duration-300 ${isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-[#2E3440]' : (isEmber ? 'bg-[#140c12]' : (isAurora ? 'bg-[#0b1214]' : 'bg-[#0f1115]'))))} animate-fade-in`;
+    container.className = `flex-1 flex flex-col h-full overflow-hidden transition-colors duration-300 ${isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : (isNeon ? 'bg-neon-bg' : (isOceanic ? 'bg-[#2E3440]' : (isEmber ? 'bg-[#140c12]' : (isAurora ? 'bg-[#0b1214]' : 'bg-[#0f1115]')))))} animate-fade-in`;
 
     if (isLoading) {
         container.innerHTML = `
             <div class="flex-1 flex flex-col items-center justify-center opacity-60">
-                <span class="material-symbols-outlined text-4xl mb-4 animate-spin ${isDawn ? 'text-[#ea9d34]' : 'text-blue-500'}">auto_stories</span>
-                <p class="text-sm font-medium animate-pulse ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">Writing your chronicle...</p>
+                <span class="material-symbols-outlined text-4xl mb-4 animate-spin ${isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-cyan-400' : 'text-blue-500')}">auto_stories</span>
+                <p class="text-sm font-medium animate-pulse ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-gray-300'))}">Writing your chronicle...</p>
             </div>
         `;
         return container;
@@ -23,9 +24,9 @@ export function StoryPanel({ story, isLoading }) {
 
     if (!story) {
         container.innerHTML = `
-            <div class="flex-1 flex flex-col items-center justify-center opacity-40 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500')}">
-                <span class="material-symbols-outlined text-4xl mb-4">menu_book</span>
-                <p class="text-xs">Select a snapshot to view its story.</p>
+            <div class="flex-1 flex flex-col items-center justify-center opacity-40 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-text/40' : 'text-gray-500'))}">
+                <span class="material-symbols-outlined text-4xl mb-4 ${isNeon ? 'text-neon-text/20' : ''}">menu_book</span>
+                <p class="text-xs ${isNeon ? 'text-neon-text' : ''}">Select a snapshot to view its story.</p>
             </div>
         `;
         return container;
@@ -33,15 +34,15 @@ export function StoryPanel({ story, isLoading }) {
 
     // Header
     const header = document.createElement('div');
-    header.className = `p-6 pb-4 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-[#4C566A]' : (isEmber ? 'border-[#2c1c27]' : (isAurora ? 'border-[#1b2e33]' : 'border-white/5'))))}`;
+    header.className = `p-6 pb-4 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : (isNeon ? 'border-neon-border/20' : (isOceanic ? 'border-[#4C566A]' : (isEmber ? 'border-[#2c1c27]' : (isAurora ? 'border-[#1b2e33]' : 'border-white/5')))))}`;
     header.innerHTML = `
         <div class="flex items-center gap-3 mb-2">
-            <div class="p-2 rounded-lg ${isDawn ? 'bg-[#ea9d34]/10 text-[#ea9d34]' : 'bg-indigo-500/10 text-indigo-500'}">
+            <div class="p-2 rounded-lg ${isDawn ? 'bg-[#ea9d34]/10 text-[#ea9d34]' : (isNeon ? 'bg-neon-pink/10 text-neon-pink' : 'bg-indigo-500/10 text-indigo-500')}">
                 <span class="material-symbols-outlined text-xl">auto_stories</span>
             </div>
             <div>
-                <h2 class="text-lg font-bold ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-100')}">${story.title}</h2>
-                <p class="text-xs opacity-60 ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Generated narrative based on schema changes and row count trends.</p>
+                <h2 class="text-lg font-bold ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-gray-100'))}">${story.title}</h2>
+                <p class="text-xs opacity-60 ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-text/60' : 'text-gray-400'))}">Generated narrative based on schema changes and row count trends.</p>
             </div>
         </div>
     `;
@@ -69,6 +70,11 @@ export function StoryPanel({ story, isLoading }) {
             else if (severity === 2) { severityClasses = 'border-[#ea9d34]/30 bg-[#fffdf5]'; iconColor = 'text-[#ea9d34]'; }
             else if (severity === 1) { severityClasses = 'border-indigo-200 bg-[#f5f5ff]'; iconColor = 'text-indigo-500'; }
             else { severityClasses = 'border-[#f2e9e1] bg-[#faf4ed]'; }
+        } else if (isNeon) {
+            if (severity === 3) { severityClasses = 'border-neon-pink/50 bg-neon-pink/5'; iconColor = 'text-neon-pink'; }
+            else if (severity === 2) { severityClasses = 'border-amber-400/50 bg-amber-400/5'; iconColor = 'text-amber-400'; }
+            else if (severity === 1) { severityClasses = 'border-cyan-400/50 bg-cyan-400/5'; iconColor = 'text-cyan-400'; }
+            else { severityClasses = 'border-neon-border/20 bg-neon-panel/20'; }
         } else {
             if (severity === 3) { severityClasses = 'border-red-500/30 bg-red-500/5'; iconColor = 'text-red-400'; }
             else if (severity === 2) { severityClasses = 'border-amber-500/30 bg-amber-500/5'; iconColor = 'text-amber-400'; }
@@ -103,10 +109,10 @@ export function StoryPanel({ story, isLoading }) {
             <div class="flex items-start gap-3">
                 <span class="material-symbols-outlined ${iconColor} mt-0.5">${sectionIcon}</span>
                 <div class="flex-1 min-w-0">
-                    <h3 class="font-bold text-sm ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-200')} flex items-center gap-2">
+                    <h3 class="font-bold text-sm ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-gray-200'))} flex items-center gap-2">
                         ${section.title}
                     </h3>
-                    <p class="text-xs leading-relaxed opacity-80 mt-1 ${isLight || isDawn ? 'text-gray-600' : 'text-gray-400'}">${section.content}</p>
+                    <p class="text-xs leading-relaxed opacity-80 mt-1 ${isLight || isDawn ? 'text-gray-600' : (isNeon ? 'text-neon-text/70' : 'text-gray-400')}">${section.content}</p>
                     ${listHtml}
                 </div>
             </div>

@@ -11,33 +11,40 @@ export function CapacityPlanner() {
         const isLight = t === 'light';
         const isDawn = t === 'dawn';
         const isOceanic = t === 'oceanic' || t === 'ember' || t === 'aurora';
+        const isNeon = t === 'neon';
         return {
-            container: `flex-1 flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]'))} transition-colors duration-300`,
-            header: `px-6 py-4 border-b ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#13161b] border-white/10'))}`,
-            content: `flex-1 overflow-y-auto custom-scrollbar p-6 ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]'))}`,
-            card: `rounded-xl border shadow-sm ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#13161b] border-white/10'))}`,
+            container: `flex-1 flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isNeon ? 'bg-neon-bg' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]')))} transition-colors duration-300`,
+            header: `px-6 py-4 border-b ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isNeon ? 'bg-neon-bg border-neon-border/40' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#13161b] border-white/10')))}`,
+            content: `flex-1 overflow-y-auto custom-scrollbar p-6 ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isNeon ? 'bg-neon-bg' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]')))}`,
+            card: `rounded-xl border shadow-sm ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isNeon ? 'bg-neon-panel border-neon-border/40' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#13161b] border-white/10')))}`,
             text: {
-                primary: isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white'),
-                secondary: isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400'),
-                subtle: isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500'),
+                primary: isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-white')),
+                secondary: isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : (isNeon ? 'text-neon-text/60' : 'text-gray-400')),
+                subtle: isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-pink' : 'text-gray-500')),
             },
             input: `w-full px-3 py-2 rounded-lg border text-xs focus:outline-none focus:ring-2 transition-all ${isLight
                 ? 'bg-white border-gray-200 text-gray-900 focus:border-mysql-teal focus:ring-mysql-teal/20'
                 : (isDawn
                     ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] focus:border-[#ea9d34] focus:ring-[#ea9d34]/20'
-                    : 'bg-black/20 border-white/10 text-white focus:border-mysql-teal focus:ring-mysql-teal/20')
+                    : (isNeon
+                        ? 'bg-neon-panel border-neon-border/40 text-neon-text focus:border-cyan-400 focus:ring-cyan-400/20'
+                        : 'bg-black/20 border-white/10 text-white focus:border-mysql-teal focus:ring-mysql-teal/20'))
                 }`,
             button: `px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${isLight
                 ? 'bg-mysql-teal/90 text-black hover:bg-mysql-teal'
                 : (isDawn
                     ? 'bg-[#ea9d34] text-white hover:brightness-110'
-                    : 'bg-mysql-teal text-black hover:brightness-110')
+                    : (isNeon
+                        ? 'bg-cyan-400/20 text-cyan-400 border border-cyan-400/50 hover:bg-cyan-400/30'
+                        : 'bg-mysql-teal text-black hover:brightness-110'))
                 }`,
             buttonGhost: `px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${isLight
                 ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 : (isDawn
                     ? 'bg-[#f2e9e1] text-[#575279] hover:bg-[#efe6dc]'
-                    : 'bg-white/10 text-gray-200 hover:bg-white/20')
+                    : (isNeon
+                        ? 'bg-neon-panel border-neon-border/40 text-neon-text hover:bg-neon-accent/10'
+                        : 'bg-white/10 text-gray-200 hover:bg-white/20'))
                 }`,
         };
     };
@@ -104,7 +111,7 @@ export function CapacityPlanner() {
                 cx="0"
                 cy="${CHART_HEIGHT}"
                 fill="${def.color || '#6b7280'}"
-                stroke="${theme === 'light' ? '#ffffff' : '#0f172a'}"
+                stroke="${theme === 'light' ? '#ffffff' : (theme === 'neon' ? 'var(--neon-bg)' : '#0f172a')}"
                 stroke-width="0.8"
             ></circle>
         `).join('');
@@ -115,7 +122,7 @@ export function CapacityPlanner() {
                     <rect x="0" y="0" width="${CHART_WIDTH}" height="${CHART_HEIGHT}" fill="${bgColor}"></rect>
                     ${ticks}
                     ${lines}
-                    <line class="capacity-chart-cursor opacity-0 transition-opacity duration-150" x1="0" y1="0" x2="0" y2="${CHART_HEIGHT}" stroke="${theme === 'dawn' ? '#ea9d34' : '#0ea5e9'}" stroke-width="0.7" stroke-dasharray="2 1"></line>
+                    <line class="capacity-chart-cursor opacity-0 transition-opacity duration-150" x1="0" y1="0" x2="0" y2="${CHART_HEIGHT}" stroke="${theme === 'dawn' ? '#ea9d34' : (theme === 'neon' ? '#22d3ee' : '#0ea5e9')}" stroke-width="0.7" stroke-dasharray="2 1"></line>
                     ${markers}
                 </svg>
                 ${!hasData ? `<div class="absolute inset-0 flex items-center justify-center text-[10px] ${classes.text.subtle}">No samples</div>` : ''}
@@ -189,7 +196,12 @@ export function CapacityPlanner() {
             if (totalEl) totalEl.textContent = formatBytes(sample.storage_bytes || 0);
             if (dataEl) dataEl.textContent = formatBytes(sample.data_bytes || 0);
             if (indexBytesEl) indexBytesEl.textContent = formatBytes(sample.index_bytes || 0);
-            if (hitEl) hitEl.textContent = toPercent(sample.buffer_hit_ratio ?? 0);
+            if (hitEl) {
+                hitEl.textContent = toPercent(sample.buffer_hit_ratio ?? 0);
+                if (theme === 'neon') {
+                    hitEl.className = `font-mono ${(sample.buffer_hit_ratio || 0) > 0.9 ? 'text-cyan-400' : 'text-neon-pink'}`;
+                }
+            }
             if (readEl) readEl.textContent = `${formatBytes(sample.read_rate || 0)}/s`;
             if (writeEl) writeEl.textContent = `${formatBytes(sample.write_rate || 0)}/s`;
         };
@@ -408,9 +420,9 @@ export function CapacityPlanner() {
                 max: storageMax,
                 count: storageSeries.length,
                 series: [
-                    { label: 'Total', color: '#0ea5e9', values: storageSeries },
-                    { label: 'Data', color: '#22c55e', values: dataSeries },
-                    { label: 'Index', color: '#a855f7', values: indexSeries }
+                    { label: 'Total', color: theme === 'neon' ? '#22d3ee' : '#0ea5e9', values: storageSeries },
+                    { label: 'Data', color: theme === 'neon' ? '#fb7185' : '#22c55e', values: dataSeries },
+                    { label: 'Index', color: theme === 'neon' ? '#c084fc' : '#a855f7', values: indexSeries }
                 ]
             },
             hit: {
@@ -418,7 +430,7 @@ export function CapacityPlanner() {
                 max: 1,
                 count: hitSeries.length,
                 series: [
-                    { label: 'Hit', color: '#22c55e', values: hitSeries }
+                    { label: 'Hit', color: theme === 'neon' ? '#22d3ee' : '#22c55e', values: hitSeries }
                 ]
             },
             io: {
@@ -426,8 +438,8 @@ export function CapacityPlanner() {
                 max: ioMax,
                 count: readSeries.length,
                 series: [
-                    { label: 'Read', color: '#38bdf8', values: readSeries },
-                    { label: 'Write', color: '#f97316', values: writeSeries }
+                    { label: 'Read', color: theme === 'neon' ? '#22d3ee' : '#38bdf8', values: readSeries },
+                    { label: 'Write', color: theme === 'neon' ? '#fb7185' : '#f97316', values: writeSeries }
                 ]
             }
         };
@@ -522,9 +534,9 @@ export function CapacityPlanner() {
             { min: chartConfigs.storage.min, max: chartConfigs.storage.max }
         )}
                         <div class="flex items-center gap-3 text-[10px] ${classes.text.secondary} mt-2">
-                            <span><span class="inline-block w-2 h-2 rounded-full bg-sky-500 mr-1"></span>Total</span>
-                            <span><span class="inline-block w-2 h-2 rounded-full bg-green-500 mr-1"></span>Data</span>
-                            <span><span class="inline-block w-2 h-2 rounded-full bg-purple-500 mr-1"></span>Index</span>
+                            <span><span class="inline-block w-2 h-2 rounded-full ${theme === 'neon' ? 'bg-cyan-400' : 'bg-sky-500'} mr-1"></span>Total</span>
+                            <span><span class="inline-block w-2 h-2 rounded-full ${theme === 'neon' ? 'bg-rose-400' : 'bg-green-500'} mr-1"></span>Data</span>
+                            <span><span class="inline-block w-2 h-2 rounded-full ${theme === 'neon' ? 'bg-purple-400' : 'bg-purple-500'} mr-1"></span>Index</span>
                         </div>
                     </div>
 
@@ -560,8 +572,8 @@ export function CapacityPlanner() {
             { min: chartConfigs.io.min, max: chartConfigs.io.max }
         )}
                         <div class="flex items-center gap-3 text-[10px] ${classes.text.secondary} mt-2">
-                            <span><span class="inline-block w-2 h-2 rounded-full bg-sky-400 mr-1"></span>Read</span>
-                            <span><span class="inline-block w-2 h-2 rounded-full bg-orange-500 mr-1"></span>Write</span>
+                            <span><span class="inline-block w-2 h-2 rounded-full ${theme === 'neon' ? 'bg-cyan-400' : 'bg-sky-400'} mr-1"></span>Read</span>
+                            <span><span class="inline-block w-2 h-2 rounded-full ${theme === 'neon' ? 'bg-rose-400' : 'bg-orange-500'} mr-1"></span>Write</span>
                         </div>
                     </div>
                 </div>

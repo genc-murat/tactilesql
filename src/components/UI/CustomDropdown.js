@@ -34,28 +34,31 @@ export class CustomDropdown {
     }
 
     render() {
-        const theme = ThemeManager.getCurrentTheme();
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const { isLight, isDawn, isNordVariant: isNord, isNeon, theme } = ThemeManager.getThemeFlags();
+        const isEmber = theme === 'ember';
+        const isAurora = theme === 'aurora';
 
         const selectedItem = this.items.find(item => String(item.value) === String(this.value));
         const displayLabel = selectedItem ? selectedItem.label : this.placeholder;
 
+        // Theme-specific colors
+        const accentColor = isDawn ? 'text-[#ea9d34]' : (isNord ? 'text-ocean-frost' : (isEmber ? 'text-ember-accent' : (isAurora ? 'text-aurora-accent' : (isNeon ? 'text-cyan-400' : 'text-mysql-teal'))));
+        const triggerBg = isLight ? 'bg-white border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isNeon ? 'bg-neon-panel/20 border-neon-border/40 text-neon-text' : (isNord ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text' : 'bg-black/20 border-white/10 text-gray-300')));
+
         this.container.innerHTML = `
-            <button class="custom-dropdown-trigger w-full flex items-center justify-between px-3 py-1.5 text-xs ${isLight ? 'bg-white border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-300')} rounded-lg border transition-all outline-none focus:border-mysql-teal shadow-sm group">
+            <button class="custom-dropdown-trigger w-full flex items-center justify-between px-3 py-1.5 text-xs ${triggerBg} rounded-lg border transition-all outline-none focus:border-mysql-teal shadow-sm group">
                 <div class="flex items-center gap-2 truncate">
-                    ${selectedItem?.icon ? `<span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal'}">${selectedItem.icon}</span>` : ''}
+                    ${selectedItem?.icon ? `<span class="material-symbols-outlined text-sm ${accentColor}">${selectedItem.icon}</span>` : ''}
                     <span class="truncate">${displayLabel}</span>
                 </div>
-                <span class="material-symbols-outlined text-gray-500 group-hover:text-mysql-teal transition-transform duration-200 dropdown-arrow">expand_more</span>
+                <span class="material-symbols-outlined ${isNeon ? 'text-neon-text/40 group-hover:text-cyan-400' : 'text-gray-500 group-hover:text-mysql-teal'} transition-transform duration-200 dropdown-arrow">expand_more</span>
             </button>
-            <div class="custom-dropdown-panel hidden absolute top-full left-0 right-0 mt-2 ${isLight ? 'bg-white border-gray-100 shadow-2xl' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-2xl' : 'bg-[#1a1d23] border-white/10 shadow-2xl')} rounded-xl overflow-hidden z-[100] backdrop-blur-xl transition-all duration-200 transform origin-top scale-95 opacity-0">
+            <div class="custom-dropdown-panel hidden absolute top-full left-0 right-0 mt-2 ${isLight ? 'bg-white border-gray-100 shadow-2xl' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-2xl' : (isNeon ? 'bg-neon-bg/95 border-neon-border/40 shadow-[0_0_30px_rgba(0,0,0,0.5)]' : 'bg-[#1a1d23] border-white/10 shadow-2xl'))} rounded-xl overflow-hidden z-[100] backdrop-blur-xl transition-all duration-200 transform origin-top scale-95 opacity-0">
                 ${this.searchable ? `
                     <div class="p-2 border-b ${isLight ? 'border-gray-50' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
                         <div class="relative">
-                            <span class="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-[14px] text-gray-500">search</span>
-                            <input type="text" class="custom-dropdown-search w-full bg-black/5 ${isLight ? 'text-gray-800' : 'text-white'} border-none rounded-md pl-7 pr-2 py-1 text-[11px] outline-none focus:ring-1 focus:ring-mysql-teal/50" placeholder="Search...">
+                            <span class="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-[14px] ${isNeon ? 'text-cyan-400/60' : 'text-gray-500'}">search</span>
+                            <input type="text" class="custom-dropdown-search w-full ${isNeon ? 'bg-neon-panel/20 text-neon-text placeholder:text-neon-text/30' : 'bg-black/5 ' + (isLight ? 'text-gray-800' : 'text-white')} border-none rounded-md pl-7 pr-2 py-1 text-[11px] outline-none focus:ring-1 ${isNeon ? 'focus:ring-cyan-400/50' : 'focus:ring-mysql-teal/50'}" placeholder="Search...">
                         </div>
                     </div>
                 ` : ''}
@@ -74,9 +77,9 @@ export class CustomDropdown {
     }
 
     renderOptions(filter = '') {
-        const theme = ThemeManager.getCurrentTheme();
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn, isNordVariant: isNord, isNeon, theme } = ThemeManager.getThemeFlags();
+        const isEmber = theme === 'ember';
+        const isAurora = theme === 'aurora';
 
         this.optionsList.innerHTML = '';
 
@@ -100,7 +103,8 @@ export class CustomDropdown {
         Object.keys(groups).forEach(groupName => {
             if (groupName !== 'default') {
                 const groupHeader = document.createElement('div');
-                groupHeader.className = `px-3 py-1.5 text-[9px] font-black uppercase tracking-widest ${isLight ? 'text-gray-400' : 'text-gray-600'} mt-1 first:mt-0`;
+                const groupHeaderColor = isLight ? 'text-gray-400' : (isNeon ? 'text-neon-pink/60' : (isEmber ? 'text-ember-accent/40' : (isAurora ? 'text-aurora-accent/40' : (isNord ? 'text-ocean-text/40' : 'text-gray-600'))));
+                groupHeader.className = `px-3 py-1.5 text-[9px] font-black uppercase tracking-widest ${groupHeaderColor} mt-1 first:mt-0`;
                 groupHeader.textContent = groupName;
                 this.optionsList.appendChild(groupHeader);
             }
@@ -108,15 +112,24 @@ export class CustomDropdown {
             groups[groupName].forEach(item => {
                 const isSelected = String(item.value) === String(this.value);
                 const option = document.createElement('div');
-                option.className = `custom-dropdown-option px-3 py-2 flex items-center justify-between cursor-pointer rounded-lg transition-colors ${isSelected ? (isLight ? 'bg-mysql-teal/10 text-mysql-teal font-bold' : 'bg-mysql-teal/20 text-mysql-teal font-bold') : (isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5')}`;
+
+                // Active/Hover colors
+                const activeBg = isLight ? 'bg-mysql-teal/10 text-mysql-teal' : (isNeon ? 'bg-cyan-400/20 text-cyan-400' : (isEmber ? 'bg-ember-accent/20 text-ember-accent' : (isAurora ? 'bg-aurora-accent/20 text-aurora-accent' : (isNord ? 'bg-ocean-frost/20 text-ocean-frost' : 'bg-mysql-teal/20 text-mysql-teal'))));
+                const hoverBg = isLight ? 'hover:bg-gray-50' : (isNeon ? 'hover:bg-neon-panel/20 hover:text-neon-text' : (isNord || isEmber || isAurora ? 'hover:bg-white/5' : 'hover:bg-white/5'));
+                const textColor = isLight ? 'text-gray-700' : (isNeon ? 'text-neon-text/70' : (isNord || isEmber || isAurora ? 'text-ocean-text' : 'text-gray-300'));
+
+                option.className = `custom-dropdown-option px-3 py-2 flex items-center justify-between cursor-pointer rounded-lg transition-colors ${isSelected ? activeBg + ' font-bold' : textColor + ' ' + hoverBg}`;
                 option.dataset.value = item.value;
+
+                const checkColor = isNeon ? 'text-cyan-400' : (isNord ? 'text-ocean-frost' : (isEmber ? 'text-ember-accent' : (isAurora ? 'text-aurora-accent' : 'text-mysql-teal')));
+                const iconColor = isNeon ? 'text-neon-pink' : (isNord ? 'text-ocean-frost/80' : (isEmber ? 'text-ember-accent/80' : (isAurora ? 'text-aurora-accent/80' : '')));
 
                 option.innerHTML = `
                     <div class="flex items-center gap-2 truncate">
-                        ${item.icon ? `<span class="material-symbols-outlined text-sm">${item.icon}</span>` : ''}
+                        ${item.icon ? `<span class="material-symbols-outlined text-sm ${iconColor}">${item.icon}</span>` : ''}
                         <span class="text-xs truncate">${item.label}</span>
                     </div>
-                    ${isSelected ? '<span class="material-symbols-outlined text-mysql-teal text-base">check_circle</span>' : ''}
+                    ${isSelected ? `<span class="material-symbols-outlined ${checkColor} text-base">check_circle</span>` : ''}
                 `;
 
                 option.addEventListener('click', () => {

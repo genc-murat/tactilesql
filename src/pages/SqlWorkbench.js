@@ -15,8 +15,10 @@ export function SqlWorkbench() {
     const theme = ThemeManager.getCurrentTheme();
     const isLight = theme === 'light';
     const isDawn = theme === 'dawn';
+    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+    const isNeon = theme === 'neon';
     const container = document.createElement('div');
-    container.className = `flex-1 flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#faf4ed]' : '')}`;
+    container.className = `flex-1 flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#faf4ed]' : (isOceanic ? 'bg-ocean-bg' : (isNeon ? 'bg-neon-bg' : '')))}`;
 
     // Main Content Area
     const mainContent = document.createElement('div');
@@ -31,9 +33,10 @@ export function SqlWorkbench() {
 
     // Sidebar Resizer (horizontal)
     const sidebarResizer = document.createElement('div');
-    sidebarResizer.className = `w-1.5 ${isLight ? 'bg-gray-200 hover:bg-mysql-teal/30' : (isDawn ? 'bg-[#f2e9e1] hover:bg-mysql-teal/30' : 'bg-[#0b0d11] hover:bg-mysql-teal/50')} cursor-col-resize flex items-center justify-center group transition-colors`;
+    const resizerInitialBg = isLight ? 'bg-gray-200 hover:bg-mysql-teal/30' : (isDawn ? 'bg-[#f2e9e1] hover:bg-mysql-teal/30' : (isOceanic ? 'bg-ocean-border/50 hover:bg-ocean-frost/30' : (isNeon ? 'bg-neon-border/50 hover:bg-neon-accent/30' : 'bg-[#0b0d11] hover:bg-mysql-teal/50')));
+    sidebarResizer.className = `w-1.5 ${resizerInitialBg} cursor-col-resize flex items-center justify-center group transition-colors`;
     sidebarResizer.innerHTML = `
-        <div class="h-12 w-0.5 ${isLight || isDawn ? 'bg-gray-400' : 'bg-white/10'} group-hover:bg-mysql-teal/70 rounded-full transition-colors"></div>
+        <div class="h-12 w-0.5 ${isLight || isDawn ? 'bg-gray-400' : (isOceanic ? 'bg-ocean-frost/30' : (isNeon ? 'bg-neon-text/30' : 'bg-white/10'))} group-hover:bg-mysql-teal/70 rounded-full transition-colors"></div>
     `;
     mainContent.appendChild(sidebarResizer);
 
@@ -53,7 +56,8 @@ export function SqlWorkbench() {
 
     // Query + Results Area
     const queryResults = document.createElement('main');
-    queryResults.className = `flex-1 flex flex-col overflow-hidden ${isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : 'bg-[#2a2d33]')}`;
+    const contentInitialBg = isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : (isNeon ? 'bg-neon-bg' : 'bg-[#2a2d33]')));
+    queryResults.className = `flex-1 flex flex-col overflow-hidden ${contentInitialBg}`;
 
     const queryEditor = QueryEditor();
     queryEditor.style.height = '50%';
@@ -62,9 +66,10 @@ export function SqlWorkbench() {
 
     // Vertical Resizer (between query editor and results)
     const verticalResizer = document.createElement('div');
-    verticalResizer.className = `h-1.5 ${isLight ? 'bg-gray-100 hover:bg-mysql-teal/30' : (isDawn ? 'bg-[#f2e9e1] hover:bg-mysql-teal/30' : 'bg-[#1a1d23] hover:bg-mysql-teal/50')} cursor-row-resize flex items-center justify-center group transition-colors`;
+    const vResizerInitialBg = isLight ? 'bg-gray-100 hover:bg-mysql-teal/30' : (isDawn ? 'bg-[#f2e9e1] hover:bg-mysql-teal/30' : (isOceanic ? 'bg-ocean-border/30 hover:bg-ocean-frost/30' : (isNeon ? 'bg-neon-border/30 hover:bg-neon-accent/30' : 'bg-[#1a1d23] hover:bg-mysql-teal/50')));
+    verticalResizer.className = `h-1.5 ${vResizerInitialBg} cursor-row-resize flex items-center justify-center group transition-colors`;
     verticalResizer.innerHTML = `
-        <div class="w-12 h-0.5 ${isLight || isDawn ? 'bg-gray-400' : 'bg-white/10'} group-hover:bg-mysql-teal/70 rounded-full transition-colors"></div>
+        <div class="w-12 h-0.5 ${isLight || isDawn ? 'bg-gray-400' : (isOceanic ? 'bg-ocean-frost/30' : (isNeon ? 'bg-neon-text/30' : 'bg-white/10'))} group-hover:bg-mysql-teal/70 rounded-full transition-colors"></div>
     `;
     queryResults.appendChild(verticalResizer);
 
@@ -135,10 +140,10 @@ export function SqlWorkbench() {
 
     // Story Panel Resizer (horizontal)
     const storyResizer = document.createElement('div');
-    storyResizer.className = `w-1.5 ${isLight ? 'bg-gray-200 hover:bg-mysql-teal/30' : (isDawn ? 'bg-[#f2e9e1] hover:bg-mysql-teal/30' : 'bg-[#0b0d11] hover:bg-mysql-teal/50')} cursor-col-resize flex items-center justify-center group transition-colors`;
+    storyResizer.className = `w-1.5 ${resizerInitialBg} cursor-col-resize flex items-center justify-center group transition-colors`;
     storyResizer.style.display = 'none'; // Initially hidden
     storyResizer.innerHTML = `
-        <div class="h-12 w-0.5 ${isLight || isDawn ? 'bg-gray-400' : 'bg-white/10'} group-hover:bg-mysql-teal/70 rounded-full transition-colors"></div>
+        <div class="h-12 w-0.5 ${isLight || isDawn ? 'bg-gray-400' : (isOceanic ? 'bg-ocean-frost/30' : (isNeon ? 'bg-neon-text/30' : 'bg-white/10'))} group-hover:bg-mysql-teal/70 rounded-full transition-colors"></div>
     `;
     mainContent.appendChild(storyResizer);
 
@@ -158,9 +163,9 @@ export function SqlWorkbench() {
 
     // Snippet Library Resizer (horizontal)
     const snippetResizer = document.createElement('div');
-    snippetResizer.className = `w-1.5 ${isLight ? 'bg-gray-200 hover:bg-mysql-teal/30' : (isDawn ? 'bg-[#f2e9e1] hover:bg-mysql-teal/30' : 'bg-[#0b0d11] hover:bg-mysql-teal/50')} cursor-col-resize flex items-center justify-center group transition-colors`;
+    snippetResizer.className = `w-1.5 ${resizerInitialBg} cursor-col-resize flex items-center justify-center group transition-colors`;
     snippetResizer.innerHTML = `
-        <div class="h-12 w-0.5 ${isLight || isDawn ? 'bg-gray-400' : 'bg-white/10'} group-hover:bg-mysql-teal/70 rounded-full transition-colors"></div>
+        <div class="h-12 w-0.5 ${isLight || isDawn ? 'bg-gray-400' : (isOceanic ? 'bg-ocean-frost/30' : (isNeon ? 'bg-neon-text/30' : 'bg-white/10'))} group-hover:bg-mysql-teal/70 rounded-full transition-colors"></div>
     `;
     mainContent.appendChild(snippetResizer);
 
@@ -215,20 +220,21 @@ export function SqlWorkbench() {
         const isLightNew = theme === 'light';
         const isDawnNew = theme === 'dawn';
         const isOceanicNew = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isNeonNew = theme === 'neon';
 
-        container.className = `flex-1 flex flex-col h-full overflow-hidden transition-all duration-300 ${isLightNew ? 'bg-gray-50' : (isDawnNew ? 'bg-[#faf4ed]' : (isOceanicNew ? 'bg-ocean-bg' : ''))}`;
+        container.className = `flex-1 flex flex-col h-full overflow-hidden transition-all duration-300 ${isLightNew ? 'bg-gray-50' : (isDawnNew ? 'bg-[#faf4ed]' : (isOceanicNew ? 'bg-ocean-bg' : (isNeonNew ? 'bg-neon-bg' : '')))}`;
 
         // Update resizers and areas
-        const resizerBg = isLightNew ? 'bg-gray-200 hover:bg-mysql-teal/30' : (isDawnNew ? 'bg-[#f2e9e1] hover:bg-mysql-teal/30' : (isOceanicNew ? 'bg-ocean-border/50 hover:bg-ocean-frost/30' : 'bg-[#0b0d11] hover:bg-mysql-teal/50'));
-        const resizerHandle = (isLightNew || isDawnNew) ? 'bg-gray-400' : (isOceanicNew ? 'bg-ocean-frost/30' : 'bg-white/10');
+        const resizerBg = isLightNew ? 'bg-gray-200 hover:bg-mysql-teal/30' : (isDawnNew ? 'bg-[#f2e9e1] hover:bg-mysql-teal/30' : (isOceanicNew ? 'bg-ocean-border/50 hover:bg-ocean-frost/30' : (isNeonNew ? 'bg-neon-border/50 hover:bg-neon-accent/30' : 'bg-[#0b0d11] hover:bg-mysql-teal/50')));
+        const resizerHandle = (isLightNew || isDawnNew) ? 'bg-gray-400' : (isOceanicNew ? 'bg-ocean-frost/30' : (isNeonNew ? 'bg-neon-text/30' : 'bg-white/10'));
 
         sidebarResizer.className = `w-1.5 ${resizerBg} cursor-col-resize flex items-center justify-center group transition-colors`;
         sidebarResizer.querySelector('div').className = `h-12 w-0.5 ${resizerHandle} group-hover:bg-mysql-teal/70 rounded-full transition-colors`;
 
-        const contentBg = isLightNew ? 'bg-white' : (isDawnNew ? 'bg-[#fffaf3]' : (isOceanicNew ? 'bg-ocean-bg' : 'bg-[#2a2d33]'));
+        const contentBg = isLightNew ? 'bg-white' : (isDawnNew ? 'bg-[#fffaf3]' : (isOceanicNew ? 'bg-ocean-bg' : (isNeonNew ? 'bg-neon-bg' : 'bg-[#2a2d33]')));
         queryResults.className = `flex-1 flex flex-col overflow-hidden ${contentBg}`;
 
-        const vResizerBg = isLightNew ? 'bg-gray-100 hover:bg-mysql-teal/30' : (isDawnNew ? 'bg-[#f2e9e1] hover:bg-mysql-teal/30' : (isOceanicNew ? 'bg-ocean-border/30 hover:bg-ocean-frost/30' : 'bg-[#1a1d23] hover:bg-mysql-teal/50'));
+        const vResizerBg = isLightNew ? 'bg-gray-100 hover:bg-mysql-teal/30' : (isDawnNew ? 'bg-[#f2e9e1] hover:bg-mysql-teal/30' : (isOceanicNew ? 'bg-ocean-border/30 hover:bg-ocean-frost/30' : (isNeonNew ? 'bg-neon-border/30 hover:bg-neon-accent/30' : 'bg-[#1a1d23] hover:bg-mysql-teal/50')));
         verticalResizer.className = `h-1.5 ${vResizerBg} cursor-row-resize flex items-center justify-center group transition-colors`;
         verticalResizer.querySelector('div').className = `w-12 h-0.5 ${resizerHandle} group-hover:bg-mysql-teal/70 rounded-full transition-colors`;
 
@@ -248,7 +254,7 @@ export function SqlWorkbench() {
     window.addEventListener('tactilesql:settings-changed', onSettingsChange);
 
     // --- Query Story Panel Event Listeners ---
-    
+
     // Toggle story panel visibility
     const onToggleStoryPanel = (e) => {
         const isVisible = !storyPanelElement.classList.contains('hidden');
@@ -280,7 +286,7 @@ export function SqlWorkbench() {
     const onQueryExecuted = (e) => {
         if (e.detail?.query) {
             QueryStoryAPI.calculateQueryHash(e.detail.query).then(hash => {
-                QueryStoryAPI.incrementExecution(hash).catch(() => {}); // Silently fail if no story
+                QueryStoryAPI.incrementExecution(hash).catch(() => { }); // Silently fail if no story
             });
         }
     };

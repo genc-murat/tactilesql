@@ -12,7 +12,8 @@ export function DataTools() {
         const isLight = t === 'light';
         const isDawn = t === 'dawn';
         const isOceanic = t === 'oceanic' || t === 'ember' || t === 'aurora';
-        return `flex-1 flex flex-col h-full overflow-auto custom-scrollbar ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]'))} p-6 transition-all duration-300`;
+        const isNeon = t === 'neon';
+        return `flex-1 flex flex-col h-full overflow-auto custom-scrollbar ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isNeon ? 'bg-neon-bg' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]')))} p-6 transition-all duration-300`;
     };
     container.className = getContainerClass(theme);
 
@@ -1330,6 +1331,7 @@ export function DataTools() {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isNeon = theme === 'neon';
         const generators = [
             { value: 'auto', label: 'Auto' },
             { value: 'text', label: 'Text' },
@@ -1342,7 +1344,7 @@ export function DataTools() {
 
         if (mockSchema.length === 0) {
             return `
-                <div class="rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50 text-gray-500' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed] text-[#9893a5]' : (isOceanic ? 'border-ocean-border bg-ocean-bg text-ocean-text/70' : 'border-white/10 bg-white/5 text-gray-400'))} p-4 text-sm">
+                <div class="rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50 text-gray-500' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed] text-[#9893a5]' : (isNeon ? 'border-neon-border/20 bg-neon-panel/20 text-neon-text/70' : (isOceanic ? 'border-ocean-border bg-ocean-bg text-ocean-text/70' : 'border-white/10 bg-white/5 text-gray-400')))} p-4 text-sm">
                     Select a table to load column rules.
                 </div>
             `;
@@ -1354,12 +1356,12 @@ export function DataTools() {
                 .map((g) => `<option value="${g.value}" ${selected === g.value ? 'selected' : ''}>${g.label}</option>`)
                 .join('');
             return `
-                <tr class="${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')} border-b last:border-b-0">
-                    <td class="py-2 pr-3 text-xs font-semibold ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-white')}">${escapeHtml(column.name)}</td>
-                    <td class="py-2 pr-3 text-[11px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">${escapeHtml(column.column_type || column.data_type || '-')}</td>
-                    <td class="py-2 pr-3 text-[10px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">${column.is_nullable ? 'NULLABLE' : 'NOT NULL'}</td>
+                <tr class="${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : (isNeon ? 'border-neon-border/10' : 'border-white/5'))} border-b last:border-b-0">
+                    <td class="py-2 pr-3 text-xs font-semibold ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-white'))}">${escapeHtml(column.name)}</td>
+                    <td class="py-2 pr-3 text-[11px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : (isNeon ? 'text-neon-text/60' : 'text-gray-400'))}">${escapeHtml(column.column_type || column.data_type || '-')}</td>
+                    <td class="py-2 pr-3 text-[10px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-text/40' : 'text-gray-400'))}">${column.is_nullable ? 'NULLABLE' : 'NOT NULL'}</td>
                     <td class="py-2">
-                        <select data-column-index="${idx}" class="mock-generator-select w-full px-2 py-1 rounded border text-[11px] ${isLight ? 'bg-white border-gray-200 text-gray-700' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text' : 'bg-black/20 border-white/10 text-gray-200'))}">
+                        <select data-column-index="${idx}" class="mock-generator-select w-full px-2 py-1 rounded border text-[11px] ${isLight ? 'bg-white border-gray-200 text-gray-700' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279]' : (isNeon ? 'bg-neon-panel border-neon-border/40 text-neon-text' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text' : 'bg-black/20 border-white/10 text-gray-200')))}">
                             ${options}
                         </select>
                     </td>
@@ -1368,8 +1370,8 @@ export function DataTools() {
         }).join('');
 
         return `
-            <div class="rounded-lg border ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border' : 'border-white/10'))} overflow-hidden">
-                <div class="px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] ${isLight ? 'bg-gray-50 text-gray-500' : (isDawn ? 'bg-[#faf4ed] text-[#9893a5]' : (isOceanic ? 'bg-ocean-bg text-ocean-text/70' : 'bg-white/5 text-gray-400'))}">
+            <div class="rounded-lg border ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isNeon ? 'border-neon-border/40' : (isOceanic ? 'border-ocean-border' : 'border-white/10')))} overflow-hidden">
+                <div class="px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] ${isLight ? 'bg-gray-50 text-gray-500' : (isDawn ? 'bg-[#faf4ed] text-[#9893a5]' : (isNeon ? 'bg-neon-panel/40 text-neon-pink' : (isOceanic ? 'bg-ocean-bg text-ocean-text/70' : 'bg-white/5 text-gray-400')))}">
                     Column Generators
                 </div>
                 <div class="max-h-[260px] overflow-auto custom-scrollbar p-3">
@@ -1393,6 +1395,7 @@ export function DataTools() {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isNeon = theme === 'neon';
 
         if (!mockPreview || !Array.isArray(mockPreview.rows) || mockPreview.rows.length === 0) {
             return `
@@ -1406,15 +1409,15 @@ export function DataTools() {
         const rows = mockPreview.rows.map((row) => {
             const cells = row.map((cell) => {
                 if (cell === null || typeof cell === 'undefined') {
-                    return `<td class="px-2 py-1.5 text-[11px] italic ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500')}">NULL</td>`;
+                    return `<td class="px-2 py-1.5 text-[11px] italic ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-text/40' : 'text-gray-500'))}">NULL</td>`;
                 }
-                return `<td class="px-2 py-1.5 text-[11px] ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-gray-200')}">${escapeHtml(cell)}</td>`;
+                return `<td class="px-2 py-1.5 text-[11px] ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-gray-200'))}">${escapeHtml(cell)}</td>`;
             }).join('');
-            return `<tr class="${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')} border-b last:border-b-0">${cells}</tr>`;
+            return `<tr class="${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : (isNeon ? 'border-neon-border/10' : 'border-white/5'))} border-b last:border-b-0">${cells}</tr>`;
         }).join('');
 
         const warningText = (mockPreview.warnings || []).length > 0
-            ? `<div class="text-[10px] mt-2 ${isLight ? 'text-amber-600' : (isDawn ? 'text-[#ea9d34]' : 'text-amber-400')}">${escapeHtml(mockPreview.warnings.join(' | '))}</div>`
+            ? `<div class="text-[10px] mt-2 ${isLight ? 'text-amber-600' : (isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-pink' : 'text-amber-400'))}">${escapeHtml(mockPreview.warnings.join(' | '))}</div>`
             : '';
 
         return `
@@ -1440,6 +1443,7 @@ export function DataTools() {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isNeon = theme === 'neon';
         const progress = Math.max(0, Math.min(100, Number(mockJobStatus.progressPct || 0)));
         const status = String(mockJobStatus.status || '').toLowerCase();
         const isRunning = status === 'queued' || status === 'running';
@@ -1456,7 +1460,7 @@ export function DataTools() {
             .join('');
 
         return `
-            <div class="rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border bg-ocean-bg' : 'border-white/10 bg-white/5'))} p-3 space-y-2">
+            <div class="rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isNeon ? 'border-neon-border/20 bg-neon-panel/20' : (isOceanic ? 'border-ocean-border bg-ocean-bg' : 'border-white/10 bg-white/5')))} p-3 space-y-2">
                 <div class="flex items-center justify-between">
                     <div class="text-[10px] font-black uppercase tracking-[0.18em] ${statusColor}">Operation: ${escapeHtml(status)}</div>
                     ${isRunning ? `
@@ -1465,15 +1469,15 @@ export function DataTools() {
                         </button>
                     ` : ''}
                 </div>
-                <div class="w-full h-2 rounded ${isLight ? 'bg-gray-200' : (isDawn ? 'bg-[#f2e9e1]' : 'bg-white/10')} overflow-hidden">
-                    <div class="h-full ${isDawn ? 'bg-[#31748f]' : 'bg-mysql-teal'} transition-all duration-300" style="width:${progress}%"></div>
+                <div class="w-full h-2 rounded ${isLight ? 'bg-gray-200' : (isDawn ? 'bg-[#f2e9e1]' : (isNeon ? 'bg-neon-border/10' : 'bg-white/10'))} overflow-hidden">
+                    <div class="h-full ${isDawn ? 'bg-[#31748f]' : (isNeon ? 'bg-cyan-400' : 'bg-mysql-teal')} transition-all duration-300" style="width:${progress}%"></div>
                 </div>
-                <div class="text-xs ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">
+                <div class="text-xs ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text/70' : 'text-gray-300'))}">
                     ${mockJobStatus.insertedRows || 0} / ${mockJobStatus.totalRows || 0} rows
                     ${mockJobStatus.dryRun ? '(dry run)' : ''}
                 </div>
-                ${mockJobStatus.error ? `<div class="text-[11px] ${isLight ? 'text-red-600' : (isDawn ? 'text-[#b4637a]' : 'text-red-400')}">${escapeHtml(mockJobStatus.error)}</div>` : ''}
-                ${warnings ? `<ul class="text-[11px] ${isLight ? 'text-amber-600' : (isDawn ? 'text-[#ea9d34]' : 'text-amber-400')} list-disc pl-4">${warnings}</ul>` : ''}
+                ${mockJobStatus.error ? `<div class="text-[11px] ${isLight ? 'text-red-600' : (isDawn ? 'text-[#b4637a]' : (isNeon ? 'text-neon-pink' : 'text-red-400'))}">${escapeHtml(mockJobStatus.error)}</div>` : ''}
+                ${warnings ? `<ul class="text-[11px] ${isLight ? 'text-amber-600' : (isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-pink' : 'text-amber-400'))} list-disc pl-4">${warnings}</ul>` : ''}
             </div>
         `;
     };
@@ -1482,10 +1486,11 @@ export function DataTools() {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isNeon = theme === 'neon';
 
         if (!Array.isArray(mockJobHistory) || mockJobHistory.length === 0) {
             return `
-                <div class="rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border bg-ocean-bg' : 'border-white/10 bg-white/5'))} p-3 text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">
+                <div class="rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isNeon ? 'border-neon-border/20 bg-neon-panel/20' : (isOceanic ? 'border-ocean-border bg-ocean-bg' : 'border-white/10 bg-white/5')))} p-3 text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-text/40' : 'text-gray-400'))}">
                     No mock job history yet.
                 </div>
             `;
@@ -1513,8 +1518,8 @@ export function DataTools() {
         }).join('');
 
         return `
-            <div class="rounded-lg border ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border' : 'border-white/10'))} overflow-hidden">
-                <div class="px-3 py-2 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.18em] ${isLight ? 'bg-gray-50 text-gray-500' : (isDawn ? 'bg-[#faf4ed] text-[#9893a5]' : (isOceanic ? 'bg-ocean-bg text-ocean-text/70' : 'bg-white/5 text-gray-400'))}">
+            <div class="rounded-lg border ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isNeon ? 'border-neon-border/40' : (isOceanic ? 'border-ocean-border' : 'border-white/10')))} overflow-hidden">
+                <div class="px-3 py-2 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.18em] ${isLight ? 'bg-gray-50 text-gray-500' : (isDawn ? 'bg-[#faf4ed] text-[#9893a5]' : (isNeon ? 'bg-neon-panel/40 text-neon-pink' : (isOceanic ? 'bg-ocean-bg text-ocean-text/70' : 'bg-white/5 text-gray-400')))}">
                     <span>Recent Jobs</span>
                     <button id="mock-history-refresh-btn" class="px-2 py-1 rounded text-[10px] font-bold ${isDawn ? 'bg-[#31748f] text-white' : 'bg-mysql-teal text-white'} hover:brightness-110 transition-all">Refresh</button>
                 </div>
@@ -1539,6 +1544,7 @@ export function DataTools() {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isNeon = theme === 'neon';
 
         container.innerHTML = `
             <div class="w-full h-full">
@@ -1549,35 +1555,35 @@ export function DataTools() {
                             <span class="material-symbols-outlined text-white text-2xl">swap_horiz</span>
                         </div>
                         <div>
-                            <h1 class="text-xl font-bold ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')}">Data Tools</h1>
-                            <p class="text-sm ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Import, Export, Transfer, Backup & Mock Data</p>
+                            <h1 class="text-xl font-bold ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-white'))}">Data Tools</h1>
+                            <p class="text-sm ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-text/60' : 'text-gray-400'))}">Import, Export, Transfer, Backup & Mock Data</p>
                         </div>
                     </div>
                 </div>
 
                 <!-- Tabs -->
-                <div class="flex items-center gap-2 mb-6 p-1 rounded-lg ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#faf4ed]' : (isOceanic ? 'bg-ocean-panel' : 'bg-white/5'))} w-fit">
-                    <button id="tab-export" class="px-6 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'export' ? (isDawn ? 'bg-[#ea9d34] text-[#fffaf3] shadow-lg' : 'bg-mysql-teal text-white shadow-lg') : (isLight ? 'text-gray-600 hover:text-gray-900' : (isDawn ? 'text-[#575279] hover:text-[#286983]' : 'text-gray-400 hover:text-white'))}">
+                <div class="flex items-center gap-2 mb-6 p-1 rounded-lg ${isLight ? 'bg-white' : (isDawn ? 'bg-[#faf4ed]' : (isNeon ? 'bg-neon-panel/40' : (isOceanic ? 'bg-ocean-panel' : 'bg-white/5')))} w-fit">
+                    <button id="tab-export" class="px-6 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'export' ? (isDawn ? 'bg-[#ea9d34] text-[#fffaf3] shadow-lg' : (isNeon ? 'bg-cyan-400/20 text-cyan-400 border border-cyan-400/50 shadow-[0_0_15px_rgba(34,211,238,0.2)]' : 'bg-mysql-teal text-white shadow-lg')) : (isLight ? 'text-gray-600 hover:text-gray-900' : (isDawn ? 'text-[#575279] hover:text-[#286983]' : (isNeon ? 'text-neon-text/40 hover:text-neon-text' : 'text-gray-400 hover:text-white')))}">
                         <span class="material-symbols-outlined text-base mr-1 align-middle">upload</span>
                         Export
                     </button>
-                    <button id="tab-import" class="px-6 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'import' ? (isDawn ? 'bg-[#ea9d34] text-[#fffaf3] shadow-lg' : 'bg-mysql-teal text-white shadow-lg') : (isLight ? 'text-gray-600 hover:text-gray-900' : (isDawn ? 'text-[#575279] hover:text-[#286983]' : 'text-gray-400 hover:text-white'))}">
+                    <button id="tab-import" class="px-6 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'import' ? (isDawn ? 'bg-[#ea9d34] text-[#fffaf3] shadow-lg' : (isNeon ? 'bg-cyan-400/20 text-cyan-400 border border-cyan-400/50 shadow-[0_0_15px_rgba(34,211,238,0.2)]' : 'bg-mysql-teal text-white shadow-lg')) : (isLight ? 'text-gray-600 hover:text-gray-900' : (isDawn ? 'text-[#575279] hover:text-[#286983]' : (isNeon ? 'text-neon-text/40 hover:text-neon-text' : 'text-gray-400 hover:text-white')))}">
                         <span class="material-symbols-outlined text-base mr-1 align-middle">download</span>
                         Import
                     </button>
-                    <button id="tab-backup" class="px-6 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'backup' ? (isDawn ? 'bg-[#ea9d34] text-[#fffaf3] shadow-lg' : 'bg-mysql-teal text-white shadow-lg') : (isLight ? 'text-gray-600 hover:text-gray-900' : (isDawn ? 'text-[#575279] hover:text-[#286983]' : 'text-gray-400 hover:text-white'))}">
+                    <button id="tab-backup" class="px-6 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'backup' ? (isDawn ? 'bg-[#ea9d34] text-[#fffaf3] shadow-lg' : (isNeon ? 'bg-cyan-400/20 text-cyan-400 border border-cyan-400/50 shadow-[0_0_15px_rgba(34,211,238,0.2)]' : 'bg-mysql-teal text-white shadow-lg')) : (isLight ? 'text-gray-600 hover:text-gray-900' : (isDawn ? 'text-[#575279] hover:text-[#286983]' : (isNeon ? 'text-neon-text/40 hover:text-neon-text' : 'text-gray-400 hover:text-white')))}">
                         <span class="material-symbols-outlined text-base mr-1 align-middle">backup</span>
                         Backup & Restore
                     </button>
-                    <button id="tab-mock" class="px-6 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'mock' ? (isDawn ? 'bg-[#ea9d34] text-[#fffaf3] shadow-lg' : 'bg-mysql-teal text-white shadow-lg') : (isLight ? 'text-gray-600 hover:text-gray-900' : (isDawn ? 'text-[#575279] hover:text-[#286983]' : 'text-gray-400 hover:text-white'))}">
+                    <button id="tab-mock" class="px-6 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'mock' ? (isDawn ? 'bg-[#ea9d34] text-[#fffaf3] shadow-lg' : (isNeon ? 'bg-cyan-400/20 text-cyan-400 border border-cyan-400/50 shadow-[0_0_15px_rgba(34,211,238,0.2)]' : 'bg-mysql-teal text-white shadow-lg')) : (isLight ? 'text-gray-600 hover:text-gray-900' : (isDawn ? 'text-[#575279] hover:text-[#286983]' : (isNeon ? 'text-neon-text/40 hover:text-neon-text' : 'text-gray-400 hover:text-white')))}">
                         <span class="material-symbols-outlined text-base mr-1 align-middle">science</span>
                         Mock Data
                     </button>
-                    <button id="tab-compare" class="px-6 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'compare' ? (isDawn ? 'bg-[#ea9d34] text-[#fffaf3] shadow-lg' : 'bg-mysql-teal text-white shadow-lg') : (isLight ? 'text-gray-600 hover:text-gray-900' : (isDawn ? 'text-[#575279] hover:text-[#286983]' : 'text-gray-400 hover:text-white'))}">
+                    <button id="tab-compare" class="px-6 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'compare' ? (isDawn ? 'bg-[#ea9d34] text-[#fffaf3] shadow-lg' : (isNeon ? 'bg-cyan-400/20 text-cyan-400 border border-cyan-400/50 shadow-[0_0_15px_rgba(34,211,238,0.2)]' : 'bg-mysql-teal text-white shadow-lg')) : (isLight ? 'text-gray-600 hover:text-gray-900' : (isDawn ? 'text-[#575279] hover:text-[#286983]' : (isNeon ? 'text-neon-text/40 hover:text-neon-text' : 'text-gray-400 hover:text-white')))}">
                         <span class="material-symbols-outlined text-base mr-1 align-middle">compare_arrows</span>
                         Compare
                     </button>
-                    <button id="tab-transfer" class="px-6 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'transfer' ? (isDawn ? 'bg-[#ea9d34] text-[#fffaf3] shadow-lg' : 'bg-mysql-teal text-white shadow-lg') : (isLight ? 'text-gray-600 hover:text-gray-900' : (isDawn ? 'text-[#575279] hover:text-[#286983]' : 'text-gray-400 hover:text-white'))}">
+                    <button id="tab-transfer" class="px-6 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'transfer' ? (isDawn ? 'bg-[#ea9d34] text-[#fffaf3] shadow-lg' : (isNeon ? 'bg-cyan-400/20 text-cyan-400 border border-cyan-400/50 shadow-[0_0_15px_rgba(34,211,238,0.2)]' : 'bg-mysql-teal text-white shadow-lg')) : (isLight ? 'text-gray-600 hover:text-gray-900' : (isDawn ? 'text-[#575279] hover:text-[#286983]' : (isNeon ? 'text-neon-text/40 hover:text-neon-text' : 'text-gray-400 hover:text-white')))}">
                         <span class="material-symbols-outlined text-base mr-1 align-middle">sync_alt</span>
                         Transfer
                     </button>
@@ -1587,12 +1593,12 @@ export function DataTools() {
                 ${activeTab === 'compare' || activeTab === 'transfer' ? '' : `
                 <div class="grid grid-cols-2 gap-4 mb-6">
                     <div class="space-y-2">
-                        <label class="text-[10px] font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Database</label>
+                        <label class="text-[10px] font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-pink' : 'text-gray-400'))}">Database</label>
                         <div id="db-select-container"></div>
                     </div>
                     ${activeTab !== 'backup' ? `
                     <div class="space-y-2">
-                        <label class="text-[10px] font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Table</label>
+                        <label class="text-[10px] font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-pink' : 'text-gray-400'))}">Table</label>
                         <div id="table-select-container"></div>
                     </div>
                     ` : '<div></div>'}
@@ -1600,7 +1606,7 @@ export function DataTools() {
                 `}
 
                 <!-- Content Panel -->
-                <div class="rounded-xl ${isLight ? 'bg-white border border-gray-200 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))} p-6">
+                <div class="rounded-xl ${isLight ? 'bg-white border border-gray-200 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1]' : (isNeon ? 'bg-neon-panel border border-neon-border/40' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10')))} p-6">
                     ${isProcessing ? renderProcessing() : renderTabContent()}
                 </div>
             </div>
@@ -1630,7 +1636,7 @@ export function DataTools() {
         if (tableContainer) {
             if (!selectedDb) {
                 tableContainer.innerHTML = `
-                    <div class="h-[38px] px-3 flex items-center text-sm ${isLight ? 'bg-gray-100/50 text-gray-400' : 'bg-white/5 text-gray-500'} rounded-lg border ${isLight ? 'border-gray-200' : 'border-white/10'} cursor-not-allowed italic">
+                    <div class="h-[38px] px-3 flex items-center text-sm ${isLight ? 'bg-gray-100/50 text-gray-400' : (isNeon ? 'bg-neon-panel/20 text-neon-text/40' : 'bg-white/5 text-gray-500')} rounded-lg border ${isLight ? 'border-gray-200' : (isNeon ? 'border-neon-border/10' : 'border-white/10')} cursor-not-allowed italic">
                         Select database first
                     </div>
                 `;

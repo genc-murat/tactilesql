@@ -31,6 +31,13 @@ export default {
                 "ocean-panel": "#3B4252",
                 "ocean-border": "#4C566A",
                 "ocean-text": "#D8DEE9",
+                // Neon Palette
+                "neon-bg": "#050510",
+                "neon-panel": "#0a0a1f",
+                "neon-border": "#2a2a40",
+                "neon-text": "#00f3ff",
+                "neon-accent": "#ff0099",
+                "neon-highlight": "#fff",
             },
             fontFamily: {
                 "mono": ["JetBrains Mono", "monospace"],

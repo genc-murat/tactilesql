@@ -11,7 +11,8 @@ export function SnippetLibrary() {
         const isLight = t === 'light';
         const isDawn = t === 'dawn';
         const isOceanic = t === 'oceanic' || t === 'ember' || t === 'aurora';
-        return `h-full border-l ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border' : 'bg-[#0f1115] border-white/5'))} flex flex-col p-4 gap-4 overflow-hidden transition-all duration-300`;
+        const isNeon = t === 'neon';
+        return `h-full border-l ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border' : (isNeon ? 'bg-neon-panel border-neon-border/50' : 'bg-[#0f1115] border-white/5')))} flex flex-col p-4 gap-4 overflow-hidden transition-all duration-300`;
     };
     aside.className = getAsideClass(theme);
 
@@ -172,9 +173,10 @@ export function SnippetLibrary() {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isNeon = theme === 'neon';
         const showSnippets = SettingsManager.get(SETTINGS_PATHS.WORKBENCH_SNIPPETS);
         const showHistory = SettingsManager.get(SETTINGS_PATHS.WORKBENCH_HISTORY);
-        const dividerClass = isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border' : 'border-white/5'));
+        const dividerClass = isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border' : (isNeon ? 'border-neon-border/30' : 'border-white/5')));
 
         const filteredSnippets = getFilteredSnippets();
         const filteredHistory = getFilteredHistory();
@@ -190,7 +192,7 @@ export function SnippetLibrary() {
 
         if (!showSnippets && !showHistory) {
             aside.innerHTML = `
-                <div class="flex-1 flex items-center justify-center text-[11px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-500'))}">
+                <div class="flex-1 flex items-center justify-center text-[11px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : (isOceanic ? 'text-ocean-text/60' : (isNeon ? 'text-neon-text/60' : 'text-gray-500')))}">
                     Snippets and history are hidden in Settings.
                 </div>
             `;
@@ -198,7 +200,7 @@ export function SnippetLibrary() {
         }
 
         const renderHistoryItem = (item, idx) => `
-            <div class="text-[10px] font-mono p-2 ${isLight ? 'hover:bg-gray-100 border-transparent hover:border-gray-200' : (isDawn ? 'hover:bg-[#faf4ed] border-transparent hover:border-[#f2e9e1]' : (isOceanic ? 'hover:bg-ocean-bg border-transparent hover:border-ocean-frost/20' : 'hover:bg-white/5 border-transparent hover:border-white/5'))} rounded-lg cursor-pointer border group history-item" data-idx="${history.indexOf(item)}">
+            <div class="text-[10px] font-mono p-2 ${isLight ? 'hover:bg-gray-100 border-transparent hover:border-gray-200' : (isDawn ? 'hover:bg-[#faf4ed] border-transparent hover:border-[#f2e9e1]' : (isOceanic ? 'hover:bg-ocean-bg border-transparent hover:border-ocean-frost/20' : (isNeon ? 'hover:bg-neon-accent/10 border-transparent hover:border-neon-accent/30' : 'hover:bg-white/5 border-transparent hover:border-white/5')))} rounded-lg cursor-pointer border group history-item" data-idx="${history.indexOf(item)}">
                 <div class="${item.status === 'SUCCESS' ? 'text-emerald-500' : 'text-red-400'} text-[9px] mb-1 font-bold flex justify-between items-center">
                     <div class="flex items-center gap-2">
                         <span>${new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
@@ -210,7 +212,7 @@ export function SnippetLibrary() {
                          <span class="material-symbols-outlined text-[10px] hover:text-mysql-teal use-query-btn" title="Use Query">play_arrow</span>
                     </div>
                 </div>
-                <div class="truncate ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : (isOceanic ? 'text-ocean-text' : 'text-gray-400'))}" title="${escapeHtml(item.query)}">${escapeHtml(item.query)}</div>
+                <div class="truncate ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : (isOceanic ? 'text-ocean-text' : (isNeon ? 'text-neon-text/80' : 'text-gray-400')))}" title="${escapeHtml(item.query)}">${escapeHtml(item.query)}</div>
                 ${item.status === 'ERROR' ? `<div class="text-[9px] text-red-400/80 truncate mt-1 italic">${escapeHtml(item.error || 'Unknown error')}</div>` : ''}
             </div>
         `;
@@ -220,27 +222,27 @@ export function SnippetLibrary() {
             <div class="${snippetSectionClass}">
                 <!-- Header with actions -->
                 <div class="flex items-center justify-between px-1">
-                    <h2 class="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-500">Snippets</h2>
+                    <h2 class="text-[10px] font-bold uppercase tracking-[0.15em] ${isNeon ? 'text-neon-text/60' : 'text-gray-500'}">Snippets</h2>
                     <div class="flex items-center gap-2">
-                        <span id="import-btn" class="material-symbols-outlined text-sm text-gray-500 cursor-pointer hover:text-mysql-teal transition-colors" title="Import Snippets">upload</span>
-                        <span id="export-btn" class="material-symbols-outlined text-sm text-gray-500 cursor-pointer hover:text-mysql-teal transition-colors" title="Export Snippets">download</span>
-                        <span id="add-snippet-btn" class="material-symbols-outlined text-sm text-gray-500 cursor-pointer hover:text-mysql-teal transition-colors" title="Add Snippet">add_circle</span>
+                        <span id="import-btn" class="material-symbols-outlined text-sm ${isNeon ? 'text-neon-text/60' : 'text-gray-500'} cursor-pointer hover:text-mysql-teal transition-colors" title="Import Snippets">upload</span>
+                        <span id="export-btn" class="material-symbols-outlined text-sm ${isNeon ? 'text-neon-text/60' : 'text-gray-500'} cursor-pointer hover:text-mysql-teal transition-colors" title="Export Snippets">download</span>
+                        <span id="add-snippet-btn" class="material-symbols-outlined text-sm ${isNeon ? 'text-neon-accent' : 'text-gray-500'} cursor-pointer hover:text-mysql-teal transition-colors" title="Add Snippet">add_circle</span>
                     </div>
                 </div>
                 
                 <!-- Search -->
                 <div class="relative">
-                    <span class="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-sm text-gray-500">search</span>
+                    <span class="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-sm ${isNeon ? 'text-neon-text/40' : 'text-gray-500'}">search</span>
                     <input type="text" id="snippet-search" placeholder="Search snippets & history..." value="${searchTerm}"
-                        class="w-full pl-8 pr-3 py-1.5 text-[11px] rounded-lg ${isLight ? 'bg-gray-100 border-gray-200 text-gray-700 placeholder-gray-400' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] placeholder-[#575279]/50' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text placeholder-ocean-text/50' : 'bg-white/5 border-white/10 text-gray-300 placeholder-gray-500'))} border focus:border-mysql-teal focus:outline-none transition-colors">
+                        class="w-full pl-8 pr-3 py-1.5 text-[11px] rounded-lg ${isLight ? 'bg-gray-100 border-gray-200 text-gray-700 placeholder-gray-400' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] placeholder-[#575279]/50' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text placeholder-ocean-text/50' : (isNeon ? 'bg-neon-bg border-neon-border/50 text-neon-text placeholder-neon-text/40' : 'bg-white/5 border-white/10 text-gray-300 placeholder-gray-500')))} border focus:border-mysql-teal focus:outline-none transition-colors">
                 </div>
                 
                 <!-- Category Tabs -->
                 <div class="flex flex-wrap gap-1 pb-2 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5'))}">
                     ${CATEGORIES.map(cat => `
                         <button class="category-tab px-2 py-1 text-[9px] font-bold uppercase rounded-md transition-all ${activeCategory === cat.id
-                ? 'bg-mysql-teal/20 text-mysql-teal border border-mysql-teal/30'
-                : ((isLight || isDawn) ? 'text-gray-500 hover:bg-black/5' : (isOceanic ? 'text-ocean-text/60 hover:bg-ocean-bg' : 'text-gray-500 hover:bg-white/5'))
+                ? (isNeon ? 'bg-neon-accent/20 text-neon-accent border border-neon-accent/30 shadow-[0_0_8px_rgba(255,0,153,0.2)]' : 'bg-mysql-teal/20 text-mysql-teal border border-mysql-teal/30')
+                : ((isLight || isDawn) ? 'text-gray-500 hover:bg-black/5' : (isOceanic ? 'text-ocean-text/60 hover:bg-ocean-bg' : (isNeon ? 'text-neon-text/60 hover:bg-neon-bg' : 'text-gray-500 hover:bg-white/5')))
             }" data-category="${cat.id}">
                             ${cat.label}
                         </button>
@@ -250,19 +252,19 @@ export function SnippetLibrary() {
                 <!-- Snippets List -->
                 <div class="${snippetListClass}">
                     ${filteredSnippets.map(snippet => `
-                        <div class="neu-card ${isLight ? 'bg-gray-50 border-gray-100 hover:border-mysql-teal/30' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] hover:border-mysql-teal/30' : (isOceanic ? 'bg-ocean-bg border-ocean-border hover:border-ocean-frost' : 'hover:border-mysql-teal/40 border-transparent'))} rounded-lg p-2.5 cursor-pointer transition-all border group snippet-item" data-id="${snippet.id}">
+                        <div class="neu-card ${isLight ? 'bg-gray-50 border-gray-100 hover:border-mysql-teal/30' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] hover:border-mysql-teal/30' : (isOceanic ? 'bg-ocean-bg border-ocean-border hover:border-ocean-frost' : (isNeon ? 'bg-neon-bg border-neon-border/40 hover:border-neon-accent/60' : 'hover:border-mysql-teal/40 border-transparent')))} rounded-lg p-2.5 cursor-pointer transition-all border group snippet-item" data-id="${snippet.id}">
                             <div class="flex justify-between items-center mb-1">
-                                <span class="text-[10px] font-bold ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text/80' : 'text-gray-300'))} truncate flex-1">${snippet.title}</span>
+                                <span class="text-[10px] font-bold ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text/80' : (isNeon ? 'text-neon-text' : 'text-gray-300')))} truncate flex-1">${snippet.title}</span>
                                 <div class="flex items-center gap-1.5">
                                     <span class="text-[8px] font-bold uppercase px-1.5 py-0.5 rounded ${getCategoryColor(snippet.category)}">${snippet.category}</span>
                                     <span class="material-symbols-outlined text-[10px] text-gray-500 hover:text-red-400 opacity-0 group-hover:opacity-100 delete-snippet-btn transition-opacity" title="Delete">delete</span>
                                 </div>
                             </div>
-                            <p class="text-[10px] ${(isLight || isDawn) ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-500')} font-mono truncate" title="${escapeHtml(snippet.code)}">${escapeHtml(snippet.code.substring(0, 50))}${snippet.code.length > 50 ? '...' : ''}</p>
+                            <p class="text-[10px] ${(isLight || isDawn) ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/60' : (isNeon ? 'text-neon-text/60' : 'text-gray-500'))} font-mono truncate" title="${escapeHtml(snippet.code)}">${escapeHtml(snippet.code.substring(0, 50))}${snippet.code.length > 50 ? '...' : ''}</p>
                             ${snippet.code.includes('${') ? `<div class="mt-1 text-[8px] text-yellow-500 flex items-center gap-1"><span class="material-symbols-outlined text-[10px]">data_object</span>Has variables</div>` : ''}
                         </div>
                     `).join('')}
-                    ${filteredSnippets.length === 0 ? `<div class="text-[11px] ${(isLight || isDawn) ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-600')} italic text-center py-4">No snippets found</div>` : ''}
+                    ${filteredSnippets.length === 0 ? `<div class="text-[11px] ${(isLight || isDawn) ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/50' : (isNeon ? 'text-neon-text/40' : 'text-gray-600'))} italic text-center py-4">No snippets found</div>` : ''}
                 </div>
             </div>` : ''}
             
@@ -270,8 +272,8 @@ export function SnippetLibrary() {
             ${showHistory ? `
             <div class="${historySectionClass}">
                 <div class="flex items-center justify-between px-1">
-                    <h2 class="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-500">History</h2>
-                    <span id="clear-history-btn" class="material-symbols-outlined text-sm text-gray-500 cursor-pointer hover:text-red-400 transition-colors" title="Clear History">delete_sweep</span>
+                    <h2 class="text-[10px] font-bold uppercase tracking-[0.15em] ${isNeon ? 'text-neon-text/60' : 'text-gray-500'}">History</h2>
+                    <span id="clear-history-btn" class="material-symbols-outlined text-sm ${isNeon ? 'text-neon-accent' : 'text-gray-500'} cursor-pointer hover:text-red-400 transition-colors" title="Clear History">delete_sweep</span>
                 </div>
                 <div class="flex-1 overflow-y-auto custom-scrollbar space-y-1.5 pr-1" id="history-list">
                     ${groupedHistory.today.length > 0 ? `
@@ -286,7 +288,7 @@ export function SnippetLibrary() {
                         <div class="text-[9px] font-bold text-gray-500 uppercase tracking-wider px-1 pt-3">Older</div>
                         ${groupedHistory.older.map(renderHistoryItem).join('')}
                     ` : ''}
-                    ${filteredHistory.length === 0 ? `<div class="text-[11px] ${(isLight || isDawn) ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-600')} italic text-center py-4">No query history</div>` : ''}
+                    ${filteredHistory.length === 0 ? `<div class="text-[11px] ${(isLight || isDawn) ? 'text-gray-400' : (isDawn ? 'text-[#797593]' : (isOceanic ? 'text-ocean-text/50' : (isNeon ? 'text-neon-text/40' : 'text-gray-600')))} italic text-center py-4">No query history</div>` : ''}
                 </div>
             </div>` : ''}
         `;

@@ -118,19 +118,28 @@ export function TaskManager() {
         const isDawn = currentTheme === 'dawn';
         const isOceanic =
             currentTheme === 'oceanic' || currentTheme === 'ember' || currentTheme === 'aurora';
+        const isNeon = currentTheme === 'neon';
         return `h-full overflow-hidden flex flex-col p-4 lg:p-6 ${isLight
             ? 'bg-gray-50'
             : isDawn
                 ? 'bg-[#fffaf3]'
                 : isOceanic
                     ? 'bg-ocean-bg'
-                    : 'bg-[#0a0c10]'
-        }`;
+                    : isNeon
+                        ? 'bg-neon-bg'
+                        : 'bg-[#0a0c10]'
+            }`;
     };
 
     const selectedTask = () => tasks.find((task) => task.id === selectedTaskId) || null;
 
-    const statusBadgeClass = (status, isLight, isDawn) => {
+    const statusBadgeClass = (status, isLight, isDawn, isNeon) => {
+        if (isNeon) {
+            if (status === 'active') return 'text-cyan-400 bg-cyan-400/10 border-cyan-400/30';
+            if (status === 'paused') return 'text-amber-400 bg-amber-400/10 border-amber-400/30';
+            if (status === 'disabled') return 'text-neon-pink bg-neon-pink/10 border-neon-pink/30';
+            return 'text-neon-text/70 bg-neon-panel border-neon-border/40';
+        }
         if (status === 'active') return 'text-emerald-600 bg-emerald-500/10 border-emerald-500/30';
         if (status === 'paused') return 'text-amber-600 bg-amber-500/10 border-amber-500/30';
         if (status === 'disabled') return 'text-gray-500 bg-gray-500/10 border-gray-500/30';
@@ -160,7 +169,12 @@ export function TaskManager() {
         return 'Running';
     };
 
-    const schedulerStateBadgeClass = (state, isLight, isDawn) => {
+    const schedulerStateBadgeClass = (state, isLight, isDawn, isNeon) => {
+        if (isNeon) {
+            if (state === 'paused') return 'text-amber-400 bg-amber-400/10 border-amber-400/30';
+            if (state === 'disabled') return 'text-neon-pink bg-neon-pink/10 border-neon-pink/30';
+            return 'text-cyan-400 bg-cyan-400/10 border-cyan-400/30';
+        }
         if (state === 'paused') return 'text-amber-600 bg-amber-500/10 border-amber-500/30';
         if (state === 'disabled') return 'text-red-600 bg-red-500/10 border-red-500/30';
         return isLight || isDawn
@@ -1432,6 +1446,7 @@ export function TaskManager() {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isNeon = theme === 'neon';
         const task = selectedTask();
         const isCompositeTask = task?.taskType === 'composite';
         if (isCompositeTask) {
@@ -1455,11 +1470,11 @@ export function TaskManager() {
         container.innerHTML = `
             <div class="shrink-0 flex items-center justify-between mb-4">
                 <div>
-                    <h1 class="text-xl font-bold ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')}">Task Center</h1>
-                    <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">Task management, scheduler and run history</p>
+                    <h1 class="text-xl font-bold ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-white'))}">Task Center</h1>
+                    <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : (isNeon ? 'text-neon-text/60' : 'text-gray-400'))}">Task management, scheduler and run history</p>
                 </div>
                 <div class="flex items-center gap-2">
-                    <span class="text-[11px] px-2 py-1 rounded-full border ${schedulerStateBadgeClass(schedulerState, isLight, isDawn)}">
+                    <span class="text-[11px] px-2 py-1 rounded-full border ${schedulerStateBadgeClass(schedulerState, isLight, isDawn, isNeon)}">
                         Scheduler: ${escapeHtml(schedulerStateLabel(schedulerState))}
                     </span>
                     <button id="scheduler-running-btn" class="px-2 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors ${schedulerState === 'running'
@@ -1504,7 +1519,7 @@ export function TaskManager() {
                     </div>
                     <button id="task-refresh-btn" class="px-3 py-2 rounded-lg text-xs font-semibold border transition-colors ${isLight
                 ? 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100'
-                : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279] hover:bg-[#faf4ed]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text hover:bg-ocean-panel/80' : 'bg-white/5 border-white/10 text-gray-200 hover:bg-white/10'))}">
+                : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279] hover:bg-[#faf4ed]' : (isNeon ? 'bg-neon-panel border-neon-border/40 text-neon-text hover:bg-neon-accent/10' : 'bg-white/5 border-white/10 text-gray-200 hover:bg-white/10'))}">
                         Refresh
                     </button>
                 </div>
@@ -1513,10 +1528,10 @@ export function TaskManager() {
             <div class="flex-1 min-h-0 grid grid-cols-1 xl:grid-cols-12 gap-4">
                 <section class="xl:col-span-4 min-h-0 flex flex-col gap-4">
                     <div class="rounded-xl border p-3 min-h-0 flex-1 flex flex-col ${isLight
-                ? 'bg-white border-gray-200'
-                : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#11141a] border-white/10'))}">
+                ? 'bg-white border-gray-200 shadow-sm'
+                : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-none' : (isNeon ? 'bg-neon-panel border-neon-border/30 shadow-none' : 'bg-white/5 border-white/10 shadow-none'))}">
                         <div class="flex items-center justify-between mb-3">
-                            <h2 class="text-sm font-semibold ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-200')}">Tasks</h2>
+                            <h2 class="text-sm font-semibold ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-gray-200'))}">Tasks</h2>
                             <button id="task-open-create-btn" class="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-white transition-colors ${isDawn ? 'bg-[#ea9d34] hover:bg-[#d18b2f]' : 'bg-mysql-teal hover:bg-mysql-teal/90'}">
                                 New Task
                             </button>
@@ -1524,16 +1539,16 @@ export function TaskManager() {
 
                         <div class="grid grid-cols-2 gap-2 mb-3">
                             <select id="task-filter-type" class="rounded-lg border px-2 py-1.5 text-[11px] ${isLight
-                ? 'bg-gray-50 border-gray-200 text-gray-700'
-                : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">
+                ? 'bg-white border-gray-200 text-gray-700'
+                : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279]' : (isNeon ? 'bg-neon-panel border-neon-border/40 text-neon-text' : 'bg-[#1a1d23] border-white/10 text-gray-200'))}">
                                 <option value="" ${taskFilters.taskType ? '' : 'selected'}>All Types</option>
                                 ${TASK_TYPE_OPTIONS.map((option) => `
                                     <option value="${option.value}" ${taskFilters.taskType === option.value ? 'selected' : ''}>${option.label}</option>
                                 `).join('')}
                             </select>
                             <select id="task-filter-status" class="rounded-lg border px-2 py-1.5 text-[11px] ${isLight
-                ? 'bg-gray-50 border-gray-200 text-gray-700'
-                : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">
+                ? 'bg-white border-gray-200 text-gray-700'
+                : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279]' : (isNeon ? 'bg-neon-panel border-neon-border/40 text-neon-text' : 'bg-[#1a1d23] border-white/10 text-gray-200'))}">
                                 <option value="" ${taskFilters.status ? '' : 'selected'}>All Status</option>
                                 ${TASK_STATUS_OPTIONS.map((option) => `
                                     <option value="${option.value}" ${taskFilters.status === option.value ? 'selected' : ''}>${option.label}</option>
@@ -1541,39 +1556,39 @@ export function TaskManager() {
                             </select>
                             <input id="task-filter-owner" value="${escapeHtml(taskFilters.owner)}" placeholder="Owner"
                                 class="rounded-lg border px-2 py-1.5 text-[11px] ${isLight
-                ? 'bg-gray-50 border-gray-200 text-gray-700'
-                : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">
+                ? 'bg-white border-gray-200 text-gray-700'
+                : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279]' : (isNeon ? 'bg-neon-panel border-neon-border/40 text-neon-text' : 'bg-[#1a1d23] border-white/10 text-gray-200'))}">
                             <input id="task-filter-tag" value="${escapeHtml(taskFilters.tag)}" placeholder="Tag"
                                 class="rounded-lg border px-2 py-1.5 text-[11px] ${isLight
-                ? 'bg-gray-50 border-gray-200 text-gray-700'
-                : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">
+                ? 'bg-white border-gray-200 text-gray-700'
+                : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279]' : (isNeon ? 'bg-neon-panel border-neon-border/40 text-neon-text' : 'bg-[#1a1d23] border-white/10 text-gray-200'))}">
                         </div>
                         <div class="flex items-center justify-between mb-2">
-                            <span class="text-[11px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">${tasks.length} task(s)</span>
+                            <span class="text-[11px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : (isNeon ? 'text-neon-text/50' : 'text-gray-400'))}">${tasks.length} task(s)</span>
                             <button id="task-filter-reset" class="px-2 py-1 rounded border text-[10px] font-semibold ${isLight
                 ? 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100'
-                : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] hover:bg-[#f7efe4]' : 'bg-white/5 border-white/10 text-gray-200 hover:bg-white/10')}">
+                : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] hover:bg-[#f7efe4]' : (isNeon ? 'bg-neon-panel border-neon-border/40 text-neon-text hover:bg-neon-accent/10' : 'bg-white/5 border-white/10 text-gray-200 hover:bg-white/10'))}">
                                 Reset Filters
                             </button>
                         </div>
 
                         <div class="flex-1 min-h-0 overflow-auto custom-scrollbar space-y-2">
                             ${isLoadingTasks
-                ? `<div class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">Loading tasks...</div>`
+                ? `<div class="text-xs ${isLight ? 'text-gray-500' : (isNeon ? 'text-neon-text/40' : 'text-gray-400')}">Loading tasks...</div>`
                 : tasks.length === 0
-                    ? `<div class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">No tasks yet.</div>`
+                    ? `<div class="text-xs ${isLight ? 'text-gray-500' : (isNeon ? 'text-neon-text/40' : 'text-gray-400')}">No tasks yet.</div>`
                     : tasks.map((item) => `
                                             <button data-task-id="${item.id}" class="w-full text-left rounded-lg border p-3 transition-colors ${selectedTaskId === item.id
-                        ? (isDawn ? 'bg-[#f7efe4] border-[#ea9d34]/40' : 'bg-mysql-teal/10 border-mysql-teal/30')
-                        : (isLight ? 'bg-gray-50 border-gray-200 hover:bg-gray-100' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] hover:bg-[#f7efe4]' : 'bg-black/20 border-white/10 hover:bg-white/10'))
-                    }">
+                            ? (isDawn ? 'bg-[#f7efe4] border-[#ea9d34]/40' : (isNeon ? 'bg-neon-accent/10 border-cyan-400/50' : 'bg-mysql-teal/10 border-mysql-teal/30'))
+                            : (isLight ? 'bg-white border-gray-200 hover:bg-gray-100' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] hover:bg-[#f7efe4]' : (isNeon ? 'bg-neon-panel/20 border-neon-border/10 hover:bg-neon-accent/5' : 'bg-black/20 border-white/10 hover:bg-white/10')))
+                        }">
                                                 <div class="flex items-start justify-between gap-2">
                                                     <div class="min-w-0">
-                                                        <div class="text-sm font-semibold ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-100')} truncate">${escapeHtml(item.name)}</div>
-                                                        <div class="text-[11px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400')} truncate">${escapeHtml(taskTypeLabel(item.taskType))}</div>
-                                                        <div class="text-[10px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400')} truncate">Owner: ${escapeHtml(item.owner || '-')}</div>
+                                                        <div class="text-sm font-semibold ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-gray-100'))} truncate">${escapeHtml(item.name)}</div>
+                                                        <div class="text-[11px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : (isNeon ? 'text-neon-text/60' : 'text-gray-400'))} truncate">${escapeHtml(taskTypeLabel(item.taskType))}</div>
+                                                        <div class="text-[10px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : (isNeon ? 'text-neon-text/40' : 'text-gray-400'))} truncate">Owner: ${escapeHtml(item.owner || '-')}</div>
                                                     </div>
-                                                    <span class="text-[10px] px-2 py-0.5 rounded-full border ${statusBadgeClass(item.status, isLight, isDawn)}">${escapeHtml(item.status)}</span>
+                                                    <span class="text-[10px] px-2 py-0.5 rounded-full border ${statusBadgeClass(item.status, isLight, isDawn, isNeon)}">${escapeHtml(item.status)}</span>
                                                 </div>
                                                 <div class="mt-2 grid grid-cols-2 gap-2 text-[10px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">
                                                     <div>Last run: ${escapeHtml(item.lastRunStatus || '-')}</div>
@@ -1591,11 +1606,11 @@ export function TaskManager() {
                 <section class="xl:col-span-8 min-h-0 flex flex-col gap-4">
                     <div class="rounded-xl border p-4 ${isLight
                 ? 'bg-white border-gray-200'
-                : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#11141a] border-white/10'))}">
+                : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isNeon ? 'bg-neon-panel border-neon-border/40' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#11141a] border-white/10')))}">
                         <div class="flex items-center justify-between mb-3">
                             <div>
-                                <h2 class="text-sm font-semibold ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-200')}">${task ? escapeHtml(task.name) : 'Select a Task'}</h2>
-                                <p class="text-[11px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">${task ? `Type: ${escapeHtml(taskTypeLabel(task.taskType))}` : 'No task selected.'}</p>
+                                <h2 class="text-sm font-semibold ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-gray-200'))}">${task ? escapeHtml(task.name) : 'Select a Task'}</h2>
+                                <p class="text-[11px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : (isNeon ? 'text-neon-text/60' : 'text-gray-400'))}">${task ? `Type: ${escapeHtml(taskTypeLabel(task.taskType))}` : 'No task selected.'}</p>
                             </div>
                             <div class="flex items-center gap-2">
                                 <button id="task-open-edit-btn" class="px-3 py-2 rounded-lg border text-xs font-semibold transition-colors ${isLight
@@ -1612,7 +1627,7 @@ export function TaskManager() {
                                 </button>
                                 <button id="task-delete-btn" class="px-3 py-2 rounded-lg border text-xs font-semibold transition-colors ${isLight
                 ? 'bg-red-50 border-red-200 text-red-600 hover:bg-red-100'
-                : 'bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20'
+                : (isNeon ? 'bg-neon-pink/10 border-neon-pink/30 text-neon-pink hover:bg-neon-pink/20' : 'bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20')
             } ${task ? '' : 'opacity-50 pointer-events-none'}">
                                     Delete Task
                                 </button>
@@ -1620,7 +1635,7 @@ export function TaskManager() {
                         </div>
 
                         ${task ? `
-                            <div class="text-xs ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">
+                            <div class="text-xs ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text/70' : 'text-gray-300'))}">
                                 ${escapeHtml(task.description || 'No description')}
                             </div>
                         ` : ''}
@@ -1628,50 +1643,50 @@ export function TaskManager() {
 
                     ${isCompositeTask ? `
                         <div class="rounded-xl border p-4 ${isLight
-                ? 'bg-white border-gray-200'
-                : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#11141a] border-white/10'))}">
+                    ? 'bg-white border-gray-200 shadow-sm'
+                    : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isNeon ? 'bg-neon-panel border-neon-border/30' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#11141a] border-white/10')))}">
                             <div class="flex items-center justify-between gap-2 mb-3">
                                 <div>
-                                    <h3 class="text-sm font-semibold ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-200')}">Composite Builder</h3>
-                                    <p class="text-[11px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">
+                                    <h3 class="text-sm font-semibold ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-gray-200'))}">Composite Builder</h3>
+                                    <p class="text-[11px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : (isNeon ? 'text-neon-text/60' : 'text-gray-400'))}">
                                         Build step order and dependencies for this task.
                                     </p>
                                 </div>
                                 <div class="flex items-center gap-2">
                                     <button id="composite-reload-btn" type="button" class="px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${isLight
-                ? 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100'
-                : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] hover:bg-[#f7efe4]' : 'bg-black/20 border-white/10 text-gray-200 hover:bg-white/10')
-            } ${isLoadingCompositeGraph || isSavingCompositeGraph ? 'opacity-60 pointer-events-none' : ''}">
+                    ? 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100'
+                    : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] hover:bg-[#f7efe4]' : (isNeon ? 'bg-neon-panel border-neon-border/40 text-neon-text hover:bg-neon-accent/10' : 'bg-black/20 border-white/10 text-gray-200 hover:bg-white/10'))
+                } ${isLoadingCompositeGraph || isSavingCompositeGraph ? 'opacity-60 pointer-events-none' : ''}">
                                         Reload
                                     </button>
                                     <button id="composite-save-btn" type="button" class="px-3 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${compositeCanSave
-                ? (isDawn ? 'bg-[#ea9d34] border-[#ea9d34] text-white hover:bg-[#d18b2f]' : 'bg-mysql-teal border-mysql-teal text-white hover:bg-mysql-teal/90')
-                : (isLight ? 'bg-gray-100 border-gray-200 text-gray-400' : 'bg-white/5 border-white/10 text-gray-500')
-            } ${compositeCanSave ? '' : 'pointer-events-none'}">
+                    ? (isDawn ? 'bg-[#ea9d34] border-[#ea9d34] text-white hover:bg-[#d18b2f]' : (isNeon ? 'bg-cyan-400 border-cyan-400 text-black shadow-[0_0_15px_rgba(0,243,255,0.4)] hover:bg-cyan-300' : 'bg-mysql-teal border-mysql-teal text-white hover:bg-mysql-teal/90'))
+                    : (isLight ? 'bg-gray-100 border-gray-200 text-gray-400' : (isNeon ? 'bg-neon-panel border-neon-border/10 text-neon-text/30' : 'bg-white/5 border-white/10 text-gray-500'))
+                } ${compositeCanSave ? '' : 'pointer-events-none'}">
                                         ${isSavingCompositeGraph ? 'Saving...' : 'Save Graph'}
                                     </button>
                                 </div>
                             </div>
 
                             ${isLoadingCompositeGraph
-                ? `<div class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">Loading composite graph...</div>`
-                : `
+                    ? `<div class="text-xs ${isLight ? 'text-gray-500' : (isNeon ? 'text-neon-text/40' : 'text-gray-400')}">Loading composite graph...</div>`
+                    : `
                                     <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                                        <div class="rounded-lg border p-3 ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : 'border-white/10 bg-black/20')}">
+                                        <div class="rounded-lg border p-3 ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isNeon ? 'border-neon-border/20 bg-neon-panel/20' : 'border-white/10 bg-black/20'))}">
                                             <div class="flex items-center justify-between mb-2">
-                                                <h4 class="text-xs font-semibold ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-gray-200')}">Steps</h4>
+                                                <h4 class="text-xs font-semibold ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-gray-200'))}">Steps</h4>
                                                 <button id="composite-add-step-btn" type="button" class="px-2 py-1 rounded border text-[11px] ${isLight
-                    ? 'text-gray-700 border-gray-200 bg-white hover:bg-gray-100'
-                    : (isDawn ? 'text-[#575279] border-[#f2e9e1] bg-[#fffaf3] hover:bg-[#f7efe4]' : 'text-gray-200 border-white/15 bg-white/5 hover:bg-white/10')
-                }">Add Step</button>
+                        ? 'text-gray-700 border-gray-200 bg-white hover:bg-gray-100'
+                        : (isDawn ? 'text-[#575279] border-[#f2e9e1] bg-[#fffaf3] hover:bg-[#f7efe4]' : (isNeon ? 'text-neon-text border-neon-border/40 bg-neon-panel hover:bg-neon-accent/10' : 'text-gray-200 border-white/15 bg-white/5 hover:bg-white/10'))
+                    }">Add Step</button>
                                             </div>
                                             <div class="space-y-2 max-h-64 overflow-auto custom-scrollbar pr-1">
                                                 ${compositeDraft.steps.length === 0
-                    ? `<div class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">No steps yet.</div>`
-                    : compositeDraft.steps.map((step, index) => `
-                                                        <div class="rounded-lg border p-2 space-y-2 ${isLight ? 'border-gray-200 bg-white' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3]' : 'border-white/10 bg-black/20')}">
+                        ? `<div class="text-xs ${isLight ? 'text-gray-500' : (isNeon ? 'text-neon-text/40' : 'text-gray-400')}">No steps yet.</div>`
+                        : compositeDraft.steps.map((step, index) => `
+                                                        <div class="rounded-lg border p-2 space-y-2 ${isLight ? 'border-gray-200 bg-white' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3]' : (isNeon ? 'border-neon-border/20 bg-neon-panel/40' : 'border-white/10 bg-black/20'))}">
                                                             <div class="flex items-center justify-between gap-2">
-                                                                <span class="text-[10px] uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">Step ${index + 1}</span>
+                                                                <span class="text-[10px] uppercase tracking-wider ${isLight ? 'text-gray-500' : (isNeon ? 'text-neon-text/50' : 'text-gray-400')}">Step ${index + 1}</span>
                                                                 <div class="flex items-center gap-1">
                                                                     <button type="button" data-composite-step-action="move-up" data-step-index="${index}" class="px-1.5 py-0.5 rounded border text-[10px] ${isLight ? 'border-gray-200 text-gray-600 bg-gray-50 hover:bg-gray-100' : 'border-white/10 text-gray-300 bg-white/5 hover:bg-white/10'} ${index === 0 ? 'opacity-40 pointer-events-none' : ''}">Up</button>
                                                                     <button type="button" data-composite-step-action="move-down" data-step-index="${index}" class="px-1.5 py-0.5 rounded border text-[10px] ${isLight ? 'border-gray-200 text-gray-600 bg-gray-50 hover:bg-gray-100' : 'border-white/10 text-gray-300 bg-white/5 hover:bg-white/10'} ${index === compositeDraft.steps.length - 1 ? 'opacity-40 pointer-events-none' : ''}">Down</button>
@@ -1681,32 +1696,32 @@ export function TaskManager() {
                                                             <div class="grid grid-cols-2 gap-2">
                                                                 <input data-composite-step-field="stepKey" data-step-index="${index}" value="${escapeHtml(step.stepKey)}" placeholder="step key"
                                                                     class="rounded-lg border px-2 py-1.5 text-xs font-mono ${isLight
-                        ? 'bg-gray-50 border-gray-200 text-gray-700'
-                        : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">
+                                ? 'bg-white border-gray-200 text-gray-700'
+                                : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279]' : (isNeon ? 'bg-neon-panel border-neon-border/40 text-neon-text' : 'bg-black/20 border-white/10 text-gray-200'))}">
                                                                 <select data-composite-step-field="mode" data-step-index="${index}" class="rounded-lg border px-2 py-1.5 text-xs ${isLight
-                        ? 'bg-gray-50 border-gray-200 text-gray-700'
-                        : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">
+                                ? 'bg-gray-50 border-gray-200 text-gray-700'
+                                : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">
                                                                     ${COMPOSITE_MODE_OPTIONS.map((option) => `
                                                                         <option value="${option.value}" ${step.mode === option.value ? 'selected' : ''}>${option.label}</option>
                                                                     `).join('')}
                                                                 </select>
                                                             </div>
                                                             ${step.mode === 'inline'
-                        ? `<select data-composite-step-field="taskType" data-step-index="${index}" class="w-full rounded-lg border px-2 py-1.5 text-xs ${isLight
-                            ? 'bg-gray-50 border-gray-200 text-gray-700'
-                            : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">
+                                ? `<select data-composite-step-field="taskType" data-step-index="${index}" class="w-full rounded-lg border px-2 py-1.5 text-xs ${isLight
+                                    ? 'bg-gray-50 border-gray-200 text-gray-700'
+                                    : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">
                                                                     ${INLINE_COMPOSITE_TASK_TYPES.map((option) => `
                                                                         <option value="${option.value}" ${step.taskType === option.value ? 'selected' : ''}>${option.label}</option>
                                                                     `).join('')}
                                                                 </select>`
-                        : `<input data-composite-step-field="referencedTaskId" data-step-index="${index}" value="${escapeHtml(step.referencedTaskId)}" placeholder="Referenced task id"
+                                : `<input data-composite-step-field="referencedTaskId" data-step-index="${index}" value="${escapeHtml(step.referencedTaskId)}" placeholder="Referenced task id"
                                                                     class="w-full rounded-lg border px-2 py-1.5 text-xs font-mono ${isLight
-                            ? 'bg-gray-50 border-gray-200 text-gray-700'
-                            : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">`}
+                                    ? 'bg-gray-50 border-gray-200 text-gray-700'
+                                    : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">`}
                                                             <div class="grid grid-cols-2 gap-2">
                                                                 <select data-composite-step-field="onError" data-step-index="${index}" class="rounded-lg border px-2 py-1.5 text-xs ${isLight
-                        ? 'bg-gray-50 border-gray-200 text-gray-700'
-                        : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">
+                                ? 'bg-gray-50 border-gray-200 text-gray-700'
+                                : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">
                                                                     ${COMPOSITE_STEP_ON_ERROR_OPTIONS.map((option) => `
                                                                         <option value="${option.value}" ${step.onError === option.value ? 'selected' : ''}>On Error: ${option.label}</option>
                                                                     `).join('')}
@@ -1718,8 +1733,8 @@ export function TaskManager() {
                                                             </div>
                                                             <textarea data-composite-step-field="payloadText" data-step-index="${index}" rows="3"
                                                                 class="w-full rounded-lg border px-2 py-1.5 text-xs font-mono ${isLight
-                        ? 'bg-gray-50 border-gray-200 text-gray-700'
-                        : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">${escapeHtml(step.payloadText)}</textarea>
+                                ? 'bg-gray-50 border-gray-200 text-gray-700'
+                                : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">${escapeHtml(step.payloadText)}</textarea>
                                                         </div>
                                                     `).join('')}
                                             </div>
@@ -1729,20 +1744,20 @@ export function TaskManager() {
                                             <div class="flex items-center justify-between mb-2">
                                                 <h4 class="text-xs font-semibold ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-gray-200')}">Dependencies</h4>
                                                 <button id="composite-add-edge-btn" type="button" class="px-2 py-1 rounded border text-[11px] ${isLight
-                    ? 'text-gray-700 border-gray-200 bg-white hover:bg-gray-100'
-                    : (isDawn ? 'text-[#575279] border-[#f2e9e1] bg-[#fffaf3] hover:bg-[#f7efe4]' : 'text-gray-200 border-white/15 bg-white/5 hover:bg-white/10')
-                }">Add Dependency</button>
+                        ? 'text-gray-700 border-gray-200 bg-white hover:bg-gray-100'
+                        : (isDawn ? 'text-[#575279] border-[#f2e9e1] bg-[#fffaf3] hover:bg-[#f7efe4]' : 'text-gray-200 border-white/15 bg-white/5 hover:bg-white/10')
+                    }">Add Dependency</button>
                                             </div>
 
                                             <div class="space-y-2 max-h-64 overflow-auto custom-scrollbar pr-1">
                                                 ${compositeDraft.edges.length === 0
-                    ? `<div class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">No dependencies yet.</div>`
-                    : compositeDraft.edges.map((edge, index) => `
+                        ? `<div class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">No dependencies yet.</div>`
+                        : compositeDraft.edges.map((edge, index) => `
                                                         <div class="rounded-lg border p-2 ${isLight ? 'border-gray-200 bg-white' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3]' : 'border-white/10 bg-black/20')}">
                                                             <div class="grid grid-cols-[1fr_auto_1fr_auto] gap-2 items-center">
                                                                 <select data-composite-edge-field="fromStepKey" data-edge-index="${index}" class="rounded-lg border px-2 py-1.5 text-xs ${isLight
-                        ? 'bg-gray-50 border-gray-200 text-gray-700'
-                        : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">
+                                ? 'bg-gray-50 border-gray-200 text-gray-700'
+                                : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">
                                                                     <option value="">From</option>
                                                                     ${compositeStepKeyOptions.map((stepKey) => `
                                                                         <option value="${escapeHtml(stepKey)}" ${edge.fromStepKey === stepKey ? 'selected' : ''}>${escapeHtml(stepKey)}</option>
@@ -1750,8 +1765,8 @@ export function TaskManager() {
                                                                 </select>
                                                                 <span class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">-></span>
                                                                 <select data-composite-edge-field="toStepKey" data-edge-index="${index}" class="rounded-lg border px-2 py-1.5 text-xs ${isLight
-                        ? 'bg-gray-50 border-gray-200 text-gray-700'
-                        : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">
+                                ? 'bg-gray-50 border-gray-200 text-gray-700'
+                                : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">
                                                                     <option value="">To</option>
                                                                     ${compositeStepKeyOptions.map((stepKey) => `
                                                                         <option value="${escapeHtml(stepKey)}" ${edge.toStepKey === stepKey ? 'selected' : ''}>${escapeHtml(stepKey)}</option>
@@ -1761,8 +1776,8 @@ export function TaskManager() {
                                                             </div>
                                                             <input data-composite-edge-field="condition" data-edge-index="${index}" value="${escapeHtml(edge.condition)}" placeholder="Condition (optional)"
                                                                 class="w-full mt-2 rounded-lg border px-2 py-1.5 text-xs ${isLight
-                        ? 'bg-gray-50 border-gray-200 text-gray-700'
-                        : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">
+                                ? 'bg-gray-50 border-gray-200 text-gray-700'
+                                : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">
                                                         </div>
                                                     `).join('')}
                                             </div>
@@ -1770,7 +1785,7 @@ export function TaskManager() {
                                     </div>
 
                                     ${compositeErrors.length > 0
-                ? `<div class="mt-3 rounded-lg border px-3 py-2 ${isLight ? 'border-red-200 bg-red-50' : 'border-red-500/30 bg-red-500/10'}">
+                        ? `<div class="mt-3 rounded-lg border px-3 py-2 ${isLight ? 'border-red-200 bg-red-50' : 'border-red-500/30 bg-red-500/10'}">
                                             <div class="text-[11px] font-semibold ${isLight ? 'text-red-700' : 'text-red-300'}">
                                                 Validation issues (${compositeErrors.length})
                                             </div>
@@ -1780,7 +1795,7 @@ export function TaskManager() {
                                                 `).join('')}
                                             </div>
                                         </div>`
-                : `<div class="mt-3 text-[11px] ${isLight ? 'text-emerald-600' : 'text-emerald-300'}">Composite graph is valid. You can save.</div>`}
+                        : `<div class="mt-3 text-[11px] ${isLight ? 'text-emerald-600' : 'text-emerald-300'}">Composite graph is valid. You can save.</div>`}
                                 `}
                         </div>
                     ` : ''}
@@ -1788,14 +1803,14 @@ export function TaskManager() {
                     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-0 flex-1">
                         <div class="rounded-xl border p-4 min-h-0 flex flex-col ${isLight
                 ? 'bg-white border-gray-200'
-                : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#11141a] border-white/10'))}">
-                            <h3 class="text-sm font-semibold mb-3 ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-200')}">Triggers</h3>
+                : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isNeon ? 'bg-neon-panel border-neon-border/40' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#11141a] border-white/10')))}">
+                            <h3 class="text-sm font-semibold mb-3 ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-gray-200'))}">Triggers</h3>
 
                             <form id="trigger-create-form" class="space-y-2 mb-3 ${task ? '' : 'opacity-50 pointer-events-none'}">
                                 <div class="grid grid-cols-2 gap-2">
                                     <select id="trigger-form-type" data-trigger-input="true" class="rounded-lg border px-2 py-2 text-xs ${isLight
-                ? 'bg-gray-50 border-gray-200 text-gray-700'
-                : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">
+                ? 'bg-white border-gray-200 text-gray-700'
+                : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279]' : (isNeon ? 'bg-neon-panel border-neon-border/40 text-neon-text' : 'bg-black/20 border-white/10 text-gray-200'))}">
                                         ${TRIGGER_TYPE_OPTIONS.map((option) => `
                                             <option value="${option.value}" ${triggerForm.triggerType === option.value ? 'selected' : ''}>${option.label}</option>
                                         `).join('')}
@@ -1803,8 +1818,8 @@ export function TaskManager() {
                                     ${triggerForm.triggerType === 'interval'
                 ? `<input id="trigger-form-interval" data-trigger-input="true" type="number" min="1" value="${escapeHtml(String(triggerForm.intervalSeconds))}" placeholder="Interval (s)"
                                         class="rounded-lg border px-2 py-2 text-xs ${isLight
-                ? 'bg-gray-50 border-gray-200 text-gray-700'
-                : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">`
+                    ? 'bg-gray-50 border-gray-200 text-gray-700'
+                    : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">`
                 : `<input type="text" disabled value="${triggerForm.triggerType === 'cron' ? 'Cron schedule mode' : 'One-shot schedule mode'}"
                                         class="rounded-lg border px-2 py-2 text-xs ${isLight
                     ? 'bg-gray-100 border-gray-200 text-gray-500'
@@ -1814,8 +1829,8 @@ export function TaskManager() {
                 ? `<div class="grid grid-cols-[1fr_1fr_auto] gap-2">
                                         <input id="trigger-cron-minute" data-trigger-input="true" value="${escapeHtml(cronBuilder.minute)}" placeholder="Minute (*/15)"
                                             class="rounded-lg border px-2 py-2 text-xs font-mono ${isLight
-                    ? 'bg-gray-50 border-gray-200 text-gray-700'
-                    : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">
+                    ? 'bg-white border-gray-200 text-gray-700'
+                    : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279]' : (isNeon ? 'bg-neon-panel border-neon-border/40 text-neon-text' : 'bg-black/20 border-white/10 text-gray-200'))}">
                                         <input id="trigger-cron-hour" data-trigger-input="true" value="${escapeHtml(cronBuilder.hour)}" placeholder="Hour (* or 9-18)"
                                             class="rounded-lg border px-2 py-2 text-xs font-mono ${isLight
                     ? 'bg-gray-50 border-gray-200 text-gray-700'
@@ -1826,20 +1841,20 @@ export function TaskManager() {
                                     </div>
                                     <input id="trigger-form-cron" data-trigger-input="true" value="${escapeHtml(triggerForm.cronExpression)}" placeholder="Cron (e.g. */30 * * * *)"
                                         class="w-full rounded-lg border px-3 py-2 text-xs font-mono ${isLight
-                ? 'bg-gray-50 border-gray-200 text-gray-700'
-                : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">`
+                    ? 'bg-white border-gray-200 text-gray-700'
+                    : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279]' : (isNeon ? 'bg-neon-panel border-neon-border/40 text-neon-text' : 'bg-black/20 border-white/10 text-gray-200'))}">`
                 : ''}
                                 ${triggerForm.triggerType === 'one_shot'
                 ? `<input id="trigger-form-run-at" data-trigger-input="true" type="datetime-local" value="${escapeHtml(toLocalDateTimeInput(triggerForm.runAt))}"
                                     class="w-full rounded-lg border px-3 py-2 text-xs ${isLight
-                ? 'bg-gray-50 border-gray-200 text-gray-700'
-                : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">`
+                    ? 'bg-white border-gray-200 text-gray-700'
+                    : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279]' : (isNeon ? 'bg-neon-panel border-neon-border/40 text-neon-text' : 'bg-black/20 border-white/10 text-gray-200'))}">`
                 : ''}
                                 <div class="grid grid-cols-2 gap-2">
                                     <input id="trigger-form-timezone" data-trigger-input="true" value="${escapeHtml(triggerForm.timezone)}" placeholder="Timezone"
                                         class="rounded-lg border px-2 py-2 text-xs ${isLight
-                ? 'bg-gray-50 border-gray-200 text-gray-700'
-                : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">
+                ? 'bg-white border-gray-200 text-gray-700'
+                : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279]' : (isNeon ? 'bg-neon-panel border-neon-border/40 text-neon-text' : 'bg-black/20 border-white/10 text-gray-200'))}">
                                     <select id="trigger-form-misfire" data-trigger-input="true" class="rounded-lg border px-2 py-2 text-xs ${isLight
                 ? 'bg-gray-50 border-gray-200 text-gray-700'
                 : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">
@@ -1855,14 +1870,14 @@ export function TaskManager() {
                 : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">
                                     <input id="trigger-form-retry-backoff" data-trigger-input="true" type="number" min="0" value="${escapeHtml(String(triggerForm.retryBackoffMs))}" placeholder="Backoff ms"
                                         class="rounded-lg border px-2 py-2 text-xs ${isLight
-                ? 'bg-gray-50 border-gray-200 text-gray-700'
-                : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">
+                ? 'bg-white border-gray-200 text-gray-700'
+                : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279]' : (isNeon ? 'bg-neon-panel border-neon-border/40 text-neon-text' : 'bg-black/20 border-white/10 text-gray-200'))}">
                                 </div>
                                 <label class="flex items-center gap-2 text-xs ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">
                                     <input id="trigger-form-enabled" data-trigger-input="true" type="checkbox" ${triggerForm.enabled ? 'checked' : ''}>
                                     Enabled
                                 </label>
-                                <div class="rounded-lg border px-2 py-2 ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : 'border-white/10 bg-black/20')}">
+                                <div class="rounded-lg border px-2 py-2 ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isNeon ? 'border-neon-border/20 bg-neon-panel/20' : 'border-white/10 bg-black/20'))}">
                                     <div class="text-[10px] uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">Preview</div>
                                     ${triggerPreview.error
                 ? `<div class="mt-1 text-[11px] ${isLight ? 'text-red-600' : 'text-red-300'}">${escapeHtml(triggerPreview.error)}</div>`
@@ -1885,7 +1900,7 @@ export function TaskManager() {
                 : triggers.length === 0
                     ? `<div class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">No triggers.</div>`
                     : triggers.map((trigger) => `
-                                            <div class="rounded-lg border p-3 ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : 'border-white/10 bg-black/20')}">
+                                            <div class="rounded-lg border p-3 ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isNeon ? 'border-neon-border/20 bg-neon-panel/20' : 'border-white/10 bg-black/20'))}">
                                                 <div class="flex items-center justify-between gap-2">
                                                     <div class="text-xs font-semibold ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-100')}">${escapeHtml(triggerTypeLabel(trigger.triggerType))}</div>
                                                     <button data-trigger-id="${trigger.id}" class="text-[11px] px-2 py-1 rounded border ${isLight ? 'text-red-600 border-red-200 bg-red-50 hover:bg-red-100' : 'text-red-400 border-red-500/30 bg-red-500/10 hover:bg-red-500/20'}">Delete</button>
@@ -1903,9 +1918,9 @@ export function TaskManager() {
 
                         <div class="rounded-xl border p-4 min-h-0 flex flex-col ${isLight
                 ? 'bg-white border-gray-200'
-                : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#11141a] border-white/10'))}">
+                : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isNeon ? 'bg-neon-panel border-neon-border/40' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#11141a] border-white/10')))}">
                             <div class="flex items-center justify-between mb-3">
-                                <h3 class="text-sm font-semibold ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-200')}">Runs & Logs</h3>
+                                <h3 class="text-sm font-semibold ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-gray-200'))}">Runs & Logs</h3>
                                 <div class="flex items-center gap-2">
                                     <button id="task-cancel-run-btn" class="px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${isLight
                 ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
@@ -1924,14 +1939,14 @@ export function TaskManager() {
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-3 min-h-0 flex-1">
                                 <div class="min-h-0 overflow-auto custom-scrollbar space-y-2">
                                     ${isLoadingDetails
-                ? `<div class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">Loading runs...</div>`
+                ? `<div class="text-xs ${isLight ? 'text-gray-500' : (isNeon ? 'text-neon-text/40' : 'text-gray-400')}">Loading runs...</div>`
                 : runs.length === 0
-                    ? `<div class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">No runs yet.</div>`
+                    ? `<div class="text-xs ${isLight ? 'text-gray-500' : (isNeon ? 'text-neon-text/40' : 'text-gray-400')}">No runs yet.</div>`
                     : runs.map((run) => `
                                                 <button data-run-id="${run.id}" class="w-full text-left rounded-lg border p-3 ${selectedRunId === run.id
-                        ? (isDawn ? 'bg-[#f7efe4] border-[#ea9d34]/40' : 'bg-mysql-teal/10 border-mysql-teal/30')
-                        : (isLight ? 'bg-gray-50 border-gray-200 hover:bg-gray-100' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] hover:bg-[#f7efe4]' : 'bg-black/20 border-white/10 hover:bg-white/10'))
-                    }">
+                            ? (isDawn ? 'bg-[#f7efe4] border-[#ea9d34]/40' : (isNeon ? 'bg-neon-accent/10 border-cyan-400/50' : 'bg-mysql-teal/10 border-mysql-teal/30'))
+                            : (isLight ? 'bg-white border-gray-200 hover:bg-gray-100' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] hover:bg-[#f7efe4]' : (isNeon ? 'bg-neon-panel/20 border-neon-border/10 hover:bg-neon-accent/5' : 'bg-black/20 border-white/10 hover:bg-white/10')))
+                        }">
                                                     <div class="flex items-center justify-between gap-2">
                                                         <span class="text-[11px] font-mono ${isLight ? 'text-gray-700' : 'text-gray-300'}">${escapeHtml(run.id.slice(0, 8))}</span>
                                                         <span class="text-[10px] px-2 py-0.5 rounded-full border ${runStatusBadgeClass(run.status)}">${escapeHtml(run.status)}</span>
@@ -1942,13 +1957,13 @@ export function TaskManager() {
                                                 </button>
                                             `).join('')}
                                 </div>
-                                <div class="min-h-0 overflow-auto custom-scrollbar rounded-lg border p-3 ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : 'border-white/10 bg-black/20')}">
+                                <div class="min-h-0 overflow-auto custom-scrollbar rounded-lg border p-3 ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isNeon ? 'border-neon-border/20 bg-neon-panel/20' : 'border-white/10 bg-black/20'))}">
                                     ${selectedRunId && compositeStepRuns.length > 0
                 ? `<div class="mb-3 pb-2 border-b ${isLight ? 'border-gray-200' : 'border-white/10'}">
-                                            <div class="text-[10px] uppercase tracking-wider mb-2 ${isLight ? 'text-gray-500' : 'text-gray-400'}">Composite Steps</div>
+                                            <div class="text-[10px] uppercase tracking-wider mb-2 ${isLight ? 'text-gray-500' : (isNeon ? 'text-neon-text/50' : 'text-gray-400')}">Composite Steps</div>
                                             <div class="space-y-1">
                                                 ${compositeStepRuns.map((stepRun) => `
-                                                    <div class="flex items-center justify-between text-[11px] ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">
+                                                    <div class="flex items-center justify-between text-[11px] ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text/70' : 'text-gray-300'))}">
                                                         <span class="font-mono">${escapeHtml(stepRun.stepKey)}</span>
                                                         <span class="px-2 py-0.5 rounded-full border ${runStatusBadgeClass(stepRun.status)}">${escapeHtml(stepRun.status)}</span>
                                                     </div>
@@ -1958,17 +1973,17 @@ export function TaskManager() {
                 : ''}
                                     ${selectedRunId
                 ? (runLogs.length === 0
-                    ? `<div class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">No logs for selected run.</div>`
+                    ? `<div class="text-xs ${isLight ? 'text-gray-500' : (isNeon ? 'text-neon-text/40' : 'text-gray-400')}">No logs for selected run.</div>`
                     : runLogs.map((log) => `
-                                                    <div class="mb-2 pb-2 border-b last:border-b-0 ${isLight ? 'border-gray-200' : 'border-white/10'}">
+                                                    <div class="mb-2 pb-2 border-b last:border-b-0 ${isLight ? 'border-gray-200' : (isNeon ? 'border-neon-border/10' : 'border-white/10')}">
                                                         <div class="flex items-center justify-between">
-                                                            <span class="text-[10px] uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">${escapeHtml(log.level)}</span>
+                                                            <span class="text-[10px] uppercase tracking-wider ${isLight ? 'text-gray-500' : (isNeon ? 'text-neon-pink' : 'text-gray-400')}">${escapeHtml(log.level)}</span>
                                                             <span class="text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-500'}">${escapeHtml(formatDateTime(log.createdAt))}</span>
                                                         </div>
-                                                        <div class="text-xs mt-1 ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">${escapeHtml(log.message)}</div>
+                                                        <div class="text-xs mt-1 ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-gray-300'))}">${escapeHtml(log.message)}</div>
                                                     </div>
                                                 `).join(''))
-                : `<div class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">Select a run to inspect logs.</div>`}
+                : `<div class="text-xs ${isLight ? 'text-gray-500' : (isNeon ? 'text-neon-text/40' : 'text-gray-400')}">Select a run to inspect logs.</div>`}
                                 </div>
                             </div>
                         </div>
@@ -1980,14 +1995,14 @@ export function TaskManager() {
                         <div class="absolute inset-0 bg-black/50"></div>
                         <aside class="absolute right-0 top-0 h-full w-full max-w-xl border-l p-4 overflow-auto ${isLight
                     ? 'bg-white border-gray-200'
-                    : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : 'bg-[#0f1319] border-white/10')}">
+                    : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isNeon ? 'bg-neon-bg border-neon-border/40' : 'bg-[#0f1319] border-white/10'))}">
                             <div class="flex items-center justify-between mb-3">
-                                <h3 class="text-sm font-semibold ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-100')}">
+                                <h3 class="text-sm font-semibold ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-gray-100'))}">
                                     ${taskDrawerMode === 'edit' ? 'Edit Task' : 'Create Task'}
                                 </h3>
                                 <button id="task-drawer-close-btn" class="px-2 py-1 rounded border text-[11px] ${isLight
                     ? 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100'
-                    : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] hover:bg-[#f7efe4]' : 'bg-white/5 border-white/10 text-gray-200 hover:bg-white/10')}">
+                    : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] hover:bg-[#f7efe4]' : (isNeon ? 'bg-neon-panel border-neon-border/40 text-neon-text hover:bg-neon-accent/10' : 'bg-white/5 border-white/10 text-gray-200 hover:bg-white/10'))}">
                                     Close
                                 </button>
                             </div>
@@ -1995,8 +2010,8 @@ export function TaskManager() {
                             <form id="task-upsert-form" class="space-y-3">
                                 <input id="task-form-name" placeholder="Task name" value="${escapeHtml(taskForm.name)}"
                                     class="w-full rounded-lg border px-3 py-2 text-sm ${isLight
-                    ? 'bg-gray-50 border-gray-200 text-gray-800'
-                    : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-200')}">
+                    ? 'bg-white border-gray-200 text-gray-800'
+                    : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279]' : (isNeon ? 'bg-neon-panel border-neon-border/40 text-neon-text' : 'bg-black/20 border-white/10 text-gray-200'))}">
 
                                 <textarea id="task-form-description" rows="2" placeholder="Description"
                                     class="w-full rounded-lg border px-3 py-2 text-sm ${isLight

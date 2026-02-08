@@ -137,6 +137,7 @@ export function Settings() {
         if (t === 'oceanic') return 'bg-ocean-bg';
         if (t === 'ember') return 'bg-[#140c12]';
         if (t === 'aurora') return 'bg-[#0b1214]';
+        if (t === 'neon') return 'bg-neon-bg';
         return 'bg-base-dark';
     };
     container.className = `h-full overflow-auto ${getBgClass(theme)} transition-colors duration-300`;
@@ -146,6 +147,7 @@ export function Settings() {
     let isOceanic = theme === 'oceanic';
     let isEmber = theme === 'ember';
     let isAurora = theme === 'aurora';
+    let isNeon = theme === 'neon';
 
     const snapshotContractReport = buildCommandContractReport(
         commandContractSnapshot?.frontendCommands,
@@ -166,6 +168,7 @@ export function Settings() {
         isOceanic = theme === 'oceanic';
         isEmber = theme === 'ember';
         isAurora = theme === 'aurora';
+        isNeon = theme === 'neon';
     };
 
     const render = () => {
@@ -316,14 +319,18 @@ export function Settings() {
                                     <span class="material-symbols-outlined text-lg">flare</span>
                                     Aurora
                                 </button>
+                                <button id="theme-neon" class="theme-btn flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${currentTheme === 'neon' ? 'bg-gradient-to-r from-mysql-teal to-mysql-cyan text-white shadow-lg shadow-mysql-teal/30' : (isLight ? 'text-gray-600 hover:text-gray-800' : 'text-gray-400 hover:text-gray-200')}">
+                                    <span class="material-symbols-outlined text-lg">electric_bolt</span>
+                                    Neon
+                                </button>
                             </div>
                         </div>
 
                         <!-- Theme Preview -->
                         <div class="mt-4">
                             <h4 class="text-xs font-medium ${isLight ? 'text-gray-600' : 'text-gray-400'} uppercase tracking-wider mb-3">Preview</h4>
-                            <div id="theme-preview" class="rounded-xl p-4 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : (isEmber ? 'bg-[#1d141c] border border-[#2c1c27]' : (isAurora ? 'bg-[#0f1a1d] border border-[#1b2e33]' : 'bg-[#13161b] border border-white/10'))))}">
-                                ${currentTheme === 'dark' ? getDarkPreview() : (currentTheme === 'light' ? getLightPreview() : (currentTheme === 'dawn' ? getDawnPreview() : (currentTheme === 'oceanic' ? getOceanicPreview() : (currentTheme === 'ember' ? getEmberPreview() : getAuroraPreview()))))}
+                            <div id="theme-preview" class="rounded-xl p-4 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : (isEmber ? 'bg-[#1d141c] border border-[#2c1c27]' : (isAurora ? 'bg-[#0f1a1d] border border-[#1b2e33]' : (isNeon ? 'bg-neon-panel border border-neon-border' : 'bg-[#13161b] border border-white/10')))))}">
+                                ${currentTheme === 'dark' ? getDarkPreview() : (currentTheme === 'light' ? getLightPreview() : (currentTheme === 'dawn' ? getDawnPreview() : (currentTheme === 'oceanic' ? getOceanicPreview() : (currentTheme === 'ember' ? getEmberPreview() : (currentTheme === 'aurora' ? getAuroraPreview() : getNeonPreview())))))}
                             </div>
                         </div>
                     </div>
@@ -1040,9 +1047,9 @@ export function Settings() {
             const getInactiveClass = (t) => (t === 'light' || t === 'dawn') ? 'text-gray-600 hover:text-gray-800' : (t === 'oceanic' ? 'text-ocean-text/60 hover:text-ocean-text' : 'text-gray-400 hover:text-gray-200');
             const inactiveClass = getInactiveClass(newTheme);
 
-            [darkBtn, lightBtn, dawnBtn, oceanicBtn, emberBtn, auroraBtn].forEach(btn => btn && (btn.className = `theme-btn flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${inactiveClass}`));
+            [darkBtn, lightBtn, dawnBtn, oceanicBtn, emberBtn, auroraBtn, neonBtn].forEach(btn => btn && (btn.className = `theme-btn flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${inactiveClass}`));
 
-            const activeBtn = newTheme === 'dark' ? darkBtn : (newTheme === 'light' ? lightBtn : (newTheme === 'dawn' ? dawnBtn : (newTheme === 'oceanic' ? oceanicBtn : (newTheme === 'ember' ? emberBtn : auroraBtn))));
+            const activeBtn = newTheme === 'dark' ? darkBtn : (newTheme === 'light' ? lightBtn : (newTheme === 'dawn' ? dawnBtn : (newTheme === 'oceanic' ? oceanicBtn : (newTheme === 'ember' ? emberBtn : (newTheme === 'aurora' ? auroraBtn : neonBtn)))));
             if (activeBtn) {
                 activeBtn.className = `theme-btn flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${activeClass}`;
             }
@@ -1052,7 +1059,8 @@ export function Settings() {
             else if (newTheme === 'dawn') preview.innerHTML = getDawnPreview();
             else if (newTheme === 'oceanic') preview.innerHTML = getOceanicPreview();
             else if (newTheme === 'ember') preview.innerHTML = getEmberPreview();
-            else preview.innerHTML = getAuroraPreview();
+            else if (newTheme === 'aurora') preview.innerHTML = getAuroraPreview();
+            else preview.innerHTML = getNeonPreview();
         };
 
         darkBtn?.addEventListener('click', () => {
@@ -1083,6 +1091,12 @@ export function Settings() {
         auroraBtn?.addEventListener('click', () => {
             ThemeManager.setTheme('aurora');
             updateAllButtons('aurora');
+        });
+
+        const neonBtn = container.querySelector('#theme-neon');
+        neonBtn?.addEventListener('click', () => {
+            ThemeManager.setTheme('neon');
+            updateAllButtons('neon');
         });
 
         settingsSearchInput?.addEventListener('input', applySearchFilter);
@@ -2338,6 +2352,28 @@ function getAuroraPreview() {
                     <span class="syntax-keyword font-semibold">FROM</span>
                     <span class="syntax-string"> users</span>
                     <span class="text-[#e6f7f8]">;</span>
+                </code>
+            </div>
+        </div>
+    `;
+}
+
+function getNeonPreview() {
+    return `
+        <div class="bg-[#050510] p-4 neon">
+            <div class="flex items-center gap-2 mb-3">
+                <div class="w-3 h-3 rounded-full bg-[#ff0099] shadow-[0_0_5px_#ff0099]"></div>
+                <div class="w-3 h-3 rounded-full bg-[#00f3ff] shadow-[0_0_5px_#00f3ff]"></div>
+                <div class="w-3 h-3 rounded-full bg-white shadow-[0_0_5px_#ffffff]"></div>
+                <span class="ml-2 text-xs text-[#00f3ff]">Neon Theme Preview</span>
+            </div>
+            <div class="bg-[#0a0a1f] rounded-lg p-3 border border-[#2a2a40] shadow-[inset_0_0_10px_rgba(0,243,255,0.05)]">
+                <code class="text-sm font-mono">
+                    <span class="text-[#ff0099] font-semibold">SELECT</span>
+                    <span class="text-[#00f3ff]"> * </span>
+                    <span class="text-[#ff0099] font-semibold">FROM</span>
+                    <span class="text-white"> users</span>
+                    <span class="text-[#00f3ff]">;</span>
                 </code>
             </div>
         </div>
