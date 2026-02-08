@@ -132,30 +132,25 @@ export function ResultsTable(options = {}) {
                      <span class="material-symbols-outlined text-sm text-amber-500">warning</span>
                      <span class="text-[9px] font-bold text-amber-500"><span id="pending-count">0</span> PENDING CHANGES</span>
                      <div class="flex items-center gap-1 ml-1">
-                        <button id="commit-btn" class="px-1.5 py-0.5 rounded bg-amber-500 text-black text-[8px] font-black hover:brightness-110 active:scale-95 transition-all">SAVE</button>
-                        <button id="discard-btn" class="px-1.5 py-0.5 rounded bg-white/10 text-amber-500 text-[8px] font-black hover:bg-white/20 transition-all">DISCARD</button>
+                         <button id="commit-btn" class="flex items-center justify-center w-5 h-5 rounded bg-amber-500 text-black hover:brightness-110 active:scale-95 transition-all" title="Save Changes"><span class="material-symbols-outlined text-[14px] font-bold">check</span></button>
+                         <button id="discard-btn" class="flex items-center justify-center w-5 h-5 rounded bg-white/10 text-amber-500 hover:bg-white/20 transition-all" title="Discard Changes"><span class="material-symbols-outlined text-[14px] font-bold">close</span></button>
                      </div>
                 </div>
-                <button id="insert-row-btn" class="flex items-center gap-1.5 px-3 py-1 rounded-md ${isDawn ? 'bg-[#9ccfd8] text-black hover:brightness-110' : 'bg-mysql-teal text-black hover:brightness-110'} text-[10px] font-bold transition-all shadow-lg active:scale-95 max-w-0 opacity-0 pointer-events-none overflow-hidden">
-                    <span class="material-symbols-outlined text-sm">add</span>
-                    INSERT ROW
+                <button id="insert-row-btn" class="flex items-center justify-center gap-1.5 w-7 h-7 rounded-md ${isDawn ? 'bg-[#9ccfd8] text-black hover:brightness-110' : 'bg-mysql-teal text-black hover:brightness-110'} transition-all shadow-lg active:scale-95 max-w-0 opacity-0 pointer-events-none overflow-hidden" title="Insert Row">
+                    <span class="material-symbols-outlined text-lg">add</span>
                 </button>
                 <div class="flex items-center gap-0.5 ${searchBg} border rounded-lg p-0.5">
-                    <button class="view-mode-btn flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold transition-all ${viewMode === 'table' ? (isDawn ? 'bg-[#ea9d34] text-white' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-400 hover:bg-white/5')}" data-mode="table">
-                        <span class="material-symbols-outlined text-sm">table_chart</span>
-                        TABLE
+                    <button class="view-mode-btn flex items-center justify-center w-7 h-7 rounded-md transition-all ${viewMode === 'table' ? (isDawn ? 'bg-[#ea9d34] text-white' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-400 hover:bg-white/5')}" data-mode="table" title="Table View">
+                        <span class="material-symbols-outlined text-lg">table_chart</span>
                     </button>
-                    <button class="view-mode-btn flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold transition-all ${viewMode === 'transpose' ? (isDawn ? 'bg-[#ea9d34] text-white' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-400 hover:bg-white/5')}" data-mode="transpose">
-                        <span class="material-symbols-outlined text-sm">swap_horiz</span>
-                        TRANSPOSE
+                    <button class="view-mode-btn flex items-center justify-center w-7 h-7 rounded-md transition-all ${viewMode === 'transpose' ? (isDawn ? 'bg-[#ea9d34] text-white' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-400 hover:bg-white/5')}" data-mode="transpose" title="Transpose View">
+                        <span class="material-symbols-outlined text-lg">swap_horiz</span>
                     </button>
-                    <button class="view-mode-btn flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold transition-all ${viewMode === 'tree' ? (isDawn ? 'bg-[#ea9d34] text-white' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-400 hover:bg-white/5')}" data-mode="tree">
-                        <span class="material-symbols-outlined text-sm">account_tree</span>
-                        TREE
+                    <button class="view-mode-btn flex items-center justify-center w-7 h-7 rounded-md transition-all ${viewMode === 'tree' ? (isDawn ? 'bg-[#ea9d34] text-white' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-400 hover:bg-white/5')}" data-mode="tree" title="Tree View">
+                        <span class="material-symbols-outlined text-lg">account_tree</span>
                     </button>
-                    <button class="view-mode-btn flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold transition-all ${viewMode === 'text' ? (isDawn ? 'bg-[#ea9d34] text-white' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-400 hover:bg-white/5')}" data-mode="text">
-                        <span class="material-symbols-outlined text-sm">notes</span>
-                        TEXT
+                    <button class="view-mode-btn flex items-center justify-center w-7 h-7 rounded-md transition-all ${viewMode === 'text' ? (isDawn ? 'bg-[#ea9d34] text-white' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-400 hover:bg-white/5')}" data-mode="text" title="Text View">
+                        <span class="material-symbols-outlined text-lg">notes</span>
                     </button>
                 </div>
             </div>
