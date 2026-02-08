@@ -57,8 +57,8 @@ export function ResultsTable(options = {}) {
 
 
         const toolbarHtml = headless ? '' : `
-            <div class="flex items-center justify-between px-4 h-14 ${headerBg} border-b shadow-sm">
-                <!-- Toolbar content skipped in headless mode -->
+            <div class="flex items-center justify-between px-4 h-14 ${headerBg} border-b shadow-sm gap-4">
+                <!-- Left: Title & Search -->
                 <div class="flex items-center gap-4 flex-1 min-w-0">
                     <div class="flex items-center gap-2.5 flex-shrink-0">
                         <div class="flex items-center justify-center w-8 h-8 rounded-lg ${iconBg} shadow-inner">
@@ -70,12 +70,41 @@ export function ResultsTable(options = {}) {
                         </div>
                     </div>
                     <div class="h-6 w-px ${dividerColor} flex-shrink-0"></div>
-                    <div class="flex items-center ${searchBg} border rounded-lg px-3 py-1.5 flex-1 min-w-[200px] max-w-xl">
+                    <div class="flex items-center ${searchBg} border rounded-lg px-3 py-1.5 flex-1 min-w-[150px] max-w-md">
                         <span class="material-symbols-outlined text-sm ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500')} mr-2 flex-shrink-0">search</span>
-                        <input id="filter-input" class="bg-transparent border-none focus:ring-0 text-[11px] ${textColor} ${placeholderColor} w-full p-0" placeholder="Search in results..." type="text" />
+                        <input id="filter-input" class="bg-transparent border-none focus:ring-0 text-[11px] ${textColor} ${placeholderColor} w-full p-0" placeholder="Search..." type="text" />
                     </div>
                 </div>
+
+                <!-- Right: Controls -->
                 <div class="flex items-center gap-2 flex-shrink-0">
+                    <!-- Pending Changes Indicator (Relocated to Right Group) -->
+
+
+                    <button id="insert-row-btn" class="flex items-center justify-center gap-1.5 w-8 h-8 rounded-lg ${isDawn ? 'bg-[#9ccfd8] text-black hover:brightness-110' : 'bg-mysql-teal text-black hover:brightness-110'} transition-all shadow-md active:scale-95 opacity-0 pointer-events-none scale-90" title="Insert Row">
+                        <span class="material-symbols-outlined text-lg">add</span>
+                    </button>
+
+                    <div class="h-6 w-px ${dividerColor} flex-shrink-0 mx-1"></div>
+
+                    <!-- View Modes -->
+                    <div class="flex items-center gap-0.5 ${searchBg} border rounded-lg p-0.5">
+                        <button class="view-mode-btn flex items-center justify-center w-7 h-7 rounded-md transition-all ${viewMode === 'table' ? (isDawn ? 'bg-[#ea9d34] text-white' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-400 hover:bg-white/5')}" data-mode="table" title="Table View">
+                            <span class="material-symbols-outlined text-lg">table_chart</span>
+                        </button>
+                        <button class="view-mode-btn flex items-center justify-center w-7 h-7 rounded-md transition-all ${viewMode === 'transpose' ? (isDawn ? 'bg-[#ea9d34] text-white' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-400 hover:bg-white/5')}" data-mode="transpose" title="Transpose View">
+                            <span class="material-symbols-outlined text-lg">swap_horiz</span>
+                        </button>
+                        <button class="view-mode-btn flex items-center justify-center w-7 h-7 rounded-md transition-all ${viewMode === 'tree' ? (isDawn ? 'bg-[#ea9d34] text-white' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-400 hover:bg-white/5')}" data-mode="tree" title="Tree View">
+                            <span class="material-symbols-outlined text-lg">account_tree</span>
+                        </button>
+                        <button class="view-mode-btn flex items-center justify-center w-7 h-7 rounded-md transition-all ${viewMode === 'text' ? (isDawn ? 'bg-[#ea9d34] text-white' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-400 hover:bg-white/5')}" data-mode="text" title="Text View">
+                            <span class="material-symbols-outlined text-lg">notes</span>
+                        </button>
+                    </div>
+
+                    <div class="h-6 w-px ${dividerColor} flex-shrink-0 mx-1"></div>
+
                     <!-- Action Buttons Group -->
                     <div class="flex items-center ${searchBg} border rounded-lg overflow-visible">
                         <!-- Columns Toggle -->
@@ -123,39 +152,6 @@ export function ResultsTable(options = {}) {
         container.innerHTML = `
             ${toolbarHtml}
             ${tabsHtml}
-            
-            <!-- Global Mode Selector (Floating but logically after tabs) -->
-            ${!headless ? `
-            <div class="flex items-center gap-1 pr-1 border-b ${isLight ? 'bg-gray-50 border-gray-200' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1]' : (isOceanic ? 'bg-[#2E3440] border-ocean-border/20' : 'bg-[#1a1d23] border-white/5'))}">
-                <div class="flex-1"></div>
-                <div id="pending-indicator" class="flex items-center gap-2 px-2 py-1 rounded bg-amber-500/10 border border-amber-500/20 max-w-0 opacity-0 transition-all duration-300 pointer-events-none">
-                     <span class="material-symbols-outlined text-sm text-amber-500">warning</span>
-                     <span class="text-[9px] font-bold text-amber-500"><span id="pending-count">0</span> PENDING CHANGES</span>
-                     <div class="flex items-center gap-1 ml-1">
-                         <button id="commit-btn" class="flex items-center justify-center w-5 h-5 rounded bg-amber-500 text-black hover:brightness-110 active:scale-95 transition-all" title="Save Changes"><span class="material-symbols-outlined text-[14px] font-bold">check</span></button>
-                         <button id="discard-btn" class="flex items-center justify-center w-5 h-5 rounded bg-white/10 text-amber-500 hover:bg-white/20 transition-all" title="Discard Changes"><span class="material-symbols-outlined text-[14px] font-bold">close</span></button>
-                     </div>
-                </div>
-                <button id="insert-row-btn" class="flex items-center justify-center gap-1.5 w-7 h-7 rounded-md ${isDawn ? 'bg-[#9ccfd8] text-black hover:brightness-110' : 'bg-mysql-teal text-black hover:brightness-110'} transition-all shadow-lg active:scale-95 max-w-0 opacity-0 pointer-events-none overflow-hidden" title="Insert Row">
-                    <span class="material-symbols-outlined text-lg">add</span>
-                </button>
-                <div class="flex items-center gap-0.5 ${searchBg} border rounded-lg p-0.5">
-                    <button class="view-mode-btn flex items-center justify-center w-7 h-7 rounded-md transition-all ${viewMode === 'table' ? (isDawn ? 'bg-[#ea9d34] text-white' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-400 hover:bg-white/5')}" data-mode="table" title="Table View">
-                        <span class="material-symbols-outlined text-lg">table_chart</span>
-                    </button>
-                    <button class="view-mode-btn flex items-center justify-center w-7 h-7 rounded-md transition-all ${viewMode === 'transpose' ? (isDawn ? 'bg-[#ea9d34] text-white' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-400 hover:bg-white/5')}" data-mode="transpose" title="Transpose View">
-                        <span class="material-symbols-outlined text-lg">swap_horiz</span>
-                    </button>
-                    <button class="view-mode-btn flex items-center justify-center w-7 h-7 rounded-md transition-all ${viewMode === 'tree' ? (isDawn ? 'bg-[#ea9d34] text-white' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-400 hover:bg-white/5')}" data-mode="tree" title="Tree View">
-                        <span class="material-symbols-outlined text-lg">account_tree</span>
-                    </button>
-                    <button class="view-mode-btn flex items-center justify-center w-7 h-7 rounded-md transition-all ${viewMode === 'text' ? (isDawn ? 'bg-[#ea9d34] text-white' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-400 hover:bg-white/5')}" data-mode="text" title="Text View">
-                        <span class="material-symbols-outlined text-lg">notes</span>
-                    </button>
-                </div>
-            </div>
-            ` : ''}
-
             <div class="flex-1 overflow-auto custom-scrollbar ${isLight ? 'bg-white' : (isDawn ? 'bg-[#faf4ed]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0f1115]'))}">
                 <table id="results-table" class="w-full text-left font-mono text-[11px] border-collapse">
                     <thead class="sticky top-0 ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel' : 'bg-[#16191e]'))} z-10 transition-colors">
@@ -174,6 +170,26 @@ export function ResultsTable(options = {}) {
                         </tr>
                     </tbody>
                 </table>
+            </div>
+            
+            <!-- Pending Changes Snackbar (Floating Bottom Center) -->
+            <div id="pending-indicator" class="absolute bottom-2 left-1/2 transform -translate-x-1/2 flex items-center gap-3 px-3 py-1.5 rounded-full bg-[#1e1e1e] border border-amber-500/30 shadow-2xl translate-y-20 opacity-0 transition-all duration-300 pointer-events-none z-50">
+                 <div class="flex items-center gap-1.5">
+                     <div class="flex items-center justify-center w-4 h-4 rounded-full bg-amber-500/20 animate-pulse">
+                        <span class="material-symbols-outlined text-[10px] text-amber-500">warning</span>
+                     </div>
+                     <span class="text-[10px] font-bold text-amber-100 tracking-wide whitespace-nowrap"><span id="pending-count">0</span> PENDING CHANGES</span>
+                 </div>
+                 <div class="h-3 w-px bg-white/10"></div>
+                 <div class="flex items-center gap-1.5">
+                     <button id="commit-btn" class="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500 hover:bg-amber-400 text-black text-[9px] font-bold transition-all shadow-sm active:scale-95" title="Save Changes">
+                        <span class="material-symbols-outlined text-[12px]">check</span>
+                        <span>SAVE</span>
+                     </button>
+                     <button id="discard-btn" class="flex items-center justify-center w-5 h-5 rounded-full bg-white/10 text-amber-200 hover:bg-white/20 transition-all hover:rotate-90 active:scale-95" title="Discard Changes">
+                        <span class="material-symbols-outlined text-[14px]">close</span>
+                     </button>
+                 </div>
             </div>
             <!-- Selection Action Bar (Bottom) -->
             <div id="selection-action-bar" class="flex items-center justify-between px-4 h-0 overflow-hidden opacity-0 ${isLight ? 'bg-cyan-50 border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-cyan-900/20 border-ocean-border' : 'bg-cyan-900/20 border-white/10'))} border-t transition-all duration-300">
@@ -391,12 +407,12 @@ export function ResultsTable(options = {}) {
         const count = pendingChanges.updates.size + pendingChanges.deletes.size + pendingChanges.inserts.length;
 
         if (count > 0) {
-            indicator.classList.remove('max-w-0', 'opacity-0', 'pointer-events-none');
-            indicator.classList.add('max-w-full', 'opacity-100', 'pointer-events-auto');
+            indicator.classList.remove('translate-y-20', 'opacity-0', 'pointer-events-none');
+            indicator.classList.add('translate-y-0', 'opacity-100', 'pointer-events-auto');
             container.querySelector('#pending-count').textContent = count;
         } else {
-            indicator.classList.add('max-w-0', 'opacity-0', 'pointer-events-none');
-            indicator.classList.remove('max-w-full', 'opacity-100', 'pointer-events-auto');
+            indicator.classList.add('translate-y-20', 'opacity-0', 'pointer-events-none');
+            indicator.classList.remove('translate-y-0', 'opacity-100', 'pointer-events-auto');
         }
     };
 
