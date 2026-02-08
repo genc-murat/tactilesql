@@ -27,6 +27,9 @@ import { findWildcardAtCursor, expandWildcard, isNearWildcard } from '../../util
 import { parseQuery } from '../../utils/autocomplete/parser.js';
 import { FoldManager, renderFoldGutter } from './editor/codeFolding.js';
 import { FindReplacePane } from './editor/FindReplacePane.js';
+import { renderToolbar } from './editor/ui/Toolbar.js';
+import { renderTabBar } from './editor/ui/TabBar.js';
+import { renderEditorArea } from './editor/ui/EditorArea.js';
 
 
 // SQL Keywords for autocomplete
@@ -962,187 +965,42 @@ export function QueryEditor() {
         const typography = getEditorTypography();
         const lineNumberFontSize = Math.max(10, typography.fontSize - 2);
 
+        const tabBarHTML = renderTabBar({
+            isLight,
+            isDawn,
+            isOceanic,
+            visibleTabs,
+            activeTabId,
+            overflowTabs
+        });
+
+        const toolbarHTML = renderToolbar({
+            isLight,
+            isDawn,
+            isOceanic,
+            isPg,
+            estimatedExecutionTime,
+            lastExecutionTime,
+            defaultRunModeLabel
+        });
+
+        const editorAreaHTML = renderEditorArea({
+            isLight,
+            isDawn,
+            isOceanic,
+            lineNumbersEnabled,
+            lineNumberFontSize,
+            typography,
+            wrapClass,
+            activeTab
+        });
+
         container.innerHTML = `
             <div class="border-b ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5'))}">
-                <div class="flex items-end border-b ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5'))}">
-                    <div class="flex gap-1 flex-1 items-end" id="tabs-container">
-                        ${visibleTabs.map(tab => {
-            const isActive = tab.id === activeTabId;
-            const isPinned = tab.pinned;
-            const tabColor = tab.connectionColor || '';
-            const connectionLabel = tab.connectionName ? ` (${tab.connectionName})` : '';
-            return `
-                                <div data-id="${tab.id}" class="tab-item px-3 py-2 border-t border-x rounded-t-md flex items-center gap-2 relative top-[1px] cursor-pointer select-none transition-all group max-w-[180px] ${isActive ? (isLight ? 'bg-white border-gray-200 text-mysql-teal' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-mysql-teal' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text' : 'bg-[#0f1115] border-mysql-teal/40 text-mysql-teal'))) : ((isLight || isDawn) ? 'bg-transparent border-transparent text-gray-500 hover:bg-black/5' : (isOceanic ? 'bg-[#2E3440]/50 border-transparent text-ocean-text/60 hover:bg-white/5' : 'bg-transparent border-transparent text-gray-500 hover:bg-white/5'))}" style="${tabColor ? `border-top: 2px solid ${tabColor};` : ''}">
-                                    ${isPinned ? `<span class="pin-tab-btn material-symbols-outlined text-xs text-amber-500 hover:text-amber-400" title="Unpin Tab">push_pin</span>` : `<span class="pin-tab-btn material-symbols-outlined text-xs opacity-0 group-hover:opacity-100 hover:text-amber-500 transition-opacity" title="Pin Tab">push_pin</span>`}
-                                    <span class="material-symbols-outlined text-xs">${isActive ? 'edit_document' : 'description'}</span>
-                                    <span class="font-mono text-[10px] truncate flex-1">${tab.title}${connectionLabel}</span>
-                                    ${!isPinned ? `<span class="close-tab-btn material-symbols-outlined text-[12px] hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">close</span>` : `<span class="close-tab-btn material-symbols-outlined text-[12px] hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity" title="Unpin to close">close</span>`}
-                                </div>
-                            `;
-        }).join('')}
-                        ${overflowTabs.length > 0 ? `
-                            <div class="relative">
-                                <div id="overflow-tab-btn" class="px-2 py-2 border-t border-x border-transparent rounded-t-md flex items-center gap-1 cursor-pointer select-none transition-colors hover:bg-white/5 relative top-[1px]">
-                                    <span class="material-symbols-outlined text-xs text-gray-500">more_horiz</span>
-                                    <span class="font-mono text-[9px] text-gray-500">${overflowTabs.length}</span>
-                                </div>
-                                <div id="overflow-menu" class="hidden absolute top-full left-0 mt-1 ${(isLight || isDawn) ? 'bg-white border-gray-200 shadow-xl' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 shadow-2xl' : 'bg-[#16191e] border-white/10 shadow-2xl')} border rounded-lg py-1 min-w-[160px] z-50">
-                                    ${overflowTabs.map(tab => `
-                                        <div data-id="${tab.id}" class="overflow-tab-item px-3 py-1.5 flex items-center gap-2 cursor-pointer ${(isLight || isDawn) ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-400 hover:bg-white/5'} transition-colors group">
-                                            <span class="pin-overflow-tab material-symbols-outlined text-xs ${tab.pinned ? 'text-amber-500' : 'opacity-0 group-hover:opacity-100'} hover:text-amber-500 transition-opacity" title="${tab.pinned ? 'Unpin Tab' : 'Pin Tab'}">push_pin</span>
-                                            <span class="material-symbols-outlined text-xs">description</span>
-                                            <span class="font-mono text-[10px] flex-1">${tab.title}</span>
-                                            <span class="close-overflow-tab material-symbols-outlined text-[12px] hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">close</span>
-                                        </div>
-                                    `).join('')}
-                                </div>
-                            </div>
-                        ` : ''}
-                        <div id="new-tab-btn" class="px-2 py-2 text-gray-600 hover:text-mysql-teal flex items-center cursor-pointer transition-colors" title="New Query Tab">
-                            <span class="material-symbols-outlined text-base">add</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="px-1.5 py-0.5 flex items-center justify-between gap-1.5 ${isLight ? 'bg-gray-50/80' : (isDawn ? 'bg-[#faf4ed]/80' : (isOceanic ? 'bg-ocean-bg/50' : 'bg-[#16191e]/80'))} backdrop-blur-md relative z-30">
-                    <div class="flex items-center gap-3">
-                        ${!isPg ? `
-                            <div class="relative group/db-selector" id="db-selector-container">
-                                <button id="db-selector-trigger" class="flex items-center gap-2 px-3 py-1 ${isLight ? 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279] hover:bg-[#faf4ed]' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50 text-ocean-text hover:bg-ocean-border/20' : 'bg-[#0f1115] border-white/5 text-gray-300 hover:bg-white/5'))} border text-[11px] font-bold rounded-lg transition-all duration-200 outline-none focus:ring-2 focus:ring-mysql-teal/30 min-w-[140px] shadow-sm">
-                                    <span class="material-symbols-outlined text-gray-500 group-hover/db-selector:text-mysql-teal transition-colors" style="font-size: 16px;">database</span>
-                                    <span id="current-db-name" class="flex-1 text-left truncate">Select Database</span>
-                                    <span class="material-symbols-outlined text-[14px] text-gray-500 group-hover/db-selector:text-mysql-teal transition-transform duration-200" id="db-selector-arrow">expand_more</span>
-                                </button>
-                                
-                                <div id="db-selector-dropdown" class="hidden absolute top-full left-0 mt-2 w-64 ${isLight ? 'bg-white border-gray-200 shadow-2xl' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-2xl' : (isOceanic ? 'bg-ocean-panel border-ocean-border shadow-2xl' : 'bg-[#1a1d23] border border-white/10 shadow-2xl'))} rounded-xl overflow-hidden z-[1000] animate-in fade-in slide-in-from-top-2 duration-200 backdrop-blur-xl">
-                                    <div class="p-2 border-b ${isLight ? 'border-gray-100 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border/30 bg-ocean-bg/50' : 'border-white/5 bg-[#16191e]'))}">
-                                        <div class="relative">
-                                            <span class="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-sm text-gray-500">search</span>
-                                            <input type="text" id="db-search-input" placeholder="Search databases..." class="w-full pl-8 pr-3 py-1.5 text-[11px] bg-transparent border-none outline-none ${isLight ? 'text-gray-700 placeholder-gray-400' : 'text-gray-300 placeholder-gray-600'} font-medium">
-                                        </div>
-                                    </div>
-                                    <div id="db-options-list" class="max-h-[300px] overflow-y-auto custom-scrollbar py-1">
-                                        <div class="px-4 py-8 text-center text-gray-500 text-[10px] italic">Loading databases...</div>
-                                    </div>
-                                </div>
-                            </div>
-                        ` : ''}
-
-                        <div class="h-4 w-px ${isLight ? 'bg-gray-200' : 'bg-white/5'}"></div>
-
-                        <div class="flex items-center gap-2">
-                            ${estimatedExecutionTime ? `
-                                <div class="px-1 py-0 text-[8px] ${isLight ? 'bg-blue-50 text-blue-700 border border-blue-100' : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'} rounded font-bold flex items-center gap-0.5 animate-pulse">
-                                    <span class="material-symbols-outlined" style="font-size: 9px;">insights</span>
-                                    ~${estimatedExecutionTime}ms
-                                </div>
-                            ` : ''}
-                            ${lastExecutionTime ? `
-                                <div class="px-1 py-0 text-[8px] ${isLight ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'} rounded font-bold flex items-center gap-0.5">
-                                    <span class="material-symbols-outlined" style="font-size: 9px;">schedule</span>
-                                    ${lastExecutionTime}ms
-                                </div>
-                            ` : ''}
-                        </div>
-                    </div>
-
-                    <div class="flex items-center gap-1">
-                        <!-- Utility Actions -->
-                        <button id="format-btn" class="flex items-center justify-center w-6 h-6 ${isLight ? 'bg-white border-gray-200 text-gray-600 hover:text-mysql-teal' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279] hover:text-mysql-teal' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text hover:text-ocean-frost' : 'bg-[#1a1d23] border-white/10 text-gray-400 hover:text-mysql-teal'))} border rounded hover:shadow-sm active:scale-90 transition-all" title="Format SQL (Ctrl+Shift+F)">
-                            <span class="material-symbols-outlined text-[14px]">auto_fix</span>
-                        </button>
-
-                        <div class="h-3 w-px ${isLight ? 'bg-gray-200' : 'bg-white/5'}"></div>
-
-                        <!-- Analysis Menu -->
-                        <div class="relative toolbar-menu" id="analysis-menu-container">
-                            <button id="analysis-menu-btn" class="flex items-center gap-0.5 px-1 py-1 ${isLight ? 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279] hover:bg-white/5' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-ocean-text hover:bg-white/5' : 'bg-[#1a1d23] border-white/10 text-gray-400 hover:bg-white/5'))} border rounded transition-all" title="Analysis Tools">
-                                <span class="material-symbols-outlined text-[15px]">query_stats</span>
-                                <span class="material-symbols-outlined text-[10px]">expand_more</span>
-                            </button>
-                            
-                            <!-- Dropdown -->
-                            <div class="menu-dropdown absolute right-0 top-full mt-1 w-44 hidden z-[500] animate-in fade-in slide-in-from-top-1 duration-200">
-                                <div class="p-0.5 rounded border ${isLight ? 'bg-white border-gray-200 shadow-lg' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-lg' : (isOceanic ? 'bg-ocean-panel border-ocean-border shadow-xl' : 'bg-[#1a1d23] border-white/10 shadow-xl'))} backdrop-blur-xl">
-                                    <button id="execution-plan-btn" class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors ${isLight ? 'text-gray-700 hover:bg-gray-100' : 'text-gray-300 hover:bg-white/10'}">
-                                        <span class="material-symbols-outlined text-[14px] text-cyan-400">data_object</span>
-                                        <span class="text-[10px] font-bold">Execution Plan (Raw)</span>
-                                    </button>
-                                    <button id="explain-btn" class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors ${isLight ? 'text-gray-700 hover:bg-gray-100' : 'text-gray-300 hover:bg-white/10'}">
-                                        <span class="material-symbols-outlined text-[14px] text-blue-400">analytics</span>
-                                        <span class="text-[10px] font-bold">Visual Explain</span>
-                                    </button>
-                                    <button id="analyze-btn" class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors ${isLight ? 'text-gray-700 hover:bg-gray-100' : 'text-gray-300 hover:bg-white/10'}">
-                                        <span class="material-symbols-outlined text-[14px] text-amber-400">speed</span>
-                                        <span class="text-[10px] font-bold">Query Profiler</span>
-                                    </button>
-                                    <button id="param-btn" class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors ${isLight ? 'text-gray-700 hover:bg-gray-100' : 'text-gray-300 hover:bg-white/10'}">
-                                        <span class="material-symbols-outlined text-[14px] text-indigo-400">filter_alt</span>
-                                        <span class="text-[10px] font-bold">Parameters</span>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- AI Tools Menu -->
-                        <div class="relative toolbar-menu" id="ai-menu-container">
-                            <button id="ai-tools-menu-btn" class="flex items-center gap-0.5 px-1 py-1 ${isLight ? 'bg-white border-gray-200 text-blue-600 hover:bg-blue-50' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-blue-400 hover:bg-white/5' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50 text-blue-400 hover:bg-white/5' : 'bg-[#1a1d23] border-white/10 text-blue-400 hover:bg-white/5'))} border rounded transition-all group/btn relative overflow-hidden group/menu" title="AI Assistant">
-                                <div class="absolute inset-0 bg-blue-500/5 group-hover/btn:bg-blue-500/10 transition-colors"></div>
-                                <span class="material-symbols-outlined text-[15px] relative z-10">psychology_alt</span>
-                                <span class="material-symbols-outlined text-[10px] relative z-10">expand_more</span>
-                            </button>
-                            
-                            <!-- Dropdown -->
-                            <div class="menu-dropdown absolute right-0 top-full mt-1 w-40 hidden z-[500] animate-in fade-in slide-in-from-top-1 duration-200">
-                                <div class="p-0.5 rounded border ${isLight ? 'bg-white border-gray-200 shadow-lg' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-lg' : (isOceanic ? 'bg-ocean-panel border-ocean-border shadow-xl' : 'bg-[#1a1d23] border-white/10 shadow-xl'))} backdrop-blur-xl">
-                                    <button id="ai-explain-btn" class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors ${isLight ? 'text-gray-700 hover:bg-gray-100' : 'text-gray-300 hover:bg-white/10'}">
-                                        <span class="material-symbols-outlined text-[14px] text-blue-400">psychology</span>
-                                        <span class="text-[10px] font-bold">AI Explain</span>
-                                    </button>
-                                    <button id="ai-optimize-btn" class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors ${isLight ? 'text-gray-700 hover:bg-gray-100' : 'text-gray-300 hover:bg-white/10'}">
-                                        <span class="material-symbols-outlined text-[14px] text-amber-400">bolt</span>
-                                        <span class="text-[10px] font-bold">AI Optimize</span>
-                                    </button>
-                                    <button id="whatif-btn" class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors ${isLight ? 'text-gray-700 hover:bg-gray-100' : 'text-gray-300 hover:bg-white/10'}">
-                                        <span class="material-symbols-outlined text-[14px] text-purple-400">lightbulb</span>
-                                        <span class="text-[10px] font-bold">What-If</span>
-                                    </button>
-                                    <div class="h-px ${isLight ? 'bg-gray-100' : 'bg-white/5'} my-0.5"></div>
-                                    <button id="sample-btn" class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors ${isLight ? 'text-gray-700 hover:bg-gray-100' : 'text-gray-300 hover:bg-white/10'}">
-                                        <span class="material-symbols-outlined text-[14px] text-emerald-400">auto_awesome</span>
-                                        <span class="text-[10px] font-bold">Samples</span>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="h-4 w-px ${isLight ? 'bg-gray-200' : 'bg-white/5'} mx-1"></div>
-
-                        <button id="ask-ai-btn" class="flex items-center gap-1 px-2 py-0.5 ${isLight ? 'bg-rose-50 border-rose-100 text-rose-600 hover:bg-rose-100' : (isDawn ? 'bg-rose-500/5 border-rose-500/20 text-rose-400 hover:bg-rose-500/10' : (isOceanic ? 'bg-rose-500/5 border-rose-500/20 text-rose-400 hover:bg-rose-500/10' : 'bg-rose-500/5 border-rose-500/20 text-rose-500 hover:bg-rose-500/10'))} border rounded active:scale-95 transition-all group overflow-hidden relative shadow-sm" title="Ask AI to Generate SQL (Ctrl+I)">
-                            <span class="material-symbols-outlined text-[14px] group-hover:rotate-12 transition-transform duration-300 relative z-10">auto_awesome</span>
-                            <span class="text-[8px] font-black uppercase tracking-widest relative z-10">Generate SQL</span>
-                        </button>
-
-                        <button id="execute-btn" class="relative flex items-center gap-1 px-2.5 py-0.5 bg-mysql-teal text-black rounded shadow-[0_0_8px_rgba(0,200,255,0.15)] hover:shadow-[0_0_15px_rgba(0,200,255,0.3)] hover:brightness-110 active:scale-95 transition-all duration-300 overflow-hidden group font-black uppercase tracking-wider text-[8px]" title="Run (${defaultRunModeLabel}) (Ctrl+Enter). Shift+Click or Ctrl+Shift+Enter runs all statements.">
-                            <span class="material-symbols-outlined text-[14px] relative z-10 group-hover:scale-110 transition-transform duration-200">play_arrow</span>
-                            <span class="relative z-10">Run</span>
-                            <span class="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-out"></span>
-                        </button>
-                    </div>
-                </div>
-
-                </div>
+                ${tabBarHTML}
+                ${toolbarHTML}
             </div>
-            <div class="flex-1 neu-inset rounded-xl ${isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0f1115]'))} overflow-hidden flex p-4 relative focus-within:ring-1 focus-within:ring-mysql-teal/50 transition-all" style="font-size:${typography.fontSize}px;line-height:${typography.lineHeight}px;font-family:${typography.fontFamily};">
-                ${lineNumbersEnabled ? `<div class="flex select-none pt-1 overflow-hidden">
-                    <div class="w-12 ${(isLight || isDawn) ? 'text-gray-300' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-600')} text-right pr-2" id="line-numbers" style="font-size:${lineNumberFontSize}px;line-height:${typography.lineHeight}px;font-family:${typography.fontFamily};"></div>
-                    <div class="w-5 flex flex-col items-center ${(isLight || isDawn) ? 'border-gray-100' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5')} border-r" id="fold-gutter" style="line-height:${typography.lineHeight}px;"></div>
-                </div>` : ''}
-                <div class="flex-1 relative ${lineNumbersEnabled ? 'pl-4' : 'pl-0'}">
-                    <pre id="search-highlight" class="absolute inset-0 ${lineNumbersEnabled ? 'pl-4' : 'pl-0'} pt-0 pointer-events-none overflow-hidden ${wrapClass} text-transparent" style="font-size:${typography.fontSize}px;line-height:${typography.lineHeight}px;font-family:${typography.fontFamily};z-index: 1;" aria-hidden="true"></pre>
-                    <pre id="syntax-highlight" class="absolute inset-0 ${lineNumbersEnabled ? 'pl-4' : 'pl-0'} pt-0 pointer-events-none overflow-hidden ${wrapClass}" style="font-size:${typography.fontSize}px;line-height:${typography.lineHeight}px;font-family:${typography.fontFamily};z-index: 0;" aria-hidden="true"></pre>
-                    <textarea id="query-input" class="relative w-full h-full bg-transparent border-none ${isLight ? 'text-transparent' : (isOceanic ? 'text-transparent' : 'text-transparent')} ${isLight ? 'caret-gray-800' : (isOceanic ? 'caret-white' : 'caret-white')} ${wrapClass} focus:ring-0 resize-none outline-none custom-scrollbar p-0 z-10 placeholder:text-gray-600/50" style="font-size:${typography.fontSize}px;line-height:${typography.lineHeight}px;font-family:${typography.fontFamily};" spellcheck="false" placeholder="Enter your SQL query here... (Ctrl+Space for suggestions)">${activeTab ? activeTab.content : ''}</textarea>
-                </div>
-            </div>
+            ${editorAreaHTML}
 
 
             <!-- Inline AI Repair Bar (Hidden by default) -->
@@ -1381,7 +1239,7 @@ export function QueryEditor() {
                 ? 'bg-amber-400/50 outline outline-1 outline-amber-400'
                 : (isLight ? 'bg-yellow-200/50' : 'bg-yellow-500/30');
 
-            html += `<span class="${className}">${escapeHtml(match.text)}</span>`;
+            html += `< span class="${className}" > ${escapeHtml(match.text)}</span > `;
 
             lastIndex = match.end;
         });
@@ -1391,7 +1249,7 @@ export function QueryEditor() {
         // Handle newlines correctly for pre-wrap
         // syntax highlight handles this? 
         // Actually escapeHtml usually just escapes chars. 
-        // The container has `whitespace-pre-wrap` so \n works.
+        // The container has `whitespace - pre - wrap` so \n works.
 
         highlightLayer.innerHTML = html;
 
@@ -1601,8 +1459,8 @@ export function QueryEditor() {
             } else if (findReplaceState.findTerm) {
                 const total = findReplaceState.matches.length;
                 const current = total > 0 ? findReplaceState.currentMatchIndex + 1 : 0;
-                countSpan.textContent = total > 0 ? `${current} of ${total}` : 'No results';
-                countSpan.className = `text-[10px] ${total === 0 ? 'text-gray-400' : (isLight ? 'text-gray-600' : 'text-gray-300')}`;
+                countSpan.textContent = total > 0 ? `${current} of ${total} ` : 'No results';
+                countSpan.className = `text - [10px] ${total === 0 ? 'text-gray-400' : (isLight ? 'text-gray-600' : 'text-gray-300')} `;
             } else {
                 countSpan.textContent = '';
             }
@@ -1718,7 +1576,7 @@ export function QueryEditor() {
         overlay.className = 'fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-center justify-center p-8';
 
         overlay.innerHTML = `
-            <div class="${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border' : 'bg-[#0f1115] border border-white/10'))} rounded-xl shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden">
+            <div class="${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border' : 'bg-[#0f1115] border border-white/10'))} rounded-xl shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden" >
                 <div class="flex items-center justify-between px-6 py-4 border-b ${isLight ? 'border-gray-100 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border/30 bg-ocean-panel' : 'border-white/10 bg-[#16191e]'))}">
                     <div class="flex items-center gap-3">
                         <div class="w-8 h-8 rounded-lg ${isLight ? 'bg-purple-100 text-purple-600' : (isDawn ? 'bg-[#f2e9e1] text-[#907aa9]' : 'bg-purple-500/20 text-purple-400')} flex items-center justify-center">
@@ -1750,7 +1608,7 @@ export function QueryEditor() {
                     `).join('')}
                 </div>
             </div>
-        `;
+            `;
 
         document.body.appendChild(overlay);
 
@@ -1973,7 +1831,7 @@ export function QueryEditor() {
 
             if (slowSignal) {
                 Dialog.alert(
-                    `This query took ${lastExecutionTime}ms, which is unusually slow for similar queries.\nBaseline: ~${slowSignal.baseline}ms (alert threshold ${slowSignal.threshold}ms).`,
+                    `This query took ${lastExecutionTime} ms, which is unusually slow for similar queries.\nBaseline: ~${slowSignal.baseline} ms(alert threshold ${slowSignal.threshold}ms).`,
                     'Slow Query Warning'
                 );
             }
@@ -2033,7 +1891,7 @@ export function QueryEditor() {
 
             // Prompt user for new name
             const newName = await Dialog.prompt(
-                `Rename ${description} to:`,
+                `Rename ${description} to: `,
                 'Rename Symbol',
                 symbol.name
             );
@@ -2083,7 +1941,7 @@ export function QueryEditor() {
                     currentDb = parsed.tables[0].database;
                 } else {
                     const dbLabel = dbType === 'postgresql' ? 'schema' : 'database';
-                    toastWarning(`Please select a ${dbLabel} first or use fully qualified table names (${dbLabel}.table).`);
+                    toastWarning(`Please select a ${dbLabel} first or use fully qualified table names(${dbLabel}.table).`);
                     return;
                 }
             }
@@ -2344,7 +2202,7 @@ export function QueryEditor() {
                 document.body.appendChild(toast);
 
                 setTimeout(() => {
-                    window.location.hash = `/schema?db=${targetDb}&table=${targetTable}`;
+                    window.location.hash = `/schema?db= ${targetDb}& table=table=${targetTable} `;
                     setTimeout(() => toast.remove(), 500);
                 }, 100);
             }
@@ -2627,468 +2485,470 @@ export function QueryEditor() {
         textarea.addEventListener('blur', () => {
             setTimeout(hideAutocomplete, 150);
         });
-    }
+
+        // Continue attachment for toolbar items...
 
 
-    // Ask AI Button Logic
-    const askAiBtn = container.querySelector('#ask-ai-btn');
-    if (askAiBtn) {
-        askAiBtn.addEventListener('click', () => {
-            const textarea = container.querySelector('#query-input');
-            AskAiBar.show(container, (sql) => {
-                if (textarea) {
-                    const start = textarea.selectionStart;
-                    const end = textarea.selectionEnd;
-                    const text = textarea.value;
-                    const newText = text.substring(0, start) + sql + text.substring(end);
-                    textarea.value = newText;
-
-                    setActiveTabContent(newText, { forceSnapshot: true, historySource: 'ai_insert' });
-                    updateSyntaxHighlight(true);
-                    updateLineNumbers();
-                }
-            });
-        });
-    }
-
-    // Format Button Logic
-    const formatBtn = container.querySelector('#format-btn');
-    if (formatBtn) {
-        formatBtn.addEventListener('click', () => {
-            const textarea = container.querySelector('#query-input');
-            if (textarea) {
-                const formatted = formatSQL(textarea.value);
-                textarea.value = formatted;
-                setActiveTabContent(formatted, { forceSnapshot: true, historySource: 'format' });
-                updateSyntaxHighlight(true);
-                updateLineNumbers();
-            }
-        });
-    }
-
-    // Execute Logic
-    const executeBtn = container.querySelector('#execute-btn');
-    if (executeBtn) {
-        // Add ripple effect on click
-        executeBtn.addEventListener('mousedown', (e) => {
-            const ripple = document.createElement('span');
-            const rect = executeBtn.getBoundingClientRect();
-            const size = Math.max(rect.width, rect.height);
-            const x = e.clientX - rect.left - size / 2;
-            const y = e.clientY - rect.top - size / 2;
-
-            ripple.style.width = ripple.style.height = size + 'px';
-            ripple.style.left = x + 'px';
-            ripple.style.top = y + 'px';
-            ripple.className = 'absolute rounded-full bg-white/40 animate-ping pointer-events-none';
-
-            executeBtn.appendChild(ripple);
-            setTimeout(() => ripple.remove(), 600);
-        });
-
-        executeBtn.addEventListener('click', async (e) => {
-            const mode = e.shiftKey ? 'all' : getDefaultRunMode();
-            await executeEditorQuery(mode);
-        });
-    }
-
-    // Analyze Logic (Toggles Profiler)
-    const analyzeBtn = container.querySelector('#analyze-btn');
-    if (analyzeBtn) {
-        analyzeBtn.addEventListener('click', () => {
-            window.dispatchEvent(new CustomEvent('tactilesql:toggle-profiler'));
-        });
-
-    }
-
-    const getAnalysisQuery = () => {
-        const textarea = container.querySelector('#query-input');
-        if (!textarea) return '';
-        const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
-        return (selectedText.trim() ? selectedText : textarea.value).trim().replace(/;\s*$/, '');
-    };
-
-    // AI Optimization Logic
-    const aiOptimizeBtn = container.querySelector('#ai-optimize-btn');
-    if (aiOptimizeBtn) {
-        aiOptimizeBtn.addEventListener('click', handleAiOptimize);
-    }
-
-    // AI Explain Logic
-    const aiExplainBtn = container.querySelector('#ai-explain-btn');
-    if (aiExplainBtn) {
-        aiExplainBtn.addEventListener('click', handleAiExplain);
-    }
-
-    // Execution Plan Logic (Raw backend plan text)
-    const executionPlanBtn = container.querySelector('#execution-plan-btn');
-    if (executionPlanBtn) {
-        let isLoadingExecutionPlan = false;
-        executionPlanBtn.addEventListener('click', async () => {
-            if (isLoadingExecutionPlan) return;
-
-            const queryToRun = getAnalysisQuery();
-            if (!queryToRun) {
-                Dialog.alert('Please enter a query to analyze.', 'Info');
-                return;
-            }
-
-            const originalHTML = executionPlanBtn.innerHTML;
-            isLoadingExecutionPlan = true;
-
-            try {
-                executionPlanBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span><span class="text-[10px] font-bold">Loading...</span>';
-                executionPlanBtn.classList.add('opacity-70');
-
-                const plan = await invoke('get_execution_plan', { query: queryToRun });
-                const planText = typeof plan === 'string' ? plan : JSON.stringify(plan, null, 2);
-                Dialog.alert(
-                    `<pre class="max-h-96 overflow-auto whitespace-pre-wrap text-left text-[11px] leading-relaxed">${escapeHtml(planText)}</pre>`,
-                    'Execution Plan'
-                );
-            } catch (error) {
-                Dialog.alert(`Execution plan failed: ${String(error).replace(/\n/g, '<br>')}`, 'Query Analysis Error');
-            } finally {
-                executionPlanBtn.innerHTML = originalHTML;
-                executionPlanBtn.classList.remove('opacity-70');
-                isLoadingExecutionPlan = false;
-            }
-        });
-    }
-
-    // Explain Logic (Visual Explain with EXPLAIN query execution)
-    const explainBtn = container.querySelector('#explain-btn');
-    if (explainBtn) {
-        let isExplaining = false;
-        explainBtn.addEventListener('click', async () => {
-            if (isExplaining) return; // Prevent double-click
-
-            isExplaining = true;
-
-            const queryToRun = getAnalysisQuery();
-
-            if (!queryToRun) {
-                isExplaining = false;
-                Dialog.alert('Please enter a query to explain.', 'Info');
-                return;
-            }
-
-            const activeDbType = localStorage.getItem('activeDbType') || 'mysql';
-            const explainQuery = activeDbType === 'postgresql'
-                ? `EXPLAIN (FORMAT TEXT) ${queryToRun}`
-                : `EXPLAIN FORMAT=TRADITIONAL ${queryToRun}`;
-            const originalHTML = explainBtn.innerHTML;
-
-            try {
-                explainBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span> ANALYZING';
-                explainBtn.classList.add('opacity-70');
-                window.dispatchEvent(new CustomEvent('tactilesql:query-executing'));
-
-                const result = await invoke('execute_query', { query: explainQuery });
-                showVisualExplainModal(result);
-                window.dispatchEvent(new CustomEvent('tactilesql:query-result', { detail: result }));
-
-            } catch (error) {
-                // Notify results table to hide loading skeleton
-                window.dispatchEvent(new CustomEvent('tactilesql:query-result', { detail: [] }));
-                Dialog.alert(`Explain failed: ${String(error).replace(/\n/g, '<br>')}`, 'Query Analysis Error');
-            } finally {
-                explainBtn.innerHTML = originalHTML;
-                explainBtn.classList.remove('opacity-70');
-                isExplaining = false;
-            }
-        });
-    }
-
-    // Parameter Suggestions
-    const paramBtn = container.querySelector('#param-btn');
-    if (paramBtn) {
-        let isSuggesting = false;
-        paramBtn.addEventListener('click', async () => {
-            if (isSuggesting) return;
-            isSuggesting = true;
-
-            const originalHTML = paramBtn.innerHTML;
-            paramBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span>';
-            paramBtn.classList.add('opacity-70');
-
-            try {
+        // Ask AI Button Logic
+        const askAiBtn = container.querySelector('#ask-ai-btn');
+        if (askAiBtn) {
+            askAiBtn.addEventListener('click', () => {
                 const textarea = container.querySelector('#query-input');
-                const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
-                const queryToSuggest = selectedText.trim() ? selectedText : textarea.value;
+                AskAiBar.show(container, (sql) => {
+                    if (textarea) {
+                        const start = textarea.selectionStart;
+                        const end = textarea.selectionEnd;
+                        const text = textarea.value;
+                        const newText = text.substring(0, start) + sql + text.substring(end);
+                        textarea.value = newText;
 
-                if (!queryToSuggest.trim()) {
-                    Dialog.alert('Please enter a query to analyze parameters.', 'Info');
-                    return;
-                }
-
-                const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
-                const database = activeConfig.database || '';
-                const suggestions = buildParamSuggestions(queryToSuggest.trim(), database, auditTrail);
-
-                if (!suggestions || suggestions.length === 0) {
-                    Dialog.alert('No parameter history found for this query pattern yet.', 'No Suggestions');
-                    return;
-                }
-
-                const message = suggestions
-                    .map(s => `${s.column}: ${s.values.join(', ')}`)
-                    .join('\n');
-
-                Dialog.alert(message, 'Parameter Suggestions');
-            } catch (error) {
-                Dialog.alert(`Parameter suggestion failed: ${String(error).replace(/\n/g, '<br>')}`, 'Suggestion Error');
-            } finally {
-                paramBtn.innerHTML = originalHTML;
-                paramBtn.classList.remove('opacity-70');
-                isSuggesting = false;
-            }
-        });
-    }
-
-    // What-If Optimizer
-    const whatIfBtn = container.querySelector('#whatif-btn');
-    if (whatIfBtn) {
-        let isOptimizing = false;
-        whatIfBtn.addEventListener('click', async () => {
-            if (isOptimizing) return;
-            isOptimizing = true;
-
-            const originalHTML = whatIfBtn.innerHTML;
-            whatIfBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span>';
-            whatIfBtn.classList.add('opacity-70');
-
-            try {
-                const textarea = container.querySelector('#query-input');
-                const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
-                const baseQuery = selectedText.trim() ? selectedText : textarea.value;
-
-                if (!baseQuery.trim()) {
-                    Dialog.alert('Please enter a query to optimize.', 'Info');
-                    return;
-                }
-
-                const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
-                const database = activeConfig.database || '';
-                let variants = await buildWhatIfVariants(baseQuery, database, loadColumnsForAutocomplete);
-
-                if (!variants || variants.length === 0) {
-                    Dialog.alert('No variants could be generated.', 'What-If Optimizer');
-                    return;
-                }
-
-                variants = await Promise.all(variants.map(async (variant) => {
-                    try {
-                        const cleanQuery = variant.query.replace(/;\s*$/, '');
-                        const analysis = await invoke('analyze_query', { query: cleanQuery });
-                        return { ...variant, estimatedCost: analysis?.estimated_cost ?? null };
-                    } catch {
-                        return { ...variant, estimatedCost: null };
-                    }
-                }));
-
-                showWhatIfModal(variants);
-            } catch (error) {
-                Dialog.alert(`What-If optimization failed: ${String(error).replace(/\n/g, '<br>')}`, 'Optimizer Error');
-            } finally {
-                whatIfBtn.innerHTML = originalHTML;
-                whatIfBtn.classList.remove('opacity-70');
-                isOptimizing = false;
-            }
-        });
-    }
-
-    // Sample Query Generator
-    const sampleBtn = container.querySelector('#sample-btn');
-    if (sampleBtn) {
-        let isGenerating = false;
-        sampleBtn.addEventListener('click', async () => {
-            if (isGenerating) return;
-            isGenerating = true;
-
-            const originalHTML = sampleBtn.innerHTML;
-            sampleBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span>';
-            sampleBtn.classList.add('opacity-70');
-
-            try {
-                const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
-                const database = activeConfig.database;
-
-                if (!database) {
-                    Dialog.alert('Please select a database first.', 'Selection Required');
-                    return;
-                }
-
-                const sql = await generateSampleQueries(database);
-                if (!sql) {
-                    Dialog.alert('No tables found to generate samples.', 'No Data');
-                    return;
-                }
-
-                const textarea = container.querySelector('#query-input');
-                if (textarea) {
-                    const current = textarea.value.trim();
-                    const newText = current ? `${current}\n\n${sql}` : sql;
-                    textarea.value = newText;
-
-                    setActiveTabContent(newText, { forceSnapshot: true, historySource: 'samples' });
-
-                    updateSyntaxHighlight(true);
-                    updateLineNumbers();
-                    textarea.focus();
-                    textarea.setSelectionRange(newText.length, newText.length);
-                }
-            } catch (error) {
-                Dialog.alert(`Sample generation failed: ${String(error).replace(/\n/g, '<br>')}`, 'Generation Error');
-            } finally {
-                sampleBtn.innerHTML = originalHTML;
-                sampleBtn.classList.remove('opacity-70');
-                isGenerating = false;
-            }
-        });
-    }
-
-    // --- Database Selector Logic ---
-    const dbContainer = container.querySelector('#db-selector-container');
-    const dbTrigger = container.querySelector('#db-selector-trigger');
-    const dbDropdown = container.querySelector('#db-selector-dropdown');
-    const dbSearchInput = container.querySelector('#db-search-input');
-    const dbOptionsList = container.querySelector('#db-options-list');
-    const currentDbName = container.querySelector('#current-db-name');
-    const dbArrow = container.querySelector('#db-selector-arrow');
-
-    if (dbTrigger && dbDropdown) {
-        let allDatabases = [];
-        let filteredDatabases = [];
-
-        const renderOptions = (dbs) => {
-            if (!dbOptionsList) return;
-            const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
-            const currentDb = activeConfig.database || '';
-
-            if (dbs.length === 0) {
-                dbOptionsList.innerHTML = `<div class="px-4 py-8 text-center text-gray-500 text-[10px] italic">No databases found</div>`;
-                return;
-            }
-
-            dbOptionsList.innerHTML = dbs.map(db => `
-                    <div class="db-option px-3 py-2 flex items-center gap-2 cursor-pointer transition-colors ${db === currentDb ? (isLight ? 'bg-mysql-teal/10 text-mysql-teal font-bold' : 'bg-mysql-teal/20 text-mysql-teal font-bold') : (isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5')}" data-value="${db}">
-                        <span class="material-symbols-outlined text-[14px] ${db === currentDb ? 'text-mysql-teal' : 'text-gray-500'}">${db === currentDb ? 'check_circle' : 'database'}</span>
-                        <span class="text-[11px] truncate flex-1">${db}</span>
-                    </div>
-                `).join('');
-
-            // Add click events to options
-            dbOptionsList.querySelectorAll('.db-option').forEach(option => {
-                option.addEventListener('click', async () => {
-                    const newDb = option.dataset.value;
-                    const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
-
-                    // Close dropdown
-                    dbDropdown.classList.add('hidden');
-                    if (dbArrow) dbArrow.style.transform = '';
-
-                    if (newDb === activeConfig.database) return;
-
-                    if (!activeConfig.username) {
-                        Dialog.alert("Session lost. Please reconnect.", "Session Error");
-                        return;
-                    }
-
-                    try {
-                        dbTrigger.classList.add('opacity-50', 'pointer-events-none');
-                        if (currentDbName) currentDbName.textContent = `Connecting to ${newDb}...`;
-
-                        activeConfig.database = newDb;
-                        await invoke('establish_connection', {
-                            config: { ...activeConfig, id: activeConfig.id || null, name: activeConfig.name || null }
-                        });
-                        localStorage.setItem('activeConnection', JSON.stringify(activeConfig));
-
-                        if (currentDbName) currentDbName.textContent = newDb;
-                        // Load tables for new database
-                        loadTablesForAutocomplete(newDb);
-                        render(); // Re-render to update UI state
-                    } catch (error) {
-                        Dialog.alert(`Failed to switch database: ${String(error).replace(/\n/g, '<br>')}`, "Database Switch Error");
-                        if (currentDbName) currentDbName.textContent = activeConfig.database || 'Select Database';
-                    } finally {
-                        dbTrigger.classList.remove('opacity-50', 'pointer-events-none');
+                        setActiveTabContent(newText, { forceSnapshot: true, historySource: 'ai_insert' });
+                        updateSyntaxHighlight(true);
+                        updateLineNumbers();
                     }
                 });
             });
-        };
-
-        const loadDatabases = async () => {
-            try {
-                const dbs = await invoke('get_databases');
-                allDatabases = dbs;
-                filteredDatabases = dbs;
-                cachedDatabases = dbs;
-
-                const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
-                const currentDb = activeConfig.database || '';
-                if (currentDb && currentDbName) {
-                    currentDbName.textContent = currentDb;
-                    loadTablesForAutocomplete(currentDb);
-                }
-
-                renderOptions(filteredDatabases);
-            } catch (error) {
-                if (error === 'No connection established') {
-                    if (dbOptionsList) dbOptionsList.innerHTML = `<div class="px-4 py-8 text-center text-gray-400 text-[10px]">No active connection</div>`;
-                    return;
-                }
-                console.error('Failed to load DB list', error);
-                if (dbOptionsList) dbOptionsList.innerHTML = `<div class="px-4 py-8 text-center text-red-500 text-[10px]">Error loading databases</div>`;
-            }
-        };
-
-        // Toggle Dropdown
-        dbTrigger.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const isHidden = dbDropdown.classList.contains('hidden');
-
-            // Close other menus if open
-            container.querySelectorAll('.menu-dropdown').forEach(d => d.classList.add('hidden'));
-
-            if (isHidden) {
-                dbDropdown.classList.remove('hidden');
-                if (dbArrow) dbArrow.style.transform = 'rotate(180deg)';
-                if (dbSearchInput) {
-                    dbSearchInput.value = '';
-                    dbSearchInput.focus();
-                }
-                renderOptions(allDatabases);
-            } else {
-                dbDropdown.classList.add('hidden');
-                if (dbArrow) dbArrow.style.transform = '';
-            }
-        });
-
-        // Search Logic
-        if (dbSearchInput) {
-            dbSearchInput.addEventListener('input', (e) => {
-                const term = e.target.value.toLowerCase();
-                filteredDatabases = allDatabases.filter(db => db.toLowerCase().includes(term));
-                renderOptions(filteredDatabases);
-            });
-
-            // Prevent closing menu when clicking search input
-            dbSearchInput.addEventListener('click', (e) => e.stopPropagation());
         }
 
-        // Click outside to close
-        const onOutsideClick = (e) => {
-            if (dbContainer && !dbContainer.contains(e.target)) {
-                dbDropdown.classList.add('hidden');
-                if (dbArrow) dbArrow.style.transform = '';
-            }
-        };
-        document.addEventListener('click', onOutsideClick);
+        // Format Button Logic
+        const formatBtn = container.querySelector('#format-btn');
+        if (formatBtn) {
+            formatBtn.addEventListener('click', () => {
+                const textarea = container.querySelector('#query-input');
+                if (textarea) {
+                    const formatted = formatSQL(textarea.value);
+                    textarea.value = formatted;
+                    setActiveTabContent(formatted, { forceSnapshot: true, historySource: 'format' });
+                    updateSyntaxHighlight(true);
+                    updateLineNumbers();
+                }
+            });
+        }
 
-        // Initial Load
-        loadDatabases();
+        // Execute Logic
+        const executeBtn = container.querySelector('#execute-btn');
+        if (executeBtn) {
+            // Add ripple effect on click
+            executeBtn.addEventListener('mousedown', (e) => {
+                const ripple = document.createElement('span');
+                const rect = executeBtn.getBoundingClientRect();
+                const size = Math.max(rect.width, rect.height);
+                const x = e.clientX - rect.left - size / 2;
+                const y = e.clientY - rect.top - size / 2;
+
+                ripple.style.width = ripple.style.height = size + 'px';
+                ripple.style.left = x + 'px';
+                ripple.style.top = y + 'px';
+                ripple.className = 'absolute rounded-full bg-white/40 animate-ping pointer-events-none';
+
+                executeBtn.appendChild(ripple);
+                setTimeout(() => ripple.remove(), 600);
+            });
+
+            executeBtn.addEventListener('click', async (e) => {
+                const mode = e.shiftKey ? 'all' : getDefaultRunMode();
+                await executeEditorQuery(mode);
+            });
+        }
+
+        // Analyze Logic (Toggles Profiler)
+        const analyzeBtn = container.querySelector('#analyze-btn');
+        if (analyzeBtn) {
+            analyzeBtn.addEventListener('click', () => {
+                window.dispatchEvent(new CustomEvent('tactilesql:toggle-profiler'));
+            });
+
+        }
+
+        const getAnalysisQuery = () => {
+            const textarea = container.querySelector('#query-input');
+            if (!textarea) return '';
+            const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
+            return (selectedText.trim() ? selectedText : textarea.value).trim().replace(/;\s*$/, '');
+        };
+
+        // AI Optimization Logic
+        const aiOptimizeBtn = container.querySelector('#ai-optimize-btn');
+        if (aiOptimizeBtn) {
+            aiOptimizeBtn.addEventListener('click', handleAiOptimize);
+        }
+
+        // AI Explain Logic
+        const aiExplainBtn = container.querySelector('#ai-explain-btn');
+        if (aiExplainBtn) {
+            aiExplainBtn.addEventListener('click', handleAiExplain);
+        }
+
+        // Execution Plan Logic (Raw backend plan text)
+        const executionPlanBtn = container.querySelector('#execution-plan-btn');
+        if (executionPlanBtn) {
+            let isLoadingExecutionPlan = false;
+            executionPlanBtn.addEventListener('click', async () => {
+                if (isLoadingExecutionPlan) return;
+
+                const queryToRun = getAnalysisQuery();
+                if (!queryToRun) {
+                    Dialog.alert('Please enter a query to analyze.', 'Info');
+                    return;
+                }
+
+                const originalHTML = executionPlanBtn.innerHTML;
+                isLoadingExecutionPlan = true;
+
+                try {
+                    executionPlanBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span><span class="text-[10px] font-bold">Loading...</span>';
+                    executionPlanBtn.classList.add('opacity-70');
+
+                    const plan = await invoke('get_execution_plan', { query: queryToRun });
+                    const planText = typeof plan === 'string' ? plan : JSON.stringify(plan, null, 2);
+                    Dialog.alert(
+                        `<pre class="max-h-96 overflow-auto whitespace-pre-wrap text-left text-[11px] leading-relaxed" > ${escapeHtml(planText)}</pre> `,
+                        'Execution Plan'
+                    );
+                } catch (error) {
+                    Dialog.alert(`Execution plan failed: ${String(error).replace(/\n/g, '<br>')} `, 'Query Analysis Error');
+                } finally {
+                    executionPlanBtn.innerHTML = originalHTML;
+                    executionPlanBtn.classList.remove('opacity-70');
+                    isLoadingExecutionPlan = false;
+                }
+            });
+        }
+
+        // Explain Logic (Visual Explain with EXPLAIN query execution)
+        const explainBtn = container.querySelector('#explain-btn');
+        if (explainBtn) {
+            let isExplaining = false;
+            explainBtn.addEventListener('click', async () => {
+                if (isExplaining) return; // Prevent double-click
+
+                isExplaining = true;
+
+                const queryToRun = getAnalysisQuery();
+
+                if (!queryToRun) {
+                    isExplaining = false;
+                    Dialog.alert('Please enter a query to explain.', 'Info');
+                    return;
+                }
+
+                const activeDbType = localStorage.getItem('activeDbType') || 'mysql';
+                const explainQuery = activeDbType === 'postgresql'
+                    ? `EXPLAIN(FORMAT TEXT) ${queryToRun} `
+                    : `EXPLAIN FORMAT = TRADITIONAL ${queryToRun} `;
+                const originalHTML = explainBtn.innerHTML;
+
+                try {
+                    explainBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span> ANALYZING';
+                    explainBtn.classList.add('opacity-70');
+                    window.dispatchEvent(new CustomEvent('tactilesql:query-executing'));
+
+                    const result = await invoke('execute_query', { query: explainQuery });
+                    showVisualExplainModal(result);
+                    window.dispatchEvent(new CustomEvent('tactilesql:query-result', { detail: result }));
+
+                } catch (error) {
+                    // Notify results table to hide loading skeleton
+                    window.dispatchEvent(new CustomEvent('tactilesql:query-result', { detail: [] }));
+                    Dialog.alert(`Explain failed: ${String(error).replace(/\n/g, '<br>')} `, 'Query Analysis Error');
+                } finally {
+                    explainBtn.innerHTML = originalHTML;
+                    explainBtn.classList.remove('opacity-70');
+                    isExplaining = false;
+                }
+            });
+        }
+
+        // Parameter Suggestions
+        const paramBtn = container.querySelector('#param-btn');
+        if (paramBtn) {
+            let isSuggesting = false;
+            paramBtn.addEventListener('click', async () => {
+                if (isSuggesting) return;
+                isSuggesting = true;
+
+                const originalHTML = paramBtn.innerHTML;
+                paramBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span>';
+                paramBtn.classList.add('opacity-70');
+
+                try {
+                    const textarea = container.querySelector('#query-input');
+                    const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
+                    const queryToSuggest = selectedText.trim() ? selectedText : textarea.value;
+
+                    if (!queryToSuggest.trim()) {
+                        Dialog.alert('Please enter a query to analyze parameters.', 'Info');
+                        return;
+                    }
+
+                    const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+                    const database = activeConfig.database || '';
+                    const suggestions = buildParamSuggestions(queryToSuggest.trim(), database, auditTrail);
+
+                    if (!suggestions || suggestions.length === 0) {
+                        Dialog.alert('No parameter history found for this query pattern yet.', 'No Suggestions');
+                        return;
+                    }
+
+                    const message = suggestions
+                        .map(s => `${s.column}: ${s.values.join(', ')} `)
+                        .join('\n');
+
+                    Dialog.alert(message, 'Parameter Suggestions');
+                } catch (error) {
+                    Dialog.alert(`Parameter suggestion failed: ${String(error).replace(/\n/g, '<br>')} `, 'Suggestion Error');
+                } finally {
+                    paramBtn.innerHTML = originalHTML;
+                    paramBtn.classList.remove('opacity-70');
+                    isSuggesting = false;
+                }
+            });
+        }
+
+        // What-If Optimizer
+        const whatIfBtn = container.querySelector('#whatif-btn');
+        if (whatIfBtn) {
+            let isOptimizing = false;
+            whatIfBtn.addEventListener('click', async () => {
+                if (isOptimizing) return;
+                isOptimizing = true;
+
+                const originalHTML = whatIfBtn.innerHTML;
+                whatIfBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span>';
+                whatIfBtn.classList.add('opacity-70');
+
+                try {
+                    const textarea = container.querySelector('#query-input');
+                    const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
+                    const baseQuery = selectedText.trim() ? selectedText : textarea.value;
+
+                    if (!baseQuery.trim()) {
+                        Dialog.alert('Please enter a query to optimize.', 'Info');
+                        return;
+                    }
+
+                    const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+                    const database = activeConfig.database || '';
+                    let variants = await buildWhatIfVariants(baseQuery, database, loadColumnsForAutocomplete);
+
+                    if (!variants || variants.length === 0) {
+                        Dialog.alert('No variants could be generated.', 'What-If Optimizer');
+                        return;
+                    }
+
+                    variants = await Promise.all(variants.map(async (variant) => {
+                        try {
+                            const cleanQuery = variant.query.replace(/;\s*$/, '');
+                            const analysis = await invoke('analyze_query', { query: cleanQuery });
+                            return { ...variant, estimatedCost: analysis?.estimated_cost ?? null };
+                        } catch {
+                            return { ...variant, estimatedCost: null };
+                        }
+                    }));
+
+                    showWhatIfModal(variants);
+                } catch (error) {
+                    Dialog.alert(`What - If optimization failed: ${String(error).replace(/\n/g, '<br>')} `, 'Optimizer Error');
+                } finally {
+                    whatIfBtn.innerHTML = originalHTML;
+                    whatIfBtn.classList.remove('opacity-70');
+                    isOptimizing = false;
+                }
+            });
+        }
+
+        // Sample Query Generator
+        const sampleBtn = container.querySelector('#sample-btn');
+        if (sampleBtn) {
+            let isGenerating = false;
+            sampleBtn.addEventListener('click', async () => {
+                if (isGenerating) return;
+                isGenerating = true;
+
+                const originalHTML = sampleBtn.innerHTML;
+                sampleBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span>';
+                sampleBtn.classList.add('opacity-70');
+
+                try {
+                    const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+                    const database = activeConfig.database;
+
+                    if (!database) {
+                        Dialog.alert('Please select a database first.', 'Selection Required');
+                        return;
+                    }
+
+                    const sql = await generateSampleQueries(database);
+                    if (!sql) {
+                        Dialog.alert('No tables found to generate samples.', 'No Data');
+                        return;
+                    }
+
+                    const textarea = container.querySelector('#query-input');
+                    if (textarea) {
+                        const current = textarea.value.trim();
+                        const newText = current ? `${current} \n\n${sql} ` : sql;
+                        textarea.value = newText;
+
+                        setActiveTabContent(newText, { forceSnapshot: true, historySource: 'samples' });
+
+                        updateSyntaxHighlight(true);
+                        updateLineNumbers();
+                        textarea.focus();
+                        textarea.setSelectionRange(newText.length, newText.length);
+                    }
+                } catch (error) {
+                    Dialog.alert(`Sample generation failed: ${String(error).replace(/\n/g, '<br>')} `, 'Generation Error');
+                } finally {
+                    sampleBtn.innerHTML = originalHTML;
+                    sampleBtn.classList.remove('opacity-70');
+                    isGenerating = false;
+                }
+            });
+        }
+
+        // --- Database Selector Logic ---
+        const dbContainer = container.querySelector('#db-selector-container');
+        const dbTrigger = container.querySelector('#db-selector-trigger');
+        const dbDropdown = container.querySelector('#db-selector-dropdown');
+        const dbSearchInput = container.querySelector('#db-search-input');
+        const dbOptionsList = container.querySelector('#db-options-list');
+        const currentDbName = container.querySelector('#current-db-name');
+        const dbArrow = container.querySelector('#db-selector-arrow');
+
+        if (dbTrigger && dbDropdown) {
+            let allDatabases = [];
+            let filteredDatabases = [];
+
+            const renderOptions = (dbs) => {
+                if (!dbOptionsList) return;
+                const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+                const currentDb = activeConfig.database || '';
+
+                if (dbs.length === 0) {
+                    dbOptionsList.innerHTML = `<div class="px-4 py-8 text-center text-gray-500 text-[10px] italic" > No databases found</div> `;
+                    return;
+                }
+
+                dbOptionsList.innerHTML = dbs.map(db => `
+            <div class="db-option px-3 py-2 flex items-center gap-2 cursor-pointer transition-colors ${db === currentDb ? (isLight ? 'bg-mysql-teal/10 text-mysql-teal font-bold' : 'bg-mysql-teal/20 text-mysql-teal font-bold') : (isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5')}" data-value="${db}" >
+                        <span class="material-symbols-outlined text-[14px] ${db === currentDb ? 'text-mysql-teal' : 'text-gray-500'}">${db === currentDb ? 'check_circle' : 'database'}</span>
+                        <span class="text-[11px] truncate flex-1">${db}</span>
+                    </div>
+            `).join('');
+
+                // Add click events to options
+                dbOptionsList.querySelectorAll('.db-option').forEach(option => {
+                    option.addEventListener('click', async () => {
+                        const newDb = option.dataset.value;
+                        const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+
+                        // Close dropdown
+                        dbDropdown.classList.add('hidden');
+                        if (dbArrow) dbArrow.style.transform = '';
+
+                        if (newDb === activeConfig.database) return;
+
+                        if (!activeConfig.username) {
+                            Dialog.alert("Session lost. Please reconnect.", "Session Error");
+                            return;
+                        }
+
+                        try {
+                            dbTrigger.classList.add('opacity-50', 'pointer-events-none');
+                            if (currentDbName) currentDbName.textContent = `Connecting to ${newDb}...`;
+
+                            activeConfig.database = newDb;
+                            await invoke('establish_connection', {
+                                config: { ...activeConfig, id: activeConfig.id || null, name: activeConfig.name || null }
+                            });
+                            localStorage.setItem('activeConnection', JSON.stringify(activeConfig));
+
+                            if (currentDbName) currentDbName.textContent = newDb;
+                            // Load tables for new database
+                            loadTablesForAutocomplete(newDb);
+                            render(); // Re-render to update UI state
+                        } catch (error) {
+                            Dialog.alert(`Failed to switch database: ${String(error).replace(/\n/g, '<br>')} `, "Database Switch Error");
+                            if (currentDbName) currentDbName.textContent = activeConfig.database || 'Select Database';
+                        } finally {
+                            dbTrigger.classList.remove('opacity-50', 'pointer-events-none');
+                        }
+                    });
+                });
+            };
+
+            const loadDatabases = async () => {
+                try {
+                    const dbs = await invoke('get_databases');
+                    allDatabases = dbs;
+                    filteredDatabases = dbs;
+                    cachedDatabases = dbs;
+
+                    const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+                    const currentDb = activeConfig.database || '';
+                    if (currentDb && currentDbName) {
+                        currentDbName.textContent = currentDb;
+                        loadTablesForAutocomplete(currentDb);
+                    }
+
+                    renderOptions(filteredDatabases);
+                } catch (error) {
+                    if (error === 'No connection established') {
+                        if (dbOptionsList) dbOptionsList.innerHTML = `<div class="px-4 py-8 text-center text-gray-400 text-[10px]" > No active connection</div> `;
+                        return;
+                    }
+                    console.error('Failed to load DB list', error);
+                    if (dbOptionsList) dbOptionsList.innerHTML = `<div class="px-4 py-8 text-center text-red-500 text-[10px]" > Error loading databases</div> `;
+                }
+            };
+
+            // Toggle Dropdown
+            dbTrigger.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const isHidden = dbDropdown.classList.contains('hidden');
+
+                // Close other menus if open
+                container.querySelectorAll('.menu-dropdown').forEach(d => d.classList.add('hidden'));
+
+                if (isHidden) {
+                    dbDropdown.classList.remove('hidden');
+                    if (dbArrow) dbArrow.style.transform = 'rotate(180deg)';
+                    if (dbSearchInput) {
+                        dbSearchInput.value = '';
+                        dbSearchInput.focus();
+                    }
+                    renderOptions(allDatabases);
+                } else {
+                    dbDropdown.classList.add('hidden');
+                    if (dbArrow) dbArrow.style.transform = '';
+                }
+            });
+
+            // Search Logic
+            if (dbSearchInput) {
+                dbSearchInput.addEventListener('input', (e) => {
+                    const term = e.target.value.toLowerCase();
+                    filteredDatabases = allDatabases.filter(db => db.toLowerCase().includes(term));
+                    renderOptions(filteredDatabases);
+                });
+
+                // Prevent closing menu when clicking search input
+                dbSearchInput.addEventListener('click', (e) => e.stopPropagation());
+            }
+
+            // Click outside to close
+            const onOutsideClick = (e) => {
+                if (dbContainer && !dbContainer.contains(e.target)) {
+                    dbDropdown.classList.add('hidden');
+                    if (dbArrow) dbArrow.style.transform = '';
+                }
+            };
+            document.addEventListener('click', onOutsideClick);
+
+            // Initial Load
+            loadDatabases();
+        }
     }
 
 
@@ -3121,7 +2981,7 @@ export function QueryEditor() {
         theme = e.detail.theme;
         isLight = theme === 'light';
         isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
-        container.className = `flex flex-col h-full border-b ${isLight ? 'border-gray-200 bg-white' : (isOceanic ? 'border-ocean-border/50 bg-ocean-bg' : 'border-white/5 bg-[#0f1115]')}`;
+        container.className = `flex flex-col h-full border-b ${isLight ? 'border-gray-200 bg-white' : (isOceanic ? 'border-ocean-border/50 bg-ocean-bg' : 'border-white/5 bg-[#0f1115]')} `;
         render();
     };
     window.addEventListener('themechange', onThemeChange);
@@ -3269,9 +3129,9 @@ export function QueryEditor() {
                     const marker = foldMarkers.find(m => m.line === i);
                     if (marker) {
                         const icon = marker.collapsed ? 'chevron_right' : 'expand_more';
-                        gutterHTML.push(`<div class="fold-marker" data-fold-line="${i}" style="height:${typography.lineHeight}px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><span class="material-symbols-outlined text-mysql-teal" style="font-size:12px;">${icon}</span></div>`);
+                        gutterHTML.push(`<div class="fold-marker" data-fold-line="${i}" style="height:${typography.lineHeight}px;cursor:pointer;display:flex;align-items:center;justify-content:center;" > <span class="material-symbols-outlined text-mysql-teal" style="font-size:12px;">${icon}</span></div> `);
                     } else {
-                        gutterHTML.push(`<div style="height:${typography.lineHeight}px;"></div>`);
+                        gutterHTML.push(`<div style="height:${typography.lineHeight}px;" ></div> `);
                     }
                 }
                 foldGutter.innerHTML = gutterHTML.join('');
@@ -3300,9 +3160,9 @@ export function QueryEditor() {
                     const marker = foldMarkers.find(m => m.line === i);
                     if (marker) {
                         const icon = marker.collapsed ? 'chevron_right' : 'expand_more';
-                        gutterHTML.push(`<div class="fold-marker" data-fold-line="${i}" style="height:${typography.lineHeight}px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><span class="material-symbols-outlined ${isLight ? 'text-gray-400' : 'text-gray-500'}" style="font-size:12px;">${icon}</span></div>`);
+                        gutterHTML.push(`<div class="fold-marker" data-fold-line="${i}" style="height:${typography.lineHeight}px;cursor:pointer;display:flex;align-items:center;justify-content:center;" > <span class="material-symbols-outlined ${isLight ? 'text-gray-400' : 'text-gray-500'}" style="font-size:12px;">${icon}</span></div> `);
                     } else {
-                        gutterHTML.push(`<div style="height:${typography.lineHeight}px;"></div>`);
+                        gutterHTML.push(`<div style="height:${typography.lineHeight}px;" ></div> `);
                     }
                 }
                 foldGutter.innerHTML = gutterHTML.join('');
@@ -3369,8 +3229,8 @@ export function QueryEditor() {
     // --- AI Assistance Handlers ---
     const getAiConfig = () => {
         const provider = localStorage.getItem('ai_provider') || 'openai';
-        const apiKey = localStorage.getItem(`${provider}_api_key`) || '';
-        const model = localStorage.getItem(`${provider}_model`) ||
+        const apiKey = localStorage.getItem(`${provider} _api_key`) || '';
+        const model = localStorage.getItem(`${provider} _model`) ||
             (provider === 'gemini' ? 'gemini-2.5-flash' :
                 provider === 'anthropic' ? 'claude-3-5-sonnet-20241022' :
                     provider === 'deepseek' ? 'deepseek-chat' : 'gpt-4o');
@@ -3406,7 +3266,7 @@ export function QueryEditor() {
                 if (overlay && overlay.parentNode) overlay.remove();
             }
         } catch (error) {
-            Dialog.alert(`AI Explain failed: ${error.message}`, 'AI Error');
+            Dialog.alert(`AI Explain failed: ${error.message} `, 'AI Error');
         }
     };
 
@@ -3458,7 +3318,7 @@ export function QueryEditor() {
                 if (overlay && overlay.parentNode) overlay.remove();
             }
         } catch (error) {
-            Dialog.alert(`AI Optimization failed: ${error.message}`, 'AI Error');
+            Dialog.alert(`AI Optimization failed: ${error.message} `, 'AI Error');
         }
     };
 
@@ -3504,7 +3364,7 @@ export function QueryEditor() {
                 aiFixBtn.disabled = false;
             }
         } catch (error) {
-            Dialog.alert(`AI Fix failed: ${error.message}`, 'AI Error');
+            Dialog.alert(`AI Fix failed: ${error.message} `, 'AI Error');
         } finally {
             isRepairing = false;
         }
@@ -3632,7 +3492,7 @@ export function QueryEditor() {
         loadTablesForAutocomplete(database);
 
         // Create a new query tab for this database
-        createNewTabWithQuery(`-- Database: ${database}\n\n`);
+        createNewTabWithQuery(`-- Database: ${database} \n\n`);
 
         // Re-render to ensure DB selector shows correct DB (it will pick it up from localStorage if updated, 
         // but here we might need to update localStorage first if the event didn't do it)
