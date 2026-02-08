@@ -26,6 +26,7 @@ import { findSymbolAtPosition, renameSymbol, getSymbolDescription } from '../../
 import { findWildcardAtCursor, expandWildcard, isNearWildcard } from '../../utils/wildcardExpander.js';
 import { parseQuery } from '../../utils/autocomplete/parser.js';
 import { FoldManager, renderFoldGutter } from './editor/codeFolding.js';
+import { FindReplacePane } from './editor/FindReplacePane.js';
 
 
 // SQL Keywords for autocomplete
@@ -208,6 +209,18 @@ export function QueryEditor() {
     let latestSyntaxRequestId = 0;
     let syntaxRenderTimer = null;
 
+    // --- Find & Replace State ---
+    let findReplaceState = {
+        visible: false,
+        mode: 'find', // 'find' | 'replace'
+        findTerm: '',
+        replaceTerm: '',
+        useRegex: false,
+        matchCase: false,
+        matches: [], // { start: number, end: number }
+        currentMatchIndex: -1
+    };
+
     // --- Parameter Defaults ---
     let parameterDefaults = (() => {
         try {
@@ -216,6 +229,72 @@ export function QueryEditor() {
             return {};
         }
     })();
+
+    // --- Editor Update Functions (Hoisted) ---
+    const updateSyntaxHighlight = (immediate = false) => {
+        const textarea = container.querySelector('#query-input');
+        const syntaxHighlight = container.querySelector('#syntax-highlight');
+        if (!syntaxHighlight || !textarea) return;
+        requestSyntaxRender(textarea, syntaxHighlight, immediate);
+    };
+
+    const updateLineNumbers = () => {
+        const textarea = container.querySelector('#query-input');
+        if (!textarea) return;
+
+        const lineNumbers = container.querySelector('#line-numbers');
+        const foldGutter = container.querySelector('#fold-gutter');
+
+        // Get current typography settings
+        const typography = getEditorTypography();
+
+        const content = textarea.value || '';
+        const lines = content.split('\n');
+        const lineCount = lines.length;
+        const minContent = Math.max(lineCount, 20); // Minimum 20 lines
+
+        // Detect fold regions
+        foldManager.detectRegions(content);
+        const foldMarkers = foldManager.getFoldMarkers();
+
+        // Update line numbers
+        if (lineNumbers) {
+            lineNumbers.innerHTML = Array.from({ length: minContent }, (_, i) => i + 1).join('<br>');
+        }
+
+        // Update fold gutter
+        if (foldGutter) {
+            const gutterHTML = [];
+            for (let i = 0; i < minContent; i++) {
+                const marker = foldMarkers.find(m => m.line === i);
+                if (marker) {
+                    const icon = marker.collapsed ? 'chevron_right' : 'expand_more';
+                    const title = marker.collapsed
+                        ? `Expand (${marker.endLine - marker.line + 1} lines)`
+                        : 'Collapse';
+                    gutterHTML.push(`<div class="fold-marker" data-fold-line="${i}" title="${title}" style="height:${typography.lineHeight}px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><span class="material-symbols-outlined ${marker.collapsed ? 'text-mysql-teal' : (isLight ? 'text-gray-400' : 'text-gray-500')} hover:text-mysql-teal transition-colors" style="font-size:12px;">${icon}</span></div>`);
+                } else {
+                    gutterHTML.push(`<div style="height:${typography.lineHeight}px;"></div>`);
+                }
+            }
+            foldGutter.innerHTML = gutterHTML.join('');
+
+            // Attach fold click handlers
+            foldGutter.querySelectorAll('.fold-marker').forEach(marker => {
+                marker.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const lineNum = parseInt(marker.dataset.foldLine, 10);
+                    const region = foldManager.toggleFold(lineNum);
+                    if (region) {
+                        updateSyntaxHighlight(true);
+                        updateLineNumbers();
+                    }
+                });
+            });
+        }
+    };
+
 
     const persistParameterDefaults = () => {
         try {
@@ -1059,7 +1138,8 @@ export function QueryEditor() {
                     <div class="w-5 flex flex-col items-center ${(isLight || isDawn) ? 'border-gray-100' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5')} border-r" id="fold-gutter" style="line-height:${typography.lineHeight}px;"></div>
                 </div>` : ''}
                 <div class="flex-1 relative ${lineNumbersEnabled ? 'pl-4' : 'pl-0'}">
-                    <pre id="syntax-highlight" class="absolute inset-0 ${lineNumbersEnabled ? 'pl-4' : 'pl-0'} pt-0 pointer-events-none overflow-hidden ${wrapClass}" style="font-size:${typography.fontSize}px;line-height:${typography.lineHeight}px;font-family:${typography.fontFamily};" aria-hidden="true"></pre>
+                    <pre id="search-highlight" class="absolute inset-0 ${lineNumbersEnabled ? 'pl-4' : 'pl-0'} pt-0 pointer-events-none overflow-hidden ${wrapClass} text-transparent" style="font-size:${typography.fontSize}px;line-height:${typography.lineHeight}px;font-family:${typography.fontFamily};z-index: 1;" aria-hidden="true"></pre>
+                    <pre id="syntax-highlight" class="absolute inset-0 ${lineNumbersEnabled ? 'pl-4' : 'pl-0'} pt-0 pointer-events-none overflow-hidden ${wrapClass}" style="font-size:${typography.fontSize}px;line-height:${typography.lineHeight}px;font-family:${typography.fontFamily};z-index: 0;" aria-hidden="true"></pre>
                     <textarea id="query-input" class="relative w-full h-full bg-transparent border-none ${isLight ? 'text-transparent' : (isOceanic ? 'text-transparent' : 'text-transparent')} ${isLight ? 'caret-gray-800' : (isOceanic ? 'caret-white' : 'caret-white')} ${wrapClass} focus:ring-0 resize-none outline-none custom-scrollbar p-0 z-10 placeholder:text-gray-600/50" style="font-size:${typography.fontSize}px;line-height:${typography.lineHeight}px;font-family:${typography.fontFamily};" spellcheck="false" placeholder="Enter your SQL query here... (Ctrl+Space for suggestions)">${activeTab ? activeTab.content : ''}</textarea>
                 </div>
             </div>
@@ -1144,11 +1224,489 @@ export function QueryEditor() {
 
         attachEvents();
         attachRepairEvents();
+        attachFindReplaceEvents();
     }
 
-    const showWhatIfModal = (variants) => {
-        const existing = document.getElementById('whatif-optimizer-modal');
+    // --- Find & Replace Logic ---
+
+    const toggleFindReplace = (mode = 'find') => {
+        const textarea = container.querySelector('#query-input');
+        const selection = textarea ? getSelectionText(textarea) : '';
+
+        // If already visible and in same mode, just focus input or use selection
+        if (findReplaceState.visible && findReplaceState.mode === mode && !selection) {
+            const input = container.querySelector('#fr-find-input');
+            if (input) {
+                input.select();
+                input.focus();
+            }
+            return;
+        }
+
+        findReplaceState.visible = true;
+        findReplaceState.mode = mode;
+
+        // If text is selected, use it as search term
+        if (selection && !selection.includes('\n')) {
+            findReplaceState.findTerm = selection;
+        }
+
+        renderFindReplacePane();
+        updateSearchMatches();
+
+        // Focus the appropriate input
+        setTimeout(() => {
+            const inputId = mode === 'replace' ? '#fr-replace-input' : '#fr-find-input';
+            const input = container.querySelector(inputId) || container.querySelector('#fr-find-input');
+            if (input) {
+                input.select();
+                input.focus();
+            }
+        }, 10);
+    };
+
+    const closeFindReplace = () => {
+        findReplaceState.visible = false;
+        findReplaceState.matches = [];
+        findReplaceState.currentMatchIndex = -1;
+
+        const pane = container.querySelector('#find-replace-pane');
+        if (pane) pane.remove();
+
+        const highlightLayer = container.querySelector('#search-highlight');
+        if (highlightLayer) highlightLayer.innerHTML = '';
+
+        const textarea = container.querySelector('#query-input');
+        if (textarea) textarea.focus();
+    };
+
+    const getSelectionText = (textarea) => {
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        return start !== end ? textarea.value.substring(start, end) : '';
+    };
+
+    const updateSearchMatches = () => {
+        const textarea = container.querySelector('#query-input');
+        const highlightLayer = container.querySelector('#search-highlight');
+        if (!textarea || !highlightLayer) return;
+
+        const text = textarea.value;
+        const { findTerm, useRegex, matchCase } = findReplaceState;
+
+        if (!findTerm) {
+            findReplaceState.matches = [];
+            findReplaceState.currentMatchIndex = -1;
+            highlightLayer.innerHTML = '';
+            updatePaneStatus();
+            return;
+        }
+
+        try {
+            const flags = matchCase ? 'g' : 'gi';
+            let regex;
+
+            if (useRegex) {
+                regex = new RegExp(findTerm, flags);
+            } else {
+                // Escape special regex chars for plain text search
+                const escaped = findTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                regex = new RegExp(escaped, flags);
+            }
+
+            const matches = [];
+            let match;
+            while ((match = regex.exec(text)) !== null) {
+                matches.push({
+                    start: match.index,
+                    end: match.index + match[0].length,
+                    text: match[0]
+                });
+                // Prevent infinite loop for zero-length matches
+                if (match.index === regex.lastIndex) {
+                    regex.lastIndex++;
+                }
+            }
+
+            findReplaceState.matches = matches;
+
+            // Try to maintain current match index relative to cursor or scroll
+            if (findReplaceState.currentMatchIndex === -1 && matches.length > 0) {
+                // Find first match after cursor
+                const cursor = textarea.selectionStart;
+                const nextMatchIdx = matches.findIndex(m => m.start >= cursor);
+                findReplaceState.currentMatchIndex = nextMatchIdx !== -1 ? nextMatchIdx : 0;
+            } else if (findReplaceState.currentMatchIndex >= matches.length) {
+                findReplaceState.currentMatchIndex = matches.length > 0 ? 0 : -1;
+            }
+
+            renderSearchHighlights(text, matches);
+            updatePaneStatus();
+
+        } catch (e) {
+            // Invalid regex
+            findReplaceState.matches = [];
+            highlightLayer.innerHTML = '';
+            updatePaneStatus(true); // error state
+        }
+    };
+
+    const renderSearchHighlights = (text, matches) => {
+        const highlightLayer = container.querySelector('#search-highlight');
+        if (!highlightLayer) return;
+
+        // Reset
+        highlightLayer.innerHTML = '';
+
+        if (matches.length === 0) return;
+
+        // We can't simply use indices because of HTML escaping in the PRE tag.
+        // But the PRE tag content must exactly match textarea context (including wrapping).
+        // Best approach for exact overlay: 
+        // 1. Create a transparent overlay with same text styling.
+        // 2. Mark matches with span.bg-yellow
+        // This is what #syntax-highlight does but here we only care about background.
+
+        // We'll reconstruct the text with spans
+        let lastIndex = 0;
+        let html = '';
+
+        matches.forEach((match, i) => {
+            const isCurrent = i === findReplaceState.currentMatchIndex;
+            // Add non-match text (escaped)
+            html += escapeHtml(text.substring(lastIndex, match.start));
+
+            // Add match
+            const className = isCurrent
+                ? 'bg-amber-400/50 outline outline-1 outline-amber-400'
+                : (isLight ? 'bg-yellow-200/50' : 'bg-yellow-500/30');
+
+            html += `<span class="${className}">${escapeHtml(match.text)}</span>`;
+
+            lastIndex = match.end;
+        });
+
+        html += escapeHtml(text.substring(lastIndex));
+
+        // Handle newlines correctly for pre-wrap
+        // syntax highlight handles this? 
+        // Actually escapeHtml usually just escapes chars. 
+        // The container has `whitespace-pre-wrap` so \n works.
+
+        highlightLayer.innerHTML = html;
+
+        // Ensure scroll sync (handled by editor usually but good to check)
+        highlightLayer.scrollTop = container.querySelector('#query-input').scrollTop;
+        highlightLayer.scrollLeft = container.querySelector('#query-input').scrollLeft;
+    };
+
+    const navigateMatch = (direction) => { // 'next' | 'prev'
+        const { matches, currentMatchIndex } = findReplaceState;
+        if (matches.length === 0) return;
+
+        let newIndex = currentMatchIndex;
+        if (direction === 'next') {
+            newIndex = (currentMatchIndex + 1) % matches.length;
+        } else {
+            newIndex = (currentMatchIndex - 1 + matches.length) % matches.length;
+        }
+
+        findReplaceState.currentMatchIndex = newIndex;
+        updateSearchMatches(); // Re-render highlights to update active one
+        scrollToMatch(newIndex);
+    };
+
+    const scrollToMatch = (index) => {
+        const match = findReplaceState.matches[index];
+        if (!match) return;
+
+        const textarea = container.querySelector('#query-input');
+
+        // Select logic
+        textarea.setSelectionRange(match.start, match.end);
+
+        // Scroll logic 
+        // textarea.blur(); // focus steals? 
+        textarea.focus();
+
+        // Native mostly handles scroll on focus/selection, but for custom smooth scrolling center:
+        const typography = getEditorTypography();
+        const lines = textarea.value.substring(0, match.start).split('\n');
+        const lineIndex = lines.length - 1;
+        const lineHeight = typography.lineHeight;
+
+        const targetTop = lineIndex * lineHeight;
+        const containerHeight = textarea.clientHeight;
+
+        textarea.scrollTop = Math.max(0, targetTop - containerHeight / 2);
+    };
+
+    const performReplace = (all = false) => {
+        const { findTerm, replaceTerm, matches, currentMatchIndex } = findReplaceState;
+        if (matches.length === 0) return;
+
+        const textarea = container.querySelector('#query-input');
+        const text = textarea.value;
+
+        if (all) {
+            // Replace All
+            // We need to do it in reverse order to preserve indices, OR use replaceAll/regex
+            // Using regex replace is safest/easiest if we reconstruct regex
+            try {
+                const flags = (findReplaceState.matchCase ? 'g' : 'gi');
+                let regex;
+                if (findReplaceState.useRegex) {
+                    regex = new RegExp(findTerm, flags);
+                } else {
+                    const escaped = findTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    regex = new RegExp(escaped, flags);
+                }
+
+                const newText = text.replace(regex, replaceTerm);
+
+                // Update editor
+                if (newText !== text) {
+                    setActiveTabContent(newText, { forceSnapshot: true, historySource: 'replace-all' });
+
+                    // Update Textarea and Highlight
+                    textarea.value = newText;
+                    updateSyntaxHighlight(true);
+                    updateLineNumbers();
+
+                    // Re-run search
+                    updateSearchMatches();
+                }
+            } catch (e) {
+                console.error('Replace all failed', e);
+            }
+        } else {
+            // Replace Current
+            if (currentMatchIndex === -1) return;
+            const match = matches[currentMatchIndex];
+
+            // Construct replacement (handling regex groups if needed?) 
+            // Standard String.replace handles $1 etc. if we pass regex. 
+            // But we have exact indices here.
+
+            // Simple string slice replacement for now
+            // NOTE: If using regex with groups replacement, this might be tricky with just indices.
+            // Better to use `replace` on the specific substring if it was a regex match?
+            // Actually, if user expects $1 backreferences, we need to run replace on the matching string.
+
+            let replacement = replaceTerm;
+            if (findReplaceState.useRegex) {
+                // To support backreferences, we can use: match.text.replace(regex, replaceTerm)
+                // But match.text is just the string. 
+                // We need to re-run specific regex against just this match? 
+                // Or just assume standard replace.
+                try {
+                    const regex = new RegExp(findReplaceState.findTerm, findReplaceState.matchCase ? '' : 'i');
+                    replacement = match.text.replace(regex, replaceTerm);
+                } catch { }
+            }
+
+            const newText = text.substring(0, match.start) + replacement + text.substring(match.end);
+
+            // Calculate new cursor pos (end of replacement)
+            const newCursor = match.start + replacement.length;
+
+            setActiveTabContent(newText, { forceSnapshot: true, historySource: 'replace' });
+
+            textarea.value = newText;
+            updateSyntaxHighlight(true);
+            updateLineNumbers();
+
+            // Move to next match handling?
+            // Typically after replace, we go to next match.
+            // But indices shifted!
+            // We MUST updateSearchMatches first.
+
+            // We want to find the match that starts AFTER our current position
+            // But we just changed text. 
+            // Re-run search
+            updateSearchMatches();
+
+            // Move cursor
+            textarea.setSelectionRange(newCursor, newCursor);
+            textarea.focus();
+
+            // If we have matches, find the one closest to cursor
+            if (findReplaceState.matches.length > 0) {
+                // matches are sorted
+                const nextIdx = findReplaceState.matches.findIndex(m => m.start >= newCursor);
+                findReplaceState.currentMatchIndex = nextIdx !== -1 ? nextIdx : 0;
+                // Scroll to it
+                scrollToMatch(findReplaceState.currentMatchIndex);
+                updateSearchMatches(); // refresh highlight for active
+            }
+        }
+    };
+
+    const renderFindReplacePane = () => {
+        // Remove existing
+        const existing = container.querySelector('#find-replace-pane');
         if (existing) existing.remove();
+
+        // Create new
+        const pane = FindReplacePane({
+            visible: true,
+            mode: findReplaceState.mode,
+            initialValue: findReplaceState.findTerm,
+            onSearch: () => { }, // Handled via DOM events attached below
+            onClose: () => { }
+        });
+
+        // Insert into container
+        // We need to place it relative to container but distinct from editor-inset
+        // Editor inset has overflow hidden?
+        // Let's perform a check. 
+        // The container structure:
+        // div.flex.flex-col > (Toolbar) > div.neu-inset.relative
+        // We should append to the .neu-inset.relative div so it floats over editor.
+
+        const editorContainer = container.querySelector('.neu-inset');
+        if (editorContainer) {
+            editorContainer.appendChild(pane);
+
+            // Update UI state based on current state (icons, etc)
+            updatePaneStatus();
+        }
+    };
+
+    const updatePaneStatus = (isError = false) => {
+        const pane = container.querySelector('#find-replace-pane');
+        if (!pane) return;
+
+        const countSpan = pane.querySelector('#fr-status-text');
+        const prevBtn = pane.querySelector('#fr-prev-btn');
+        const nextBtn = pane.querySelector('#fr-next-btn');
+        const caseBtn = pane.querySelector('#fr-toggle-case');
+        const regexBtn = pane.querySelector('#fr-toggle-regex');
+
+        // Update toggles
+        if (caseBtn) {
+            if (findReplaceState.matchCase) caseBtn.classList.add('active', isLight ? 'bg-mysql-teal/10' : 'bg-mysql-teal/20');
+            else caseBtn.classList.remove('active', isLight ? 'bg-mysql-teal/10' : 'bg-mysql-teal/20');
+        }
+        if (regexBtn) {
+            if (findReplaceState.useRegex) regexBtn.classList.add('active', isLight ? 'bg-mysql-teal/10' : 'bg-mysql-teal/20');
+            else regexBtn.classList.remove('active', isLight ? 'bg-mysql-teal/10' : 'bg-mysql-teal/20');
+        }
+
+        // Update count
+        if (countSpan) {
+            if (isError) {
+                countSpan.textContent = 'Invalid Regex';
+                countSpan.className = 'text-[10px] text-red-500 font-bold';
+            } else if (findReplaceState.findTerm) {
+                const total = findReplaceState.matches.length;
+                const current = total > 0 ? findReplaceState.currentMatchIndex + 1 : 0;
+                countSpan.textContent = total > 0 ? `${current} of ${total}` : 'No results';
+                countSpan.className = `text-[10px] ${total === 0 ? 'text-gray-400' : (isLight ? 'text-gray-600' : 'text-gray-300')}`;
+            } else {
+                countSpan.textContent = '';
+            }
+        }
+
+        // Disable nav if no matches
+        const disabledClass = 'opacity-30 cursor-not-allowed';
+        if (findReplaceState.matches.length === 0) {
+            prevBtn.classList.add(...disabledClass.split(' '));
+            nextBtn.classList.add(...disabledClass.split(' '));
+        } else {
+            prevBtn.classList.remove(...disabledClass.split(' '));
+            nextBtn.classList.remove(...disabledClass.split(' '));
+        }
+    };
+
+    const attachFindReplaceEvents = () => {
+        // Since the pane is re-rendered dynamically, we should use delegation or re-attach
+        // But for simplicity in this structure, we'll listen on container for bubbled events 
+        // OR attach specifically when we render.
+        // Let's attach to container via delegation for the static buttons, 
+        // but for inputs we might need direct access.
+
+        // Actually, renderFindReplacePane creates the element. We can attach listeners THERE.
+        // But wait, `renderFindReplacePane` is internal to QueryEditor. 
+        // I'll modify `renderFindReplacePane` to attach listeners before appending.
+
+        // Wait, replace_file_content replaces existing blocks. 
+        // I need to modify `renderFindReplacePane` I just wrote OR add a delegation to `container`.
+        // Delegation on `container` is safer against re-renders.
+
+        container.addEventListener('input', (e) => {
+            if (e.target.id === 'fr-find-input') {
+                findReplaceState.findTerm = e.target.value;
+                updateSearchMatches();
+            } else if (e.target.id === 'fr-replace-input') {
+                findReplaceState.replaceTerm = e.target.value;
+            }
+        });
+
+        container.addEventListener('click', (e) => {
+            const target = e.target.closest('button');
+            if (!target) return;
+
+            if (target.id === 'fr-close-btn') {
+                closeFindReplace();
+            } else if (target.id === 'fr-next-btn') {
+                navigateMatch('next');
+            } else if (target.id === 'fr-prev-btn') {
+                navigateMatch('prev');
+            } else if (target.id === 'fr-toggle-case') {
+                findReplaceState.matchCase = !findReplaceState.matchCase;
+                updateSearchMatches();
+            } else if (target.id === 'fr-toggle-regex') {
+                findReplaceState.useRegex = !findReplaceState.useRegex;
+                updateSearchMatches();
+            } else if (target.id === 'fr-replace-btn') {
+                performReplace(false);
+            } else if (target.id === 'fr-replace-all-btn') {
+                performReplace(true);
+            } else if (target.id === 'fr-toggle-mode-btn') {
+                const newMode = findReplaceState.mode === 'find' ? 'replace' : 'find';
+                findReplaceState.mode = newMode;
+                // Just toggle the row visibility via DOM for performance
+                const row = container.querySelector('#fr-replace-row');
+                const btn = container.querySelector('#fr-toggle-mode-btn');
+
+                if (newMode === 'replace') {
+                    row.classList.remove('hidden');
+                    row.classList.add('flex');
+                    btn.innerHTML = '<span class="material-symbols-outlined text-[10px] transition-transform duration-200 rotate-90">chevron_right</span>Hide Replace';
+                } else {
+                    row.classList.add('hidden');
+                    row.classList.remove('flex');
+                    btn.innerHTML = '<span class="material-symbols-outlined text-[10px] transition-transform duration-200">chevron_right</span>Show Replace';
+                }
+            }
+        });
+
+        container.addEventListener('keydown', (e) => {
+            // Handle Enter/Shift+Enter in inputs
+            if (e.target.id === 'fr-find-input') {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    navigateMatch(e.shiftKey ? 'prev' : 'next');
+                }
+                if (e.key === 'Escape') {
+                    e.preventDefault(); // Stop bubbling to global handler which might close modal
+                    closeFindReplace();
+                }
+            } else if (e.target.id === 'fr-replace-input') {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (e.ctrlKey || e.altKey) {
+                        performReplace(true);
+                    } else {
+                        performReplace(false);
+                    }
+                }
+            }
+        });
+    };
+
+    const showWhatIfModal = (variants) => {
 
         const theme = ThemeManager.getCurrentTheme();
         const isLight = theme === 'light';
@@ -1215,6 +1773,32 @@ export function QueryEditor() {
                     overlay.remove();
                 }
             });
+        });
+    };
+
+    const registerFindReplaceShortcuts = () => {
+        registerHandler('find', () => {
+            toggleFindReplace('find');
+        });
+
+        registerHandler('findReplace', () => {
+            toggleFindReplace('replace');
+        });
+
+        registerHandler('findNext', () => {
+            if (findReplaceState.visible) {
+                navigateMatch('next');
+            } else {
+                toggleFindReplace('find');
+            }
+        });
+
+        registerHandler('findPrev', () => {
+            if (findReplaceState.visible) {
+                navigateMatch('prev');
+            } else {
+                toggleFindReplace('find');
+            }
         });
     };
 
@@ -1521,6 +2105,8 @@ export function QueryEditor() {
     };
 
     async function attachEvents() {
+        registerFindReplaceShortcuts();
+
         // Toggle menus on click
         const menuButtons = container.querySelectorAll('.toolbar-menu > button');
         menuButtons.forEach(btn => {
@@ -1683,122 +2269,11 @@ export function QueryEditor() {
         const syntaxHighlight = container.querySelector('#syntax-highlight');
         const lineNumbers = container.querySelector('#line-numbers');
 
-        const updateSyntaxHighlight = (immediate = false) => {
-            if (!syntaxHighlight || !textarea) return;
-            requestSyntaxRender(textarea, syntaxHighlight, immediate);
-        };
-
-        // Update line numbers and fold gutter
-        const updateLineNumbers = () => {
-            if (!textarea) return;
-
-            // Get current typography settings
-            const typography = getEditorTypography();
-
-            const content = textarea.value || '';
-            const lines = content.split('\n');
-            const lineCount = lines.length;
-            const minContent = Math.max(lineCount, 20); // Minimum 20 lines
-
-            // Detect fold regions
-            foldManager.detectRegions(content);
-            const foldMarkers = foldManager.getFoldMarkers();
-
-            // Update line numbers
-            if (lineNumbers) {
-                lineNumbers.innerHTML = Array.from({ length: minContent }, (_, i) => i + 1).join('<br>');
-            }
-
-            // Update fold gutter
-            const foldGutter = container.querySelector('#fold-gutter');
-            if (foldGutter) {
-                const gutterHTML = [];
-                for (let i = 0; i < minContent; i++) {
-                    const marker = foldMarkers.find(m => m.line === i);
-                    if (marker) {
-                        const icon = marker.collapsed ? 'chevron_right' : 'expand_more';
-                        const title = marker.collapsed
-                            ? `Expand (${marker.endLine - marker.line + 1} lines)`
-                            : 'Collapse';
-                        gutterHTML.push(`<div class="fold-marker" data-fold-line="${i}" title="${title}" style="height:${typography.lineHeight}px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><span class="material-symbols-outlined ${marker.collapsed ? 'text-mysql-teal' : (isLight ? 'text-gray-400' : 'text-gray-500')} hover:text-mysql-teal transition-colors" style="font-size:12px;">${icon}</span></div>`);
-                    } else {
-                        gutterHTML.push(`<div style="height:${typography.lineHeight}px;"></div>`);
-                    }
-                }
-                foldGutter.innerHTML = gutterHTML.join('');
-
-
-                // Attach fold click handlers
-                foldGutter.querySelectorAll('.fold-marker').forEach(marker => {
-                    marker.addEventListener('click', (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        const lineNum = parseInt(marker.dataset.foldLine, 10);
-                        const region = foldManager.toggleFold(lineNum);
-                        if (region) {
-                            // Re-render just the gutter, don't re-detect regions
-                            const foldMarkers = foldManager.getFoldMarkers();
-                            const gutterHTML2 = [];
-                            for (let j = 0; j < minContent; j++) {
-                                const m = foldMarkers.find(x => x.line === j);
-                                if (m) {
-                                    const ic = m.collapsed ? 'chevron_right' : 'expand_more';
-                                    gutterHTML2.push(`<div class="fold-marker" data-fold-line="${j}" style="height:${typography.lineHeight}px;cursor:pointer;display:flex;align-items:center;justify-content:center;"><span class="material-symbols-outlined ${m.collapsed ? 'text-mysql-teal' : (isLight ? 'text-gray-400' : 'text-gray-500')} hover:text-mysql-teal transition-colors" style="font-size:12px;">${ic}</span></div>`);
-                                } else {
-                                    gutterHTML2.push(`<div style="height:${typography.lineHeight}px;"></div>`);
-                                }
-                            }
-                            foldGutter.innerHTML = gutterHTML2.join('');
-                            // Update syntax highlighting to show/hide folded lines
-                            updateSyntaxHighlight(true);
-                            // Re-attach handlers recursively
-                            updateLineNumbers();
-                        }
-                    });
-                });
-            }
-        };
-
-
-        const showLocalHistory = async () => {
-            const snapshots = tabHistory.getSnapshots(activeTabId, 12);
-            if (!snapshots || snapshots.length === 0) {
-                Dialog.alert('No local history snapshots for this tab yet.', 'Local History');
-                return;
-            }
-
-            const listText = snapshots
-                .map((entry, idx) => {
-                    const time = new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                    const preview = entry.content.replace(/\s+/g, ' ').slice(0, 70);
-                    return `${idx + 1}. ${time} [${entry.source}] ${preview}`;
-                })
-                .join('\n');
-
-            const selected = await Dialog.prompt(
-                `Choose snapshot number to restore (1-${snapshots.length}):\n\n${listText}`,
-                'Local History',
-                '1'
-            );
-
-            if (!selected) return;
-            const idx = parseInt(selected, 10) - 1;
-            if (Number.isNaN(idx) || idx < 0 || idx >= snapshots.length) {
-                Dialog.alert('Invalid snapshot number.', 'Local History');
-                return;
-            }
-
-            const chosen = snapshots[idx];
-            setActiveTabContent(chosen.content, { forceSnapshot: true, historySource: 'history_restore' });
-            applyHistoryContent(textarea, lineNumbers, updateSyntaxHighlight, chosen.content);
-            toastSuccess('Local history snapshot restored.');
-        };
+        // Initial render
+        updateSyntaxHighlight(true);
+        updateLineNumbers();
 
         if (textarea) {
-            // Initial render
-            updateSyntaxHighlight(true);
-            updateLineNumbers();
-
             // Scroll Sync
             textarea.addEventListener('scroll', () => {
                 if (lineNumbers) lineNumbers.scrollTop = textarea.scrollTop;
@@ -1823,793 +2298,799 @@ export function QueryEditor() {
                 showAutocomplete(textarea);
             });
 
-            // Ctrl+Click Navigation
-            textarea.addEventListener('click', async (e) => {
-                if (!e.ctrlKey) return;
+            // Trigger autocomplete on input
+            showAutocomplete(textarea);
+        }
 
-                const cursorIndex = textarea.selectionStart;
-                const word = getWordAtPosition(textarea.value, cursorIndex);
-                if (!word) return;
 
-                const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
-                const currentDb = activeConfig.database;
+        // Ctrl+Click Navigation
+        textarea.addEventListener('click', async (e) => {
+            if (!e.ctrlKey) return;
 
-                let targetDb = currentDb;
-                let targetTable = word;
+            const cursorIndex = textarea.selectionStart;
+            const word = getWordAtPosition(textarea.value, cursorIndex);
+            if (!word) return;
 
-                let found = false;
+            const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+            const currentDb = activeConfig.database;
 
-                // 1. Check in current DB
-                if (currentDb && cachedTables[currentDb] && cachedTables[currentDb].includes(targetTable)) {
-                    found = true;
-                }
+            let targetDb = currentDb;
+            let targetTable = word;
 
-                // 2. If not found, check if it's a known table in ANY db
-                if (!found) {
-                    for (const db of Object.keys(cachedTables)) {
-                        if (cachedTables[db].includes(targetTable)) {
-                            targetDb = db;
-                            found = true;
-                            break;
-                        }
+            let found = false;
+
+            // 1. Check in current DB
+            if (currentDb && cachedTables[currentDb] && cachedTables[currentDb].includes(targetTable)) {
+                found = true;
+            }
+
+            // 2. If not found, check if it's a known table in ANY db
+            if (!found) {
+                for (const db of Object.keys(cachedTables)) {
+                    if (cachedTables[db].includes(targetTable)) {
+                        targetDb = db;
+                        found = true;
+                        break;
                     }
                 }
+            }
 
-                if (found) {
-                    e.preventDefault();
-                    // Show temporary toast
-                    const toast = document.createElement('div');
-                    toast.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-black/80 text-white px-4 py-2 rounded-lg z-[9999] text-sm font-bold flex items-center gap-2';
-                    toast.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span> Opening Schema...';
-                    document.body.appendChild(toast);
+            if (found) {
+                e.preventDefault();
+                // Show temporary toast
+                const toast = document.createElement('div');
+                toast.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-black/80 text-white px-4 py-2 rounded-lg z-[9999] text-sm font-bold flex items-center gap-2';
+                toast.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span> Opening Schema...';
+                document.body.appendChild(toast);
 
-                    setTimeout(() => {
-                        window.location.hash = `/schema?db=${targetDb}&table=${targetTable}`;
-                        setTimeout(() => toast.remove(), 500);
-                    }, 100);
+                setTimeout(() => {
+                    window.location.hash = `/schema?db=${targetDb}&table=${targetTable}`;
+                    setTimeout(() => toast.remove(), 500);
+                }, 100);
+            }
+        });
+
+        // Keyboard handling for autocomplete
+        textarea.addEventListener('keydown', (e) => {
+            const isCtrl = e.ctrlKey || e.metaKey;
+            const key = String(e.key || '').toLowerCase();
+
+            if (isCtrl && !e.shiftKey && key === 'z') {
+                e.preventDefault();
+                const previous = tabHistory.undo(activeTabId);
+                if (previous !== null) {
+                    setActiveTabContent(previous, { trackHistory: false, historySource: 'undo' });
+                    applyHistoryContent(textarea, lineNumbers, updateSyntaxHighlight, previous);
                 }
-            });
+                return;
+            }
 
-            // Keyboard handling for autocomplete
-            textarea.addEventListener('keydown', (e) => {
-                const isCtrl = e.ctrlKey || e.metaKey;
-                const key = String(e.key || '').toLowerCase();
+            if ((isCtrl && key === 'y') || (isCtrl && e.shiftKey && key === 'z')) {
+                e.preventDefault();
+                const next = tabHistory.redo(activeTabId);
+                if (next !== null) {
+                    setActiveTabContent(next, { trackHistory: false, historySource: 'redo' });
+                    applyHistoryContent(textarea, lineNumbers, updateSyntaxHighlight, next);
+                }
+                return;
+            }
 
-                if (isCtrl && !e.shiftKey && key === 'z') {
+            if (isCtrl && e.shiftKey && key === 'h') {
+                e.preventDefault();
+                showLocalHistory();
+                return;
+            }
+
+            // Ghost Text Acceptance
+            if (isAutocompleteEnabled() && e.key === 'Tab' && currentGhostText && !autocompleteVisible) {
+                e.preventDefault();
+
+                const text = textarea.value;
+                const prefix = text.endsWith(' ') ? '' : ' ';
+                const newText = text + prefix + currentGhostText;
+
+                textarea.value = newText;
+
+                setActiveTabContent(newText, { forceSnapshot: true, historySource: 'ghost' });
+
+                // Move cursor to end
+                textarea.selectionStart = textarea.selectionEnd = newText.length;
+
+                // Train on the accepted word!
+                smartAutocomplete.recordSelection(currentGhostText, 'ghost_text');
+
+                currentGhostText = '';
+                updateSyntaxHighlight(true);
+                return;
+            }
+
+            if (!isAutocompleteEnabled() && autocompleteVisible) {
+                hideAutocomplete();
+            }
+
+            if (isAutocompleteEnabled() && autocompleteVisible) {
+                if (e.key === 'ArrowDown') {
                     e.preventDefault();
-                    const previous = tabHistory.undo(activeTabId);
-                    if (previous !== null) {
-                        setActiveTabContent(previous, { trackHistory: false, historySource: 'undo' });
-                        applyHistoryContent(textarea, lineNumbers, updateSyntaxHighlight, previous);
+                    selectedIndex = Math.min(selectedIndex + 1, suggestions.length - 1);
+                    renderAutocomplete(textarea);
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    selectedIndex = Math.max(selectedIndex - 1, 0);
+                    renderAutocomplete(textarea);
+                } else if (e.key === 'Enter' || e.key === 'Tab') {
+                    if (suggestions.length > 0) {
+                        e.preventDefault();
+                        selectSuggestion(textarea, selectedIndex);
                     }
-                    return;
-                }
-
-                if ((isCtrl && key === 'y') || (isCtrl && e.shiftKey && key === 'z')) {
+                } else if (e.key === 'Escape') {
                     e.preventDefault();
-                    const next = tabHistory.redo(activeTabId);
-                    if (next !== null) {
-                        setActiveTabContent(next, { trackHistory: false, historySource: 'redo' });
-                        applyHistoryContent(textarea, lineNumbers, updateSyntaxHighlight, next);
-                    }
-                    return;
-                }
-
-                if (isCtrl && e.shiftKey && key === 'h') {
-                    e.preventDefault();
-                    showLocalHistory();
-                    return;
-                }
-
-                // Ghost Text Acceptance
-                if (isAutocompleteEnabled() && e.key === 'Tab' && currentGhostText && !autocompleteVisible) {
-                    e.preventDefault();
-
-                    const text = textarea.value;
-                    const prefix = text.endsWith(' ') ? '' : ' ';
-                    const newText = text + prefix + currentGhostText;
-
-                    textarea.value = newText;
-
-                    setActiveTabContent(newText, { forceSnapshot: true, historySource: 'ghost' });
-
-                    // Move cursor to end
-                    textarea.selectionStart = textarea.selectionEnd = newText.length;
-
-                    // Train on the accepted word!
-                    smartAutocomplete.recordSelection(currentGhostText, 'ghost_text');
-
-                    currentGhostText = '';
-                    updateSyntaxHighlight(true);
-                    return;
-                }
-
-                if (!isAutocompleteEnabled() && autocompleteVisible) {
                     hideAutocomplete();
                 }
+            }
 
-                if (isAutocompleteEnabled() && autocompleteVisible) {
-                    if (e.key === 'ArrowDown') {
-                        e.preventDefault();
-                        selectedIndex = Math.min(selectedIndex + 1, suggestions.length - 1);
-                        renderAutocomplete(textarea);
-                    } else if (e.key === 'ArrowUp') {
-                        e.preventDefault();
-                        selectedIndex = Math.max(selectedIndex - 1, 0);
-                        renderAutocomplete(textarea);
-                    } else if (e.key === 'Enter' || e.key === 'Tab') {
-                        if (suggestions.length > 0) {
-                            e.preventDefault();
-                            selectSuggestion(textarea, selectedIndex);
-                        }
-                    } else if (e.key === 'Escape') {
-                        e.preventDefault();
-                        hideAutocomplete();
-                    }
-                }
-
-                // Ctrl+I to trigger AI Bar
-                if (e.ctrlKey && e.key === 'i') {
-                    e.preventDefault();
-                    AskAiBar.show(container, (sql) => {
-                        const start = textarea.selectionStart;
-                        const end = textarea.selectionEnd;
-                        const text = textarea.value;
-                        const newText = text.substring(0, start) + sql + text.substring(end);
-                        textarea.value = newText;
-
-                        setActiveTabContent(newText, { forceSnapshot: true, historySource: 'ai_insert' });
-                        updateSyntaxHighlight(true);
-                        updateLineNumbers();
-                    });
-                }
-
-                // Ctrl+Space to trigger autocomplete
-                if (e.ctrlKey && e.code === 'Space') {
-                    e.preventDefault();
-                    if (!isAutocompleteEnabled()) {
-                        toastWarning('Autocomplete is disabled in Settings.');
-                        return;
-                    }
-                    showAutocomplete(textarea);
-                }
-
-                // Ctrl+Shift+F to format SQL
-                if (e.ctrlKey && e.shiftKey && e.key === 'F') {
-                    e.preventDefault();
-                    const formatted = formatSQL(textarea.value);
-                    textarea.value = formatted;
-                    setActiveTabContent(formatted, { forceSnapshot: true, historySource: 'format' });
-                    updateSyntaxHighlight(true);
-                    updateLineNumbers();
-                }
-
-                // Ctrl+/ to toggle comment
-                if (e.ctrlKey && e.key === '/') {
-                    e.preventDefault();
+            // Ctrl+I to trigger AI Bar
+            if (e.ctrlKey && e.key === 'i') {
+                e.preventDefault();
+                AskAiBar.show(container, (sql) => {
                     const start = textarea.selectionStart;
                     const end = textarea.selectionEnd;
                     const text = textarea.value;
-                    const lines = text.split('\n');
-
-                    // Find which lines are selected
-                    let charCount = 0;
-                    let startLine = 0, endLine = 0;
-                    for (let i = 0; i < lines.length; i++) {
-                        if (charCount + lines[i].length >= start && startLine === 0) startLine = i;
-                        if (charCount + lines[i].length >= end) {
-                            endLine = i;
-                            break;
-                        }
-                        charCount += lines[i].length + 1; // +1 for newline
-                    }
-
-                    // Toggle comments
-                    for (let i = startLine; i <= endLine; i++) {
-                        if (lines[i].trim().startsWith('--')) {
-                            lines[i] = lines[i].replace(/^(\s*)--\s?/, '$1');
-                        } else {
-                            lines[i] = '-- ' + lines[i];
-                        }
-                    }
-
-                    const newText = lines.join('\n');
+                    const newText = text.substring(0, start) + sql + text.substring(end);
                     textarea.value = newText;
-                    setActiveTabContent(newText, { forceSnapshot: true, historySource: 'toggle_comment' });
+
+                    setActiveTabContent(newText, { forceSnapshot: true, historySource: 'ai_insert' });
                     updateSyntaxHighlight(true);
+                    updateLineNumbers();
+                });
+            }
+
+            // Ctrl+Space to trigger autocomplete
+            if (e.ctrlKey && e.code === 'Space') {
+                e.preventDefault();
+                if (!isAutocompleteEnabled()) {
+                    toastWarning('Autocomplete is disabled in Settings.');
+                    return;
+                }
+                showAutocomplete(textarea);
+            }
+
+            // Ctrl+Shift+F to format SQL
+            if (e.ctrlKey && e.shiftKey && e.key === 'F') {
+                e.preventDefault();
+                const formatted = formatSQL(textarea.value);
+                textarea.value = formatted;
+                setActiveTabContent(formatted, { forceSnapshot: true, historySource: 'format' });
+                updateSyntaxHighlight(true);
+                updateLineNumbers();
+            }
+
+            // Ctrl+/ to toggle comment
+            if (e.ctrlKey && e.key === '/') {
+                e.preventDefault();
+                const start = textarea.selectionStart;
+                const end = textarea.selectionEnd;
+                const text = textarea.value;
+                const lines = text.split('\n');
+
+                // Find which lines are selected
+                let charCount = 0;
+                let startLine = 0, endLine = 0;
+                for (let i = 0; i < lines.length; i++) {
+                    if (charCount + lines[i].length >= start && startLine === 0) startLine = i;
+                    if (charCount + lines[i].length >= end) {
+                        endLine = i;
+                        break;
+                    }
+                    charCount += lines[i].length + 1; // +1 for newline
                 }
 
-                // Ctrl+D to duplicate line
-                if (e.ctrlKey && e.key === 'd') {
-                    e.preventDefault();
-                    const start = textarea.selectionStart;
-                    const text = textarea.value;
-                    const lines = text.split('\n');
-
-                    // Find current line
-                    let charCount = 0;
-                    let currentLine = 0;
-                    for (let i = 0; i < lines.length; i++) {
-                        if (charCount + lines[i].length >= start) {
-                            currentLine = i;
-                            break;
-                        }
-                        charCount += lines[i].length + 1;
+                // Toggle comments
+                for (let i = startLine; i <= endLine; i++) {
+                    if (lines[i].trim().startsWith('--')) {
+                        lines[i] = lines[i].replace(/^(\s*)--\s?/, '$1');
+                    } else {
+                        lines[i] = '-- ' + lines[i];
                     }
+                }
 
-                    // Duplicate line
-                    lines.splice(currentLine + 1, 0, lines[currentLine]);
+                const newText = lines.join('\n');
+                textarea.value = newText;
+                setActiveTabContent(newText, { forceSnapshot: true, historySource: 'toggle_comment' });
+                updateSyntaxHighlight(true);
+            }
+
+            // Ctrl+D to duplicate line
+            if (e.ctrlKey && e.key === 'd') {
+                e.preventDefault();
+                const start = textarea.selectionStart;
+                const text = textarea.value;
+                const lines = text.split('\n');
+
+                // Find current line
+                let charCount = 0;
+                let currentLine = 0;
+                for (let i = 0; i < lines.length; i++) {
+                    if (charCount + lines[i].length >= start) {
+                        currentLine = i;
+                        break;
+                    }
+                    charCount += lines[i].length + 1;
+                }
+
+                // Duplicate line
+                lines.splice(currentLine + 1, 0, lines[currentLine]);
+                const newText = lines.join('\n');
+                textarea.value = newText;
+                setActiveTabContent(newText, { forceSnapshot: true, historySource: 'duplicate_line' });
+                updateSyntaxHighlight(true);
+                updateLineNumbers();
+            }
+
+            // Alt+↑ to move line up
+            if (e.altKey && e.key === 'ArrowUp') {
+                e.preventDefault();
+                const start = textarea.selectionStart;
+                const text = textarea.value;
+                const lines = text.split('\n');
+
+                let charCount = 0;
+                let currentLine = 0;
+                for (let i = 0; i < lines.length; i++) {
+                    if (charCount + lines[i].length >= start) {
+                        currentLine = i;
+                        break;
+                    }
+                    charCount += lines[i].length + 1;
+                }
+
+                if (currentLine > 0) {
+                    [lines[currentLine - 1], lines[currentLine]] = [lines[currentLine], lines[currentLine - 1]];
                     const newText = lines.join('\n');
                     textarea.value = newText;
-                    setActiveTabContent(newText, { forceSnapshot: true, historySource: 'duplicate_line' });
+                    setActiveTabContent(newText, { forceSnapshot: true, historySource: 'move_line_up' });
+                    updateSyntaxHighlight(true);
+                }
+            }
+
+            // Alt+↓ to move line down
+            if (e.altKey && e.key === 'ArrowDown') {
+                e.preventDefault();
+                const start = textarea.selectionStart;
+                const text = textarea.value;
+                const lines = text.split('\n');
+
+                let charCount = 0;
+                let currentLine = 0;
+                for (let i = 0; i < lines.length; i++) {
+                    if (charCount + lines[i].length >= start) {
+                        currentLine = i;
+                        break;
+                    }
+                    charCount += lines[i].length + 1;
+                }
+
+                if (currentLine < lines.length - 1) {
+                    [lines[currentLine], lines[currentLine + 1]] = [lines[currentLine + 1], lines[currentLine]];
+                    const newText = lines.join('\n');
+                    textarea.value = newText;
+                    setActiveTabContent(newText, { forceSnapshot: true, historySource: 'move_line_down' });
+                    updateSyntaxHighlight(true);
+                }
+            }
+
+            // Shift+F6 to rename symbol (alias, CTE, variable)
+            if (e.shiftKey && e.key === 'F6') {
+                e.preventDefault();
+                handleSymbolRename(textarea, updateSyntaxHighlight, updateLineNumbers);
+            }
+
+            // Ctrl+Shift+E to expand wildcard
+            if (isCtrl && e.shiftKey && key === 'e') {
+                e.preventDefault();
+                handleExpandWildcard(textarea, updateSyntaxHighlight, updateLineNumbers);
+            }
+        });
+
+        // Handlers for Drag and Drop
+        textarea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+            textarea.classList.add('bg-mysql-teal/10');
+        });
+
+        textarea.addEventListener('dragleave', () => {
+            textarea.classList.remove('bg-mysql-teal/10');
+        });
+
+        textarea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            textarea.classList.remove('bg-mysql-teal/10');
+            const tableName = e.dataTransfer.getData('text/plain');
+
+            if (tableName) {
+                const cursorPos = textarea.selectionStart;
+                const text = textarea.value;
+                const newText = text.substring(0, cursorPos) + tableName + text.substring(cursorPos);
+
+                textarea.value = newText;
+
+                setActiveTabContent(newText, { forceSnapshot: true, historySource: 'drop_table' });
+                updateSyntaxHighlight(true);
+
+                textarea.focus();
+                const newPos = cursorPos + tableName.length;
+                textarea.setSelectionRange(newPos, newPos);
+            }
+        });
+
+        // Hide autocomplete on blur
+        textarea.addEventListener('blur', () => {
+            setTimeout(hideAutocomplete, 150);
+        });
+    }
+
+
+    // Ask AI Button Logic
+    const askAiBtn = container.querySelector('#ask-ai-btn');
+    if (askAiBtn) {
+        askAiBtn.addEventListener('click', () => {
+            const textarea = container.querySelector('#query-input');
+            AskAiBar.show(container, (sql) => {
+                if (textarea) {
+                    const start = textarea.selectionStart;
+                    const end = textarea.selectionEnd;
+                    const text = textarea.value;
+                    const newText = text.substring(0, start) + sql + text.substring(end);
+                    textarea.value = newText;
+
+                    setActiveTabContent(newText, { forceSnapshot: true, historySource: 'ai_insert' });
                     updateSyntaxHighlight(true);
                     updateLineNumbers();
                 }
-
-                // Alt+↑ to move line up
-                if (e.altKey && e.key === 'ArrowUp') {
-                    e.preventDefault();
-                    const start = textarea.selectionStart;
-                    const text = textarea.value;
-                    const lines = text.split('\n');
-
-                    let charCount = 0;
-                    let currentLine = 0;
-                    for (let i = 0; i < lines.length; i++) {
-                        if (charCount + lines[i].length >= start) {
-                            currentLine = i;
-                            break;
-                        }
-                        charCount += lines[i].length + 1;
-                    }
-
-                    if (currentLine > 0) {
-                        [lines[currentLine - 1], lines[currentLine]] = [lines[currentLine], lines[currentLine - 1]];
-                        const newText = lines.join('\n');
-                        textarea.value = newText;
-                        setActiveTabContent(newText, { forceSnapshot: true, historySource: 'move_line_up' });
-                        updateSyntaxHighlight(true);
-                    }
-                }
-
-                // Alt+↓ to move line down
-                if (e.altKey && e.key === 'ArrowDown') {
-                    e.preventDefault();
-                    const start = textarea.selectionStart;
-                    const text = textarea.value;
-                    const lines = text.split('\n');
-
-                    let charCount = 0;
-                    let currentLine = 0;
-                    for (let i = 0; i < lines.length; i++) {
-                        if (charCount + lines[i].length >= start) {
-                            currentLine = i;
-                            break;
-                        }
-                        charCount += lines[i].length + 1;
-                    }
-
-                    if (currentLine < lines.length - 1) {
-                        [lines[currentLine], lines[currentLine + 1]] = [lines[currentLine + 1], lines[currentLine]];
-                        const newText = lines.join('\n');
-                        textarea.value = newText;
-                        setActiveTabContent(newText, { forceSnapshot: true, historySource: 'move_line_down' });
-                        updateSyntaxHighlight(true);
-                    }
-                }
-
-                // Shift+F6 to rename symbol (alias, CTE, variable)
-                if (e.shiftKey && e.key === 'F6') {
-                    e.preventDefault();
-                    handleSymbolRename(textarea, updateSyntaxHighlight, updateLineNumbers);
-                }
-
-                // Ctrl+Shift+E to expand wildcard
-                if (isCtrl && e.shiftKey && key === 'e') {
-                    e.preventDefault();
-                    handleExpandWildcard(textarea, updateSyntaxHighlight, updateLineNumbers);
-                }
             });
+        });
+    }
 
-            // Handlers for Drag and Drop
-            textarea.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = 'copy';
-                textarea.classList.add('bg-mysql-teal/10');
-            });
+    // Format Button Logic
+    const formatBtn = container.querySelector('#format-btn');
+    if (formatBtn) {
+        formatBtn.addEventListener('click', () => {
+            const textarea = container.querySelector('#query-input');
+            if (textarea) {
+                const formatted = formatSQL(textarea.value);
+                textarea.value = formatted;
+                setActiveTabContent(formatted, { forceSnapshot: true, historySource: 'format' });
+                updateSyntaxHighlight(true);
+                updateLineNumbers();
+            }
+        });
+    }
 
-            textarea.addEventListener('dragleave', () => {
-                textarea.classList.remove('bg-mysql-teal/10');
-            });
+    // Execute Logic
+    const executeBtn = container.querySelector('#execute-btn');
+    if (executeBtn) {
+        // Add ripple effect on click
+        executeBtn.addEventListener('mousedown', (e) => {
+            const ripple = document.createElement('span');
+            const rect = executeBtn.getBoundingClientRect();
+            const size = Math.max(rect.width, rect.height);
+            const x = e.clientX - rect.left - size / 2;
+            const y = e.clientY - rect.top - size / 2;
 
-            textarea.addEventListener('drop', (e) => {
-                e.preventDefault();
-                textarea.classList.remove('bg-mysql-teal/10');
-                const tableName = e.dataTransfer.getData('text/plain');
+            ripple.style.width = ripple.style.height = size + 'px';
+            ripple.style.left = x + 'px';
+            ripple.style.top = y + 'px';
+            ripple.className = 'absolute rounded-full bg-white/40 animate-ping pointer-events-none';
 
-                if (tableName) {
-                    const cursorPos = textarea.selectionStart;
-                    const text = textarea.value;
-                    const newText = text.substring(0, cursorPos) + tableName + text.substring(cursorPos);
+            executeBtn.appendChild(ripple);
+            setTimeout(() => ripple.remove(), 600);
+        });
 
-                    textarea.value = newText;
+        executeBtn.addEventListener('click', async (e) => {
+            const mode = e.shiftKey ? 'all' : getDefaultRunMode();
+            await executeEditorQuery(mode);
+        });
+    }
 
-                    setActiveTabContent(newText, { forceSnapshot: true, historySource: 'drop_table' });
-                    updateSyntaxHighlight(true);
+    // Analyze Logic (Toggles Profiler)
+    const analyzeBtn = container.querySelector('#analyze-btn');
+    if (analyzeBtn) {
+        analyzeBtn.addEventListener('click', () => {
+            window.dispatchEvent(new CustomEvent('tactilesql:toggle-profiler'));
+        });
 
-                    textarea.focus();
-                    const newPos = cursorPos + tableName.length;
-                    textarea.setSelectionRange(newPos, newPos);
-                }
-            });
+    }
 
-            // Hide autocomplete on blur
-            textarea.addEventListener('blur', () => {
-                setTimeout(hideAutocomplete, 150);
-            });
-        }
+    const getAnalysisQuery = () => {
+        const textarea = container.querySelector('#query-input');
+        if (!textarea) return '';
+        const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
+        return (selectedText.trim() ? selectedText : textarea.value).trim().replace(/;\s*$/, '');
+    };
 
-        // Ask AI Button Logic
-        const askAiBtn = container.querySelector('#ask-ai-btn');
-        if (askAiBtn) {
-            askAiBtn.addEventListener('click', () => {
+    // AI Optimization Logic
+    const aiOptimizeBtn = container.querySelector('#ai-optimize-btn');
+    if (aiOptimizeBtn) {
+        aiOptimizeBtn.addEventListener('click', handleAiOptimize);
+    }
+
+    // AI Explain Logic
+    const aiExplainBtn = container.querySelector('#ai-explain-btn');
+    if (aiExplainBtn) {
+        aiExplainBtn.addEventListener('click', handleAiExplain);
+    }
+
+    // Execution Plan Logic (Raw backend plan text)
+    const executionPlanBtn = container.querySelector('#execution-plan-btn');
+    if (executionPlanBtn) {
+        let isLoadingExecutionPlan = false;
+        executionPlanBtn.addEventListener('click', async () => {
+            if (isLoadingExecutionPlan) return;
+
+            const queryToRun = getAnalysisQuery();
+            if (!queryToRun) {
+                Dialog.alert('Please enter a query to analyze.', 'Info');
+                return;
+            }
+
+            const originalHTML = executionPlanBtn.innerHTML;
+            isLoadingExecutionPlan = true;
+
+            try {
+                executionPlanBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span><span class="text-[10px] font-bold">Loading...</span>';
+                executionPlanBtn.classList.add('opacity-70');
+
+                const plan = await invoke('get_execution_plan', { query: queryToRun });
+                const planText = typeof plan === 'string' ? plan : JSON.stringify(plan, null, 2);
+                Dialog.alert(
+                    `<pre class="max-h-96 overflow-auto whitespace-pre-wrap text-left text-[11px] leading-relaxed">${escapeHtml(planText)}</pre>`,
+                    'Execution Plan'
+                );
+            } catch (error) {
+                Dialog.alert(`Execution plan failed: ${String(error).replace(/\n/g, '<br>')}`, 'Query Analysis Error');
+            } finally {
+                executionPlanBtn.innerHTML = originalHTML;
+                executionPlanBtn.classList.remove('opacity-70');
+                isLoadingExecutionPlan = false;
+            }
+        });
+    }
+
+    // Explain Logic (Visual Explain with EXPLAIN query execution)
+    const explainBtn = container.querySelector('#explain-btn');
+    if (explainBtn) {
+        let isExplaining = false;
+        explainBtn.addEventListener('click', async () => {
+            if (isExplaining) return; // Prevent double-click
+
+            isExplaining = true;
+
+            const queryToRun = getAnalysisQuery();
+
+            if (!queryToRun) {
+                isExplaining = false;
+                Dialog.alert('Please enter a query to explain.', 'Info');
+                return;
+            }
+
+            const activeDbType = localStorage.getItem('activeDbType') || 'mysql';
+            const explainQuery = activeDbType === 'postgresql'
+                ? `EXPLAIN (FORMAT TEXT) ${queryToRun}`
+                : `EXPLAIN FORMAT=TRADITIONAL ${queryToRun}`;
+            const originalHTML = explainBtn.innerHTML;
+
+            try {
+                explainBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span> ANALYZING';
+                explainBtn.classList.add('opacity-70');
+                window.dispatchEvent(new CustomEvent('tactilesql:query-executing'));
+
+                const result = await invoke('execute_query', { query: explainQuery });
+                showVisualExplainModal(result);
+                window.dispatchEvent(new CustomEvent('tactilesql:query-result', { detail: result }));
+
+            } catch (error) {
+                // Notify results table to hide loading skeleton
+                window.dispatchEvent(new CustomEvent('tactilesql:query-result', { detail: [] }));
+                Dialog.alert(`Explain failed: ${String(error).replace(/\n/g, '<br>')}`, 'Query Analysis Error');
+            } finally {
+                explainBtn.innerHTML = originalHTML;
+                explainBtn.classList.remove('opacity-70');
+                isExplaining = false;
+            }
+        });
+    }
+
+    // Parameter Suggestions
+    const paramBtn = container.querySelector('#param-btn');
+    if (paramBtn) {
+        let isSuggesting = false;
+        paramBtn.addEventListener('click', async () => {
+            if (isSuggesting) return;
+            isSuggesting = true;
+
+            const originalHTML = paramBtn.innerHTML;
+            paramBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span>';
+            paramBtn.classList.add('opacity-70');
+
+            try {
                 const textarea = container.querySelector('#query-input');
-                AskAiBar.show(container, (sql) => {
-                    if (textarea) {
-                        const start = textarea.selectionStart;
-                        const end = textarea.selectionEnd;
-                        const text = textarea.value;
-                        const newText = text.substring(0, start) + sql + text.substring(end);
-                        textarea.value = newText;
+                const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
+                const queryToSuggest = selectedText.trim() ? selectedText : textarea.value;
 
-                        setActiveTabContent(newText, { forceSnapshot: true, historySource: 'ai_insert' });
-                        updateSyntaxHighlight(true);
-                        updateLineNumbers();
+                if (!queryToSuggest.trim()) {
+                    Dialog.alert('Please enter a query to analyze parameters.', 'Info');
+                    return;
+                }
+
+                const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+                const database = activeConfig.database || '';
+                const suggestions = buildParamSuggestions(queryToSuggest.trim(), database, auditTrail);
+
+                if (!suggestions || suggestions.length === 0) {
+                    Dialog.alert('No parameter history found for this query pattern yet.', 'No Suggestions');
+                    return;
+                }
+
+                const message = suggestions
+                    .map(s => `${s.column}: ${s.values.join(', ')}`)
+                    .join('\n');
+
+                Dialog.alert(message, 'Parameter Suggestions');
+            } catch (error) {
+                Dialog.alert(`Parameter suggestion failed: ${String(error).replace(/\n/g, '<br>')}`, 'Suggestion Error');
+            } finally {
+                paramBtn.innerHTML = originalHTML;
+                paramBtn.classList.remove('opacity-70');
+                isSuggesting = false;
+            }
+        });
+    }
+
+    // What-If Optimizer
+    const whatIfBtn = container.querySelector('#whatif-btn');
+    if (whatIfBtn) {
+        let isOptimizing = false;
+        whatIfBtn.addEventListener('click', async () => {
+            if (isOptimizing) return;
+            isOptimizing = true;
+
+            const originalHTML = whatIfBtn.innerHTML;
+            whatIfBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span>';
+            whatIfBtn.classList.add('opacity-70');
+
+            try {
+                const textarea = container.querySelector('#query-input');
+                const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
+                const baseQuery = selectedText.trim() ? selectedText : textarea.value;
+
+                if (!baseQuery.trim()) {
+                    Dialog.alert('Please enter a query to optimize.', 'Info');
+                    return;
+                }
+
+                const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+                const database = activeConfig.database || '';
+                let variants = await buildWhatIfVariants(baseQuery, database, loadColumnsForAutocomplete);
+
+                if (!variants || variants.length === 0) {
+                    Dialog.alert('No variants could be generated.', 'What-If Optimizer');
+                    return;
+                }
+
+                variants = await Promise.all(variants.map(async (variant) => {
+                    try {
+                        const cleanQuery = variant.query.replace(/;\s*$/, '');
+                        const analysis = await invoke('analyze_query', { query: cleanQuery });
+                        return { ...variant, estimatedCost: analysis?.estimated_cost ?? null };
+                    } catch {
+                        return { ...variant, estimatedCost: null };
                     }
-                });
-            });
-        }
+                }));
 
-        // Format Button Logic
-        const formatBtn = container.querySelector('#format-btn');
-        if (formatBtn) {
-            formatBtn.addEventListener('click', () => {
+                showWhatIfModal(variants);
+            } catch (error) {
+                Dialog.alert(`What-If optimization failed: ${String(error).replace(/\n/g, '<br>')}`, 'Optimizer Error');
+            } finally {
+                whatIfBtn.innerHTML = originalHTML;
+                whatIfBtn.classList.remove('opacity-70');
+                isOptimizing = false;
+            }
+        });
+    }
+
+    // Sample Query Generator
+    const sampleBtn = container.querySelector('#sample-btn');
+    if (sampleBtn) {
+        let isGenerating = false;
+        sampleBtn.addEventListener('click', async () => {
+            if (isGenerating) return;
+            isGenerating = true;
+
+            const originalHTML = sampleBtn.innerHTML;
+            sampleBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span>';
+            sampleBtn.classList.add('opacity-70');
+
+            try {
+                const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+                const database = activeConfig.database;
+
+                if (!database) {
+                    Dialog.alert('Please select a database first.', 'Selection Required');
+                    return;
+                }
+
+                const sql = await generateSampleQueries(database);
+                if (!sql) {
+                    Dialog.alert('No tables found to generate samples.', 'No Data');
+                    return;
+                }
+
                 const textarea = container.querySelector('#query-input');
                 if (textarea) {
-                    const formatted = formatSQL(textarea.value);
-                    textarea.value = formatted;
-                    setActiveTabContent(formatted, { forceSnapshot: true, historySource: 'format' });
+                    const current = textarea.value.trim();
+                    const newText = current ? `${current}\n\n${sql}` : sql;
+                    textarea.value = newText;
+
+                    setActiveTabContent(newText, { forceSnapshot: true, historySource: 'samples' });
+
                     updateSyntaxHighlight(true);
                     updateLineNumbers();
+                    textarea.focus();
+                    textarea.setSelectionRange(newText.length, newText.length);
                 }
-            });
-        }
+            } catch (error) {
+                Dialog.alert(`Sample generation failed: ${String(error).replace(/\n/g, '<br>')}`, 'Generation Error');
+            } finally {
+                sampleBtn.innerHTML = originalHTML;
+                sampleBtn.classList.remove('opacity-70');
+                isGenerating = false;
+            }
+        });
+    }
 
-        // Execute Logic
-        const executeBtn = container.querySelector('#execute-btn');
-        if (executeBtn) {
-            // Add ripple effect on click
-            executeBtn.addEventListener('mousedown', (e) => {
-                const ripple = document.createElement('span');
-                const rect = executeBtn.getBoundingClientRect();
-                const size = Math.max(rect.width, rect.height);
-                const x = e.clientX - rect.left - size / 2;
-                const y = e.clientY - rect.top - size / 2;
+    // --- Database Selector Logic ---
+    const dbContainer = container.querySelector('#db-selector-container');
+    const dbTrigger = container.querySelector('#db-selector-trigger');
+    const dbDropdown = container.querySelector('#db-selector-dropdown');
+    const dbSearchInput = container.querySelector('#db-search-input');
+    const dbOptionsList = container.querySelector('#db-options-list');
+    const currentDbName = container.querySelector('#current-db-name');
+    const dbArrow = container.querySelector('#db-selector-arrow');
 
-                ripple.style.width = ripple.style.height = size + 'px';
-                ripple.style.left = x + 'px';
-                ripple.style.top = y + 'px';
-                ripple.className = 'absolute rounded-full bg-white/40 animate-ping pointer-events-none';
+    if (dbTrigger && dbDropdown) {
+        let allDatabases = [];
+        let filteredDatabases = [];
 
-                executeBtn.appendChild(ripple);
-                setTimeout(() => ripple.remove(), 600);
-            });
+        const renderOptions = (dbs) => {
+            if (!dbOptionsList) return;
+            const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+            const currentDb = activeConfig.database || '';
 
-            executeBtn.addEventListener('click', async (e) => {
-                const mode = e.shiftKey ? 'all' : getDefaultRunMode();
-                await executeEditorQuery(mode);
-            });
-        }
+            if (dbs.length === 0) {
+                dbOptionsList.innerHTML = `<div class="px-4 py-8 text-center text-gray-500 text-[10px] italic">No databases found</div>`;
+                return;
+            }
 
-        // Analyze Logic (Toggles Profiler)
-        const analyzeBtn = container.querySelector('#analyze-btn');
-        if (analyzeBtn) {
-            analyzeBtn.addEventListener('click', () => {
-                window.dispatchEvent(new CustomEvent('tactilesql:toggle-profiler'));
-            });
-
-        }
-
-        const getAnalysisQuery = () => {
-            const textarea = container.querySelector('#query-input');
-            if (!textarea) return '';
-            const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
-            return (selectedText.trim() ? selectedText : textarea.value).trim().replace(/;\s*$/, '');
-        };
-
-        // AI Optimization Logic
-        const aiOptimizeBtn = container.querySelector('#ai-optimize-btn');
-        if (aiOptimizeBtn) {
-            aiOptimizeBtn.addEventListener('click', handleAiOptimize);
-        }
-
-        // AI Explain Logic
-        const aiExplainBtn = container.querySelector('#ai-explain-btn');
-        if (aiExplainBtn) {
-            aiExplainBtn.addEventListener('click', handleAiExplain);
-        }
-
-        // Execution Plan Logic (Raw backend plan text)
-        const executionPlanBtn = container.querySelector('#execution-plan-btn');
-        if (executionPlanBtn) {
-            let isLoadingExecutionPlan = false;
-            executionPlanBtn.addEventListener('click', async () => {
-                if (isLoadingExecutionPlan) return;
-
-                const queryToRun = getAnalysisQuery();
-                if (!queryToRun) {
-                    Dialog.alert('Please enter a query to analyze.', 'Info');
-                    return;
-                }
-
-                const originalHTML = executionPlanBtn.innerHTML;
-                isLoadingExecutionPlan = true;
-
-                try {
-                    executionPlanBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span><span class="text-[10px] font-bold">Loading...</span>';
-                    executionPlanBtn.classList.add('opacity-70');
-
-                    const plan = await invoke('get_execution_plan', { query: queryToRun });
-                    const planText = typeof plan === 'string' ? plan : JSON.stringify(plan, null, 2);
-                    Dialog.alert(
-                        `<pre class="max-h-96 overflow-auto whitespace-pre-wrap text-left text-[11px] leading-relaxed">${escapeHtml(planText)}</pre>`,
-                        'Execution Plan'
-                    );
-                } catch (error) {
-                    Dialog.alert(`Execution plan failed: ${String(error).replace(/\n/g, '<br>')}`, 'Query Analysis Error');
-                } finally {
-                    executionPlanBtn.innerHTML = originalHTML;
-                    executionPlanBtn.classList.remove('opacity-70');
-                    isLoadingExecutionPlan = false;
-                }
-            });
-        }
-
-        // Explain Logic (Visual Explain with EXPLAIN query execution)
-        const explainBtn = container.querySelector('#explain-btn');
-        if (explainBtn) {
-            let isExplaining = false;
-            explainBtn.addEventListener('click', async () => {
-                if (isExplaining) return; // Prevent double-click
-
-                isExplaining = true;
-
-                const queryToRun = getAnalysisQuery();
-
-                if (!queryToRun) {
-                    isExplaining = false;
-                    Dialog.alert('Please enter a query to explain.', 'Info');
-                    return;
-                }
-
-                const activeDbType = localStorage.getItem('activeDbType') || 'mysql';
-                const explainQuery = activeDbType === 'postgresql'
-                    ? `EXPLAIN (FORMAT TEXT) ${queryToRun}`
-                    : `EXPLAIN FORMAT=TRADITIONAL ${queryToRun}`;
-                const originalHTML = explainBtn.innerHTML;
-
-                try {
-                    explainBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span> ANALYZING';
-                    explainBtn.classList.add('opacity-70');
-                    window.dispatchEvent(new CustomEvent('tactilesql:query-executing'));
-
-                    const result = await invoke('execute_query', { query: explainQuery });
-                    showVisualExplainModal(result);
-                    window.dispatchEvent(new CustomEvent('tactilesql:query-result', { detail: result }));
-
-                } catch (error) {
-                    // Notify results table to hide loading skeleton
-                    window.dispatchEvent(new CustomEvent('tactilesql:query-result', { detail: [] }));
-                    Dialog.alert(`Explain failed: ${String(error).replace(/\n/g, '<br>')}`, 'Query Analysis Error');
-                } finally {
-                    explainBtn.innerHTML = originalHTML;
-                    explainBtn.classList.remove('opacity-70');
-                    isExplaining = false;
-                }
-            });
-        }
-
-        // Parameter Suggestions
-        const paramBtn = container.querySelector('#param-btn');
-        if (paramBtn) {
-            let isSuggesting = false;
-            paramBtn.addEventListener('click', async () => {
-                if (isSuggesting) return;
-                isSuggesting = true;
-
-                const originalHTML = paramBtn.innerHTML;
-                paramBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span>';
-                paramBtn.classList.add('opacity-70');
-
-                try {
-                    const textarea = container.querySelector('#query-input');
-                    const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
-                    const queryToSuggest = selectedText.trim() ? selectedText : textarea.value;
-
-                    if (!queryToSuggest.trim()) {
-                        Dialog.alert('Please enter a query to analyze parameters.', 'Info');
-                        return;
-                    }
-
-                    const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
-                    const database = activeConfig.database || '';
-                    const suggestions = buildParamSuggestions(queryToSuggest.trim(), database, auditTrail);
-
-                    if (!suggestions || suggestions.length === 0) {
-                        Dialog.alert('No parameter history found for this query pattern yet.', 'No Suggestions');
-                        return;
-                    }
-
-                    const message = suggestions
-                        .map(s => `${s.column}: ${s.values.join(', ')}`)
-                        .join('\n');
-
-                    Dialog.alert(message, 'Parameter Suggestions');
-                } catch (error) {
-                    Dialog.alert(`Parameter suggestion failed: ${String(error).replace(/\n/g, '<br>')}`, 'Suggestion Error');
-                } finally {
-                    paramBtn.innerHTML = originalHTML;
-                    paramBtn.classList.remove('opacity-70');
-                    isSuggesting = false;
-                }
-            });
-        }
-
-        // What-If Optimizer
-        const whatIfBtn = container.querySelector('#whatif-btn');
-        if (whatIfBtn) {
-            let isOptimizing = false;
-            whatIfBtn.addEventListener('click', async () => {
-                if (isOptimizing) return;
-                isOptimizing = true;
-
-                const originalHTML = whatIfBtn.innerHTML;
-                whatIfBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span>';
-                whatIfBtn.classList.add('opacity-70');
-
-                try {
-                    const textarea = container.querySelector('#query-input');
-                    const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
-                    const baseQuery = selectedText.trim() ? selectedText : textarea.value;
-
-                    if (!baseQuery.trim()) {
-                        Dialog.alert('Please enter a query to optimize.', 'Info');
-                        return;
-                    }
-
-                    const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
-                    const database = activeConfig.database || '';
-                    let variants = await buildWhatIfVariants(baseQuery, database, loadColumnsForAutocomplete);
-
-                    if (!variants || variants.length === 0) {
-                        Dialog.alert('No variants could be generated.', 'What-If Optimizer');
-                        return;
-                    }
-
-                    variants = await Promise.all(variants.map(async (variant) => {
-                        try {
-                            const cleanQuery = variant.query.replace(/;\s*$/, '');
-                            const analysis = await invoke('analyze_query', { query: cleanQuery });
-                            return { ...variant, estimatedCost: analysis?.estimated_cost ?? null };
-                        } catch {
-                            return { ...variant, estimatedCost: null };
-                        }
-                    }));
-
-                    showWhatIfModal(variants);
-                } catch (error) {
-                    Dialog.alert(`What-If optimization failed: ${String(error).replace(/\n/g, '<br>')}`, 'Optimizer Error');
-                } finally {
-                    whatIfBtn.innerHTML = originalHTML;
-                    whatIfBtn.classList.remove('opacity-70');
-                    isOptimizing = false;
-                }
-            });
-        }
-
-        // Sample Query Generator
-        const sampleBtn = container.querySelector('#sample-btn');
-        if (sampleBtn) {
-            let isGenerating = false;
-            sampleBtn.addEventListener('click', async () => {
-                if (isGenerating) return;
-                isGenerating = true;
-
-                const originalHTML = sampleBtn.innerHTML;
-                sampleBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span>';
-                sampleBtn.classList.add('opacity-70');
-
-                try {
-                    const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
-                    const database = activeConfig.database;
-
-                    if (!database) {
-                        Dialog.alert('Please select a database first.', 'Selection Required');
-                        return;
-                    }
-
-                    const sql = await generateSampleQueries(database);
-                    if (!sql) {
-                        Dialog.alert('No tables found to generate samples.', 'No Data');
-                        return;
-                    }
-
-                    const textarea = container.querySelector('#query-input');
-                    if (textarea) {
-                        const current = textarea.value.trim();
-                        const newText = current ? `${current}\n\n${sql}` : sql;
-                        textarea.value = newText;
-
-                        setActiveTabContent(newText, { forceSnapshot: true, historySource: 'samples' });
-
-                        updateSyntaxHighlight(true);
-                        updateLineNumbers();
-                        textarea.focus();
-                        textarea.setSelectionRange(newText.length, newText.length);
-                    }
-                } catch (error) {
-                    Dialog.alert(`Sample generation failed: ${String(error).replace(/\n/g, '<br>')}`, 'Generation Error');
-                } finally {
-                    sampleBtn.innerHTML = originalHTML;
-                    sampleBtn.classList.remove('opacity-70');
-                    isGenerating = false;
-                }
-            });
-        }
-
-        // --- Database Selector Logic ---
-        const dbContainer = container.querySelector('#db-selector-container');
-        const dbTrigger = container.querySelector('#db-selector-trigger');
-        const dbDropdown = container.querySelector('#db-selector-dropdown');
-        const dbSearchInput = container.querySelector('#db-search-input');
-        const dbOptionsList = container.querySelector('#db-options-list');
-        const currentDbName = container.querySelector('#current-db-name');
-        const dbArrow = container.querySelector('#db-selector-arrow');
-
-        if (dbTrigger && dbDropdown) {
-            let allDatabases = [];
-            let filteredDatabases = [];
-
-            const renderOptions = (dbs) => {
-                if (!dbOptionsList) return;
-                const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
-                const currentDb = activeConfig.database || '';
-
-                if (dbs.length === 0) {
-                    dbOptionsList.innerHTML = `<div class="px-4 py-8 text-center text-gray-500 text-[10px] italic">No databases found</div>`;
-                    return;
-                }
-
-                dbOptionsList.innerHTML = dbs.map(db => `
+            dbOptionsList.innerHTML = dbs.map(db => `
                     <div class="db-option px-3 py-2 flex items-center gap-2 cursor-pointer transition-colors ${db === currentDb ? (isLight ? 'bg-mysql-teal/10 text-mysql-teal font-bold' : 'bg-mysql-teal/20 text-mysql-teal font-bold') : (isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5')}" data-value="${db}">
                         <span class="material-symbols-outlined text-[14px] ${db === currentDb ? 'text-mysql-teal' : 'text-gray-500'}">${db === currentDb ? 'check_circle' : 'database'}</span>
                         <span class="text-[11px] truncate flex-1">${db}</span>
                     </div>
                 `).join('');
 
-                // Add click events to options
-                dbOptionsList.querySelectorAll('.db-option').forEach(option => {
-                    option.addEventListener('click', async () => {
-                        const newDb = option.dataset.value;
-                        const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
-
-                        // Close dropdown
-                        dbDropdown.classList.add('hidden');
-                        if (dbArrow) dbArrow.style.transform = '';
-
-                        if (newDb === activeConfig.database) return;
-
-                        if (!activeConfig.username) {
-                            Dialog.alert("Session lost. Please reconnect.", "Session Error");
-                            return;
-                        }
-
-                        try {
-                            dbTrigger.classList.add('opacity-50', 'pointer-events-none');
-                            if (currentDbName) currentDbName.textContent = `Connecting to ${newDb}...`;
-
-                            activeConfig.database = newDb;
-                            await invoke('establish_connection', {
-                                config: { ...activeConfig, id: activeConfig.id || null, name: activeConfig.name || null }
-                            });
-                            localStorage.setItem('activeConnection', JSON.stringify(activeConfig));
-
-                            if (currentDbName) currentDbName.textContent = newDb;
-                            // Load tables for new database
-                            loadTablesForAutocomplete(newDb);
-                            render(); // Re-render to update UI state
-                        } catch (error) {
-                            Dialog.alert(`Failed to switch database: ${String(error).replace(/\n/g, '<br>')}`, "Database Switch Error");
-                            if (currentDbName) currentDbName.textContent = activeConfig.database || 'Select Database';
-                        } finally {
-                            dbTrigger.classList.remove('opacity-50', 'pointer-events-none');
-                        }
-                    });
-                });
-            };
-
-            const loadDatabases = async () => {
-                try {
-                    const dbs = await invoke('get_databases');
-                    allDatabases = dbs;
-                    filteredDatabases = dbs;
-                    cachedDatabases = dbs;
-
+            // Add click events to options
+            dbOptionsList.querySelectorAll('.db-option').forEach(option => {
+                option.addEventListener('click', async () => {
+                    const newDb = option.dataset.value;
                     const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
-                    const currentDb = activeConfig.database || '';
-                    if (currentDb && currentDbName) {
-                        currentDbName.textContent = currentDb;
-                        loadTablesForAutocomplete(currentDb);
-                    }
 
-                    renderOptions(filteredDatabases);
-                } catch (error) {
-                    if (error === 'No connection established') {
-                        if (dbOptionsList) dbOptionsList.innerHTML = `<div class="px-4 py-8 text-center text-gray-400 text-[10px]">No active connection</div>`;
+                    // Close dropdown
+                    dbDropdown.classList.add('hidden');
+                    if (dbArrow) dbArrow.style.transform = '';
+
+                    if (newDb === activeConfig.database) return;
+
+                    if (!activeConfig.username) {
+                        Dialog.alert("Session lost. Please reconnect.", "Session Error");
                         return;
                     }
-                    console.error('Failed to load DB list', error);
-                    if (dbOptionsList) dbOptionsList.innerHTML = `<div class="px-4 py-8 text-center text-red-500 text-[10px]">Error loading databases</div>`;
-                }
-            };
 
-            // Toggle Dropdown
-            dbTrigger.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const isHidden = dbDropdown.classList.contains('hidden');
+                    try {
+                        dbTrigger.classList.add('opacity-50', 'pointer-events-none');
+                        if (currentDbName) currentDbName.textContent = `Connecting to ${newDb}...`;
 
-                // Close other menus if open
-                container.querySelectorAll('.menu-dropdown').forEach(d => d.classList.add('hidden'));
+                        activeConfig.database = newDb;
+                        await invoke('establish_connection', {
+                            config: { ...activeConfig, id: activeConfig.id || null, name: activeConfig.name || null }
+                        });
+                        localStorage.setItem('activeConnection', JSON.stringify(activeConfig));
 
-                if (isHidden) {
-                    dbDropdown.classList.remove('hidden');
-                    if (dbArrow) dbArrow.style.transform = 'rotate(180deg)';
-                    if (dbSearchInput) {
-                        dbSearchInput.value = '';
-                        dbSearchInput.focus();
+                        if (currentDbName) currentDbName.textContent = newDb;
+                        // Load tables for new database
+                        loadTablesForAutocomplete(newDb);
+                        render(); // Re-render to update UI state
+                    } catch (error) {
+                        Dialog.alert(`Failed to switch database: ${String(error).replace(/\n/g, '<br>')}`, "Database Switch Error");
+                        if (currentDbName) currentDbName.textContent = activeConfig.database || 'Select Database';
+                    } finally {
+                        dbTrigger.classList.remove('opacity-50', 'pointer-events-none');
                     }
-                    renderOptions(allDatabases);
-                } else {
-                    dbDropdown.classList.add('hidden');
-                    if (dbArrow) dbArrow.style.transform = '';
+                });
+            });
+        };
+
+        const loadDatabases = async () => {
+            try {
+                const dbs = await invoke('get_databases');
+                allDatabases = dbs;
+                filteredDatabases = dbs;
+                cachedDatabases = dbs;
+
+                const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+                const currentDb = activeConfig.database || '';
+                if (currentDb && currentDbName) {
+                    currentDbName.textContent = currentDb;
+                    loadTablesForAutocomplete(currentDb);
                 }
+
+                renderOptions(filteredDatabases);
+            } catch (error) {
+                if (error === 'No connection established') {
+                    if (dbOptionsList) dbOptionsList.innerHTML = `<div class="px-4 py-8 text-center text-gray-400 text-[10px]">No active connection</div>`;
+                    return;
+                }
+                console.error('Failed to load DB list', error);
+                if (dbOptionsList) dbOptionsList.innerHTML = `<div class="px-4 py-8 text-center text-red-500 text-[10px]">Error loading databases</div>`;
+            }
+        };
+
+        // Toggle Dropdown
+        dbTrigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isHidden = dbDropdown.classList.contains('hidden');
+
+            // Close other menus if open
+            container.querySelectorAll('.menu-dropdown').forEach(d => d.classList.add('hidden'));
+
+            if (isHidden) {
+                dbDropdown.classList.remove('hidden');
+                if (dbArrow) dbArrow.style.transform = 'rotate(180deg)';
+                if (dbSearchInput) {
+                    dbSearchInput.value = '';
+                    dbSearchInput.focus();
+                }
+                renderOptions(allDatabases);
+            } else {
+                dbDropdown.classList.add('hidden');
+                if (dbArrow) dbArrow.style.transform = '';
+            }
+        });
+
+        // Search Logic
+        if (dbSearchInput) {
+            dbSearchInput.addEventListener('input', (e) => {
+                const term = e.target.value.toLowerCase();
+                filteredDatabases = allDatabases.filter(db => db.toLowerCase().includes(term));
+                renderOptions(filteredDatabases);
             });
 
-            // Search Logic
-            if (dbSearchInput) {
-                dbSearchInput.addEventListener('input', (e) => {
-                    const term = e.target.value.toLowerCase();
-                    filteredDatabases = allDatabases.filter(db => db.toLowerCase().includes(term));
-                    renderOptions(filteredDatabases);
-                });
-
-                // Prevent closing menu when clicking search input
-                dbSearchInput.addEventListener('click', (e) => e.stopPropagation());
-            }
-
-            // Click outside to close
-            const onOutsideClick = (e) => {
-                if (dbContainer && !dbContainer.contains(e.target)) {
-                    dbDropdown.classList.add('hidden');
-                    if (dbArrow) dbArrow.style.transform = '';
-                }
-            };
-            document.addEventListener('click', onOutsideClick);
-
-            // Initial Load
-            loadDatabases();
+            // Prevent closing menu when clicking search input
+            dbSearchInput.addEventListener('click', (e) => e.stopPropagation());
         }
+
+        // Click outside to close
+        const onOutsideClick = (e) => {
+            if (dbContainer && !dbContainer.contains(e.target)) {
+                dbDropdown.classList.add('hidden');
+                if (dbArrow) dbArrow.style.transform = '';
+            }
+        };
+        document.addEventListener('click', onOutsideClick);
+
+        // Initial Load
+        loadDatabases();
     }
+
 
     const createNewTabWithQuery = (query) => {
         const newId = Date.now().toString();
