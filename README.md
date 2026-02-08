@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="src/assets/logo.png" width="200" alt="TactileSQL Logo">
+</p>
+
 # TactileSQL
 
 TactileSQL is a modern, desktop-first SQL workbench for MySQL and PostgreSQL, built with Tauri 2 and vanilla JavaScript. It provides a rich SQL editing experience, schema tools, and operational dashboards in a fast, native shell.

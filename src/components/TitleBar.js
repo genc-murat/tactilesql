@@ -23,6 +23,12 @@ export function TitleBar() {
     // Title
     const titleDiv = document.createElement('div');
     titleDiv.className = "flex items-center gap-2";
+
+    const logoImg = document.createElement('img');
+    logoImg.src = "/src/assets/logo.png";
+    logoImg.className = "w-4 h-4 rounded-sm object-cover opacity-80";
+    titleDiv.appendChild(logoImg);
+
     const titleSpan = document.createElement('span');
     titleSpan.className = `text-[10px] font-bold tracking-widest ${(isLight || isDawn) ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-500')} uppercase transition-colors duration-300`;
     titleSpan.textContent = "TactileSQL";

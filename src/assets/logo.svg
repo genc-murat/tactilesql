@@ -1,0 +1,41 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="512" height="512" fill="black"/>
+  
+  <!-- Definitions for Gradients and Glow -->
+  <defs>
+    <linearGradient id="cylinderGradient" x1="256" y1="150" x2="256" y2="350" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2DD4BF" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#0891B2" stop-opacity="0.4"/>
+    </linearGradient>
+    
+    <radialGradient id="glowGradient" cx="256" cy="250" r="180" fx="256" fy="250" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2DD4BF" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#2DD4BF" stop-opacity="0"/>
+    </radialGradient>
+    
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="15" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Ripples / Tactile Effect -->
+  <circle cx="256" cy="270" r="140" stroke="#2DD4BF" stroke-width="2" stroke-opacity="0.3" fill="none" />
+  <circle cx="256" cy="270" r="180" stroke="#2DD4BF" stroke-width="1.5" stroke-opacity="0.2" fill="none" />
+  <circle cx="256" cy="270" r="220" stroke="#2DD4BF" stroke-width="1" stroke-opacity="0.1" fill="none" />
+
+  <!-- Main Glow -->
+  <circle cx="256" cy="250" r="120" fill="url(#glowGradient)" filter="url(#glow)"/>
+
+  <!-- Cylinder Body -->
+  <path d="M170 180 V320 C170 353 208 380 256 380 C304 380 342 353 342 320 V180" fill="url(#cylinderGradient)" stroke="#2DD4BF" stroke-width="1" stroke-opacity="0.5"/>
+  
+  <!-- Cylinder Top -->
+  <ellipse cx="256" cy="180" rx="86" ry="32" fill="#2DD4BF" fill-opacity="0.6" stroke="#2DD4BF" stroke-width="1"/>
+  <ellipse cx="256" cy="180" rx="70" ry="26" fill="#CCFBF1" fill-opacity="0.3" />
+
+  <!-- Segments for "Tactile" feel -->
+  <path d="M170 230 C170 263 208 290 256 290 C304 290 342 263 342 230" stroke="#2DD4BF" stroke-width="1" stroke-opacity="0.3" fill="none"/>
+  <path d="M170 280 C170 313 208 340 256 340 C304 340 342 313 342 280" stroke="#2DD4BF" stroke-width="1" stroke-opacity="0.3" fill="none"/>
+</svg>
