@@ -255,6 +255,7 @@ class DatabaseCacheManager {
     #listeners = new Set();
     #connectionId = null;
     #isPersisted = true;
+    #quotaExceeded = false;
     #storageKeyPrefix = 'tactilesql_cache_';
 
     // Cache types
@@ -543,10 +544,10 @@ class DatabaseCacheManager {
     }
 
     #saveToStorage() {
-        if (!this.#isPersisted || !this.#connectionId) return;
+        if (!this.#isPersisted || !this.#connectionId || this.#quotaExceeded) return;
 
+        let dataToPersist = {};
         try {
-            const dataToPersist = {};
             for (const [type, cache] of this.#caches.entries()) {
                 // Filter out expired entries before saving
                 const activeEntries = {};
@@ -560,17 +561,41 @@ class DatabaseCacheManager {
                 }
             }
 
-            if (Object.keys(dataToPersist).length > 0) {
-                localStorage.setItem(`${this.#storageKeyPrefix}${this.#connectionId}`, JSON.stringify(dataToPersist));
+            const jsonString = JSON.stringify(dataToPersist);
+            const storageKey = `${this.#storageKeyPrefix}${this.#connectionId}`;
+            const shouldSave = Object.keys(dataToPersist).length > 0;
+
+            if (shouldSave) {
+                localStorage.setItem(storageKey, jsonString);
             } else {
-                localStorage.removeItem(`${this.#storageKeyPrefix}${this.#connectionId}`);
+                localStorage.removeItem(storageKey);
             }
         } catch (e) {
-            console.warn('Failed to persist cache to storage:', e);
-            // Storage quota might be full
-            if (e.name === 'QuotaExceededError') {
-                console.error('Local storage quota exceeded, clearing old caches...');
+            // Check for quota exceeded error (names vary by browser)
+            const isQuotaError = e.name === 'QuotaExceededError' ||
+                e.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+                e.code === 22 ||
+                e.code === 1014;
+
+            if (isQuotaError) {
+                console.warn('Local storage quota exceeded, attempting cleanup...');
                 this.#cleanupOldCaches();
+
+                try {
+                    // Retry save once
+                    // We re-serialize here to ensure we have the string available in this scope
+                    const jsonStringRetry = JSON.stringify(dataToPersist);
+                    const storageKeyRetry = `${this.#storageKeyPrefix}${this.#connectionId}`;
+
+                    if (Object.keys(dataToPersist).length > 0) {
+                        localStorage.setItem(storageKeyRetry, jsonStringRetry);
+                    }
+                } catch (retryError) {
+                    console.warn('Local storage quota exceeded after cleanup. Disabling persistence for this session.');
+                    this.#quotaExceeded = true;
+                }
+            } else {
+                console.warn('Failed to persist cache to storage:', e);
             }
         }
     }
