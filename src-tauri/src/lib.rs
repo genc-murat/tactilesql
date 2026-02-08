@@ -24,6 +24,17 @@ fn is_devtools_open(webview: WebviewWindow) -> bool {
 }
 
 #[tauri::command]
+async fn close_splashscreen(window: WebviewWindow) {
+    if let Some(splash_window) = window.get_webview_window("splashscreen") {
+        splash_window.close().unwrap();
+    }
+    if let Some(main_window) = window.get_webview_window("main") {
+        main_window.show().unwrap();
+        main_window.set_focus().unwrap();
+    }
+}
+
+#[tauri::command]
 fn get_registered_commands() -> Result<Vec<String>, String> {
     let source = include_str!("lib.rs");
     let block_re = Regex::new(r"(?s)generate_handler!\[(?P<body>.*?)\]")
@@ -78,6 +89,10 @@ pub fn run() {
             use tauri::LogicalSize;
             println!("Setting up windows...");
             for (label, window) in app.webview_windows() {
+                // Skip splash screen from min size enforcement
+                if label == "splashscreen" {
+                    continue;
+                }
                 println!("Found window with label: {}", label);
                 match window.set_min_size(Some(LogicalSize::new(1280.0, 800.0))) {
                     Ok(_) => println!("Successfully set min size for window: {}", label),
@@ -217,6 +232,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             greet,
+            close_splashscreen,
             // DevTools
             open_devtools,
             close_devtools,

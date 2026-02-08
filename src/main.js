@@ -1,5 +1,5 @@
 import './index.css';
-import { getCurrentWindow, LogicalPosition, LogicalSize } from '@tauri-apps/api/window';
+import { getCurrentWindow, getAllWindows, LogicalPosition, LogicalSize } from '@tauri-apps/api/window';
 import { Router } from './router.js';
 import { TitleBar } from './components/TitleBar.js';
 import { NavBar } from './components/Layout/NavBar.js';
@@ -192,8 +192,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     router.handleRoute();
 
     // Global Footer
-    import('./components/Workbench/WorkbenchFooter.js').then(module => {
+    const footerPromise = import('./components/Workbench/WorkbenchFooter.js').then(module => {
         const footer = module.WorkbenchFooter();
         root.appendChild(footer);
+    }).catch(err => {
+        console.error('Error loading footer:', err);
     });
+
+    // Trigger transition after all synchronous init is done
+    // Logic moved to splashscreen.html for better reliability
 });

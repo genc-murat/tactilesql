@@ -27,6 +27,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
+        "label": "main",
         "title": "tactilesql",
         "width": 1280,
         "height": 800,
@@ -34,9 +35,21 @@
         "resizable": false,
         "transparent": true,
         "backgroundColor": "#00000000",
-        "visible": true,
+        "visible": false,
         "fullscreen": false,
         "shadow": false
+      },
+      {
+        "label": "splashscreen",
+        "url": "splashscreen.html",
+        "width": 600,
+        "height": 400,
+        "decorations": false,
+        "transparent": true,
+        "center": true,
+        "resizable": false,
+        "alwaysOnTop": true,
+        "visible": true
       }
     ],
     "security": {

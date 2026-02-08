@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TactileSQL Loading</title>
+    <link rel="stylesheet" href="splashscreen.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Outfit:wght@500;700&display=swap"
+        rel="stylesheet">
+</head>
+
+<body>
+    <div class="splash-container">
+        <div class="logo-wrapper">
+            <img src="/logo.png" alt="TactileSQL Logo" class="logo">
+            <div class="logo-glow"></div>
+        </div>
+        <h1 class="app-name">TactileSQL</h1>
+        <p class="tagline">Modern SQL Workbench</p>
+
+        <div class="loading-area">
+            <div class="progress-bar">
+                <div class="progress-fill"></div>
+            </div>
+            <p class="loading-text" id="status-text">Initializing Secure Engine...</p>
+        </div>
+
+        <button id="close-btn"
+            style="margin-top: 20px; padding: 8px 16px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; border-radius: 8px; cursor: pointer; display: none; -webkit-app-region: no-drag;">Continue
+            to App</button>
+    </div>
+
+    <script>
+        const { invoke } = window.__TAURI__.core;
+
+        async function initTransition() {
+            try {
+                // Wait for animation
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                // Call Rust command to handle windows
+                await invoke('close_splashscreen');
+            } catch (e) {
+                console.error("Invoke failed", e);
+                // Last ditch effort
+                const { getCurrentWindow } = window.__TAURI__.window;
+                getCurrentWindow().close();
+            }
+        }
+
+        // Show status update if taking too long
+        setTimeout(() => {
+            const statusText = document.getElementById('status-text');
+            if (statusText) statusText.innerText = "Taking longer than expected...";
+
+            const btn = document.getElementById('close-btn');
+            if (btn) btn.style.display = 'block';
+        }, 5000);
+
+        // Start logic
+        initTransition();
+
+        document.getElementById('close-btn').onclick = async () => {
+            await invoke('close_splashscreen');
+        };
+    </script>
+</body>
+
+</html>
