@@ -529,7 +529,7 @@ export function QueryEditor() {
             tabs = tabs.filter(t => t.id !== id);
             if (activeTabId === id) {
                 const newIdx = Math.max(0, idx - 1);
-                activeTabId = tabs[newIdx].id;
+                activeTabId = tabs[newIdx]?.id || tabs[0]?.id;
             }
             syncTabHistory();
         }
@@ -949,7 +949,7 @@ export function QueryEditor() {
 
     // --- Render ---
     function render() {
-        const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0];
+        const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0] || {};
         const sortedTabs = getSortedTabs();
         const visibleTabs = sortedTabs.slice(0, maxVisibleTabs);
         const overflowTabs = sortedTabs.slice(maxVisibleTabs);
@@ -3009,7 +3009,7 @@ export function QueryEditor() {
             if (tabs.length > 1) {
                 const idx = tabs.findIndex(t => t.id === activeTabId);
                 tabs = tabs.filter(t => t.id !== activeTabId);
-                activeTabId = tabs[Math.max(0, idx - 1)].id;
+                activeTabId = tabs[Math.max(0, idx - 1)]?.id || tabs[0]?.id;
                 syncTabHistory();
                 saveState();
                 render();
@@ -3020,7 +3020,7 @@ export function QueryEditor() {
         registerHandler('nextTab', () => {
             const idx = tabs.findIndex(t => t.id === activeTabId);
             const nextIdx = (idx + 1) % tabs.length;
-            activeTabId = tabs[nextIdx].id;
+            activeTabId = tabs[nextIdx]?.id;
             saveState();
             render();
         });
@@ -3029,7 +3029,7 @@ export function QueryEditor() {
         registerHandler('prevTab', () => {
             const idx = tabs.findIndex(t => t.id === activeTabId);
             const prevIdx = (idx - 1 + tabs.length) % tabs.length;
-            activeTabId = tabs[prevIdx].id;
+            activeTabId = tabs[prevIdx]?.id;
             saveState();
             render();
         });
@@ -3038,7 +3038,7 @@ export function QueryEditor() {
         for (let i = 1; i <= 5; i++) {
             registerHandler(`goToTab${i}`, () => {
                 if (tabs[i - 1]) {
-                    activeTabId = tabs[i - 1].id;
+                    activeTabId = tabs[i - 1]?.id;
                     saveState();
                     render();
                 }

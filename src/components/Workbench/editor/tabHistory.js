@@ -40,9 +40,11 @@ export const createTabHistoryManager = (options = {}) => {
     };
 
     const syncTabs = (tabs = []) => {
-        const ids = new Set(tabs.map(tab => tab.id));
+        // Filter out any potential undefined/null tabs
+        const activeTabs = tabs.filter(Boolean);
+        const ids = new Set(activeTabs.map(tab => tab.id));
 
-        tabs.forEach((tab) => {
+        activeTabs.forEach((tab) => {
             const state = ensure(tab.id, tab.content || '');
             if (state && state.current === '' && tab.content) {
                 state.current = tab.content;
