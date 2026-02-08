@@ -2201,6 +2201,7 @@ export function ObjectExplorer() {
             await ensureActiveBackend();
         }
         const cacheKey = dbName;
+        await DatabaseCache.ready();
         const cached = DatabaseCache.get(CacheTypes.SCHEMAS, cacheKey);
 
         // If we have cached data, populate it immediately
@@ -2264,6 +2265,7 @@ export function ObjectExplorer() {
         loadingTables.add(key);
 
         // Check cache
+        await DatabaseCache.ready();
         const cachedCols = DatabaseCache.get(CacheTypes.COLUMNS, key);
         const cachedIdx = DatabaseCache.get(CacheTypes.INDEXES, key);
         const cachedFks = DatabaseCache.get(CacheTypes.FOREIGN_KEYS, key);

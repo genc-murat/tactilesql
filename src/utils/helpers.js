@@ -1,7 +1,7 @@
 /**
- * Common utility functions for TactileSQL
  * Centralized helpers to avoid code duplication across components
  */
+import { SimpleIDB } from './indexedDB.js';
 
 /**
  * Escape HTML special characters for safe rendering
@@ -255,8 +255,9 @@ class DatabaseCacheManager {
     #listeners = new Set();
     #connectionId = null;
     #isPersisted = true;
-    #quotaExceeded = false;
     #storageKeyPrefix = 'tactilesql_cache_';
+    #db = new SimpleIDB('tactilesql_db', 'cache_store');
+    #loadingPromise = Promise.resolve();
 
     // Cache types
     static TYPES = {
@@ -285,7 +286,25 @@ class DatabaseCacheManager {
         });
 
         // Initialize from storage if possible
-        this.#loadFromStorage();
+        this.#loadingPromise = this.init();
+    }
+
+    /**
+     * Wait for cache to be ready (loaded)
+     */
+    async ready() {
+        if (this.#loadingPromise) {
+            await this.#loadingPromise;
+        }
+    }
+
+    /**
+     * Initialize the cache by loading from IndexedDB
+     */
+    async init() {
+        if (this.#connectionId) {
+            await this.#loadFromStorage();
+        }
     }
 
     /**
@@ -296,7 +315,7 @@ class DatabaseCacheManager {
         if (this.#connectionId !== connectionId) {
             this.#connectionId = connectionId;
             // When connection changes, reload cache for this specific connection
-            this.#loadFromStorage();
+            this.#loadingPromise = this.#loadFromStorage();
             console.log(`🗄️ Cache context switched to connection: ${connectionId}`);
         }
     }
@@ -339,7 +358,9 @@ class DatabaseCacheManager {
             timestamp: Date.now(),
             ttl: ttl || this.#defaultTTL
         });
-        this.#saveToStorage();
+
+        // Save asynchronously
+        this.#saveToStorage().catch(e => console.error('Failed to save to cache:', e));
     }
 
     /**
@@ -388,6 +409,7 @@ class DatabaseCacheManager {
      * @returns {Promise<any>} Cached or fetched data
      */
     async getOrFetch(type, key, fetcher, ttl = null) {
+        await this.ready();
         const cached = this.get(type, key);
         if (cached !== null) {
             return cached;
@@ -412,7 +434,7 @@ class DatabaseCacheManager {
         const cache = this.#caches.get(type);
         if (cache) {
             cache.delete(key);
-            this.#saveToStorage();
+            this.#saveToStorage().catch(e => console.error('Failed to save invalidation:', e));
             this.#notifyListeners({ type: 'invalidate', cacheType: type, key });
         }
     }
@@ -425,7 +447,7 @@ class DatabaseCacheManager {
         const cache = this.#caches.get(type);
         if (cache) {
             cache.clear();
-            this.#saveToStorage();
+            this.#saveToStorage().catch(e => console.error('Failed to save invalidation:', e));
             this.#notifyListeners({ type: 'invalidateType', cacheType: type });
         }
     }
@@ -470,7 +492,7 @@ class DatabaseCacheManager {
             }
         }
 
-        this.#saveToStorage();
+        this.#saveToStorage().catch(e => console.error('Failed to save invalidation:', e));
         this.#notifyListeners({ type: 'invalidateDatabase', database });
         console.log(`🗄️ Cache invalidated for database: ${database}`);
     }
@@ -482,7 +504,7 @@ class DatabaseCacheManager {
         for (const cache of this.#caches.values()) {
             cache.clear();
         }
-        this.#saveToStorage();
+        this.#saveToStorage().catch(e => console.error('Failed to save invalidation:', e));
         this.#notifyListeners({ type: 'invalidateAll' });
         console.log('🗄️ All caches invalidated');
     }
@@ -543,8 +565,8 @@ class DatabaseCacheManager {
         return Date.now() - entry.timestamp > entry.ttl;
     }
 
-    #saveToStorage() {
-        if (!this.#isPersisted || !this.#connectionId || this.#quotaExceeded) return;
+    async #saveToStorage() {
+        if (!this.#isPersisted || !this.#connectionId) return;
 
         let dataToPersist = {};
         try {
@@ -561,59 +583,34 @@ class DatabaseCacheManager {
                 }
             }
 
-            const jsonString = JSON.stringify(dataToPersist);
             const storageKey = `${this.#storageKeyPrefix}${this.#connectionId}`;
             const shouldSave = Object.keys(dataToPersist).length > 0;
 
             if (shouldSave) {
-                localStorage.setItem(storageKey, jsonString);
+                await this.#db.set(storageKey, dataToPersist);
             } else {
-                localStorage.removeItem(storageKey);
+                await this.#db.del(storageKey);
             }
         } catch (e) {
-            // Check for quota exceeded error (names vary by browser)
-            const isQuotaError = e.name === 'QuotaExceededError' ||
-                e.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
-                e.code === 22 ||
-                e.code === 1014;
-
-            if (isQuotaError) {
-                console.warn('Local storage quota exceeded, attempting cleanup...');
-                this.#cleanupOldCaches();
-
-                try {
-                    // Retry save once
-                    // We re-serialize here to ensure we have the string available in this scope
-                    const jsonStringRetry = JSON.stringify(dataToPersist);
-                    const storageKeyRetry = `${this.#storageKeyPrefix}${this.#connectionId}`;
-
-                    if (Object.keys(dataToPersist).length > 0) {
-                        localStorage.setItem(storageKeyRetry, jsonStringRetry);
-                    }
-                } catch (retryError) {
-                    console.warn('Local storage quota exceeded after cleanup. Disabling persistence for this session.');
-                    this.#quotaExceeded = true;
-                }
-            } else {
-                console.warn('Failed to persist cache to storage:', e);
-            }
+            console.error('Failed to persist cache to IndexedDB:', e);
         }
     }
 
-    #loadFromStorage() {
+    async #loadFromStorage() {
         if (!this.#isPersisted || !this.#connectionId) {
             this.invalidateAll(); // Clear in-memory if no connection
             return;
         }
 
         try {
-            const stored = localStorage.getItem(`${this.#storageKeyPrefix}${this.#connectionId}`);
-            if (!stored) {
-                this.invalidateAll();
+            const parsed = await this.#db.get(`${this.#storageKeyPrefix}${this.#connectionId}`);
+            if (!parsed) {
+                // Don't invalidate all here, as we might have just initialized and don't want to wipe in-memory if IDB is empty but we have fresh data
+                for (const cache of this.#caches.values()) {
+                    cache.clear();
+                }
                 return;
             }
-
-            const parsed = JSON.parse(stored);
 
             // Clear current in-memory cache first
             for (const cache of this.#caches.values()) {
@@ -631,21 +628,9 @@ class DatabaseCacheManager {
                     }
                 }
             }
-            console.log(`🗄️ Loaded cache from storage for connection: ${this.#connectionId}`);
+            console.log(`🗄️ Loaded cache from IndexedDB for connection: ${this.#connectionId}`);
         } catch (e) {
-            console.error('Failed to load cache from storage:', e);
-            this.invalidateAll();
-        }
-    }
-
-    #cleanupOldCaches() {
-        // Simple cleanup: remove all tactileSQL caches except current one
-        // More sophisticated would be LRU
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key.startsWith(this.#storageKeyPrefix) && key !== `${this.#storageKeyPrefix}${this.#connectionId}`) {
-                localStorage.removeItem(key);
-            }
+            console.error('Failed to load cache from IndexedDB:', e);
         }
     }
 

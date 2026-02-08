@@ -671,6 +671,7 @@ export function QueryEditor() {
 
         // Fallback to basic autocomplete function
         const getBasicSuggestions = async () => {
+            await DatabaseCache.ready();
             const upper = word.toUpperCase();
             const lower = word.toLowerCase();
             let results = [];

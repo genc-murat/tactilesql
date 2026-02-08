@@ -400,6 +400,7 @@ export class SmartAutocomplete {
     // ==================== SCHEMA LOADING ====================
 
     async loadDatabases() {
+        await DatabaseCache.ready();
         if (this.#databases.length > 0) return this.#databases;
 
         // Try centralized cache first
@@ -422,6 +423,7 @@ export class SmartAutocomplete {
 
     async loadTables(database) {
         if (!database) return [];
+        await DatabaseCache.ready();
         if (this.#tables[database]) return this.#tables[database];
 
         // Try centralized cache first
@@ -445,6 +447,7 @@ export class SmartAutocomplete {
     async loadColumns(database, table) {
         if (!database || !table) return [];
         const key = `${database}.${table}`;
+        await DatabaseCache.ready();
         if (this.#columns[key]) return this.#columns[key];
 
         // Try centralized cache first
@@ -472,6 +475,7 @@ export class SmartAutocomplete {
     async loadForeignKeys(database, table) {
         if (!database || !table) return [];
         const key = `${database}.${table}`;
+        await DatabaseCache.ready();
         if (this.#foreignKeys[key]) return this.#foreignKeys[key];
 
         // Try centralized cache first
@@ -493,6 +497,7 @@ export class SmartAutocomplete {
     async loadIndexes(database, table) {
         if (!database || !table) return [];
         const key = `${database}.${table}`;
+        await DatabaseCache.ready();
         if (this.#indexes[key]) return this.#indexes[key];
 
         // Try centralized cache first
@@ -532,6 +537,7 @@ export class SmartAutocomplete {
      */
     async loadSchemas() {
         if (!isPostgreSQL()) return [];
+        await DatabaseCache.ready();
         if (this.#schemas.length > 0) return this.#schemas;
 
         // Try centralized cache first
@@ -558,6 +564,7 @@ export class SmartAutocomplete {
     async loadTablesForSchema(schema) {
         if (!schema) return [];
         const key = `schema:${schema}`;
+        await DatabaseCache.ready();
         if (this.#tables[key]) return this.#tables[key];
 
         // Try centralized cache first
