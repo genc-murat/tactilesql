@@ -204,6 +204,9 @@ export function ResultsTable(options = {}) {
 
     // --- State Management ---
     let currentData = { columns: [], rows: [], metadata: {} };
+    let filteredRows = []; // Array of indices or rows? Let's store indices to keep it lightweight if possible, or just the rows themselves. 
+    // Storing rows is easier for rendering logic reuse.
+    let currentSearchTerm = '';
     let pendingChanges = {
         updates: new Map(), // key: rowIndex-colIndex, value: newValue
         deletes: new Set(), // rowIndex
@@ -298,6 +301,14 @@ export function ResultsTable(options = {}) {
         if (tab) {
             activeTabId = tabId;
             currentData = tab.data;
+            // Reset search on tab switch? Or keep it? Usually reset or restore if we saved state.
+            // For now, let's reset to keep it simple, or re-apply if we stored it.
+            // Let's reset for now.
+            currentSearchTerm = '';
+            filteredRows = currentData.rows;
+            const filterInput = container.querySelector('#filter-input');
+            if (filterInput) filterInput.value = '';
+
             clearPendingChanges();
             selectedRows.clear();
             hiddenColumns.clear();
@@ -658,7 +669,7 @@ export function ResultsTable(options = {}) {
         const confirmed = await Dialog.confirm('Discard all pending changes?', 'Confirm');
         if (confirmed) {
             clearPendingChanges();
-            renderTable(currentData); // Re-render to remove visual indicators
+            renderTable(currentData, false); // Re-render to remove visual indicators
         }
     };
 
@@ -671,7 +682,7 @@ export function ResultsTable(options = {}) {
         const tempId = `temp-${Date.now()}`;
         pendingChanges.inserts.push({ data: newRow, tempId });
         updatePendingIndicator();
-        renderTable(currentData); // Re-render to show new row
+        renderTable(currentData, false); // Re-render to show new row
     };
 
     const markRowForDeletion = async (rowIdx) => {
@@ -723,7 +734,13 @@ export function ResultsTable(options = {}) {
             const rows = currentData.rows || [];
             const vsIndicator = useVirtualScroll ? '<span class="ml-1 px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 text-[8px] font-bold">VIRTUAL</span>' : '';
             const rowLimitBadge = buildRowLimitBadge(currentData);
-            rowCountBadge.innerHTML = `${rows.length.toLocaleString()} ROWS ${rowLimitBadge} ${vsIndicator}<span class="${isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]/60' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'))} font-normal ml-1">• ${formatDurationValue(currentData.duration)}</span>`;
+
+            let countText = `${rows.length.toLocaleString()} ROWS`;
+            if (filteredRows.length !== rows.length) {
+                countText = `${filteredRows.length.toLocaleString()} / ${rows.length.toLocaleString()} ROWS`;
+            }
+
+            rowCountBadge.innerHTML = `${countText} ${rowLimitBadge} ${vsIndicator}<span class="${isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]/60' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'))} font-normal ml-1">• ${formatDurationValue(currentData.duration)}</span>`;
         }
     };
 
@@ -737,7 +754,8 @@ export function ResultsTable(options = {}) {
 
         const { rowHeight, overscan, scrollTop } = virtualScrollState;
         const viewportHeight = tableWrapper.clientHeight;
-        const totalRows = currentData.rows.length;
+        // Use filteredRows for virtual scroll
+        const totalRows = filteredRows.length;
         const totalHeight = totalRows * rowHeight;
 
         // Calculate visible range
@@ -765,10 +783,26 @@ export function ResultsTable(options = {}) {
         }
 
         for (let idx = startIdx; idx <= endIdx; idx++) {
-            const row = currentData.rows[idx];
+            const row = filteredRows[idx];
             if (!row) continue;
 
-            visibleRowsHtml.push(renderSingleRow(row, idx));
+            // We need the original index for editing/updates to work correctly if we are careful.
+            // However, currentData.rows[idx] relies on index matching.
+            // If we filter, idx 0 in filteredRows might be idx 5 in currentData.rows.
+            // We need to store original index in the row data or find it.
+            // Implementation detail: Let's assume for search we just display. 
+            // Editing filtered results needs mapped indices. 
+            // A simple way is to store {row, originalIndex} in filteredRows, 
+            // OR just find the index in currentData.rows (slow).
+            // Better: Make filteredRows an array of content, but we need the original index for `data-row-idx`.
+
+            // Let's refine `filteredRows` to be `filteredIndices`.
+            // Wait, previous plan said "iterate filteredRows". 
+            // Let's change `filteredRows` to be array of `{ data: row, originalIndex: idx }`.
+
+            const originalIndex = row._originalIndex !== undefined ? row._originalIndex : currentData.rows.indexOf(row); // fallback (slow) but safe
+
+            visibleRowsHtml.push(renderSingleRow(row, originalIndex));
         }
 
         // Bottom spacer
@@ -929,15 +963,47 @@ export function ResultsTable(options = {}) {
         });
     };
 
-    const renderTable = async (data) => {
+    const renderTable = async (data, resetFilter = true) => {
         currentData = data;
         const { columns, rows, query } = data;
+
+        if (resetFilter) {
+            filteredRows = rows.map((r, i) => {
+                // Attach original index for tracking (non-destructive if we use a wrapper or property)
+                // Modifying original row object might be risky if it's frozen or reused.
+                // Let's trust they are objects we can mutate or just use a wrapper.
+                // Mutating data objects is often easiest for this simple app.
+                // Check if Object.isExtensible?
+                // Ideally, we don't mutate.
+                // Let's make filteredRows an array of the row objects themselves, and we'll trust `rows.indexOf(row)` is fast enough? 
+                // No, indexOf is O(N).
+                // Let's attach `_originalIndex` property to the row objects when we receive them FIRST time.
+                // But `data` comes from backend?
+                if (!r._originalIndex && r._originalIndex !== 0) {
+                    Object.defineProperty(r, '_originalIndex', { value: i, enumerable: false, writable: true });
+                }
+                return r;
+            });
+            currentSearchTerm = '';
+            const filterInput = container.querySelector('#filter-input');
+            if (filterInput) filterInput.value = '';
+        } else {
+            // If not resetting, we might need to re-filter if data changed? 
+            // Usually `renderTable(currentData, false)` is called after operation that doesn't change data set size drastically (like toggle column).
+            // But if we deleted a row?
+            // If we implicitly updated `currentData.rows`, we should re-run filter.
+            if (currentSearchTerm) {
+                performSearch(currentSearchTerm, false); // re-run filter
+            } else {
+                filteredRows = rows;
+            }
+        }
 
         // Hide loading overlay
         hideLoadingSkeleton();
 
-        // Determine if we should use virtual scrolling
-        useVirtualScroll = rows.length > VIRTUAL_SCROLL_THRESHOLD;
+        // Determine if we should use virtual scrolling based on FILTERED count
+        useVirtualScroll = filteredRows.length > VIRTUAL_SCROLL_THRESHOLD;
 
         // Check if editable BEFORE rendering
         if (query) {
@@ -974,7 +1040,13 @@ export function ResultsTable(options = {}) {
         if (rowCountBadge) {
             const vsIndicator = useVirtualScroll ? '<span class="ml-1 px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 text-[8px] font-bold">VIRTUAL</span>' : '';
             const rowLimitBadge = buildRowLimitBadge(data);
-            rowCountBadge.innerHTML = `${rows.length.toLocaleString()} ROWS ${rowLimitBadge} ${vsIndicator}<span class="${isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]/60' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'))} font-normal ml-1">• ${formatDurationValue(data.duration)}</span>`;
+
+            let countText = `${rows.length.toLocaleString()} ROWS`;
+            if (filteredRows.length !== rows.length) {
+                countText = `${filteredRows.length.toLocaleString()} / ${rows.length.toLocaleString()} ROWS`;
+            }
+
+            rowCountBadge.innerHTML = `${countText} ${rowLimitBadge} ${vsIndicator}<span class="${isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]/60' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'))} font-normal ml-1">• ${formatDurationValue(data.duration)}</span>`;
         }
 
         const table = container.querySelector('table');
@@ -1055,7 +1127,8 @@ export function ResultsTable(options = {}) {
                     </tr>`;
                 }).join('');
 
-                const dataRows = rows.map((row, idx) => {
+                const dataRows = filteredRows.map((row) => {
+                    const idx = row._originalIndex !== undefined ? row._originalIndex : currentData.rows.indexOf(row);
                     const isDeleted = pendingChanges.deletes.has(idx);
                     const isSelected = selectedRows.has(idx);
 
@@ -1188,7 +1261,7 @@ export function ResultsTable(options = {}) {
                     const insertIdx = parseInt(btn.dataset.insertIdx);
                     pendingChanges.inserts.splice(insertIdx, 1);
                     updatePendingIndicator();
-                    renderTable(currentData);
+                    renderTable(currentData, false);
                 });
             });
         }
@@ -1225,8 +1298,36 @@ export function ResultsTable(options = {}) {
                     selectedRows.clear();
                 }
                 updateSelectionIndicator();
-                renderTable(currentData);
+                updateSelectionIndicator();
+                renderTable(currentData, false);
             });
+        }
+    };
+
+    const performSearch = (term, render = true) => {
+        currentSearchTerm = term;
+        term = term.toLowerCase();
+
+        if (!term) {
+            filteredRows = currentData.rows;
+        } else {
+            filteredRows = currentData.rows.filter(row => {
+                // Check all columns (or visible ones?)
+                // Checking all columns is safer for "search" expectation.
+                return row.some(cell => {
+                    if (cell === null || cell === undefined) return false;
+                    return String(cell).toLowerCase().includes(term);
+                });
+            });
+        }
+
+        if (render) {
+            // Need to reset scroll if using virtual scroll?
+            virtualScrollState.scrollTop = 0;
+            const tableWrapper = container.querySelector('.flex-1.overflow-auto');
+            if (tableWrapper) tableWrapper.scrollTop = 0;
+
+            renderTable(currentData, false);
         }
     };
 
@@ -1250,7 +1351,7 @@ export function ResultsTable(options = {}) {
                 if (viewMode !== mode) {
                     viewMode = mode;
                     renderControls(); // Re-render controls to update tab styling
-                    if (currentData.rows.length) renderTable(currentData);
+                    if (currentData.rows.length) renderTable(currentData, false);
                 }
             });
         });
@@ -1298,7 +1399,7 @@ export function ResultsTable(options = {}) {
                     selectedRows.clear();
                     updateSelectionIndicator();
                     updatePendingIndicator();
-                    renderTable(currentData);
+                    renderTable(currentData, false);
                 }
             });
         }
@@ -1364,41 +1465,9 @@ export function ResultsTable(options = {}) {
 
                 // Debounce the filter operation
                 debounceTimer = setTimeout(() => {
-                    const rows = container.querySelectorAll('tbody tr');
-                    const totalRows = rows.length;
-
-                    // If no filter term, show all rows immediately
-                    if (!term) {
-                        rows.forEach(row => row.style.display = '');
-                        return;
-                    }
-
-                    // Batch process rows to avoid blocking the UI
-                    const BATCH_SIZE = 100;
-                    let currentIndex = 0;
-
-                    function processBatch() {
-                        const endIndex = Math.min(currentIndex + BATCH_SIZE, totalRows);
-
-                        for (let i = currentIndex; i < endIndex; i++) {
-                            const row = rows[i];
-                            const text = row.innerText.toLowerCase();
-                            row.style.display = text.includes(term) ? '' : 'none';
-                        }
-
-                        currentIndex = endIndex;
-
-                        // If there are more rows to process, schedule next batch
-                        if (currentIndex < totalRows) {
-                            filterRequestId = requestAnimationFrame(processBatch);
-                        } else {
-                            filterRequestId = null;
-                        }
-                    }
-
-                    // Start processing
-                    filterRequestId = requestAnimationFrame(processBatch);
-                }, 150); // 150ms debounce delay
+                    // Start processing (New logic: Data Level)
+                    performSearch(term);
+                }, 300); // 300ms debounce delay
             });
         }
 
@@ -1408,7 +1477,7 @@ export function ResultsTable(options = {}) {
                 if (e.target.closest('.tab-pin-btn') || e.target.closest('.tab-close-btn')) return;
                 const tabId = tab.dataset.tabId;
                 setActiveTab(tabId);
-                renderTable(currentData);
+                renderTable(currentData, false); // Keep state if we want? No, tab switch usually resets view state, but `setActiveTab` logic handles it.
             });
         });
 
@@ -1428,7 +1497,7 @@ export function ResultsTable(options = {}) {
                 const tabId = btn.dataset.tabId;
                 removeResultTab(tabId);
                 renderControls();
-                if (currentData.rows.length) renderTable(currentData);
+                if (currentData.rows.length) renderTable(currentData, true); // Reset filter on tab close/switch
             });
         });
 
@@ -1454,6 +1523,15 @@ export function ResultsTable(options = {}) {
             updateSelectionIndicator();
 
             const results = Array.isArray(e.detail) ? e.detail : [e.detail];
+
+            // Pre-process rows to add original index
+            results.forEach(res => {
+                if (res.rows) {
+                    res.rows.forEach((r, i) => {
+                        Object.defineProperty(r, '_originalIndex', { value: i, enumerable: false, writable: true });
+                    });
+                }
+            });
 
             if (results.length === 0) {
                 // Cleared results / loading state only
