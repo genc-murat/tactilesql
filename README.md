@@ -161,6 +161,7 @@ Optional environment overrides:
 - Configurable max rows per query in results (`0 = unlimited`) with limit indicator when truncation is applied
 - **Results Explorer**: Ctrl+Click on foreign keys to view referenced related data in popup
 - **Object Explorer Search**: Quickly jump to any database, table, or column with a persistent search box, match navigation, and auto-expanding tree.
+- **Find & Replace**: Full-featured search and replace in editor with Regex support, case sensitivity, and highlighting (`Ctrl+F` / `Ctrl+H`).
 
 ### Audit Trail
 
@@ -428,6 +429,13 @@ Common shortcuts (see the in-app help with `F1`):
 - `Ctrl+I` — Ask AI Assistant
 - `Ctrl+Shift+[` — Fold all regions
 - `Ctrl+Shift+]` — Unfold all regions
+
+### Search & Replace
+- `Ctrl+F` — Find
+- `Ctrl+H` — Find and Replace
+- `F3` / `Shift+F3` — Find Next/Previous Match
+- `Alt+R` — Toggle Regex
+- `Alt+C` — Toggle Case Sensitivity
 
 ### Navigation
 - `Ctrl+Shift+O` — Focus Object Explorer
