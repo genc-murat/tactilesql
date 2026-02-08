@@ -108,7 +108,7 @@ export function SnippetLibrary() {
         category: s.category || s.type?.toLowerCase() || 'custom'
     }));
 
-    // --- Filter snippets ---
+    // --- Filter logic ---
     const getFilteredSnippets = () => {
         let filtered = snippets;
 
@@ -127,6 +127,46 @@ export function SnippetLibrary() {
         return filtered;
     };
 
+    const getFilteredHistory = () => {
+        let filtered = history;
+
+        if (searchTerm) {
+            const term = searchTerm.toLowerCase();
+            filtered = filtered.filter(h =>
+                h.query.toLowerCase().includes(term) ||
+                (h.status && h.status.toLowerCase().includes(term))
+            );
+        }
+
+        return filtered;
+    };
+
+    // --- Time Grouping Helper ---
+    const groupHistoryByDate = (historyItems) => {
+        const groups = {
+            today: [],
+            yesterday: [],
+            older: []
+        };
+
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        const yesterday = new Date(today - 86400000).getTime();
+
+        historyItems.forEach(item => {
+            const date = new Date(item.timestamp).getTime();
+            if (date >= today) {
+                groups.today.push(item);
+            } else if (date >= yesterday) {
+                groups.yesterday.push(item);
+            } else {
+                groups.older.push(item);
+            }
+        });
+
+        return groups;
+    };
+
     // --- Render ---
     const render = () => {
         const isLight = theme === 'light';
@@ -135,7 +175,11 @@ export function SnippetLibrary() {
         const showSnippets = SettingsManager.get(SETTINGS_PATHS.WORKBENCH_SNIPPETS);
         const showHistory = SettingsManager.get(SETTINGS_PATHS.WORKBENCH_HISTORY);
         const dividerClass = isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border' : 'border-white/5'));
+
         const filteredSnippets = getFilteredSnippets();
+        const filteredHistory = getFilteredHistory();
+        const groupedHistory = groupHistoryByDate(filteredHistory.slice(0, 50)); // Limit to latest 50
+
         const snippetSectionClass = showHistory ? 'flex flex-col gap-3' : 'flex-1 flex flex-col gap-3 min-h-0';
         const snippetListClass = showHistory
             ? 'space-y-2 max-h-[200px] overflow-y-auto custom-scrollbar pr-1'
@@ -153,6 +197,24 @@ export function SnippetLibrary() {
             return;
         }
 
+        const renderHistoryItem = (item, idx) => `
+            <div class="text-[10px] font-mono p-2 ${isLight ? 'hover:bg-gray-100 border-transparent hover:border-gray-200' : (isDawn ? 'hover:bg-[#faf4ed] border-transparent hover:border-[#f2e9e1]' : (isOceanic ? 'hover:bg-ocean-bg border-transparent hover:border-ocean-frost/20' : 'hover:bg-white/5 border-transparent hover:border-white/5'))} rounded-lg cursor-pointer border group history-item" data-idx="${history.indexOf(item)}">
+                <div class="${item.status === 'SUCCESS' ? 'text-emerald-500' : 'text-red-400'} text-[9px] mb-1 font-bold flex justify-between items-center">
+                    <div class="flex items-center gap-2">
+                        <span>${new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        ${item.duration ? `<span class="opacity-60 font-normal">${item.duration}ms</span>` : ''}
+                        ${item.rowsReturned !== undefined ? `<span class="opacity-60 font-normal">• ${item.rowsReturned} rows</span>` : ''}
+                    </div>
+                    <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                         <span class="material-symbols-outlined text-[10px] hover:text-mysql-teal copy-btn" title="Copy">content_copy</span>
+                         <span class="material-symbols-outlined text-[10px] hover:text-mysql-teal use-query-btn" title="Use Query">play_arrow</span>
+                    </div>
+                </div>
+                <div class="truncate ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : (isOceanic ? 'text-ocean-text' : 'text-gray-400'))}" title="${escapeHtml(item.query)}">${escapeHtml(item.query)}</div>
+                ${item.status === 'ERROR' ? `<div class="text-[9px] text-red-400/80 truncate mt-1 italic">${escapeHtml(item.error || 'Unknown error')}</div>` : ''}
+            </div>
+        `;
+
         aside.innerHTML = `
             ${showSnippets ? `
             <div class="${snippetSectionClass}">
@@ -169,7 +231,7 @@ export function SnippetLibrary() {
                 <!-- Search -->
                 <div class="relative">
                     <span class="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-sm text-gray-500">search</span>
-                    <input type="text" id="snippet-search" placeholder="Search snippets..." value="${searchTerm}"
+                    <input type="text" id="snippet-search" placeholder="Search snippets & history..." value="${searchTerm}"
                         class="w-full pl-8 pr-3 py-1.5 text-[11px] rounded-lg ${isLight ? 'bg-gray-100 border-gray-200 text-gray-700 placeholder-gray-400' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] placeholder-[#575279]/50' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text placeholder-ocean-text/50' : 'bg-white/5 border-white/10 text-gray-300 placeholder-gray-500'))} border focus:border-mysql-teal focus:outline-none transition-colors">
                 </div>
                 
@@ -212,16 +274,19 @@ export function SnippetLibrary() {
                     <span id="clear-history-btn" class="material-symbols-outlined text-sm text-gray-500 cursor-pointer hover:text-red-400 transition-colors" title="Clear History">delete_sweep</span>
                 </div>
                 <div class="flex-1 overflow-y-auto custom-scrollbar space-y-1.5 pr-1" id="history-list">
-                    ${history.slice(0, 20).map((item, idx) => `
-                        <div class="text-[10px] font-mono p-2 ${isLight ? 'hover:bg-gray-100 border-transparent hover:border-gray-200' : (isDawn ? 'hover:bg-[#faf4ed] border-transparent hover:border-[#f2e9e1]' : (isOceanic ? 'hover:bg-ocean-bg border-transparent hover:border-ocean-frost/20' : 'hover:bg-white/5 border-transparent hover:border-white/5'))} rounded-lg cursor-pointer border group history-item" data-idx="${idx}">
-                            <div class="${item.status === 'SUCCESS' ? 'text-emerald-500' : 'text-red-400'} text-[9px] mb-0.5 font-bold flex justify-between">
-                                <span>${new Date(item.timestamp).toLocaleTimeString()}</span>
-                                <span class="material-symbols-outlined text-[10px] opacity-0 group-hover:opacity-100 copy-btn transition-opacity" title="Copy">content_copy</span>
-                            </div>
-                            <div class="truncate ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : (isOceanic ? 'text-ocean-text' : 'text-gray-400'))}" title="${escapeHtml(item.query)}">${escapeHtml(item.query)}</div>
-                        </div>
-                    `).join('')}
-                    ${history.length === 0 ? `<div class="text-[11px] ${(isLight || isDawn) ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-600')} italic text-center py-4">No query history</div>` : ''}
+                    ${groupedHistory.today.length > 0 ? `
+                        <div class="text-[9px] font-bold text-gray-500 uppercase tracking-wider px-1 pt-1">Today</div>
+                        ${groupedHistory.today.map(renderHistoryItem).join('')}
+                    ` : ''}
+                    ${groupedHistory.yesterday.length > 0 ? `
+                         <div class="text-[9px] font-bold text-gray-500 uppercase tracking-wider px-1 pt-3">Yesterday</div>
+                        ${groupedHistory.yesterday.map(renderHistoryItem).join('')}
+                    ` : ''}
+                    ${groupedHistory.older.length > 0 ? `
+                        <div class="text-[9px] font-bold text-gray-500 uppercase tracking-wider px-1 pt-3">Older</div>
+                        ${groupedHistory.older.map(renderHistoryItem).join('')}
+                    ` : ''}
+                    ${filteredHistory.length === 0 ? `<div class="text-[11px] ${(isLight || isDawn) ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/50' : 'text-gray-600')} italic text-center py-4">No query history</div>` : ''}
                 </div>
             </div>` : ''}
         `;
@@ -374,14 +439,24 @@ export function SnippetLibrary() {
             });
         }
 
-        // History Click (Copy)
+        // History Click (Copy / Use)
         aside.querySelectorAll('.history-item').forEach(item => {
-            item.addEventListener('click', () => {
+            item.addEventListener('click', (e) => {
                 const idx = parseInt(item.dataset.idx);
                 const historyItem = history[idx];
-                if (historyItem) {
-                    window.dispatchEvent(new CustomEvent('tactilesql:set-query', { detail: { query: historyItem.query } }));
+                if (!historyItem) return;
+
+                // Copy Button
+                if (e.target.closest('.copy-btn')) {
+                    e.stopPropagation();
+                    navigator.clipboard.writeText(historyItem.query);
+                    Dialog.show({ title: 'Copied', message: 'Query copied to clipboard', type: 'info', duration: 1500 });
+                    return;
                 }
+
+                // Use Query Button / Item Click
+                // Both perform the same action: set query in editor
+                window.dispatchEvent(new CustomEvent('tactilesql:set-query', { detail: { query: historyItem.query } }));
             });
         });
 
