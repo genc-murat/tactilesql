@@ -792,7 +792,15 @@ export function ObjectExplorer() {
 
         // Update Tree Container (conditionally)
         if (didStateChangeSinceLastTreeRender || !container.querySelector('#explorer-tree')) {
+            const lastTree = container.querySelector('#explorer-tree');
+            const lastScroll = lastTree ? lastTree.scrollTop : 0;
+
             container.innerHTML = layout;
+
+            const newTree = container.querySelector('#explorer-tree');
+            if (newTree) {
+                newTree.scrollTop = lastScroll;
+            }
 
             // Re-attach tree-dependent listeners only after full render
             // Connection Interaction (Drag and Drop)
