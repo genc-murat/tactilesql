@@ -18,6 +18,7 @@ impl SchemaTrackerStore {
             CREATE TABLE IF NOT EXISTS schema_snapshots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 connection_id TEXT NOT NULL,
+                database_name TEXT,
                 timestamp INTEGER NOT NULL,
                 schema_hash TEXT NOT NULL,
                 snapshot_data BLOB NOT NULL,
@@ -55,6 +56,11 @@ impl SchemaTrackerStore {
         .await
         .map_err(|e| format!("Failed to init schema_tracker schema: {}", e))?;
 
+        // Attempt to add database_name column if it doesn't exist (migration)
+        let _ = sqlx::query("ALTER TABLE schema_snapshots ADD COLUMN database_name TEXT")
+            .execute(&self.pool)
+            .await;
+
         Ok(())
     }
 
@@ -63,13 +69,16 @@ impl SchemaTrackerStore {
 
         let id = sqlx::query(
             r#"
-            INSERT INTO schema_snapshots (connection_id, timestamp, schema_hash, snapshot_data)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(connection_id, schema_hash) DO UPDATE SET timestamp = excluded.timestamp
+            INSERT INTO schema_snapshots (connection_id, database_name, timestamp, schema_hash, snapshot_data)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(connection_id, schema_hash) DO UPDATE SET 
+                timestamp = excluded.timestamp,
+                database_name = excluded.database_name
             RETURNING id
             "#,
         )
         .bind(&snapshot.connection_id)
+        .bind(&snapshot.database_name)
         .bind(snapshot.timestamp.timestamp())
         .bind(&snapshot.schema_hash)
         .bind(data)
@@ -82,9 +91,11 @@ impl SchemaTrackerStore {
         Ok(id)
     }
 
-    pub async fn get_snapshots(&self, connection_id: &str) -> Result<Vec<SchemaSnapshot>, String> {
+    pub async fn get_snapshots(&self, connection_id: &str, database_filter: Option<String>) -> Result<Vec<SchemaSnapshot>, String> {
+        // We fetch all for the connection, then filter in memory for simplicity unless performance becomes an issue
+        // OR we can add WHERE clause dynamically. For now, let's filter in memory but select the column.
         let rows = sqlx::query(
-            "SELECT id, snapshot_data FROM schema_snapshots WHERE connection_id = ? ORDER BY timestamp DESC"
+            "SELECT id, database_name, snapshot_data FROM schema_snapshots WHERE connection_id = ? ORDER BY timestamp DESC"
         )
         .bind(connection_id)
         .fetch_all(&self.pool)
@@ -94,10 +105,33 @@ impl SchemaTrackerStore {
         let mut snapshots = Vec::new();
         for row in rows {
             let id: i64 = row.try_get("id").unwrap_or_default();
+            let db_name: Option<String> = row.try_get("database_name").ok();
             let data: Vec<u8> = row.try_get("snapshot_data").unwrap_or_default();
+            
+            // Check filter
+            if let Some(ref filter) = database_filter {
+                // If filter is provided, we only want snapshots that match.
+                // If db_name is None (old data), we might exclude it or include it.
+                // For now, let's exclude if it doesn't match.
+                if let Some(ref db) = db_name {
+                    if db != filter {
+                        continue;
+                    }
+                } else {
+                    // DB name is NULL (legacy). 
+                    // If filtering, we probably don't want these mixed in unless requested explicitly?
+                    // Let's decide: strict filtering.
+                    continue; 
+                }
+            }
+
             let mut snapshot: SchemaSnapshot =
                 serde_json::from_slice(&data).map_err(|e| e.to_string())?;
             snapshot.id = Some(id);
+            // Ensure the model's database_name is synced with DB column if model didn't have it (legacy blob)
+            if snapshot.database_name.is_none() {
+                snapshot.database_name = db_name;
+            }
             snapshots.push(snapshot);
         }
 

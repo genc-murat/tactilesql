@@ -9,6 +9,7 @@ use tauri::{command, State};
 pub async fn capture_schema_snapshot(
     app_state: State<'_, AppState>,
     connection_id: String,
+    target_schema: Option<String>,
 ) -> Result<SchemaSnapshot, String> {
     // 1. Determine DB Type and Pool
     let db_type = {
@@ -20,15 +21,16 @@ pub async fn capture_schema_snapshot(
         DatabaseType::MySQL => {
             let pool_guard = app_state.mysql_pool.lock().await;
             let pool = pool_guard.as_ref().ok_or("MySQL pool not initialized")?;
-            // We need database name. For now assume active DB is the one we want.
-            // But capture_snapshot needs database name.
-            // We can get it from connection config or just query 'SELECT DATABASE()'.
-            // For MVP, assume the pool is connected to the right DB.
-            let row: (String,) = sqlx::query_as("SELECT DATABASE()")
-                .fetch_one(pool)
-                .await
-                .map_err(|e| e.to_string())?;
-            let db_name = row.0;
+
+            let db_name = if let Some(schema) = target_schema {
+                schema
+            } else {
+                let row: (Option<String>,) = sqlx::query_as("SELECT DATABASE()")
+                    .fetch_one(pool)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                row.0.ok_or("No database selected")?
+            };
 
             crate::schema_tracker::capture::capture_snapshot_mysql(pool, &db_name, &connection_id)
                 .await?
@@ -38,12 +40,16 @@ pub async fn capture_schema_snapshot(
             let pool = pool_guard
                 .as_ref()
                 .ok_or("PostgreSQL pool not initialized")?;
-            // Assume 'public' schema or fetch current schema
-            let row: (String,) = sqlx::query_as("SELECT current_schema()")
-                .fetch_one(pool)
-                .await
-                .map_err(|e| e.to_string())?;
-            let schema_name = row.0;
+
+            let schema_name = if let Some(schema) = target_schema {
+                schema
+            } else {
+                let row: (Option<String>,) = sqlx::query_as("SELECT current_schema()")
+                    .fetch_one(pool)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                row.0.ok_or("No schema selected")?
+            };
 
             crate::schema_tracker::capture::capture_snapshot_postgres(
                 pool,
@@ -127,10 +133,11 @@ pub async fn add_snapshot_tag(
 pub async fn get_schema_snapshots(
     app_state: State<'_, AppState>,
     connection_id: String,
+    database_filter: Option<String>,
 ) -> Result<Vec<SchemaSnapshot>, String> {
     let store_guard = app_state.schema_tracker_store.lock().await;
     if let Some(store) = store_guard.as_ref() {
-        store.get_snapshots(&connection_id).await
+        store.get_snapshots(&connection_id, database_filter).await
     } else {
         Err("Schema Tracker Store not initialized".to_string())
     }

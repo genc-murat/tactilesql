@@ -272,6 +272,7 @@ pub async fn capture_snapshot_mysql(
     Ok(SchemaSnapshot {
         id: None,
         connection_id: connection_id.to_string(),
+        database_name: Some(database.to_string()),
         timestamp: Utc::now(),
         schema_hash: hash,
         tables,
@@ -592,6 +593,7 @@ pub async fn capture_snapshot_postgres(
     Ok(SchemaSnapshot {
         id: None,
         connection_id: connection_id.to_string(),
+        database_name: Some(schema.to_string()),
         timestamp: Utc::now(),
         schema_hash: hash,
         tables,

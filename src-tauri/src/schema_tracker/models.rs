@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 pub struct SchemaSnapshot {
     pub id: Option<i64>,
     pub connection_id: String,
+    pub database_name: Option<String>,
     pub timestamp: DateTime<Utc>,
     pub schema_hash: String,
     pub tables: Vec<TableDefinition>,

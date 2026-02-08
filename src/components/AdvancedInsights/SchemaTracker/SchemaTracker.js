@@ -60,12 +60,37 @@ export function SchemaTracker() {
     let comparisonBaseSnapshotId = null;
     let comparisonTargetSnapshotId = null;
     let qualityScores = {};
+    let availableDatabases = [];
+    let selectedDatabase = null;
+    let isDbSelectorOpen = false;
 
     // --- Logic ---
     const loadSnapshots = async () => {
         if (!activeConnection) return;
         try {
-            snapshots = await SchemaTrackerApi.getSnapshots(activeConnection.id);
+            // Load databases/schemas
+            try {
+                if (activeConnection.dbType === 'postgresql' || activeConnection.db_type === 'postgresql') {
+                    availableDatabases = await invoke('get_schemas');
+                } else {
+                    availableDatabases = await invoke('get_databases');
+                }
+                if (!selectedDatabase && availableDatabases.length > 0) {
+                    // Try to match active connection database if possible, or default
+                    if (activeConnection.database && availableDatabases.includes(activeConnection.database)) {
+                        selectedDatabase = activeConnection.database;
+                    } else if (availableDatabases.includes('public')) {
+                        selectedDatabase = 'public';
+                    } else {
+                        selectedDatabase = availableDatabases[0];
+                    }
+                }
+            } catch (e) {
+                console.warn("Failed to load databases", e);
+                availableDatabases = [];
+            }
+
+            snapshots = await SchemaTrackerApi.getSnapshots(activeConnection.id, selectedDatabase);
             try {
                 const reports = await invoke('get_quality_reports', { connectionId: activeConnection.id });
                 qualityScores = {};
@@ -83,6 +108,10 @@ export function SchemaTracker() {
             render();
             if (snapshots.length > 0 && !selectedSnapshot) {
                 await selectSnapshot(snapshots[0]);
+            } else if (snapshots.length === 0) {
+                selectedSnapshot = null;
+                currentDiff = null;
+                currentStory = null;
             }
         } catch (e) {
             console.error("Failed to load snapshots", e);
@@ -137,7 +166,8 @@ export function SchemaTracker() {
                 btn.innerHTML = `<span class="material-symbols-outlined text-[16px] animate-spin">refresh</span> Capturing...`;
                 btn.disabled = true;
             }
-            await SchemaTrackerApi.captureSnapshot(activeConnection.id);
+            // Pass selectedDatabase provided it's not null/empty
+            await SchemaTrackerApi.captureSnapshot(activeConnection.id, selectedDatabase || undefined);
             await loadSnapshots();
         } catch (e) {
             Dialog.alert("Capture failed: " + e, "Error");
@@ -164,17 +194,77 @@ export function SchemaTracker() {
                     <p class="${classes.subtitle}">Track changes, detect drifts, and generate migrations</p>
                 </div>
             </div>
-            <div class="flex gap-3">
+            <div class="flex gap-3 items-center">
                  <div id="connection-status" class="${classes.status}">
                     <span class="w-1.5 h-1.5 rounded-full ${activeConnection ? 'bg-emerald-500 animate-pulse' : 'bg-gray-500'}"></span>
                     <span>${activeConnection ? `${activeConnection.name} (${activeConnection.host})` : 'No Connection'}</span>
                 </div>
+
+                ${availableDatabases.length > 0 ? `
+                <div class="relative">
+                    <button id="db-select-btn" class="flex items-center gap-2 px-3 py-1.5 rounded border text-[11px] font-bold transition-all ${theme === 'light' ? 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50' : 'bg-white/5 border-white/10 text-gray-300 hover:bg-white/10'}">
+                        <span class="material-symbols-outlined text-[14px] text-gray-400">database</span>
+                        <span>${selectedDatabase || 'Select DB'}</span>
+                        <span class="material-symbols-outlined text-[14px] text-gray-500 transition-transform duration-200 ${isDbSelectorOpen ? 'rotate-180' : ''}">expand_more</span>
+                    </button>
+                    ${isDbSelectorOpen ? `
+                    <div class="absolute right-0 top-full mt-1 w-48 max-h-60 overflow-y-auto rounded-lg border shadow-xl z-50 overflow-hidden ${theme === 'light' ? 'bg-white border-gray-200' : 'bg-[#1a1d23] border-white/10'} animate-in fade-in slide-in-from-top-1 duration-100">
+                        <div class="py-1">
+                            ${availableDatabases.map(db => `
+                                <button class="db-option w-full text-left px-3 py-1.5 text-[11px] transition-colors flex items-center gap-2 ${db === selectedDatabase ? (theme === 'light' ? 'bg-blue-50 text-blue-600' : 'bg-blue-500/10 text-blue-400') : (theme === 'light' ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5')}" data-db="${db}">
+                                    <span class="material-symbols-outlined text-[12px] opacity-70">database</span>
+                                    ${db}
+                                </button>
+                            `).join('')}
+                        </div>
+                    </div>
+                    ` : ''}
+                </div>
+                ` : ''}
+
                 <button id="capture-btn" class="${classes.button}">
                     <span class="material-symbols-outlined text-[16px]">camera_alt</span> Capture Snapshot
                 </button>
             </div>
         `;
-        header.querySelector('#capture-btn').addEventListener('click', captureSnapshot);
+
+        const captureBtn = header.querySelector('#capture-btn');
+        if (captureBtn) captureBtn.addEventListener('click', captureSnapshot);
+
+        const dbSelectBtn = header.querySelector('#db-select-btn');
+        if (dbSelectBtn) {
+            dbSelectBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                isDbSelectorOpen = !isDbSelectorOpen;
+                render();
+            });
+        }
+
+        header.querySelectorAll('.db-option').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                selectedDatabase = e.currentTarget.dataset.db;
+                isDbSelectorOpen = false;
+                loadSnapshots();
+            });
+        });
+
+        // Close dropdown on click outside
+        const closeDropdown = () => {
+            if (isDbSelectorOpen) {
+                isDbSelectorOpen = false;
+                render();
+            }
+        };
+        // We need to be careful not to add multiple listeners if re-rendering often, 
+        // but here render replaces the whole subContainer content, so listeners inside are gone.
+        // The window listener needs to be managed carefully.
+        // For simplicity, we can rely on a backdrop or just this simple check if it doesn't leak.
+        // A better pattern is to attach to container and check target, but let's just use a one-time click handler on window if open.
+        if (isDbSelectorOpen) {
+            setTimeout(() => window.addEventListener('click', closeDropdown, { once: true }), 0);
+        }
+
         subContainer.appendChild(header);
 
         // Content Area

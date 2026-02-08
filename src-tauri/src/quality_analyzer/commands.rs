@@ -77,7 +77,7 @@ pub async fn run_quality_analysis(
             // We can fetch limit 1 for optimization if we add that method, or just get all and take first
             // For performance, let's just get all (assuming < 100 snapshots usually) or add a specialized query?
             // Re-using get_snapshots for now.
-            if let Ok(snapshots) = store.get_snapshots(&connection_id).await {
+            if let Ok(snapshots) = store.get_snapshots(&connection_id, None).await {
                 snapshots.first().and_then(|s| s.id)
             } else {
                 None

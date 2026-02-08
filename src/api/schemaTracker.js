@@ -6,8 +6,8 @@ export const SchemaTrackerApi = {
      * @param {string} connectionId 
      * @returns {Promise<SchemaSnapshot>}
      */
-    async captureSnapshot(connectionId) {
-        return await invoke('capture_schema_snapshot', { connectionId });
+    async captureSnapshot(connectionId, targetSchema) {
+        return await invoke('capture_schema_snapshot', { connectionId, targetSchema });
     },
 
     /**
@@ -62,12 +62,13 @@ export const SchemaTrackerApi = {
     },
 
     /**
-     * Gets all snapshots for a connection.
+     * Gets all snapshots for a connection, optionally filtered by database.
      * @param {string} connectionId
+     * @param {string|null} databaseFilter
      * @returns {Promise<SchemaSnapshot[]>}
      */
-    async getSnapshots(connectionId) {
-        return await invoke('get_schema_snapshots', { connectionId });
+    async getSnapshots(connectionId, databaseFilter = null) {
+        return await invoke('get_schema_snapshots', { connectionId, databaseFilter });
     },
 
     /**
