@@ -91,18 +91,21 @@ export function SchemaDesigner() {
         colType: null
     };
 
-    let theme = ThemeManager.getCurrentTheme();
-    let isLight = theme === 'light';
-    let isDawn = theme === 'dawn';
-    let isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+    const flags = ThemeManager.getThemeFlags();
+    const { isLight, isDawn, isOceanic, isEmber, isAurora, isNeon } = flags;
+    const isNord = isOceanic || isEmber || isAurora;
+
     const container = document.createElement('div');
-    const getContainerClass = (t) => {
-        const _isLight = t === 'light';
-        const _isDawn = t === 'dawn';
-        const _isOceanic = t === 'oceanic';
-        return `flex-1 flex flex-col h-full overflow-hidden ${_isLight ? 'bg-gray-50' : (_isDawn ? 'bg-[#fffaf3]' : (_isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]'))} selection:bg-mysql-teal/40 relative transition-all duration-300`;
+    const getContainerClass = () => {
+        let bgClass = 'bg-[#0a0c10]';
+        if (isLight) bgClass = 'bg-gray-50';
+        else if (isDawn) bgClass = 'bg-[#fffaf3]';
+        else if (isNord) bgClass = 'bg-ocean-bg';
+        else if (isNeon) bgClass = 'bg-[#050510]';
+
+        return `flex-1 flex flex-col h-full overflow-hidden ${bgClass} selection:bg-mysql-teal/40 relative transition-all duration-300`;
     };
-    container.className = getContainerClass(theme);
+    container.className = getContainerClass();
 
     // --- Helper for Type Options ---
     const getDataTypeOptions = () => {
@@ -121,9 +124,6 @@ export function SchemaDesigner() {
 
     // --- Template ---
     const renderMainTemplate = () => {
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
         const isPostgres = state.activeDbType === 'postgresql';
         const strategyOptions = isPostgres
             ? `
@@ -135,34 +135,70 @@ export function SchemaDesigner() {
                 <option value="pt_osc" ${state.schemaChangeStrategy === 'pt_osc' ? 'selected' : ''}>pt-online-schema-change plan</option>
                 <option value="gh_ost" ${state.schemaChangeStrategy === 'gh_ost' ? 'selected' : ''}>gh-ost plan</option>
             `;
+
+        let headerClass = 'border-white/5 bg-[#121418]';
+        if (isLight) headerClass = 'border-gray-100 bg-white';
+        else if (isDawn) headerClass = 'border-[#f2e9e1] bg-[#faf4ed]';
+        else if (isNord) headerClass = 'bg-ocean-panel border-ocean-border/50';
+        else if (isNeon) headerClass = 'bg-[#0a0a1f] border-neon-border/40';
+
+        let logoLabelClass = 'text-white/90';
+        if (isLight) logoLabelClass = 'text-gray-900';
+        else if (isDawn) logoLabelClass = 'text-[#575279]';
+        else if (isNeon) logoLabelClass = 'text-neon-text';
+
+        let dbLabelClass = 'text-mysql-cyan/70';
+        if (isLight) dbLabelClass = 'text-mysql-teal';
+        else if (isDawn) dbLabelClass = 'text-[#ea9d34]';
+        else if (isNeon) dbLabelClass = 'text-cyan-400';
+
+        let strategyContainerClass = 'border-white/10 bg-white/5';
+        if (isLight) strategyContainerClass = 'border-gray-200 bg-gray-50';
+        else if (isDawn) strategyContainerClass = 'border-[#f2e9e1] bg-[#fffaf3]';
+        else if (isNeon) strategyContainerClass = 'border-neon-border/30 bg-neon-bg';
+
+        let strategyLabelClass = 'text-gray-400';
+        if (isLight) strategyLabelClass = 'text-gray-500';
+        else if (isDawn) strategyLabelClass = 'text-[#797593]';
+        else if (isNeon) strategyLabelClass = 'text-neon-text/60';
+
+        let lockGuardClass = 'border-white/10 bg-white/5 text-gray-300';
+        if (isLight) lockGuardClass = 'border-gray-200 bg-gray-50 text-gray-600';
+        else if (isDawn) lockGuardClass = 'border-[#f2e9e1] bg-[#fffaf3] text-[#575279]';
+        else if (isNeon) lockGuardClass = 'border-neon-border/30 bg-neon-bg text-neon-text/80';
+
+        let pushBtnClass = 'bg-mysql-teal text-white shadow-mysql-teal/20';
+        if (isDawn) pushBtnClass = 'bg-[#ea9d34] text-[#fffaf3] shadow-[#ea9d34]/20';
+        else if (isNeon) pushBtnClass = 'bg-neon-accent text-white shadow-[0_0_15px_rgba(255,0,153,0.4)]';
+
         return `
-            <header class="h-14 border-b ${isLight ? 'border-gray-100 bg-white' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'border-white/5 bg-[#121418]'))} px-6 flex items-center justify-between z-20">
+            <header class="h-14 border-b ${headerClass} px-6 flex items-center justify-between z-20">
                 <div class="flex items-center gap-8">
                     <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 rounded ${isDawn ? 'bg-[#ea9d34] shadow-[0_0_8px_rgba(234,157,52,0.4)]' : 'bg-mysql-teal'} flex items-center justify-center neu-flat">
+                        <div class="w-8 h-8 rounded ${isDawn ? 'bg-[#ea9d34] shadow-[0_0_8px_rgba(234,157,52,0.4)]' : (isNeon ? 'bg-neon-accent shadow-[0_0_12px_rgba(255,0,153,0.5)]' : 'bg-mysql-teal')} flex items-center justify-center neu-flat">
                             <span class="material-symbols-outlined ${isDawn ? 'text-[#fffaf3]' : 'text-white'} text-lg">database</span>
                         </div>
                         <div>
-                            <h1 class="text-[10px] font-black tracking-[0.2em] ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white/90')} uppercase leading-none mb-1">Schema Designer</h1>
+                            <h1 class="text-[10px] font-black tracking-[0.2em] ${logoLabelClass} uppercase leading-none mb-1">Schema Designer</h1>
                             <div class="flex items-center gap-2">
-                                <span class="text-[11px] font-mono ${isLight ? 'text-mysql-teal' : (isDawn ? 'text-[#ea9d34]' : 'text-mysql-cyan/70')}">${state.database}.${state.tableName}</span>
+                                <span class="text-[11px] font-mono ${dbLabelClass}">${state.database}.${state.tableName}</span>
                                 <div class="w-1 h-1 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div>
                             </div>
                         </div>
                     </div>
                 </div>
                 <div class="flex items-center gap-3">
-                    <div class="flex items-center gap-2 px-3 py-2 rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3]' : 'border-white/10 bg-white/5')}">
-                        <label for="schema-change-strategy" class="text-[9px] uppercase tracking-widest font-bold ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">${isPostgres ? 'PG DDL Mode' : 'MySQL OSC Mode'}</label>
-                        <select id="schema-change-strategy" class="tactile-input text-[10px] py-1 px-2 min-w-[200px] ${isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : ''}">
+                    <div class="flex items-center gap-2 px-3 py-2 rounded-lg border ${strategyContainerClass}">
+                        <label for="schema-change-strategy" class="text-[9px] uppercase tracking-widest font-bold ${strategyLabelClass}">${isPostgres ? 'PG DDL Mode' : 'MySQL OSC Mode'}</label>
+                        <select id="schema-change-strategy" class="tactile-input text-[10px] py-1 px-2 min-w-[200px] ${isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isNeon ? 'bg-neon-bg border-neon-border/40 text-neon-text' : '')}">
                             ${strategyOptions}
                         </select>
                     </div>
-                    <label class="flex items-center gap-2 px-2 py-1 rounded border ${isLight ? 'border-gray-200 bg-gray-50 text-gray-600' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3] text-[#575279]' : 'border-white/10 bg-white/5 text-gray-300')} text-[10px] font-bold uppercase tracking-widest">
+                    <label class="flex items-center gap-2 px-2 py-1 rounded border ${lockGuardClass} text-[10px] font-bold uppercase tracking-widest">
                         <input type="checkbox" id="lock-guard-toggle" class="w-3 h-3" ${state.lockGuardEnabled ? 'checked' : ''} />
                         Lock Guard
                     </label>
-                    <button class="flex items-center gap-2 px-5 py-2 ${isDawn ? 'bg-[#ea9d34] text-[#fffaf3] shadow-[#ea9d34]/20' : 'bg-mysql-teal text-white shadow-mysql-teal/20'} rounded-lg text-[11px] font-bold tracking-widest uppercase hover:brightness-110 transition-all shadow-lg" id="btn-push-changes">
+                    <button class="flex items-center gap-2 px-5 py-2 ${pushBtnClass} rounded-lg text-[11px] font-bold tracking-widest uppercase hover:brightness-110 transition-all shadow-lg" id="btn-push-changes">
                         <span class="material-symbols-outlined text-sm">publish</span>
                         Push Changes
                     </button>
@@ -171,11 +207,11 @@ export function SchemaDesigner() {
             </header>
 
             <div class="flex-1 flex overflow-hidden z-10">
-                <main class="flex-1 flex flex-col ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : 'bg-base-dark'))} p-6 overflow-hidden">
+                <main class="flex-1 flex flex-col ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isNord ? 'bg-ocean-bg' : (isNeon ? 'bg-[#050510]' : 'bg-base-dark')))} p-6 overflow-hidden">
                     <div class="flex items-center justify-between mb-4 px-2">
                         <div class="flex items-center gap-6">
                             <!-- Tabs -->
-                            <div class="flex items-center p-1 ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#faf4ed]' : 'bg-white/5')} rounded-lg border ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
+                            <div class="flex items-center p-1 ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#faf4ed]' : (isNeon ? 'bg-neon-bg border-neon-border/30' : 'bg-white/5'))} rounded-lg border ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isNeon ? 'border-neon-border/40' : 'border-white/5'))}">
                                 <button class="px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all" id="tab-columns">
                                     Columns
                                 </button>
@@ -206,43 +242,43 @@ export function SchemaDesigner() {
                             <div id="tab-actions"></div>
                         </div>
                         <div class="flex items-center gap-4 text-[10px] font-mono text-gray-600">
-                            <span class="${isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal'}" id="status-display"></span>
+                            <span class="${isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-text' : 'text-mysql-teal')}" id="status-display"></span>
                         </div>
                     </div>
                     
-                    <div class="flex-1 neu-card rounded-xl overflow-hidden flex flex-col border ${isLight ? 'border-gray-200 bg-white' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : 'border-white/5 bg-background-card')}" id="main-content-area">
+                    <div class="flex-1 neu-card rounded-xl overflow-hidden flex flex-col border ${isLight ? 'border-gray-200 bg-white' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isNeon ? 'bg-[#0a0a1f] border-neon-border/40' : 'border-white/5 bg-background-card'))}" id="main-content-area">
                          <div class="flex-1 overflow-auto custom-scrollbar">
                             <table class="w-full text-left font-mono text-[12px] border-collapse">
-                                <thead class="sticky top-0 ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#faf4ed]' : 'bg-[#1a1d23]')} z-20 shadow-sm border-b ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/10')}" id="table-header"></thead>
-                                <tbody class="divide-y ${isLight ? 'divide-gray-100' : (isDawn ? 'divide-[#f2e9e1]' : 'divide-white/[0.03]')}" id="table-body"></tbody>
+                                <thead class="sticky top-0 ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#faf4ed]' : (isNeon ? 'bg-[#050510]' : 'bg-[#1a1d23]'))} z-20 shadow-sm border-b ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isNeon ? 'border-neon-border/30' : 'border-white/10'))}" id="table-header"></thead>
+                                <tbody class="divide-y ${isLight ? 'divide-gray-100' : (isDawn ? 'divide-[#f2e9e1]' : (isNeon ? 'divide-neon-border/20' : 'divide-white/[0.03]'))}" id="table-body"></tbody>
                             </table>
                         </div>
                     </div>
                 </main>
-                <aside class="flex-shrink-0 ${isLight ? 'bg-white' : (isDawn ? 'bg-[#faf4ed]' : 'bg-[#121418]')} border-l ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/10')} flex flex-col relative z-30" id="sidebar-container" style="width: 340px;">
+                <aside class="flex-shrink-0 ${isLight ? 'bg-white' : (isDawn ? 'bg-[#faf4ed]' : (isNord ? 'bg-ocean-panel' : (isNeon ? 'bg-[#0a0a1f]' : 'bg-[#121418]')))} border-l ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isNeon ? 'border-neon-border/40' : 'border-white/10'))} flex flex-col relative z-30" id="sidebar-container" style="width: 340px;">
                 </aside>
             </div>
             
             <!-- SQL Draft Panel -->
             <div class="absolute bottom-6 left-6 right-[360px] z-50"> 
-                <div class="neu-card rounded-2xl ${isLight ? 'border-mysql-teal bg-white shadow-xl' : (isDawn ? 'border-[#ea9d34] bg-[#fffaf3] shadow-xl' : 'border-mysql-teal/40 glow-border-mysql bg-[#1a1d23] shadow-2xl')} overflow-hidden transition-all duration-300 transform translate-y-0" id="sql-panel" style="height: 250px; display: flex; flex-direction: column;">
+                <div class="neu-card rounded-2xl ${isLight ? 'border-mysql-teal bg-white shadow-xl' : (isDawn ? 'border-[#ea9d34] bg-[#fffaf3] shadow-xl' : (isNeon ? 'border-neon-accent/50 glow-border-neon bg-[#050510] shadow-[0_0_20px_rgba(255,0,153,0.15)]' : 'border-mysql-teal/40 glow-border-mysql bg-[#1a1d23] shadow-2xl'))} overflow-hidden transition-all duration-300 transform translate-y-0" id="sql-panel" style="height: 250px; display: flex; flex-direction: column;">
                     <!-- Resize Handle -->
                     <div class="absolute top-0 left-0 right-0 h-1 cursor-ns-resize hover:bg-mysql-teal/50 transition-colors z-10 group" id="sql-resize-handle">
-                        <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-12 h-1 rounded-full ${isLight ? 'bg-gray-300' : (isDawn ? 'bg-[#dcd7da]' : 'bg-white/20')} group-hover:bg-mysql-teal/70 transition-colors"></div>
+                        <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-12 h-1 rounded-full ${isLight ? 'bg-gray-300' : (isDawn ? 'bg-[#dcd7da]' : (isNeon ? 'bg-neon-border/50' : 'bg-white/20'))} group-hover:bg-mysql-teal/70 transition-colors"></div>
                     </div>
-                     <div class="px-6 py-3 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/10')} flex items-center justify-between cursor-pointer flex-shrink-0" id="sql-panel-header">
+                     <div class="px-6 py-3 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : (isNeon ? 'border-neon-border/30' : 'border-white/10'))} flex items-center justify-between cursor-pointer flex-shrink-0" id="sql-panel-header">
                         <div class="flex items-center gap-3">
-                            <div class="flex items-center gap-1.5 px-2 py-0.5 rounded ${isDawn ? 'bg-[#ea9d34]/10 border-[#ea9d34]/30' : 'bg-mysql-teal/20 border-mysql-teal/30 border'}">
-                                <span class="w-1.5 h-1.5 rounded-full ${isDawn ? 'bg-[#ea9d34]' : 'bg-mysql-cyan'} animate-pulse"></span>
-                                <span class="text-[10px] font-bold ${isDawn ? 'text-[#ea9d34]' : 'text-mysql-cyan'} uppercase tracking-tighter">SQL Draft</span>
+                            <div class="flex items-center gap-1.5 px-2 py-0.5 rounded ${isDawn ? 'bg-[#ea9d34]/10 border-[#ea9d34]/30' : (isNeon ? 'bg-neon-accent/10 border-neon-accent/30 border' : 'bg-mysql-teal/20 border-mysql-teal/30 border')}">
+                                <span class="w-1.5 h-1.5 rounded-full ${isDawn ? 'bg-[#ea9d34]' : (isNeon ? 'bg-neon-accent' : 'bg-mysql-cyan')} animate-pulse"></span>
+                                <span class="text-[10px] font-bold ${isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-mysql-cyan')} uppercase tracking-tighter">SQL Draft</span>
                             </div>
-                            <span class="text-[11px] font-bold tracking-widest ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white/70')} uppercase">Generated ALTER Statements</span>
+                            <span class="text-[11px] font-bold tracking-widest ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-white/70'))} uppercase">Generated ALTER Statements</span>
                         </div>
                         <div class="flex items-center gap-3">
                              <span class="material-symbols-outlined text-gray-500 text-sm transform transition-transform" id="sql-panel-toggle-icon">expand_more</span>
                         </div>
                     </div>
-                    <div class="p-6 code-overlay font-mono text-[13px] leading-relaxed overflow-y-auto custom-scrollbar flex-1 ${isDawn ? 'text-[#575279]' : ''}" id="sql-content-area">
+                    <div class="p-6 code-overlay font-mono text-[13px] leading-relaxed overflow-y-auto custom-scrollbar flex-1 ${isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text/90' : '')}" id="sql-content-area">
                         <div id="sql-strategy-note" class="mb-3 text-[10px]"></div>
                         <div id="sql-warning-list" class="mb-3 space-y-2"></div>
                         <div id="sql-command-hints" class="mb-3"></div>
@@ -274,7 +310,7 @@ export function SchemaDesigner() {
                             <div class="border ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : 'border-white/10 bg-[#0b0d11]')} rounded-xl p-2 max-h-48 overflow-y-auto custom-scrollbar" id="modal-idx-cols-list"></div>
                         </div>
                     </div>
-                    <div class="p-6 border-t ${isLight ? 'border-gray-100 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : 'border-white/5 bg-[#121418]')} flex justify-end gap-3 rounded-b-2xl">
+                    <div class="p-6 border-t ${isLight ? 'border-gray-100 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isNeon ? 'border-neon-border/20 bg-[#0a0a1f]' : 'border-white/5 bg-[#121418]'))} flex justify-end gap-3 rounded-b-2xl">
                          <button id="btn-modal-idx-cancel" class="px-4 py-2 rounded text-xs font-bold text-gray-400 hover:${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} transition-colors">Cancel</button>
                          <button id="btn-modal-idx-save" class="px-5 py-2 rounded ${isDawn ? 'bg-[#ea9d34] shadow-[#ea9d34]/20' : 'bg-mysql-teal shadow-mysql-teal/20'} text-white text-xs font-bold hover:brightness-110 shadow-lg">Create Index</button>
                     </div>
@@ -308,9 +344,9 @@ export function SchemaDesigner() {
                             <div id="fk-refcol-container"></div>
                         </div>
                     </div>
-                    <div class="p-6 border-t ${isLight ? 'border-gray-100 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : 'border-white/5 bg-[#121418]')} flex justify-end gap-3 rounded-b-2xl">
+                    <div class="p-6 border-t ${isLight ? 'border-gray-100 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isNeon ? 'border-neon-border/20 bg-[#0a0a1f]' : 'border-white/5 bg-[#121418]'))} flex justify-end gap-3 rounded-b-2xl">
                          <button id="btn-modal-fk-cancel" class="px-4 py-2 rounded text-xs font-bold text-gray-400 hover:${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} transition-colors">Cancel</button>
-                         <button id="btn-modal-fk-save" class="px-5 py-2 rounded ${isDawn ? 'bg-[#ea9d34] shadow-[#ea9d34]/20' : 'bg-mysql-teal shadow-mysql-teal/20'} text-white text-xs font-bold hover:brightness-110 shadow-lg">Create Constraints</button>
+                         <button id="btn-modal-fk-save" class="px-5 py-2 rounded ${isDawn ? 'bg-[#ea9d34] shadow-[#ea9d34]/20' : 'bg-mysql-teal shadow-mysql-teal/20'} text-white text-xs font-bold hover:brightness-110 shadow-lg">Create Foreign Key</button>
                     </div>
                 </div>
             </div>
@@ -344,7 +380,7 @@ export function SchemaDesigner() {
 END"></textarea>
                         </div>
                     </div>
-                    <div class="p-6 border-t ${isLight ? 'border-gray-100 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : 'border-white/5 bg-[#121418]')} flex justify-end gap-3 rounded-b-2xl">
+                    <div class="p-6 border-t ${isLight ? 'border-gray-100 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isNeon ? 'border-neon-border/20 bg-[#0a0a1f]' : 'border-white/5 bg-[#121418]'))} flex justify-end gap-3 rounded-b-2xl">
                          <button id="btn-modal-trigger-cancel" class="px-4 py-2 rounded text-xs font-bold text-gray-400 hover:${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} transition-colors">Cancel</button>
                          <button id="btn-modal-trigger-save" class="px-5 py-2 rounded ${isDawn ? 'bg-[#ea9d34] shadow-[#ea9d34]/20' : 'bg-mysql-teal shadow-mysql-teal/20'} text-white text-xs font-bold hover:brightness-110 shadow-lg">Create Trigger</button>
                     </div>
@@ -401,7 +437,7 @@ END"></textarea>
                     </div>
                     <div class="p-6 border-t ${isLight ? 'border-gray-100 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : 'border-white/5 bg-[#121418]')} flex justify-end gap-3 rounded-b-2xl">
                          <button id="btn-modal-column-cancel" class="px-4 py-2 rounded text-xs font-bold text-gray-400 hover:${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} transition-colors">Cancel</button>
-                         <button id="btn-modal-column-save" class="px-5 py-2 rounded ${isDawn ? 'bg-[#ea9d34] shadow-[#ea9d34]/20' : 'bg-mysql-teal shadow-mysql-teal/20'} text-white text-xs font-bold hover:brightness-110 shadow-lg">Add Column</button>
+                         <button id="btn-modal-column-save" class="px-5 py-2 rounded ${isLight ? 'bg-mysql-teal shadow-mysql-teal/20' : (isDawn ? 'bg-[#ea9d34] shadow-[#ea9d34]/20' : (isNeon ? 'bg-neon-accent shadow-[0_0_12px_rgba(255,0,153,0.4)]' : 'bg-mysql-teal shadow-mysql-teal/20'))} text-white text-xs font-bold hover:brightness-110 shadow-lg">Add Column</button>
                     </div>
                 </div>
             </div>
@@ -425,8 +461,14 @@ END"></textarea>
         const tabDdl = container.querySelector('#tab-ddl');
         const tabStats = container.querySelector('#tab-stats');
 
-        const activeClass = isDawn ? 'bg-[#ea9d34] text-[#fffaf3] shadow-lg shadow-[#ea9d34]/20' : 'bg-mysql-teal text-white shadow-lg';
-        const inactiveClass = isLight ? 'text-gray-500 hover:text-gray-900' : (isDawn ? 'text-[#797593] hover:text-[#575279]' : 'text-gray-500 hover:text-gray-300');
+        let activeClass = 'bg-mysql-teal text-white shadow-lg';
+        if (isDawn) activeClass = 'bg-[#ea9d34] text-[#fffaf3] shadow-lg shadow-[#ea9d34]/20';
+        else if (isNeon) activeClass = 'bg-neon-accent text-white shadow-[0_0_12px_rgba(255,0,153,0.4)]';
+
+        let inactiveClass = 'text-gray-500 hover:text-gray-300';
+        if (isLight) inactiveClass = 'text-gray-500 hover:text-gray-900';
+        else if (isDawn) inactiveClass = 'text-[#797593] hover:text-[#575279]';
+        else if (isNeon) inactiveClass = 'text-neon-text/60 hover:text-neon-text';
 
         tabCols.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'columns' ? activeClass : inactiveClass}`;
         tabIdx.className = `px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all ${state.activeTab === 'indexes' ? activeClass : inactiveClass}`;
@@ -441,7 +483,10 @@ END"></textarea>
         const actionsContainer = container.querySelector('#tab-actions');
         actionsContainer.innerHTML = ''; // Clear defaults
 
-        const btnClass = isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-200' : (isDawn ? 'bg-[#faf4ed] hover:bg-[#fffaf3] text-[#575279] border-[#f2e9e1] hover:border-[#ea9d34]' : 'bg-white/5 hover:bg-white/10 text-gray-400 border-white/10');
+        let btnClass = 'bg-white/5 hover:bg-white/10 text-gray-400 border-white/10';
+        if (isLight) btnClass = 'bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-200';
+        else if (isDawn) btnClass = 'bg-[#faf4ed] hover:bg-[#fffaf3] text-[#575279] border-[#f2e9e1] hover:border-[#ea9d34]';
+        else if (isNeon) btnClass = 'bg-neon-bg hover:bg-neon-border/20 text-neon-text border-neon-border/40 hover:border-neon-border/60';
 
         if (state.activeTab === 'columns') {
             actionsContainer.innerHTML = `
@@ -511,10 +556,12 @@ END"></textarea>
         const thead = container.querySelector('#table-header');
         const statusDisplay = container.querySelector('#status-display');
 
+        const tableHeaderClass = isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : (isNeon ? 'text-neon-text/70' : 'text-gray-500'));
+
         if (state.activeTab === 'columns') {
             statusDisplay.innerText = `${state.columns.length} COLUMNS`;
             thead.innerHTML = `
-        <tr class="${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-500')} uppercase text-[10px] tracking-widest">
+        <tr class="${tableHeaderClass} uppercase text-[10px] tracking-widest">
                     <th class="p-4 w-12 text-center">#</th>
                     <th class="p-4 min-w-[200px]">Column Name</th>
                     <th class="p-4 w-32">Type</th>
@@ -528,7 +575,7 @@ END"></textarea>
         } else if (state.activeTab === 'indexes') {
             statusDisplay.innerText = `${state.indexes.length} INDEXES`;
             thead.innerHTML = `
-        <tr class="${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-500')} uppercase text-[10px] tracking-widest">
+        <tr class="${tableHeaderClass} uppercase text-[10px] tracking-widest">
                     <th class="p-4 w-12 text-center">#</th>
                     <th class="p-4 min-w-[150px]">Index Name</th>
                     <th class="p-4">Columns</th>
@@ -541,7 +588,7 @@ END"></textarea>
         } else if (state.activeTab === 'foreign_keys') {
             statusDisplay.innerText = `${state.foreignKeys.length} FOREIGN KEYS`;
             thead.innerHTML = `
-        <tr class="${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-500')} uppercase text-[10px] tracking-widest">
+        <tr class="${tableHeaderClass} uppercase text-[10px] tracking-widest">
                     <th class="p-4 w-12 text-center">#</th>
                     <th class="p-4 min-w-[150px]">Constraint Name</th>
                     <th class="p-4">Column</th>
@@ -554,7 +601,7 @@ END"></textarea>
         } else if (state.activeTab === 'constraints') {
             statusDisplay.innerText = `${state.constraints.length} CONSTRAINTS`;
             thead.innerHTML = `
-        <tr class="${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-500')} uppercase text-[10px] tracking-widest">
+        <tr class="${tableHeaderClass} uppercase text-[10px] tracking-widest">
                     <th class="p-4 w-12 text-center">#</th>
                     <th class="p-4 min-w-[150px]">Constraint Name</th>
                     <th class="p-4">Type</th>
@@ -565,7 +612,7 @@ END"></textarea>
         } else if (state.activeTab === 'triggers') {
             statusDisplay.innerText = `${state.triggers.length} TRIGGERS`;
             thead.innerHTML = `
-        <tr class="${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-500')} uppercase text-[10px] tracking-widest">
+        <tr class="${tableHeaderClass} uppercase text-[10px] tracking-widest">
                       <th class="p-4 w-12 text-center">#</th>
                       <th class="p-4 min-w-[150px]">Trigger Name</th>
                       <th class="p-4">Event</th>
@@ -601,24 +648,28 @@ END"></textarea>
 
         state.columns.forEach((col, idx) => {
             const tr = document.createElement('tr');
+            let selectedRowBorder = 'border-mysql-teal bg-mysql-teal/5';
+            if (isDawn) selectedRowBorder = 'border-[#ea9d34] bg-[#ea9d34]/5';
+            else if (isNeon) selectedRowBorder = 'border-neon-accent bg-neon-accent/5';
+
             tr.className = `cursor-pointer transition-all border-l-2 ${col.id === state.selectedColumnId
-                ? (isDawn ? 'border-[#ea9d34] bg-[#ea9d34]/5' : 'border-mysql-teal bg-mysql-teal/5')
+                ? selectedRowBorder
                 : 'border-transparent hover:bg-white/[0.02]'
                 }`;
             tr.onclick = () => { state.selectedColumnId = col.id; updateAll(); };
 
             const constraints = [];
-            if (col.primaryKey) constraints.push(`<span class="px-1.5 py-0.5 rounded text-[9px] font-bold ${isDawn ? 'bg-[#ea9d34]/20 text-[#ea9d34]' : 'bg-yellow-500/20 text-yellow-400'}">PK</span>`);
-            if (col.autoIncrement) constraints.push(`<span class="px-1.5 py-0.5 rounded text-[9px] font-bold ${isDawn ? 'bg-[#286983]/20 text-[#286983]' : 'bg-blue-500/20 text-blue-400'}">AI</span>`);
+            if (col.primaryKey) constraints.push(`<span class="px-1.5 py-0.5 rounded text-[9px] font-bold ${isDawn ? 'bg-[#ea9d34]/20 text-[#ea9d34]' : (isNeon ? 'bg-neon-accent/20 text-neon-accent shadow-[0_0_8px_rgba(255,0,153,0.3)]' : 'bg-yellow-500/20 text-yellow-400')}">PK</span>`);
+            if (col.autoIncrement) constraints.push(`<span class="px-1.5 py-0.5 rounded text-[9px] font-bold ${isDawn ? 'bg-[#286983]/20 text-[#286983]' : (isNeon ? 'bg-cyan-500/20 text-cyan-400' : 'bg-blue-500/20 text-blue-400')}">AI</span>`);
             if (!col.nullable) constraints.push(`<span class="px-1.5 py-0.5 rounded text-[9px] font-bold ${isDawn ? 'bg-[#d7827e]/20 text-[#d7827e]' : 'bg-red-500/20 text-red-400'}">NN</span>`);
-            if (col.unique) constraints.push(`<span class="px-1.5 py-0.5 rounded text-[9px] font-bold ${isDawn ? 'bg-[#907aa9]/20 text-[#907aa9]' : 'bg-purple-500/20 text-purple-400'}">UQ</span>`);
+            if (col.unique) constraints.push(`<span class="px-1.5 py-0.5 rounded text-[9px] font-bold ${isDawn ? 'bg-[#907aa9]/20 text-[#907aa9]' : (isNeon ? 'bg-purple-500/20 text-purple-400' : 'bg-purple-500/20 text-purple-400')}">UQ</span>`);
 
             tr.innerHTML = `
-                <td class="p-4 text-center ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-600')}">${idx + 1}</td>
-                <td class="p-4 ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} font-medium">${col.name}</td>
-                <td class="p-4 ${isDawn ? 'text-[#56949f]' : 'text-mysql-cyan'}">${col.type}</td>
-                <td class="p-4 ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">${col.length || '-'}</td>
-                <td class="p-4 ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-400')} font-mono text-[10px]">${col.defaultVal || '-'}</td>
+                <td class="p-4 text-center ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-text/40' : 'text-gray-600'))}">${idx + 1}</td>
+                <td class="p-4 ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-white'))} font-medium">${col.name}</td>
+                <td class="p-4 ${isDawn ? 'text-[#56949f]' : (isNeon ? 'text-cyan-400' : 'text-mysql-cyan')}">${col.type}</td>
+                <td class="p-4 ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : (isNeon ? 'text-neon-text/70' : 'text-gray-400'))}">${col.length || '-'}</td>
+                <td class="p-4 ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : (isNeon ? 'text-neon-text/70' : 'text-gray-400'))} font-mono text-[10px]">${col.defaultVal || '-'}</td>
                 <td class="p-4"><div class="flex items-center gap-1">${constraints.join('')}</div></td>
                 <td class="p-4">
                     <button class="btn-delete-col p-1 rounded hover:bg-red-500/20 text-gray-500 hover:text-red-400 transition-all" data-id="${col.id}">
@@ -660,13 +711,13 @@ END"></textarea>
             const tr = document.createElement('tr');
             tr.className = `transition-all hover:bg-white/[0.02]`;
             tr.innerHTML = `
-                <td class="p-4 text-center ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-600')}">${i + 1}</td>
-                <td class="p-4 ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} font-medium">${escapeHtml(idx.name)}</td>
-                <td class="p-4 ${isDawn ? 'text-[#56949f]' : 'text-mysql-cyan'} font-mono text-[11px]">${(idx.columns || []).join(', ')}</td>
-                <td class="p-4 ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">${idx.type || 'INDEX'}</td>
+                <td class="p-4 text-center ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-text/40' : 'text-gray-600'))}">${i + 1}</td>
+                <td class="p-4 ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-white'))} font-medium">${escapeHtml(idx.name)}</td>
+                <td class="p-4 ${isDawn ? 'text-[#56949f]' : (isNeon ? 'text-cyan-400' : 'text-mysql-cyan')} font-mono text-[11px]">${(idx.columns || []).join(', ')}</td>
+                <td class="p-4 ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : (isNeon ? 'text-neon-text/70' : 'text-gray-400'))}">${idx.type || 'INDEX'}</td>
                 <td class="p-4">
                     ${idx.unique
-                    ? `<span class="px-2 py-0.5 rounded text-[9px] font-bold ${isDawn ? 'bg-[#907aa9]/20 text-[#907aa9]' : 'bg-purple-500/20 text-purple-400'}">UNIQUE</span>`
+                    ? `<span class="px-2 py-0.5 rounded text-[9px] font-bold ${isDawn ? 'bg-[#907aa9]/20 text-[#907aa9]' : (isNeon ? 'bg-purple-500/20 text-purple-400' : 'bg-purple-500/20 text-purple-400')}">UNIQUE</span>`
                     : `<span class="text-gray-500">-</span>`}
                 </td>
                 <td class="p-4">
@@ -703,11 +754,11 @@ END"></textarea>
             const tr = document.createElement('tr');
             tr.className = `transition-all hover:bg-white/[0.02]`;
             tr.innerHTML = `
-                <td class="p-4 text-center ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-600')}">${i + 1}</td>
-                <td class="p-4 ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} font-medium">${fk.constraint_name}</td>
-                <td class="p-4 ${isDawn ? 'text-[#56949f]' : 'text-mysql-cyan'} font-mono">${fk.column_name}</td>
-                <td class="p-4 ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">${fk.referenced_table}</td>
-                <td class="p-4 ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : 'text-gray-400')} font-mono">${fk.referenced_column}</td>
+                <td class="p-4 text-center ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-text/40' : 'text-gray-600'))}">${i + 1}</td>
+                <td class="p-4 ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-white'))} font-medium">${fk.constraint_name}</td>
+                <td class="p-4 ${isDawn ? 'text-[#56949f]' : (isNeon ? 'text-cyan-400' : 'text-mysql-cyan')} font-mono">${fk.column_name}</td>
+                <td class="p-4 ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : (isNeon ? 'text-neon-text/70' : 'text-gray-400'))}">${fk.referenced_table}</td>
+                <td class="p-4 ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : (isNeon ? 'text-neon-text/70' : 'text-gray-400'))} font-mono">${fk.referenced_column}</td>
                 <td class="p-4">
                     <button class="btn-delete-fk p-1 rounded hover:bg-red-500/20 text-gray-500 hover:text-red-400 transition-all" data-name="${fk.constraint_name}">
                         <span class="material-symbols-outlined text-sm">delete</span>
@@ -750,10 +801,10 @@ END"></textarea>
             if (c.type === 'CHECK') { typeColor = isDawn ? 'text-[#56949f]' : 'text-teal-400'; typeBg = isDawn ? 'bg-[#56949f]/10' : 'bg-teal-500/10'; }
 
             tr.innerHTML = `
-                <td class="p-4 text-center ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-600')}">${i + 1}</td>
-                <td class="p-4 ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} font-medium">${c.name}</td>
+                <td class="p-4 text-center ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-text/40' : 'text-gray-600'))}">${i + 1}</td>
+                <td class="p-4 ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-white'))} font-medium">${c.name}</td>
                 <td class="p-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${typeBg} ${typeColor}">${c.type}</span></td>
-                <td class="p-4 ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-500')} text-xs">${c.details || ''}</td>
+                <td class="p-4 ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : (isNeon ? 'text-neon-text/70' : 'text-gray-500'))} text-xs">${c.details || ''}</td>
             `;
             tbody.appendChild(tr);
         });
@@ -771,10 +822,10 @@ END"></textarea>
             const tr = document.createElement('tr');
             tr.className = `transition-all hover:bg-white/[0.02]`;
             tr.innerHTML = `
-                <td class="p-4 text-center ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-600')}">${i + 1}</td>
-                <td class="p-4 ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} font-medium">${trig.name}</td>
-                <td class="p-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${isDawn ? 'bg-[#286983]/10 text-[#286983]' : 'bg-blue-500/10 text-blue-400'}">${trig.event}</span></td>
-                <td class="p-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${isDawn ? 'bg-[#56949f]/10 text-[#56949f]' : 'bg-teal-500/10 text-teal-400'}">${trig.timing}</span></td>
+                <td class="p-4 text-center ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-text/40' : 'text-gray-600'))}">${i + 1}</td>
+                <td class="p-4 ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-white'))} font-medium">${trig.name}</td>
+                <td class="p-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${isDawn ? 'bg-[#286983]/10 text-[#286983]' : (isNeon ? 'bg-cyan-500/20 text-cyan-500' : 'bg-blue-500/10 text-blue-400')}">${trig.event}</span></td>
+                <td class="p-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${isDawn ? 'bg-[#56949f]/10 text-[#56949f]' : (isNeon ? 'bg-teal-500/20 text-teal-500' : 'bg-teal-500/10 text-teal-400')}">${trig.timing}</span></td>
                 <td class="p-4">
                     <button class="btn-delete-trig p-1 rounded hover:bg-red-500/20 text-gray-500 hover:text-red-400 transition-all" data-name="${trig.name}">
                         <span class="material-symbols-outlined text-sm">delete</span>
@@ -893,9 +944,9 @@ END"></textarea>
 
         // Helper for grid items
         const renderItem = (label, value) => `
-        <div class="${isLight ? 'bg-white border-gray-200 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] border' : 'bg-white/5 border-white/5')} border rounded p-4 flex flex-col gap-1">
-                <span class="text-[10px] uppercase font-bold tracking-widest ${isDawn ? 'text-[#797593]' : 'text-gray-500'}">${escapeHtml(label)}</span>
-                <span class="text-sm font-mono ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} truncate" title="${escapeHtml(value)}">${value !== null && value !== undefined ? escapeHtml(String(value)) : '-'}</span>
+        <div class="${isLight ? 'bg-white border-gray-200 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] border' : (isNeon ? 'bg-[#050510] border-neon-border/40' : 'bg-white/5 border-white/5'))} border rounded p-4 flex flex-col gap-1 ${isNeon ? 'shadow-[0_0_15px_rgba(255,0,153,0.05)]' : ''}">
+                <span class="text-[10px] uppercase font-bold tracking-widest ${isDawn ? 'text-[#797593]' : (isNeon ? 'text-neon-text/50' : 'text-gray-500')}">${escapeHtml(label)}</span>
+                <span class="text-sm font-mono ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-white'))} truncate" title="${escapeHtml(value)}">${value !== null && value !== undefined ? escapeHtml(String(value)) : '-'}</span>
             </div>
         `;
 
@@ -920,9 +971,9 @@ END"></textarea>
                 ${renderItem('Update Time', stats.update_time)}
                 ${renderItem('Check Time', stats.check_time)}
                 ${renderItem('Checksum', stats.checksum)}
-    <div class="col-span-2 lg:col-span-3 xl:col-span-4 ${isLight ? 'bg-white border-gray-200 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] border' : 'bg-white/5 border-white/5')} border rounded p-4 flex flex-col gap-1">
-        <span class="text-[10px] uppercase font-bold tracking-widest ${isDawn ? 'text-[#797593]' : 'text-gray-500'}">Comment</span>
-        <span class="text-sm ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-white')} italic">${stats.table_comment || '-'}</span>
+    <div class="col-span-2 lg:col-span-3 xl:col-span-4 ${isLight ? 'bg-white border-gray-200 shadow-sm' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] border' : (isNeon ? 'bg-[#050510] border-neon-border/40' : 'bg-white/5 border-white/5'))} border rounded p-4 flex flex-col gap-1 ${isNeon ? 'shadow-[0_0_15px_rgba(255,0,153,0.05)]' : ''}">
+        <span class="text-[10px] uppercase font-bold tracking-widest ${isDawn ? 'text-[#797593]' : (isNeon ? 'text-neon-text/50' : 'text-gray-500')}">Comment</span>
+        <span class="text-sm ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-white'))} italic">${stats.table_comment || '-'}</span>
     </div>
             </div>
         `;
@@ -961,10 +1012,10 @@ END"></textarea>
 
         if (state.activeTab === 'indexes') {
             sidebar.innerHTML = `
-        <div class="p-6 text-center ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9797a2]' : 'text-gray-500')} space-y-4 mt-10">
+        <div class="p-6 text-center ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9797a2]' : (isNeon ? 'text-neon-text/40' : 'text-gray-500'))} space-y-4 mt-10">
                     <span class="material-symbols-outlined text-4xl opacity-20">dataset</span>
                     <p class="text-xs">Index Management</p>
-                    <p class="text-[10px] ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]' : 'text-gray-600')}">Use the "Add Index" button to create new indexes on this table.</p>
+                    <p class="text-[10px] ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]' : (isNeon ? 'text-neon-text/30' : 'text-gray-600'))}">Use the "Add Index" button to create new indexes on this table.</p>
                 </div>
         `;
             addSidebarResizeHandle();
@@ -1015,31 +1066,31 @@ END"></textarea>
         }
 
         const renderSwitch = (label, propName, code) => `
-        <div class="flex items-center justify-between p-2 rounded-lg ${isLight ? 'bg-gray-50 border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : 'bg-white/[0.02] border-white/5')} border hover:${isLight ? 'border-mysql-teal/30' : (isDawn ? 'border-[#ea9d34]/30' : 'border-white/10')} transition-all cursor-pointer" onclick="document.getElementById('chk-${propName}').click()">
+        <div class="flex items-center justify-between p-2 rounded-lg ${isLight ? 'bg-gray-50 border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isNeon ? 'bg-neon-accent/5 border-neon-border/20' : 'bg-white/[0.02] border-white/5'))} border hover:${isLight ? 'border-mysql-teal/30' : (isDawn ? 'border-[#ea9d34]/30' : (isNeon ? 'border-neon-accent/50 shadow-[0_0_10px_rgba(255,0,153,0.1)]' : 'border-white/10'))} transition-all cursor-pointer" onclick="document.getElementById('chk-${propName}').click()">
                 <div class="flex flex-col">
-                    <span class="text-[11px] font-bold ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">${label}</span>
-                    <span class="text-[8px] ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9797a2]' : 'text-gray-600')} font-mono uppercase tracking-tighter">${code}</span>
+                    <span class="text-[11px] font-bold ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-gray-300'))}">${label}</span>
+                    <span class="text-[8px] ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9797a2]' : (isNeon ? 'text-neon-text/40' : 'text-gray-600'))} font-mono uppercase tracking-tighter">${code}</span>
                 </div>
                 <input type="checkbox" id="chk-${propName}" class="hidden" ${col[propName] ? 'checked' : ''} />
-                <div class="pointer-events-none tactile-switch ${col[propName] ? (isLight ? '' : (isDawn ? 'bg-[#ea9d34]/20' : 'tactile-switch-on')) : 'tactile-switch-off'} ${isLight && col[propName] ? 'bg-mysql-teal/20' : ''}">
-                    <div class="absolute ${col[propName] ? 'right-1 ' + (isLight ? 'bg-mysql-teal' : (isDawn ? 'bg-[#ea9d34]' : 'bg-white')) : 'left-1 ' + (isLight ? 'bg-gray-300' : (isDawn ? 'bg-[#d6d3da]' : 'bg-gray-600'))} top-1 w-3 h-3 rounded-full shadow-md transition-all"></div>
+                <div class="pointer-events-none tactile-switch ${col[propName] ? (isLight ? '' : (isDawn ? 'bg-[#ea9d34]/20' : (isNeon ? 'bg-neon-accent/20' : 'tactile-switch-on'))) : 'tactile-switch-off'} ${isLight && col[propName] ? 'bg-mysql-teal/20' : ''}">
+                    <div class="absolute ${col[propName] ? 'right-1 ' + (isLight ? 'bg-mysql-teal' : (isDawn ? 'bg-[#ea9d34]' : (isNeon ? 'bg-neon-accent shadow-[0_0_8px_rgba(255,0,153,0.8)]' : 'bg-white'))) : 'left-1 ' + (isLight ? 'bg-gray-300' : (isDawn ? 'bg-[#d6d3da]' : (isNeon ? 'bg-neon-text/20' : 'bg-gray-600')))} top-1 w-3 h-3 rounded-full shadow-md transition-all"></div>
                 </div>
             </div>
         `;
 
         sidebar.innerHTML = `
-        <div class="p-3 border-b ${isLight ? 'border-gray-100 bg-gray-50/50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : 'border-white/5 bg-white/[0.02]')}">
+        <div class="p-3 border-b ${isLight ? 'border-gray-100 bg-gray-50/50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isNeon ? 'border-neon-border/40 bg-[#0a0a1f]' : 'border-white/5 bg-white/[0.02]'))}">
                 <div class="flex items-center justify-between mb-2">
-                    <h2 class="text-[10px] font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')}">Column Properties</h2>
-                    <span class="text-[9px] font-mono ${isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal'}">ID: ${col.id}</span>
+                    <h2 class="text-[10px] font-black uppercase tracking-[0.2em] ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-white'))}">Column Properties</h2>
+                    <span class="text-[9px] font-mono ${isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-mysql-teal')}">ID: ${col.id}</span>
                 </div>
-                <div class="flex items-center gap-2 p-2 ${isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : 'bg-black/40')} rounded-lg border ${isLight ? 'border-gray-200 shadow-sm' : (isDawn ? 'border-[#f2e9e1] border' : 'border-white/5 neu-inset')}">
-                    <div class="w-8 h-8 rounded ${isLight ? 'bg-mysql-teal/10' : (isDawn ? 'bg-[#ea9d34]/20' : 'bg-mysql-teal/20')} flex items-center justify-center flex-shrink-0">
-                        <span class="material-symbols-outlined ${isLight ? 'text-mysql-teal' : (isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal')} text-base">edit_square</span>
+                <div class="flex items-center gap-2 p-2 ${isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : (isNeon ? 'bg-[#050510]' : 'bg-black/40'))} rounded-lg border ${isLight ? 'border-gray-200 shadow-sm' : (isDawn ? 'border-[#f2e9e1] border' : (isNeon ? 'border-neon-border/40 shadow-[0_0_15px_rgba(255,0,153,0.1)]' : 'border-white/5 neu-inset'))}">
+                    <div class="w-8 h-8 rounded ${isLight ? 'bg-mysql-teal/10' : (isDawn ? 'bg-[#ea9d34]/20' : (isNeon ? 'bg-neon-accent/20' : 'bg-mysql-teal/20'))} flex items-center justify-center flex-shrink-0">
+                        <span class="material-symbols-outlined ${isLight ? 'text-mysql-teal' : (isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-mysql-teal'))} text-base">edit_square</span>
                     </div>
                     <div class="min-w-0 flex-1">
                         <div class="text-[9px] text-gray-500 font-bold uppercase tracking-widest">Selected Field</div>
-                        <div class="text-xs font-mono ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white')} font-bold truncate">${col.name}</div>
+                        <div class="text-xs font-mono ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-white'))} font-bold truncate">${col.name}</div>
                     </div>
                 </div>
             </div>
@@ -1189,17 +1240,17 @@ END"></textarea>
             state.columns.forEach(col => {
                 const isChecked = state.newIndex.columns.includes(col.name);
                 const row = document.createElement('div');
-                row.className = `flex items-center gap-3 p-2 rounded cursor-pointer transition-colors ${isChecked ? 'bg-mysql-teal/10' : 'hover:bg-white/5'} `;
+                row.className = `flex items-center gap-3 p-2 rounded cursor-pointer transition-colors ${isChecked ? (isNeon ? 'bg-neon-accent/20' : 'bg-mysql-teal/10') : (isNeon ? 'hover:bg-neon-text/5' : 'hover:bg-white/5')} `;
                 row.onclick = () => {
                     if (isChecked) state.newIndex.columns = state.newIndex.columns.filter(c => c !== col.name);
                     else state.newIndex.columns.push(col.name);
                     renderIndexModal();
                 };
                 row.innerHTML = `
-                    <div class="w-4 h-4 rounded border flex items-center justify-center ${isChecked ? 'bg-mysql-teal border-mysql-teal' : 'border-gray-600 bg-transparent'}">
+                    <div class="w-4 h-4 rounded border flex items-center justify-center ${isChecked ? (isNeon ? 'bg-neon-accent border-neon-accent' : 'bg-mysql-teal border-mysql-teal') : (isNeon ? 'border-neon-text/30 bg-transparent' : 'border-gray-600 bg-transparent')}">
                         ${isChecked ? '<span class="material-symbols-outlined text-[10px] text-white">check</span>' : ''}
                     </div>
-                    <span class="text-xs font-mono ${isChecked ? 'text-white font-bold' : 'text-gray-400'}">${col.name}</span>
+                    <span class="text-xs font-mono ${isChecked ? (isNeon ? 'text-neon-text font-bold' : 'text-white font-bold') : (isNeon ? 'text-neon-text/50' : 'text-gray-400')}">${col.name}</span>
                 `;
                 colsList.appendChild(row);
             });
@@ -1584,7 +1635,7 @@ END"></textarea>
 
         if (state.activeDbType === 'mysql' && state.schemaChangeStrategy !== 'native') {
             noteContainer.innerHTML = `
-                <div class="px-3 py-2 rounded border ${isLight ? 'bg-blue-50 border-blue-200 text-blue-700' : (isDawn ? 'bg-[#ea9d34]/10 border-[#ea9d34]/20 text-[#ea9d34]' : 'bg-blue-500/10 border-blue-500/20 text-blue-300')}">
+                <div class="px-3 py-2 rounded border ${isLight ? 'bg-blue-50 border-blue-200 text-blue-700' : (isDawn ? 'bg-[#ea9d34]/10 border-[#ea9d34]/20 text-[#ea9d34]' : (isNeon ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400' : 'bg-blue-500/10 border-blue-500/20 text-blue-300'))}">
                     External OSC mode active. Push action will copy ${state.schemaChangeStrategy === 'pt_osc' ? 'pt-online-schema-change' : 'gh-ost'} command plan instead of executing SQL directly.
                 </div>
             `;
@@ -1593,7 +1644,7 @@ END"></textarea>
 
         if (state.activeDbType === 'postgresql' && state.schemaChangeStrategy === 'postgres_concurrently') {
             noteContainer.innerHTML = `
-                <div class="px-3 py-2 rounded border ${isLight ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : (isDawn ? 'bg-[#286983]/10 border-[#286983]/20 text-[#286983]' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300')}">
+                <div class="px-3 py-2 rounded border ${isLight ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : (isDawn ? 'bg-[#286983]/10 border-[#286983]/20 text-[#286983]' : (isNeon ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'))}">
                     PostgreSQL index changes use <span class="font-bold">CONCURRENTLY</span>. This is safer online, but builds longer and still takes brief metadata locks.
                 </div>
             `;
@@ -1614,13 +1665,13 @@ END"></textarea>
         warningsContainer.innerHTML = state.lockWarnings.map((warning) => {
             const severity = String(warning.severity || 'low').toLowerCase();
             const classes = severity === 'high'
-                ? (isLight ? 'bg-red-50 border-red-200 text-red-700' : 'bg-red-500/10 border-red-500/25 text-red-400')
+                ? (isLight ? 'bg-red-50 border-red-200 text-red-700' : (isNeon ? 'bg-red-500/10 border-red-500/25 text-red-500' : 'bg-red-500/10 border-red-500/25 text-red-400'))
                 : severity === 'medium'
-                    ? (isLight ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-amber-500/10 border-amber-500/25 text-amber-400')
-                    : (isLight ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-blue-500/10 border-blue-500/25 text-blue-300');
+                    ? (isLight ? 'bg-amber-50 border-amber-200 text-amber-700' : (isNeon ? 'bg-amber-500/10 border-amber-500/25 text-amber-500' : 'bg-amber-500/10 border-amber-500/25 text-amber-400'))
+                    : (isLight ? 'bg-blue-50 border-blue-200 text-blue-700' : (isNeon ? 'bg-cyan-500/10 border-cyan-500/25 text-cyan-500' : 'bg-blue-500/10 border-blue-500/25 text-blue-300'));
             const icon = severity === 'high' ? 'error' : (severity === 'medium' ? 'warning' : 'info');
             return `
-                <div class="px-3 py-2 rounded border ${classes} flex items-start gap-2 text-[10px] leading-snug">
+                <div class="px-3 py-2 rounded border ${classes} flex items-start gap-2 text-[10px] leading-snug ${isNeon ? 'glow-border-' + (severity === 'high' ? 'red' : (severity === 'medium' ? 'amber' : 'cyan')) : ''}">
                     <span class="material-symbols-outlined text-[14px]">${icon}</span>
                     <span>${escapeHtml(warning.message || '')}</span>
                 </div>
@@ -1637,8 +1688,8 @@ END"></textarea>
         }
 
         commandsContainer.innerHTML = `
-            <div class="rounded border ${isLight ? 'bg-gray-50 border-gray-200 text-gray-700' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-white/5 border-white/10 text-gray-200')}">
-                <div class="px-3 py-2 border-b ${isLight ? 'border-gray-200 text-gray-600' : (isDawn ? 'border-[#f2e9e1] text-[#797593]' : 'border-white/10 text-gray-400')} text-[10px] uppercase tracking-widest font-bold">
+            <div class="rounded border ${isLight ? 'bg-gray-50 border-gray-200 text-gray-700' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isNeon ? 'bg-[#050510] border-neon-border/40 text-neon-text' : 'bg-white/5 border-white/10 text-gray-200'))}">
+                <div class="px-3 py-2 border-b ${isLight ? 'border-gray-200 text-gray-600' : (isDawn ? 'border-[#f2e9e1] text-[#797593]' : (isNeon ? 'border-neon-border/40 text-neon-text/50' : 'border-white/10 text-gray-400'))} text-[10px] uppercase tracking-widest font-bold">
                     External OSC Command Plan
                 </div>
                 <pre class="p-3 text-[11px] leading-relaxed whitespace-pre-wrap break-words">${escapeHtml(state.externalOscCommands.join('\n'))}</pre>
