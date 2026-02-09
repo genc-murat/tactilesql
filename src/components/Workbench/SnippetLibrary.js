@@ -32,9 +32,50 @@ export function SnippetLibrary() {
     let activeCategory = 'all';
     let searchTerm = '';
 
+    // Resize State
+    let snippetHeight = parseInt(localStorage.getItem('tactile_snippet_height') || '200');
+    let isResizing = false;
+    let startY = 0;
+    let startHeight = 0;
+
     // --- Logic (defined early for use below) ---
     const saveSnippets = () => localStorage.setItem('tactile_snippets', JSON.stringify(snippets));
     const saveHistory = () => localStorage.setItem('tactile_history', JSON.stringify(history));
+
+    // Resize Handlers
+    const onMouseDown = (e) => {
+        isResizing = true;
+        startY = e.clientY;
+        startHeight = snippetHeight;
+        document.body.style.cursor = 'row-resize';
+        document.body.style.userSelect = 'none'; // Prevent text selection
+
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+    };
+
+    const onMouseMove = (e) => {
+        if (!isResizing) return;
+        const delta = e.clientY - startY;
+        const newHeight = Math.max(100, Math.min(600, startHeight + delta)); // Min 100px, Max 600px
+        snippetHeight = newHeight;
+
+        const container = aside.querySelector('#snippet-section-container');
+        if (container) {
+            container.style.height = `${newHeight}px`;
+        }
+    };
+
+    const onMouseUp = () => {
+        if (!isResizing) return;
+        isResizing = false;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        localStorage.setItem('tactile_snippet_height', snippetHeight.toString());
+
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+    };
 
     // --- Default Snippets if empty ---
     if (snippets.length === 0) {
@@ -182,13 +223,24 @@ export function SnippetLibrary() {
         const filteredHistory = getFilteredHistory();
         const groupedHistory = groupHistoryByDate(filteredHistory.slice(0, 50)); // Limit to latest 50
 
-        const snippetSectionClass = showHistory ? 'flex flex-col gap-3' : 'flex-1 flex flex-col gap-3 min-h-0';
-        const snippetListClass = showHistory
-            ? 'space-y-2 max-h-[200px] overflow-y-auto custom-scrollbar pr-1'
-            : 'flex-1 space-y-2 overflow-y-auto custom-scrollbar pr-1 min-h-0';
-        const historySectionClass = showSnippets
-            ? `flex-1 flex flex-col gap-3 min-h-0 pt-3 border-t ${dividerClass}`
+        // If history is NOT shown, snippets take full height (flex-1).
+        // If history IS shown, snippets take fixed height (snippetHeight) and history takes flex-1.
+        // But if snippets are hidden, history takes full height.
+
+        const snippetSectionStyle = showHistory ? `height: ${snippetHeight}px; min-height: 100px;` : '';
+        const snippetSectionClass = showHistory
+            ? 'flex flex-col gap-3 flex-shrink-0'
             : 'flex-1 flex flex-col gap-3 min-h-0';
+
+        const snippetListClass = 'flex-1 space-y-2 overflow-y-auto custom-scrollbar pr-1 min-h-0';
+
+        const historySectionClass = showSnippets
+            ? `flex-1 flex flex-col gap-3 min-h-0 pt-0` // Removed border-t here, handled by resizer
+            : 'flex-1 flex flex-col gap-3 min-h-0';
+
+        // Resizer Handle
+        const resizerClass = `h-3 w-full cursor-row-resize flex items-center justify-center hover:bg-black/5 dark:hover:bg-white/5 transition-colors group z-10 -my-1.5 py-1.5`;
+        const resizerLineClass = `w-8 h-1 rounded-full ${isLight ? 'bg-gray-300' : (isDawn ? 'bg-[#dcd7ba]' : 'bg-gray-600')} opacity-50 group-hover:opacity-100 transition-opacity`;
 
         if (!showSnippets && !showHistory) {
             aside.innerHTML = `
@@ -219,7 +271,7 @@ export function SnippetLibrary() {
 
         aside.innerHTML = `
             ${showSnippets ? `
-            <div class="${snippetSectionClass}">
+            <div id="snippet-section-container" class="${snippetSectionClass}" style="${snippetSectionStyle}">
                 <!-- Header with actions -->
                 <div class="flex items-center justify-between px-1">
                     <h2 class="text-[10px] font-bold uppercase tracking-[0.15em] ${isNeon ? 'text-neon-text/60' : 'text-gray-500'}">Snippets</h2>
@@ -267,6 +319,12 @@ export function SnippetLibrary() {
                     ${filteredSnippets.length === 0 ? `<div class="text-[11px] ${(isLight || isDawn) ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/50' : (isNeon ? 'text-neon-text/40' : 'text-gray-600'))} italic text-center py-4">No snippets found</div>` : ''}
                 </div>
             </div>` : ''}
+            
+            ${(showSnippets && showHistory) ? `
+                <div id="snippet-history-resizer" class="${resizerClass}">
+                    <div class="${resizerLineClass}"></div>
+                </div>
+            ` : ''}
             
             <!-- History Section -->
             ${showHistory ? `
@@ -462,7 +520,6 @@ export function SnippetLibrary() {
             });
         });
 
-        // Clear History
         const clearBtn = aside.querySelector('#clear-history-btn');
         if (clearBtn) {
             clearBtn.addEventListener('click', async () => {
@@ -472,6 +529,12 @@ export function SnippetLibrary() {
                     render();
                 }
             });
+        }
+
+        // Resizer
+        const resizer = aside.querySelector('#snippet-history-resizer');
+        if (resizer) {
+            resizer.addEventListener('mousedown', onMouseDown);
         }
     };
 
