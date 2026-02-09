@@ -350,7 +350,7 @@ pub async fn get_databases(pool: &Pool<MySql>) -> Result<Vec<String>, String> {
 }
 
 pub async fn get_tables(pool: &Pool<MySql>, database: &str) -> Result<Vec<String>, String> {
-    let query = format!("SHOW TABLES FROM `{}`", database);
+    let query = format!("SHOW FULL TABLES FROM `{}` WHERE Table_type = 'BASE TABLE'", database);
     let rows = sqlx::query(&query)
         .fetch_all(pool)
         .await
