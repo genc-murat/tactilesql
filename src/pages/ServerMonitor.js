@@ -56,9 +56,10 @@ export function ServerMonitor() {
     const disableLockFeatureIfUnsupported = (feature, error) => {
         if (!isMissingLockMetadataSupport(error)) return false;
         lockFeatureAvailability[feature] = false;
+        // Only warn once, and use debug for expected "table doesn't exist" errors
         if (!lockFeatureWarningShown[feature]) {
             const label = feature === 'analysis' ? 'Lock analysis' : 'Lock list';
-            console.warn(`${label} disabled: server does not expose required performance_schema tables.`, error);
+            console.debug(`${label} disabled: server does not expose required performance_schema tables.`);
             lockFeatureWarningShown[feature] = true;
         }
         return true;
@@ -107,7 +108,7 @@ export function ServerMonitor() {
                         console.warn('InnoDB status not available:', e);
                     }
                 }
-                
+
                 // Slow queries - works for both MySQL and PostgreSQL
                 try {
                     slow = await invoke('get_slow_queries', { limit: 50 });
@@ -219,7 +220,7 @@ export function ServerMonitor() {
                 </div>
 
                 <!-- Content -->
-                <div class="flex-1 overflow-auto">
+                <div class="flex-1 overflow-hidden flex flex-col">
                     ${isLoading ? renderLoading() : renderTabContent()}
                 </div>
             </div>
@@ -460,7 +461,7 @@ export function ServerMonitor() {
                         </div>
                         <div class="p-4 rounded-lg ${isLight ? 'bg-green-50' : (isDawn ? 'bg-[#56949f]/10' : 'bg-green-500/10')}">
                             <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')} mb-1">Hit Rate</p>
-                            <p class="text-3xl font-bold ${isDawn ? 'text-[#56949f]' : 'text-green-500'}">${i.buffer_pool_hit_rate.toFixed(2)}%</p>
+                            <p class="text-3xl font-bold ${isDawn ? 'text-[#56949f]' : 'text-green-500'}">${(Number(i.buffer_pool_hit_rate) || 0).toFixed(2)}%</p>
                         </div>
                     </div>
                 </div>
@@ -557,37 +558,74 @@ SET GLOBAL long_query_time = 1;</pre>
         }
 
         return `
-            <div class="rounded-xl ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))} overflow-hidden">
-                <div class="p-4 border-b ${isLight ? 'border-gray-200' : 'border-white/10'}">
+            <div class="rounded-xl ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))} overflow-hidden flex flex-col flex-1 h-full">
+                <div class="p-4 border-b ${isLight ? 'border-gray-200' : 'border-white/10'} flex-shrink-0">
                     <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} flex items-center gap-2">
                         <span class="material-symbols-outlined text-yellow-500">hourglass_empty</span>
                         Slow Query Log
-                        <span class="px-2 py-0.5 text-xs rounded-full bg-yellow-500/20 text-yellow-500">${slowQueries.length} queries</span>
+                        <span class="px-2 py-0.5 text-xs rounded-full bg-yellow-500/20 text-yellow-500 border border-yellow-500/30">${slowQueries.length} queries</span>
                     </h3>
                 </div>
-                <div class="overflow-auto max-h-[500px]">
-                    <table class="w-full text-sm">
-                        <thead class="sticky top-0 ${isLight ? 'bg-gray-100' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]')}">
-                            <tr class="${isLight ? 'text-gray-600' : 'text-gray-400'} text-xs uppercase tracking-wider">
-                                <th class="px-4 py-3 text-left">Time</th>
-                                <th class="px-4 py-3 text-left">User/Host</th>
-                                <th class="px-4 py-3 text-left">Query Time</th>
-                                <th class="px-4 py-3 text-left">Lock Time</th>
-                                <th class="px-4 py-3 text-left">Rows</th>
-                                <th class="px-4 py-3 text-left">SQL</th>
+                <div class="overflow-auto flex-1 custom-scrollbar">
+                    <table class="w-full text-sm border-separate border-spacing-0">
+                        <thead class="sticky top-0 z-10 ${isLight ? 'bg-gray-50' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]')} backdrop-blur-md">
+                            <tr class="${isLight ? 'text-gray-500' : 'text-gray-400'} text-xs uppercase tracking-wider font-semibold">
+                                <th class="px-4 py-3 text-left border-b ${isLight ? 'border-gray-200' : 'border-white/10'} w-24">Time</th>
+                                <th class="px-4 py-3 text-left border-b ${isLight ? 'border-gray-200' : 'border-white/10'} w-40">User/Host</th>
+                                <th class="px-4 py-3 text-right border-b ${isLight ? 'border-gray-200' : 'border-white/10'} w-24">Duration</th>
+                                <th class="px-4 py-3 text-right border-b ${isLight ? 'border-gray-200' : 'border-white/10'} w-24">Lock</th>
+                                <th class="px-4 py-3 text-right border-b ${isLight ? 'border-gray-200' : 'border-white/10'} w-24">Rows</th>
+                                <th class="px-4 py-3 text-left border-b ${isLight ? 'border-gray-200' : 'border-white/10'} min-w-[400px]">Query</th>
+                                <th class="px-4 py-3 text-center border-b ${isLight ? 'border-gray-200' : 'border-white/10'} w-16">Action</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y ${isLight ? 'divide-gray-100' : 'divide-white/5'}">
-                            ${slowQueries.map(q => `
-                                <tr class="${isLight ? 'hover:bg-gray-50' : 'hover:bg-white/5'} transition-colors">
-                                    <td class="px-4 py-3 ${isLight ? 'text-gray-700' : 'text-gray-300'} text-xs">${escapeHtml(q.start_time)}</td>
-                                    <td class="px-4 py-3 ${isLight ? 'text-gray-600' : 'text-gray-400'} text-xs">${escapeHtml(q.user_host)}</td>
-                                    <td class="px-4 py-3 text-red-500 font-mono">${q.query_time.toFixed(2)}s</td>
-                                    <td class="px-4 py-3 ${isLight ? 'text-gray-600' : 'text-gray-400'} font-mono">${q.lock_time.toFixed(2)}s</td>
-                                    <td class="px-4 py-3 ${isLight ? 'text-gray-600' : 'text-gray-400'}">${q.rows_sent}/${q.rows_examined}</td>
-                                    <td class="px-4 py-3 ${isLight ? 'text-gray-700' : 'text-gray-300'} font-mono text-xs max-w-[400px] truncate" title="${escapeHtml(q.sql_text)}">${escapeHtml(q.sql_text)}</td>
+                            ${slowQueries.map((q, idx) => {
+            const duration = Number(q.query_time) || 0;
+            const lockDuration = Number(q.lock_time) || 0;
+            // Determine severity color
+            let durationClass = isLight ? 'text-gray-700' : 'text-gray-300';
+            if (duration > 10) durationClass = 'text-red-500 font-bold';
+            else if (duration > 2) durationClass = 'text-orange-500 font-semibold';
+            else if (duration > 0.5) durationClass = 'text-yellow-500';
+
+            return `
+                                <tr class="group ${isLight ? 'hover:bg-gray-50' : 'hover:bg-white/5'} transition-colors">
+                                    <td class="px-4 py-3 ${isLight ? 'text-gray-500' : 'text-gray-400'} text-xs whitespace-nowrap align-top pt-4">
+                                        ${escapeHtml(q.start_time).split(' ')[1] || q.start_time}
+                                    </td>
+                                    <td class="px-4 py-3 align-top pt-4">
+                                        <div class="flex flex-col gap-1">
+                                            <span class="text-xs font-medium ${isLight ? 'text-gray-700' : 'text-gray-200'} truncate max-w-[140px]" title="${escapeHtml(q.user_host)}">
+                                                ${escapeHtml(q.user_host.split('[')[0] || q.user_host)}
+                                            </span>
+                                        </div>
+                                    </td>
+                                    <td class="px-4 py-3 text-right font-mono align-top pt-4">
+                                        <span class="${durationClass}">${duration.toFixed(2)}s</span>
+                                    </td>
+                                    <td class="px-4 py-3 text-right ${isLight ? 'text-gray-500' : 'text-gray-400'} font-mono text-xs align-top pt-4">
+                                        ${lockDuration > 0 ? lockDuration.toFixed(2) + 's' : '-'}
+                                    </td>
+                                    <td class="px-4 py-3 text-right text-xs align-top pt-4">
+                                        <div class="flex flex-col items-end gap-0.5">
+                                            <span class="${isLight ? 'text-gray-700' : 'text-gray-300'}" title="Rows Sent">${formatNumber(q.rows_sent)}</span>
+                                            <span class="${isLight ? 'text-gray-400' : 'text-gray-500'} text-[10px]" title="Rows Examined">/ ${formatNumber(q.rows_examined)}</span>
+                                        </div>
+                                    </td>
+                                    <td class="px-4 py-3 align-top pt-4">
+                                        <div class="font-mono text-xs ${isLight ? 'text-gray-600 bg-gray-100 border-gray-200' : 'text-blue-300/90 bg-black/20 border-white/5'} p-2 rounded border whitespace-pre-wrap break-all cursor-pointer hover:opacity-80 transition-opacity view-slow-query-btn" data-index="${idx}" title="Click to view full query">
+                                            ${escapeHtml(q.sql_text)}
+                                        </div>
+                                    </td>
+                                    <td class="px-4 py-3 text-center align-top pt-3">
+                                        <button class="view-slow-query-btn p-1.5 rounded-lg ${isLight ? 'hover:bg-gray-200 text-gray-400 hover:text-gray-600' : 'hover:bg-white/10 text-gray-500 hover:text-white'} transition-colors" data-index="${idx}" title="View Details">
+                                            <span class="material-symbols-outlined text-[18px]">visibility</span>
+                                        </button>
+                                    </td>
                                 </tr>
-                            `).join('')}
+                            `;
+        }).join('')}
                         </tbody>
                     </table>
                 </div>
@@ -908,6 +946,17 @@ SET GLOBAL long_query_time = 1;</pre>
     };
 
     const attachEvents = () => {
+        // Slow Query View Details
+        container.querySelectorAll('.view-slow-query-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const index = parseInt(e.currentTarget.dataset.index);
+                const query = slowQueries[index];
+                if (query) {
+                    Dialog.showSQL(query.sql_text, `Slow Query Detail (${formatNumber(query.query_time)}s)`);
+                }
+            });
+        });
+
         // Back button
         container.querySelector('#back-btn')?.addEventListener('click', () => {
             window.location.hash = '/workbench';

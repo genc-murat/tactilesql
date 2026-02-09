@@ -9,15 +9,21 @@
  * - Exportable audit reports
  */
 
+import { SimpleIDB } from './indexedDB.js';
+
 const AUDIT_STORAGE_KEY = 'tactilesql_audit_trail';
 const MAX_AUDIT_ENTRIES = 10000; // Keep last 10k entries
 const AUDIT_VERSION = 1;
+const DB_NAME = 'TactileSQL_AuditDB';
+const STORE_NAME = 'audit_entries';
 
 export class QueryAuditTrail {
     static #instance = null;
     #entries = [];
     #listeners = new Set();
     #sessionId = null;
+    #db = null;
+    #initialized = false;
 
     constructor() {
         if (QueryAuditTrail.#instance) {
@@ -25,6 +31,7 @@ export class QueryAuditTrail {
         }
         QueryAuditTrail.#instance = this;
         this.#sessionId = this.#generateSessionId();
+        this.#db = new SimpleIDB(DB_NAME, STORE_NAME);
         this.#loadFromStorage();
     }
 
@@ -39,17 +46,43 @@ export class QueryAuditTrail {
         return `session_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     }
 
-    #loadFromStorage() {
+    async #loadFromStorage() {
         try {
-            const stored = localStorage.getItem(AUDIT_STORAGE_KEY);
-            if (stored) {
-                const data = JSON.parse(stored);
-                if (data.version === AUDIT_VERSION) {
-                    this.#entries = data.entries || [];
-                } else {
-                    // Migration path for future versions
-                    this.#entries = [];
+            // First try to migrate from localStorage if it exists
+            const legacyStored = localStorage.getItem(AUDIT_STORAGE_KEY);
+            if (legacyStored) {
+                try {
+                    const data = JSON.parse(legacyStored);
+                    if (data.entries && Array.isArray(data.entries)) {
+                        this.#entries = data.entries;
+                        await this.#saveToStorage(); // Move to IDB
+                    }
+                    localStorage.removeItem(AUDIT_STORAGE_KEY); // Cleanup
+                } catch (e) {
+                    console.warn('Failed to migrate legacy audit trail:', e);
                 }
+            }
+
+            // Load from IndexedDB
+            const stored = await this.#db.get(AUDIT_STORAGE_KEY);
+            if (stored) {
+                if (stored.version === AUDIT_VERSION) {
+                    // Merge with any entries that might have been logged before load completed
+                    const loadedEntries = stored.entries || [];
+                    const currentIds = new Set(this.#entries.map(e => e.id));
+                    const newEntries = loadedEntries.filter(e => !currentIds.has(e.id));
+                    this.#entries = [...newEntries, ...this.#entries];
+
+                    // Sort just in case
+                    this.#entries.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                }
+            }
+            this.#initialized = true;
+            this.#notifyListeners(); // Notify that initial data is loaded
+
+            // Persist the merged state to ensure we don't lose data if a save was pending with incomplete data
+            if (stored || legacyStored) {
+                await this.#saveToStorage();
             }
         } catch (e) {
             console.warn('Failed to load audit trail:', e);
@@ -57,19 +90,26 @@ export class QueryAuditTrail {
         }
     }
 
-    #saveToStorage() {
+    async #saveToStorage() {
         try {
-            // Trim to max entries
+            // Trim to max entries in memory
             if (this.#entries.length > MAX_AUDIT_ENTRIES) {
-                this.#entries = this.#entries.slice(-MAX_AUDIT_ENTRIES);
+                this.#entries = this.#entries.slice(0, MAX_AUDIT_ENTRIES);
             }
-            
-            localStorage.setItem(AUDIT_STORAGE_KEY, JSON.stringify({
+
+            await this.#db.set(AUDIT_STORAGE_KEY, {
                 version: AUDIT_VERSION,
                 entries: this.#entries
-            }));
+            });
         } catch (e) {
-            console.warn('Failed to save audit trail:', e);
+            if (e.name === 'QuotaExceededError') {
+                console.warn('Audit trail quota exceeded. Trimming older entries...');
+                // Aggressive trim
+                this.#entries = this.#entries.slice(0, Math.floor(MAX_AUDIT_ENTRIES / 2));
+                this.#saveToStorage().catch(err => console.error('Failed to save even after trim:', err));
+            } else {
+                console.warn('Failed to save audit trail:', e);
+            }
         }
     }
 
@@ -97,7 +137,7 @@ export class QueryAuditTrail {
             id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
             timestamp: new Date().toISOString(),
             sessionId: this.#sessionId,
-            
+
             // Connection context
             connection: {
                 name: activeConnection?.name || 'Unknown',
@@ -105,19 +145,19 @@ export class QueryAuditTrail {
                 database: database || activeConnection?.database || 'Unknown',
                 user: activeConnection?.username || 'Unknown',
             },
-            
+
             // Query details
             query: query.trim(),
             queryType: detectedType,
             tables: detectedTables,
-            
+
             // Execution results
             status,
             duration,
             rowsAffected,
             rowsReturned,
             error: error ? String(error) : null,
-            
+
             // Metadata
             clientInfo: {
                 platform: navigator.platform,
@@ -125,7 +165,7 @@ export class QueryAuditTrail {
             }
         };
 
-        this.#entries.push(entry);
+        this.#entries.unshift(entry); // Add to beginning (newest first)
         this.#saveToStorage();
         this.#notifyListeners(entry);
 
@@ -142,7 +182,7 @@ export class QueryAuditTrail {
 
     #detectQueryType(query) {
         const trimmed = query.trim().toUpperCase();
-        
+
         if (trimmed.startsWith('SELECT') || trimmed.startsWith('SHOW') || trimmed.startsWith('DESCRIBE') || trimmed.startsWith('EXPLAIN')) {
             return 'SELECT';
         }
@@ -163,7 +203,7 @@ export class QueryAuditTrail {
 
     #extractTables(query) {
         const tables = new Set();
-        
+
         // Basic regex patterns to extract table names
         const patterns = [
             /FROM\s+`?(\w+)`?(?:\s+AS\s+\w+)?/gi,
@@ -232,14 +272,14 @@ export class QueryAuditTrail {
         }
         if (searchTerm) {
             const lower = searchTerm.toLowerCase();
-            results = results.filter(e => 
+            results = results.filter(e =>
                 e.query.toLowerCase().includes(lower) ||
                 e.connection.database.toLowerCase().includes(lower) ||
                 e.tables.some(t => t.toLowerCase().includes(lower))
             );
         }
 
-        // Sort by timestamp descending (newest first)
+        // Sort by timestamp descending (newest first) - already sorted by unshift/load, but ensure consistency
         results.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
         const total = results.length;
