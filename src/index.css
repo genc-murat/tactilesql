@@ -164,6 +164,23 @@
         animation: ai-pulse-glow 3s infinite ease-in-out;
     }
 
+    /* Tooltip Fade In */
+    @keyframes fade-in {
+        from {
+            opacity: 0;
+            transform: scale(0.95);
+        }
+
+        to {
+            opacity: 1;
+            transform: scale(1);
+        }
+    }
+
+    .animate-fade-in {
+        animation: fade-in 0.15s ease-out forwards;
+    }
+
     /* Markdown styling for AI Panel */
     .ai-markdown h3 {
         @apply text-[10px] font-black uppercase tracking-widest mb-2 mt-6 first:mt-0 opacity-80;
@@ -789,6 +806,33 @@
             opacity: 0.6;
             filter: drop-shadow(0 0 2px rgba(34, 211, 238, 0.2));
         }
+    }
+
+    /* Column Tooltip Speech Bubble Arrow */
+    .column-tooltip::before {
+        content: '';
+        position: absolute;
+        width: 10px;
+        height: 10px;
+        transform: rotate(45deg);
+        background: inherit;
+        border-left: inherit;
+        border-bottom: inherit;
+        top: 15px;
+        left: -6px;
+        /* Arrow on the left pointing left */
+        z-index: -1;
+    }
+
+    /* Adjust for right opening */
+    .column-tooltip.tooltip-left::before {
+        left: auto;
+        right: -6px;
+        /* Arrow on the right pointing right */
+        border-right: inherit;
+        border-top: inherit;
+        border-left: none;
+        border-bottom: none;
     }
 
     .custom-scrollbar::-webkit-scrollbar {

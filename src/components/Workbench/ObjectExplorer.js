@@ -232,7 +232,13 @@ export function ObjectExplorer() {
                     </div>
                     <div class="pl-4 space-y-0.5 mt-0.5">
                         ${columns.map(col => `
-                            <div class="grid items-center gap-1.5 min-w-0 w-full overflow-hidden text-[10px] ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text/60' : (isNeon ? 'text-neon-text/60' : 'text-gray-600')))}" style="grid-template-columns: 12px minmax(0,1fr) minmax(0,45%);">
+                            <div class="column-item cursor-context-menu grid items-center gap-1.5 min-w-0 w-full overflow-hidden text-[10px] ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text/60' : (isNeon ? 'text-neon-text/60' : 'text-gray-600')))}" style="grid-template-columns: 12px minmax(0,1fr) minmax(0,45%);"
+                                data-col-name="${escapeHtml(col.name || '')}"
+                                data-col-type="${escapeHtml(col.column_type || col.data_type || '')}"
+                                data-col-nullable="${col.is_nullable ? 'YES' : 'NO'}"
+                                data-col-key="${escapeHtml(col.column_key || '')}"
+                                data-col-default="${escapeHtml(col.column_default || 'NULL')}"
+                                data-col-extra="${escapeHtml(col.extra || '')}">
                                 ${col.column_key === 'PRI' ? `<span class="material-symbols-outlined text-[10px] shrink-0 ${isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-yellow-500')}">key</span>` :
                 col.column_key === 'UNI' ? `<span class="material-symbols-outlined text-[10px] shrink-0 ${isDawn ? 'text-[#3e8fb0]' : (isNeon ? 'text-neon-pink' : 'text-blue-400')}">fingerprint</span>` :
                     col.column_key === 'MUL' ? `<span class="material-symbols-outlined text-[10px] shrink-0 ${isNeon ? 'text-neon-accent/60' : 'text-gray-500'}">link</span>` :
@@ -619,6 +625,160 @@ export function ObjectExplorer() {
         `;
     };
 
+    // --- Context Menu / Tooltip ---
+    // --- Context Menu / Tooltip ---
+    let currentTooltip = null;
+    let cleanupTooltipListener = null;
+
+    const removeTooltip = () => {
+        if (currentTooltip) {
+            currentTooltip.remove();
+            currentTooltip = null;
+        }
+        if (cleanupTooltipListener) {
+            document.removeEventListener('mousedown', cleanupTooltipListener);
+            cleanupTooltipListener = null;
+        }
+    };
+
+    const handleContextMenu = (e) => {
+        // Find if we clicked on a column item
+        const colItem = e.target.closest('.column-item');
+        if (!colItem) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        removeTooltip();
+
+        const name = colItem.dataset.colName;
+        const type = colItem.dataset.colType;
+        const nullable = colItem.dataset.colNullable;
+        const key = colItem.dataset.colKey; // PRI, UNI, MUL
+        const def = colItem.dataset.colDefault;
+        const extra = colItem.dataset.colExtra;
+
+        // Create tooltip
+        const tooltip = document.createElement('div');
+        tooltip.className = `column-tooltip fixed z-[9999] p-3 rounded-lg shadow-xl border backdrop-blur-md animate-fade-in ${isLight ? 'bg-white/90 border-gray-200 text-gray-700' :
+            (isDawn ? 'bg-[#fffaf3]/95 border-[#f2e9e1] text-[#575279]' :
+                (isOceanic ? 'bg-[#2E3440]/95 border-[#4C566A] text-[#ECEFF4]' :
+                    (isNeon ? 'bg-[#050510]/90 border-neon-border/50 text-neon-text shadow-[0_0_20px_rgba(0,243,255,0.2)]' :
+                        'bg-[#0f1115]/95 border-white/10 text-gray-300')))
+            }`;
+
+        // Content
+        // Content Formatting
+        const typeDisplay = type ? type.toUpperCase() : 'UNKNOWN';
+
+        let nullDisplay = '';
+        if (nullable === 'YES') {
+            nullDisplay = `<span class="${isDawn ? 'text-[#3e8fb0]' : (isNeon ? 'text-neon-cyan' : 'text-blue-400')}">Nullable</span>`;
+        } else {
+            nullDisplay = `<span class="font-bold ${isDawn ? 'text-[#eb6f92]' : (isNeon ? 'text-neon-pink' : 'text-red-400')}">Not Null</span>`;
+        }
+
+        let defDisplay = '';
+        if (def === 'NULL' || def === null || def === undefined) {
+            defDisplay = `<span class="italic opacity-50">NULL</span>`;
+        } else if (def === '') {
+            defDisplay = `<span class="italic opacity-50">Empty String</span>`;
+        } else {
+            defDisplay = `<span class="font-mono">${escapeHtml(def)}</span>`;
+        }
+
+        let keyDisplay = '';
+        if (key === 'PRI') keyDisplay = `<span class="font-bold ${isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-yellow-500')}">Primary Key</span>`;
+        else if (key === 'UNI') keyDisplay = `<span class="font-bold ${isDawn ? 'text-[#3e8fb0]' : (isNeon ? 'text-neon-cyan' : 'text-blue-400')}">Unique Key</span>`;
+        else if (key === 'MUL') keyDisplay = `<span class="font-bold opacity-70">Indexed</span>`;
+
+        let extraDisplay = '';
+        if (extra && extra.toLowerCase().includes('auto_increment')) {
+            extraDisplay = `<span class="font-bold ${isDawn ? 'text-[#9ccfd8]' : (isNeon ? 'text-neon-accent' : 'text-green-400')}">Auto Increment</span>`;
+        } else if (extra) {
+            extraDisplay = escapeHtml(extra);
+        }
+
+        const gridClass = "grid grid-cols-[70px_1fr] gap-x-3 gap-y-1.5 text-[10px]";
+        const labelClass = `${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500')} font-medium text-right select-none`;
+        const valClass = "font-medium truncate";
+
+        tooltip.innerHTML = `
+            <div class="px-3 py-2 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')} mb-2">
+                <div class="flex items-center gap-2 font-bold text-[11px] ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-200')}">
+                    <span class="material-symbols-outlined text-[14px] ${isDawn ? 'text-[#c6a0f6]' : (isNeon ? 'text-neon-cyan' : 'text-purple-400')}">view_column</span>
+                    <span class="truncate max-w-[180px]" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
+                </div>
+                <div class="text-[9px] ${isLight ? 'text-gray-400' : 'opacity-60'} mt-0.5 truncate font-mono" title="${escapeHtml(typeDisplay)}">${escapeHtml(typeDisplay)}</div>
+            </div>
+            
+            <div class="${gridClass} px-3 pb-2">
+                <div class="${labelClass}">Constraint</div>
+                <div class="${valClass}">${nullDisplay}</div>
+                
+                <div class="${labelClass}">Default</div>
+                <div class="${valClass}">${defDisplay}</div>
+                
+                ${keyDisplay ? `
+                    <div class="${labelClass}">Index</div>
+                    <div class="${valClass}">${keyDisplay}</div>
+                ` : ''}
+                
+                ${extraDisplay ? `
+                    <div class="${labelClass}">Extra</div>
+                    <div class="${valClass}">${extraDisplay}</div>
+                ` : ''}
+            </div>
+        `;
+
+        document.body.appendChild(tooltip);
+        currentTooltip = tooltip;
+
+        // Position logic
+        const rect = colItem.getBoundingClientRect();
+        // Position to the right of the item, fast enough
+        let top = rect.top;
+        let left = rect.right + 10;
+        let isLeft = false;
+
+        // Adjust if off screen
+        if (left + 250 > window.innerWidth) {
+            left = rect.left - 260; // Show on left if no space on right
+            isLeft = true;
+        }
+        if (top + tooltip.offsetHeight > window.innerHeight) {
+            top = window.innerHeight - tooltip.offsetHeight - 10;
+        }
+
+        if (isLeft) tooltip.classList.add('tooltip-left');
+
+        tooltip.style.top = `${top}px`;
+        tooltip.style.left = `${left}px`;
+
+        // One-time close listener
+        const closeHandler = (e) => {
+            // If clicking inside tooltip, don't close (optional, but standard behavior usually allows selecting text)
+            // But context menus usually close on click elsewhere.
+            if (tooltip.contains(e.target)) return;
+            removeTooltip();
+        };
+
+        cleanupTooltipListener = closeHandler;
+
+        // Add minimal delay to avoid immediate close from the right click (though right click is contextmenu, not mousedown usually, but let's be safe)
+        requestAnimationFrame(() => {
+            if (currentTooltip === tooltip) {
+                document.addEventListener('mousedown', closeHandler);
+            }
+        });
+    };
+
+    // Close on Escape (global listener, added once or managed?)
+    // This listener will be added every time ObjectExplorer is created.
+    // Ideally we should clean it up, but without unmount lifecycle, it's tricky.
+    // For now, we'll just check if tooltip exists.
+    // A better approach might be to attach it to the container, but keydown usually needs window focus.
+
     // --- Render ---
     const render = () => {
         const headerText = isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'));
@@ -798,6 +958,12 @@ export function ObjectExplorer() {
             const lastScroll = lastTree ? lastTree.scrollTop : 0;
 
             container.innerHTML = layout;
+
+            // Re-attach context menu listener on re-render
+            const treeEl = container.querySelector('#explorer-tree');
+            if (treeEl) {
+                treeEl.addEventListener('contextmenu', handleContextMenu);
+            }
 
             const newTree = container.querySelector('#explorer-tree');
             if (newTree) {

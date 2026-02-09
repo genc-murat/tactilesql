@@ -30,6 +30,7 @@ TactileSQL is a modern, desktop-first SQL workbench for MySQL and PostgreSQL, bu
 - **Object Explorer** with search functionality, databases, tables, views, triggers, procedures, functions, and events.
 - **Object Explorer Display Controls**: Toggle visibility of system databases/schemas and improved responsive truncation for long object/column names.
 - **Searchable Object Explorer**: Integrated search box to quickly find databases, tables, and columns with "Next/Prev" navigation and auto-expansion.
+- **Enhanced Column Properties Tooltip**: Right-click on any column to view detailed properties (type, default, keys, extras) with theme-aware styling.
 - **Schema Designer** for columns, indexes, foreign keys, triggers, DDL, and stats.
 - **ER Diagram Editor**: Build schema relationship graphs, edit manual relations, hide/restore FK edges, save named layouts, and export as JSON/Mermaid/PNG/**GraphML**.
 - **Schema Diff** for database or single-table comparison with generated sync SQL.
