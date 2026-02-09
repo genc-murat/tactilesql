@@ -283,7 +283,7 @@ export function ObjectExplorer() {
 
         return `
             <div>
-                <div class="table-item flex items-center gap-2 min-w-0 w-full ${baseText} ${hoverText} cursor-grab py-1 group" data-table="${table}" data-db="${db}" data-conn-id="${renderingConnectionId || activeConnectionId}" draggable="true">
+                <div class="table-item flex items-center gap-2 min-w-0 w-full ${baseText} ${hoverText} cursor-pointer py-1 group" data-table="${table}" data-db="${db}" data-conn-id="${renderingConnectionId || activeConnectionId}" draggable="true">
                     <span class="material-symbols-outlined text-[10px] shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''} ${isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : iconColor)}">arrow_right</span>
                     <span class="material-symbols-outlined text-[14px] shrink-0 ${iconColor} ${iconHover}">table_rows</span>
                     <span class="${highlightClass(`table-${db}-${table}`)} flex-1 min-w-0 truncate" title="${escapeHtml(table || '')}" data-search-id="table-${db}-${table}">${table}</span>
@@ -307,7 +307,7 @@ export function ObjectExplorer() {
                 <div class="pl-5 space-y-0.5 mt-0.5">
                     ${items.slice(0, objectsLimit).map(item => renderItem(db, item)).join('')}
                     ${items.length > objectsLimit ? `
-                        <button class="show-more-objects w-full text-left px-5 py-1 text-[9px] font-bold ${isDawn ? 'text-[#ea9d34] hover:text-[#c48c2b]' : (isNeon ? 'text-neon-accent hover:text-neon-cyan' : 'text-mysql-teal hover:text-mysql-teal-light')} opacity-80 hover:opacity-100 transition-all flex items-center gap-1" data-db="${db}" data-type="${type}">
+                        <button class="show-more-objects w-full text-left px-5 py-1 text-[9px] font-bold ${isDawn ? 'text-[#ea9d34] hover:text-[#c48c2b]' : (isNeon ? 'text-neon-accent hover:text-neon-cyan' : 'text-mysql-teal hover:text-mysql-teal-light')} opacity-80 hover:opacity-100 transition-all flex items-center gap-1 cursor-pointer" data-db="${db}" data-type="${type}">
                             <span class="material-symbols-outlined text-[12px]">add_circle</span>
                             Show ${items.length - objectsLimit} more...
                         </button>
@@ -366,23 +366,23 @@ export function ObjectExplorer() {
                         <span class="${highlightClass(`view-${db}-${v}`)} flex-1 min-w-0 truncate" title="${escapeHtml(v || '')}" data-search-id="view-${db}-${v}">${v}</span>
                     </div>`)}
                 ${renderObjectCategory(db, 'triggers', 'Triggers', 'bolt', isDawn ? 'text-[#f6c177]' : (isNeon ? 'text-neon-accent' : 'text-yellow-400'), filteredTriggers,
-                    (db, t) => `<div class="grid items-center gap-2 min-w-0 w-full overflow-hidden text-[10px] ${mainText} py-0.5" style="grid-template-columns: 12px minmax(0,1fr) minmax(0,45%);">
+                    (db, t) => `<div class="grid items-center gap-2 min-w-0 w-full overflow-hidden text-[10px] ${mainText} py-0.5 cursor-pointer" style="grid-template-columns: 12px minmax(0,1fr) minmax(0,45%);">
                         <span class="material-symbols-outlined text-[12px] shrink-0 ${isDawn ? 'text-[#f6c177]' : (isNeon ? 'text-neon-accent' : 'text-yellow-400')}">bolt</span>
                         <span class="${highlightClass(`trigger-${db}-${t.name}`)} min-w-0 truncate" title="${escapeHtml(t.name || '')}" data-search-id="trigger-${db}-${t.name}">${escapeHtml(t.name || '')}</span>
                         <span class="${subText} text-[9px] min-w-0 truncate text-right" title="${escapeHtml(`${t.timing || ''} ${t.event || ''}`.trim())}">${escapeHtml(`${t.timing || ''} ${t.event || ''}`.trim())}</span>
                     </div>`)}
                 ${renderObjectCategory(db, 'procedures', 'Procedures', 'code_blocks', isDawn ? 'text-[#9ccfd8]' : (isNeon ? 'text-neon-cyan' : 'text-green-400'), filteredProcedures,
-                        (db, p) => `<div class="flex items-center gap-2 min-w-0 w-full text-[10px] ${mainText} py-0.5">
+                        (db, p) => `<div class="flex items-center gap-2 min-w-0 w-full text-[10px] ${mainText} py-0.5 cursor-pointer">
                         <span class="material-symbols-outlined text-[12px] shrink-0 ${isDawn ? 'text-[#9ccfd8]' : (isNeon ? 'text-neon-cyan' : 'text-green-400')}">code_blocks</span>
                         <span class="${highlightClass(`procedure-${db}-${p.name}`)} flex-1 min-w-0 truncate" title="${escapeHtml(p.name || '')}" data-search-id="procedure-${db}-${p.name}">${p.name}</span>
                     </div>`)}
                 ${renderObjectCategory(db, 'functions', 'Functions', 'function', isDawn ? 'text-[#eb6f92]' : (isNeon ? 'text-neon-pink' : 'text-pink-400'), filteredFunctions,
-                            (db, f) => `<div class="flex items-center gap-2 min-w-0 w-full text-[10px] ${mainText} py-0.5">
+                            (db, f) => `<div class="flex items-center gap-2 min-w-0 w-full text-[10px] ${mainText} py-0.5 cursor-pointer">
                         <span class="material-symbols-outlined text-[12px] shrink-0 ${isDawn ? 'text-[#eb6f92]' : (isNeon ? 'text-neon-pink' : 'text-pink-400')}">function</span>
                         <span class="${highlightClass(`function-${db}-${f.name}`)} flex-1 min-w-0 truncate" title="${escapeHtml(f.name || '')}" data-search-id="function-${db}-${f.name}">${f.name}</span>
                     </div>`)}
                 ${renderObjectCategory(db, 'events', 'Events', 'schedule', isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-orange-400'), filteredEvents,
-                                (db, e) => `<div class="grid items-center gap-2 min-w-0 w-full overflow-hidden text-[10px] ${mainText} py-0.5" style="grid-template-columns: 12px minmax(0,1fr) minmax(0,45%);">
+                                (db, e) => `<div class="grid items-center gap-2 min-w-0 w-full overflow-hidden text-[10px] ${mainText} py-0.5 cursor-pointer" style="grid-template-columns: 12px minmax(0,1fr) minmax(0,45%);">
                         <span class="material-symbols-outlined text-[12px] shrink-0 ${isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-orange-400')}">schedule</span>
                         <span class="${highlightClass(`event-${db}-${e.name}`)} min-w-0 truncate" title="${escapeHtml(e.name || '')}" data-search-id="event-${db}-${e.name}">${escapeHtml(e.name || '')}</span>
                         <span class="${subText} text-[9px] min-w-0 truncate text-right" title="${escapeHtml(e.status || '')}">${escapeHtml(e.status || '')}</span>
@@ -463,7 +463,7 @@ export function ObjectExplorer() {
                             <div class="space-y-0.5 pl-1">
                                 ${truncatedUserDbs.map(db => renderDatabase(db)).join('')}
                                 ${hasMoreUserDbs ? `
-                                    <button class="show-more-dbs w-full text-left px-7 py-1.5 text-[9px] font-bold ${isDawn ? 'text-[#ea9d34] hover:text-[#c48c2b]' : (isNeon ? 'text-neon-accent hover:text-neon-cyan' : 'text-mysql-teal hover:text-mysql-teal-light')} opacity-80 hover:opacity-100 transition-all flex items-center gap-1" data-conn-id="${currentConnId || ''}">
+                                    <button class="show-more-dbs w-full text-left px-7 py-1.5 text-[9px] font-bold ${isDawn ? 'text-[#ea9d34] hover:text-[#c48c2b]' : (isNeon ? 'text-neon-accent hover:text-neon-cyan' : 'text-mysql-teal hover:text-mysql-teal-light')} opacity-80 hover:opacity-100 transition-all flex items-center gap-1 cursor-pointer" data-conn-id="${currentConnId || ''}">
                                         <span class="material-symbols-outlined text-[12px]">add_circle</span>
                                         Show ${userDbs.length - userDbsLimit} more...
                                     </button>
@@ -615,7 +615,7 @@ export function ObjectExplorer() {
                     </div>
 
                     ${!isActive ? `
-                        <button class="conn-connect-btn opacity-0 group-hover:opacity-100 p-1 rounded ${isDawn ? 'hover:bg-[#56949f]/20 text-[#56949f]' : 'hover:bg-green-500/20 text-green-400'} transition-all" title="Connect" data-id="${conn.id}">
+                        <button class="conn-connect-btn opacity-0 group-hover:opacity-100 p-1 rounded ${isDawn ? 'hover:bg-[#56949f]/20 text-[#56949f]' : 'hover:bg-green-500/20 text-green-400'} transition-all cursor-pointer" title="Connect" data-id="${conn.id}">
                             <span class="material-symbols-outlined text-sm">bolt</span>
                         </button>
                     ` : ''}
