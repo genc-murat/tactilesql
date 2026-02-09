@@ -385,7 +385,7 @@ export function ServerMonitor() {
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
 
         return `
-            <div class="rounded-xl ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))} overflow-hidden">
+            <div class="rounded-xl ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))} overflow-hidden flex flex-col flex-1 h-full">
                 <div class="p-4 border-b ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/10')}">
                     <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} flex items-center gap-2">
                         <span class="material-symbols-outlined text-mysql-teal">list</span>
@@ -393,7 +393,7 @@ export function ServerMonitor() {
                         <span class="px-2 py-0.5 text-xs rounded-full ${isLight ? 'bg-gray-100 text-gray-600' : (isDawn ? 'bg-[#f2e9e1] text-[#575279]' : 'bg-white/10 text-gray-400')}">${processList.length} processes</span>
                     </h3>
                 </div>
-                <div class="overflow-auto max-h-[500px]">
+                <div class="overflow-auto flex-1 h-full">
                     <table class="w-full text-sm">
                         <thead class="sticky top-0 ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#faf4ed]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]'))}">
                             <tr class="${isLight ? 'text-gray-600' : 'text-gray-400'} text-xs uppercase tracking-wider">

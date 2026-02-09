@@ -1045,14 +1045,39 @@ pub async fn get_process_list(pool: &Pool<MySql>) -> Result<Vec<ProcessInfo>, St
     let mut processes = Vec::new();
     for row in rows {
         processes.push(ProcessInfo {
-            id: row.try_get::<i64, _>("Id").unwrap_or(0),
-            user: row.try_get("User").unwrap_or_default(),
-            host: row.try_get("Host").unwrap_or_default(),
-            db: row.try_get("db").ok(),
-            command: row.try_get("Command").unwrap_or_default(),
-            time: row.try_get::<i64, _>("Time").unwrap_or(0),
-            state: row.try_get("State").ok(),
-            info: row.try_get("Info").ok(),
+            id: row
+                .try_get::<i64, _>("Id")
+                .or_else(|_| row.try_get::<i64, _>(0))
+                .unwrap_or(0),
+            user: row
+                .try_get("User")
+                .or_else(|_| row.try_get(1))
+                .unwrap_or_default(),
+            host: row
+                .try_get("Host")
+                .or_else(|_| row.try_get(2))
+                .unwrap_or_default(),
+            db: row
+                .try_get("db")
+                .or_else(|_| row.try_get("Db"))
+                .or_else(|_| row.try_get(3))
+                .ok(),
+            command: row
+                .try_get("Command")
+                .or_else(|_| row.try_get(4))
+                .unwrap_or_default(),
+            time: row
+                .try_get::<i64, _>("Time")
+                .or_else(|_| row.try_get::<i64, _>(5))
+                .unwrap_or(0),
+            state: row
+                .try_get("State")
+                .or_else(|_| row.try_get(6))
+                .ok(),
+            info: row
+                .try_get("Info")
+                .or_else(|_| row.try_get(7))
+                .ok(),
         });
     }
 
