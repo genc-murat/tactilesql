@@ -1625,17 +1625,18 @@ export function ObjectExplorer() {
         didStateChangeSinceLastTreeRender = true;
         render();
 
-        // Wait for render to finish and elements to be in DOM
-        setTimeout(() => scrollToMatch(match.id), 100);
-    };
+        // Calculate scroll position based on index in visibleNodes
+        const indexInList = visibleNodes.findIndex(node => node.id === match.id);
+        if (indexInList !== -1) {
+            const containerHeight = explorer.offsetHeight || 600;
+            let targetScrollTop = (indexInList * ROW_HEIGHT) - (containerHeight / 2) + (ROW_HEIGHT / 2);
+            targetScrollTop = Math.max(0, targetScrollTop);
 
-    const scrollToMatch = (id) => {
-        setTimeout(() => {
-            const el = explorer.querySelector(`[data-search-id="${id}"]`);
-            if (el) {
-                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            const tree = container.querySelector('#explorer-tree');
+            if (tree) {
+                tree.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
             }
-        }, 50);
+        }
     };
 
     // --- Switch Connection ---
