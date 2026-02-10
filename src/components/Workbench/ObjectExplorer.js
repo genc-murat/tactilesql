@@ -51,6 +51,7 @@ export function ObjectExplorer() {
     let systemDbsExpanded = true; // State for system databases fold
     let userDbsLimit = 150; // Initial limit for user databases
     let objectsLimit = 100; // Initial limit for tables/views per database
+    let columnLimits = {}; // key: "db.table", value: int limit
 
     // Per-connection UI/cache state
     const connectionStates = new Map();
@@ -65,6 +66,7 @@ export function ObjectExplorer() {
         expandedTables: new Set(),
         dbObjects: {},
         tableDetails: {},
+        columnLimits: {},
         loadingTables: new Set(),
         userDbsExpanded: true,
         systemDbsExpanded: true,
@@ -121,6 +123,7 @@ export function ObjectExplorer() {
         userDbsExpanded = state.userDbsExpanded;
         systemDbsExpanded = state.systemDbsExpanded;
         connectionExpanded = state.connectionExpanded;
+        columnLimits = state.columnLimits || {};
         userDbsLimit = 150;
         objectsLimit = 100;
     };
@@ -222,6 +225,11 @@ export function ObjectExplorer() {
             fks = [],
             constraints = []
         } = details || {};
+
+        const limit = columnLimits[key] || 100;
+        const visibleColumns = columns.slice(0, limit);
+        const hasMoreColumns = columns.length > limit;
+
         return `
             <div class="pl-4 space-y-1 border-l ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/30' : (isNeon ? 'border-neon-border/30' : 'border-white/10')))} ml-2">
                 <div class="py-0.5">
@@ -231,7 +239,7 @@ export function ObjectExplorer() {
                         <span class="${isLight ? 'text-gray-300' : (isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent/50' : 'text-gray-700'))}">(${columns.length})</span>
                     </div>
                     <div class="pl-4 space-y-0.5 mt-0.5">
-                        ${columns.map(col => `
+                        ${visibleColumns.map(col => `
                             <div class="column-item cursor-context-menu grid items-center gap-1.5 min-w-0 w-full overflow-hidden text-[10px] ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text/60' : (isNeon ? 'text-neon-text/60' : 'text-gray-600')))}" style="grid-template-columns: 12px minmax(0,1fr) minmax(0,45%);"
                                 data-col-name="${escapeHtml(col.name || '')}"
                                 data-col-type="${escapeHtml(col.column_type || col.data_type || '')}"
@@ -247,6 +255,12 @@ export function ObjectExplorer() {
                                 <span class="${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : (isNeon ? 'text-neon-text/40' : 'text-gray-700')))} text-[9px] min-w-0 truncate text-right" title="${escapeHtml(col.data_type || '')}">${escapeHtml(col.data_type || '')}</span>
                             </div>
                         `).join('')}
+                        ${hasMoreColumns ? `
+                            <button class="show-more-columns w-full text-left px-0 py-1 text-[9px] font-bold ${isDawn ? 'text-[#ea9d34] hover:text-[#c48c2b]' : (isNeon ? 'text-neon-accent hover:text-neon-cyan' : 'text-mysql-teal hover:text-mysql-teal-light')} opacity-80 hover:opacity-100 transition-all flex items-center gap-1 cursor-pointer" data-db="${db}" data-table="${table}">
+                                <span class="material-symbols-outlined text-[12px]">add_circle</span>
+                                Show ${columns.length - limit} more...
+                            </button>
+                        ` : ''}
                     </div>
                 </div>
                 ${indexes.length > 0 ? `
@@ -1097,6 +1111,18 @@ export function ObjectExplorer() {
                 return;
             }
 
+            const showMoreCols = e.target.closest('.show-more-columns');
+            if (showMoreCols) {
+                e.stopPropagation();
+                const db = showMoreCols.dataset.db;
+                const table = showMoreCols.dataset.table;
+                const key = `${db}.${table}`;
+                columnLimits[key] = (columnLimits[key] || 100) + 200;
+                didStateChangeSinceLastTreeRender = true;
+                render();
+                return;
+            }
+
             const dbItem = e.target.closest('.db-item');
             if (dbItem) {
                 const connId = dbItem.dataset.connId;
@@ -1494,6 +1520,7 @@ export function ObjectExplorer() {
         }
 
         // Expand all parents containing matches so results are visible
+        // PERFORMANCE: If too many matches, do not auto-expand tables to prevent UI freeze
         let expansionChanged = false;
         if (searchContext) {
             searchContext.databases.forEach(db => {
@@ -1502,19 +1529,30 @@ export function ObjectExplorer() {
                     expansionChanged = true;
                 }
             });
-            searchContext.tables.forEach((tables, db) => {
-                if (!expandedDbs.has(db)) {
-                    expandedDbs.add(db);
-                    expansionChanged = true;
-                }
-                tables.forEach(t => {
-                    const key = `${db}.${t}`;
-                    if (!expandedTables.has(key)) {
-                        expandedTables.add(key);
+
+            const AUTO_EXPAND_LIMIT = 50;
+            const totalMatches = matches.length;
+
+            if (totalMatches <= AUTO_EXPAND_LIMIT) {
+                searchContext.tables.forEach((tables, db) => {
+                    if (!expandedDbs.has(db)) {
+                        expandedDbs.add(db);
                         expansionChanged = true;
                     }
+                    tables.forEach(t => {
+                        const key = `${db}.${t}`;
+                        if (!expandedTables.has(key)) {
+                            expandedTables.add(key);
+                            expansionChanged = true;
+                        }
+                    });
                 });
-            });
+            } else {
+                // If we skip table expansion, at least ensure databases are expanded (already done above)
+                // We might want to clear expandedTables if user starts a new broad search to avoid clutter?
+                // For now, let's keep existing expansions but not add new ones aggressively.
+            }
+
             [searchContext.views, searchContext.triggers, searchContext.procedures, searchContext.functions, searchContext.events].forEach(map => {
                 map.forEach((_, db) => {
                     if (!expandedDbs.has(db)) {
