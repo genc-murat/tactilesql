@@ -21,7 +21,7 @@ export function ObjectExplorer() {
         const isD = t === 'dawn';
         const isO = t === 'oceanic' || t === 'ember' || t === 'aurora';
         const isN = t === 'neon';
-        return `h-full border-r ${isL ? 'bg-white border-gray-200' : (isD ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isO ? 'bg-ocean-panel border-ocean-border' : (isN ? 'bg-neon-bg border-neon-border/50' : 'bg-[#0f1115] border-white/5')))} flex flex-col p-3 gap-4 overflow-hidden relative`;
+        return `h-full border-r ${isL ? 'bg-white border-gray-200' : (isD ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isO ? 'bg-ocean-panel border-ocean-border' : (isN ? 'bg-neon-bg border-neon-border/50' : 'bg-[#0f1115] border-white/5')))} flex flex-col p-2 gap-4 overflow-hidden relative`;
     };
     explorer.className = getExplorerClass(theme);
 
@@ -652,7 +652,7 @@ export function ObjectExplorer() {
     // Renders a single node to an HTML string
     const renderNode = (node) => {
         const { type, id, data, depth, expanded, active, connId } = node;
-        const paddingLeft = depth * 12 + 12; // Base padding + depth
+        const paddingLeft = depth * 4; // Minimal indentation
         const style = `padding-left: ${paddingLeft}px; height: ${ROW_HEIGHT}px;`;
 
         // Common Highlights
@@ -734,8 +734,11 @@ export function ObjectExplorer() {
                 const iconColor = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-700'));
                 const iconHover = isLight ? 'group-hover:text-mysql-teal' : (isDawn ? 'group-hover:text-[#ea9d34]' : 'group-hover:text-mysql-teal');
 
+                // Force tables even more to the left
+                const tablePadding = Math.max(0, paddingLeft - 8);
+
                 return `
-                    <div class="table-item virtual-row flex items-center gap-2 w-full ${mainText} ${hoverText} cursor-pointer group" style="${style}" data-table="${table}" data-db="${db}" data-conn-id="${connId}" draggable="true">
+                    <div class="table-item virtual-row flex items-center gap-2 w-full ${mainText} ${hoverText} cursor-pointer group" style="padding-left: ${tablePadding}px; height: ${ROW_HEIGHT}px;" data-table="${table}" data-db="${db}" data-conn-id="${connId}" draggable="true">
                         <span class="material-symbols-outlined text-[10px] shrink-0 transition-transform ${expanded ? 'rotate-90' : ''} ${isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : iconColor)}">arrow_right</span>
                         <span class="material-symbols-outlined text-[14px] shrink-0 ${iconColor} ${iconHover}">table_rows</span>
                         <span class="${highlightClass(`table-${db}-${table}`)} flex-1 min-w-0 truncate" title="${escapeHtml(table)}" ${searchId(`table-${db}-${table}`)}>${escapeHtml(table)}</span>
@@ -790,8 +793,11 @@ export function ObjectExplorer() {
                 const colText = isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text/60' : (isNeon ? 'text-neon-text/60' : 'text-gray-600')));
                 const typeText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : (isNeon ? 'text-neon-text/40' : 'text-gray-700')));
 
+                // Force columns even more to the left
+                const colPadding = Math.max(0, paddingLeft - 8);
+
                 return `
-                    <div class="column-item cursor-context-menu virtual-row grid items-center gap-1.5 w-full overflow-hidden text-[10px] ${colText}" style="${style} padding-left: 0; grid-template-columns: ${paddingLeft}px 12px minmax(0,1fr) minmax(0,45%); display: grid;"
+                    <div class="column-item cursor-context-menu virtual-row grid items-center gap-1 w-full overflow-hidden text-[10px] ${colText}" style="${style} padding-left: 0; grid-template-columns: ${colPadding}px 12px minmax(0,1fr) minmax(0,45%); display: grid;"
                          data-col-name="${escapeHtml(col.name || '')}"
                          data-col-type="${escapeHtml(col.column_type || col.data_type || '')}"
                          data-col-nullable="${col.is_nullable ? 'YES' : 'NO'}"

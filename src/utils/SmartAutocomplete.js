@@ -214,6 +214,9 @@ export class SmartAutocomplete {
     #currentDb = '';
     #parsedQuery = null;
 
+    // Debounce timer
+    #debounceTimer = null;
+
     // Database type (mysql or postgres)
     #dbType = 'mysql';
 
@@ -264,6 +267,21 @@ export class SmartAutocomplete {
      * Main entry point for getting suggestions
      */
     async getSuggestions(query, cursorPosition, currentDatabase) {
+        if (this.#debounceTimer) clearTimeout(this.#debounceTimer);
+
+        return new Promise((resolve, reject) => {
+            this.#debounceTimer = setTimeout(async () => {
+                try {
+                    const result = await this.#getSuggestionsInternal(query, cursorPosition, currentDatabase);
+                    resolve(result);
+                } catch (e) {
+                    reject(e);
+                }
+            }, 100); // 100ms debounce
+        });
+    }
+
+    async #getSuggestionsInternal(query, cursorPosition, currentDatabase) {
         try {
             this.#query = query || '';
             this.#cursorPos = cursorPosition || query?.length || 0;
@@ -385,10 +403,20 @@ export class SmartAutocomplete {
         try {
             const { entries } = auditTrail.getEntries({ limit: 1000 });
             let count = 0;
-            for (const entry of entries) {
-                if (entry.query && entry.status === 'SUCCESS') {
-                    this.#nGramModel.train(entry.query);
-                    count++;
+            const chunkSize = 50;
+
+            // Process in chunks to avoid blocking the main thread
+            for (let i = 0; i < entries.length; i += chunkSize) {
+                const chunk = entries.slice(i, i + chunkSize);
+
+                // Allow UI to breathe
+                await new Promise(resolve => setTimeout(resolve, 0));
+
+                for (const entry of chunk) {
+                    if (entry.query && entry.status === 'SUCCESS') {
+                        this.#nGramModel.train(entry.query);
+                        count++;
+                    }
                 }
             }
             console.log(`Smart Autocomplete trained on ${count} queries.`);
@@ -1140,9 +1168,18 @@ export class SmartAutocomplete {
         // Get Qualification Setting
         const qualifyMode = SettingsManager.get(SETTINGS_PATHS.AUTOCOMPLETE_QUALIFY_OBJECTS) || 'collisions';
 
-        // Load all tables
-        // Performance note: This parallel fetches all schemas/dbs.
-        const allTables = await this.#getAllTables();
+        // Load standard tables from current database only
+        // Performance note: Previously this fetched ALL tables from ALL databases (`#getAllTables`).
+        // We now restrict to current DB to avoid freezing on startup.
+        // Other databases can be accessed via `db_name.` prefix.
+
+        let allTables = [];
+        try {
+            const currentTables = await this.loadTables(this.#currentDb);
+            allTables = currentTables.map(t => ({ table: t, schema: this.#currentDb }));
+        } catch (e) {
+            console.error('Failed to load tables for current DB', e);
+        }
 
         // Filter matches first
         const matchedTables = allTables.filter(item =>
@@ -1162,13 +1199,13 @@ export class SmartAutocomplete {
                 qualifyMode === 'always' ||
                 (qualifyMode === 'collisions' && isCollision);
 
-            const qualifiedName = `${item.schema}.${item.table}`;
+            const qualifiedName = item.schema === this.#currentDb ? item.table : `${item.schema}.${item.table}`; // Only qualify if needed
             const simpleName = item.table;
 
             suggestions.push({
                 type: 'table',
-                value: shouldQualify ? qualifiedName : simpleName,
-                display: shouldQualify ? qualifiedName : simpleName, // Visual parity with insert value
+                value: shouldQualify && item.schema !== this.#currentDb ? qualifiedName : simpleName,
+                display: shouldQualify && item.schema !== this.#currentDb ? qualifiedName : simpleName,
                 detail: item.schema,
                 icon: 'table_rows',
                 color: 'text-cyan-400',
