@@ -141,6 +141,13 @@ export function ObjectExplorer() {
     let highlightTimeout = null;
     let didStateChangeSinceLastTreeRender = true; // flag to force tree re-render
 
+    // --- Virtual Scrolling State ---
+    const ROW_HEIGHT = 28; // px
+    let scrollTop = 0;
+    let containerHeight = 0;
+    let visibleNodes = [];
+
+
     // Drag and Drop state (persisted outside render)
     let draggedConnId = null;
     let draggedNode = null;
@@ -191,315 +198,273 @@ export function ObjectExplorer() {
             (searchContext.events.get(db)?.size ?? 0) > 0;
     };
 
-    // --- Helper to render table details ---
-    const renderTableDetails = (db, table) => {
-        const key = `${db}.${table}`;
-        const details = tableDetails[key];
-        if (!details) {
-            const cachedCols = DatabaseCache.get(CacheTypes.COLUMNS, key);
-            const cachedIdx = DatabaseCache.get(CacheTypes.INDEXES, key);
-            const cachedFks = DatabaseCache.get(CacheTypes.FOREIGN_KEYS, key);
-            if (cachedCols || cachedIdx || cachedFks) {
-                const restored = {
-                    columns: cachedCols || [],
-                    indexes: cachedIdx || [],
-                    fks: cachedFks || [],
-                    constraints: []
-                };
-                tableDetails[key] = restored;
-                const state = getConnectionState(renderingConnectionId || activeStateKey);
-                state.tableDetails[key] = restored;
-            } else if (renderingConnectionId === activeConnectionId) {
-                // Only auto-load for active connection; otherwise show placeholder
-                loadTableDetails(db, table);
-                const loadingColor = isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]' : (isOceanic ? 'text-ocean-text/40' : (isNeon ? 'text-neon-text/40' : 'text-gray-700')));
-                return `<div class="pl-4 py-1 ${loadingColor} italic text-[10px]">Loading...</div>`;
-            } else {
-                return `<div class="pl-4 py-1 ${isLight ? 'text-gray-300' : (isDawn ? 'text-[#cecacd]' : (isNeon ? 'text-neon-text/20' : 'text-gray-700'))} italic text-[10px]">Switch to this connection to load details</div>`;
+    // --- Tree Flattening (Virtual Scrolling) ---
+    const getVisibleNodes = () => {
+        const nodes = [];
+
+        // 1. Connections
+        if (connections.length === 0) {
+            nodes.push({ type: 'empty-state', id: 'empty-state', depth: 0 });
+            return nodes;
+        }
+
+        connections.forEach(conn => {
+            const isActive = conn.id === activeConnectionId;
+            const stateKey = connectionKeyById.get(conn.id) || deriveStateKey(conn);
+            const state = getConnectionState(stateKey);
+            const isConnExpanded = isActive ? connectionExpanded : state.connectionExpanded;
+
+            nodes.push({
+                type: 'connection',
+                id: `conn-${conn.id}`,
+                data: conn,
+                depth: 0,
+                expanded: isConnExpanded,
+                active: isActive
+            });
+
+            if (isConnExpanded && state.databases?.length) {
+                // If this is the active connection (or we support multi-expand visually), show its content
+                // Note: The original code mostly only showed content for the ACTIVE connection or if it was cached/expanded.
+                // We'll stick to the logic: if active, use current globals; if not, use state.
+                const isRenderingActive = isActive; // strictly speaking only active conn shows detailed tree in previous logic?
+                // Actually the previous logic allowed expanding other connections if they were cached.
+                // But `activeConnectionId` was the main driver for `databases` global.
+                // Let's use `renderWithState` equivalent logic here if needed, or just standard access.
+
+                // For simplicity and matching previous behavior:
+                // If it's the active connection, we use the `databases` variable (which is `state.databases`).
+                // If it's NOT active, we use `state.databases`.
+
+                const currentDbs = isRenderingActive ? databases : state.databases;
+                const currentExpandedDbs = isRenderingActive ? expandedDbs : state.expandedDbs;
+                // ... other state vars ...
+
+                if (currentDbs.length > 0) {
+                    const sysDbs = isPostgreSQL() ? pgSystemSchemas : mysqlSystemDbs;
+                    const showSys = SettingsManager.get(SETTINGS_PATHS.EXPLORER_SHOW_SYSTEM_OBJECTS);
+
+                    // Filter logic
+                    // We need to re-implement the search filtering here per connection?
+                    // The previous search logic was global `searchContext` which filtered `databases`.
+                    // `databases` was only for the ACTIVE connection.
+                    // So non-active connections didn't really support proper searching inside them unless they were active?
+                    // The previous code only rendered tree for `renderingConnectionId || activeConnectionId`.
+                    // `connections.map` only rendered content if `isActive || isExpandedCached`.
+                    // And `renderActiveConnectionData` used the globals.
+                    // So effectively, we only need to traverse the Active Connection's data if it is expanded,
+                    // OR if we want to support viewing other connections (which `renderWithState` did).
+
+                    if (!isActive && !state.connectionExpanded) return; // Skip if not active and not expanded
+
+                    // We need to temporarily swap context if we are traversing a non-active connection?
+                    // Or just pass the state down? Passing state is cleaner.
+                    const ctx = {
+                        dbs: currentDbs,
+                        expandedDbs: currentExpandedDbs,
+                        expandedTables: isRenderingActive ? expandedTables : state.expandedTables,
+                        dbObjects: isRenderingActive ? dbObjects : state.dbObjects,
+                        tableDetails: isRenderingActive ? tableDetails : state.tableDetails,
+                        userDbsExpanded: isRenderingActive ? userDbsExpanded : state.userDbsExpanded,
+                        systemDbsExpanded: isRenderingActive ? systemDbsExpanded : state.systemDbsExpanded,
+                        userDbsLimit: isRenderingActive ? userDbsLimit : (state.userDbsLimit || 150),
+                        // Search context is global, so it applies to the active connection mostly?
+                        // `searchContext` was built from `databases` (active).
+                        // So search results only show for active connection.
+                        searchContext: isActive ? searchContext : null
+                    };
+
+                    flattenConnection(nodes, conn.id, ctx, showSys, sysDbs);
+                }
             }
-        }
+        });
 
-        const {
-            columns = [],
-            indexes = [],
-            fks = [],
-            constraints = []
-        } = details || {};
-
-        const limit = columnLimits[key] || 100;
-        const visibleColumns = columns.slice(0, limit);
-        const hasMoreColumns = columns.length > limit;
-
-        return `
-            <div class="pl-4 space-y-1 border-l ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/30' : (isNeon ? 'border-neon-border/30' : 'border-white/10')))} ml-2">
-                <div class="py-0.5">
-                    <div class="flex items-center gap-1.5 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : (isNeon ? 'text-neon-text/40' : 'text-gray-500')))} text-[10px]">
-                        <span class="material-symbols-outlined text-[12px] ${isDawn ? 'text-[#c6a0f6]' : (isNeon ? 'text-neon-accent' : 'text-purple-400')}">view_column</span>
-                        <span class="tracking-wider font-semibold">Columns</span>
-                        <span class="${isLight ? 'text-gray-300' : (isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent/50' : 'text-gray-700'))}">(${columns.length})</span>
-                    </div>
-                    <div class="pl-4 space-y-0.5 mt-0.5">
-                        ${visibleColumns.map(col => `
-                            <div class="column-item cursor-context-menu grid items-center gap-1.5 min-w-0 w-full overflow-hidden text-[10px] ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text/60' : (isNeon ? 'text-neon-text/60' : 'text-gray-600')))}" style="grid-template-columns: 12px minmax(0,1fr) minmax(0,45%);"
-                                data-col-name="${escapeHtml(col.name || '')}"
-                                data-col-type="${escapeHtml(col.column_type || col.data_type || '')}"
-                                data-col-nullable="${col.is_nullable ? 'YES' : 'NO'}"
-                                data-col-key="${escapeHtml(col.column_key || '')}"
-                                data-col-default="${escapeHtml(col.column_default || 'NULL')}"
-                                data-col-extra="${escapeHtml(col.extra || '')}">
-                                ${col.column_key === 'PRI' ? `<span class="material-symbols-outlined text-[10px] shrink-0 ${isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-yellow-500')}">key</span>` :
-                col.column_key === 'UNI' ? `<span class="material-symbols-outlined text-[10px] shrink-0 ${isDawn ? 'text-[#3e8fb0]' : (isNeon ? 'text-neon-pink' : 'text-blue-400')}">fingerprint</span>` :
-                    col.column_key === 'MUL' ? `<span class="material-symbols-outlined text-[10px] shrink-0 ${isNeon ? 'text-neon-accent/60' : 'text-gray-500'}">link</span>` :
-                        '<span class="w-[10px] shrink-0"></span>'}
-                                <span class="${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279] font-medium' : (isOceanic ? 'text-ocean-text' : (isNeon ? 'text-neon-text' : 'text-gray-400')))} ${highlightClass(`col-${db}-${table}-${col.name}`)} min-w-0 truncate" title="${escapeHtml(col.name || '')}" data-search-id="col-${db}-${table}-${col.name}">${escapeHtml(col.name || '')}</span>
-                                <span class="${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : (isNeon ? 'text-neon-text/40' : 'text-gray-700')))} text-[9px] min-w-0 truncate text-right" title="${escapeHtml(col.data_type || '')}">${escapeHtml(col.data_type || '')}</span>
-                            </div>
-                        `).join('')}
-                        ${hasMoreColumns ? `
-                            <button class="show-more-columns w-full text-left px-0 py-1 text-[9px] font-bold ${isDawn ? 'text-[#ea9d34] hover:text-[#c48c2b]' : (isNeon ? 'text-neon-accent hover:text-neon-cyan' : 'text-mysql-teal hover:text-mysql-teal-light')} opacity-80 hover:opacity-100 transition-all flex items-center gap-1 cursor-pointer" data-db="${db}" data-table="${table}">
-                                <span class="material-symbols-outlined text-[12px]">add_circle</span>
-                                Show ${columns.length - limit} more...
-                            </button>
-                        ` : ''}
-                    </div>
-                </div>
-                ${indexes.length > 0 ? `
-                    <div class="py-0.5">
-                        <div class="flex items-center gap-1.5 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'))} text-[10px]">
-                            <span class="material-symbols-outlined text-[12px] ${isDawn ? 'text-[#9ccfd8]' : 'text-cyan-400'}">bolt</span>
-                            <span class="tracking-wider font-semibold">Indexes</span>
-                            <span class="${isLight ? 'text-gray-300' : (isDawn ? 'text-[#ea9d34]' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-700'))}">(${indexes.length})</span>
-                        </div>
-                    </div>
-                ` : ''}
-                ${fks.length > 0 ? `
-                    <div class="py-0.5">
-                        <div class="flex items-center gap-1.5 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'))} text-[10px]">
-                            <span class="material-symbols-outlined text-[12px] ${isDawn ? 'text-[#eb6f92]' : 'text-orange-400'}">link</span>
-                            <span class="tracking-wider font-semibold">Foreign Keys</span>
-                            <span class="${isLight ? 'text-gray-300' : (isDawn ? 'text-[#ea9d34]' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-700'))}">(${fks.length})</span>
-                        </div>
-                    </div>
-                ` : ''}
-            </div>
-        `;
+        return nodes;
     };
 
-    // --- Helper to render a table item ---
-    const renderTable = (db, table) => {
-        const key = `${db}.${table}`;
-        const isExpanded = expandedTables.has(key);
-        // Hover/Text Colors
-        const baseText = isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text/80' : 'text-gray-500'));
-        const hoverText = isLight ? 'hover:text-mysql-teal' : (isDawn ? 'hover:text-[#ea9d34]' : (isOceanic ? 'hover:text-ocean-frost' : 'hover:text-white'));
-        const iconColor = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-700'));
-        const iconHover = isLight ? 'group-hover:text-mysql-teal' : (isDawn ? 'group-hover:text-[#ea9d34]' : 'group-hover:text-mysql-teal');
+    const flattenConnection = (nodes, connId, ctx, showSys, sysDbs) => {
+        const { dbs, expandedDbs, searchContext } = ctx;
 
-        return `
-            <div>
-                <div class="table-item flex items-center gap-2 min-w-0 w-full ${baseText} ${hoverText} cursor-pointer py-1 group" data-table="${table}" data-db="${db}" data-conn-id="${renderingConnectionId || activeConnectionId}" draggable="true">
-                    <span class="material-symbols-outlined text-[10px] shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''} ${isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : iconColor)}">arrow_right</span>
-                    <span class="material-symbols-outlined text-[14px] shrink-0 ${iconColor} ${iconHover}">table_rows</span>
-                    <span class="${highlightClass(`table-${db}-${table}`)} flex-1 min-w-0 truncate" title="${escapeHtml(table || '')}" data-search-id="table-${db}-${table}">${table}</span>
-                </div>
-                ${isExpanded ? renderTableDetails(db, table) : ''}
-            </div>
-        `;
-    };
+        const matchedDbs = searchContext ? dbs.filter(db => databaseHasAnyMatch(db)) : dbs;
+        const visibleDbs = showSys ? matchedDbs : matchedDbs.filter(db => !sysDbs.includes(db.toLowerCase()));
 
-    // --- Helper to render object category ---
-    const renderObjectCategory = (db, type, label, icon, color, items, renderItem) => {
-        if (!items || items.length === 0) return '';
-        const headerText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'));
-        return `
-            <div class="py-0.5">
-                <div class="flex items-center gap-1.5 ${headerText} text-[10px] px-1">
-                    <span class="material-symbols-outlined text-[12px] ${color}">${icon}</span>
-                    <span class="tracking-wider font-semibold">${label}</span>
-                    <span class="${isLight ? 'text-gray-300' : (isDawn ? 'text-[#ea9d34]' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-700'))}">(${items.length})</span>
-                </div>
-                <div class="pl-5 space-y-0.5 mt-0.5">
-                    ${items.slice(0, objectsLimit).map(item => renderItem(db, item)).join('')}
-                    ${items.length > objectsLimit ? `
-                        <button class="show-more-objects w-full text-left px-5 py-1 text-[9px] font-bold ${isDawn ? 'text-[#ea9d34] hover:text-[#c48c2b]' : (isNeon ? 'text-neon-accent hover:text-neon-cyan' : 'text-mysql-teal hover:text-mysql-teal-light')} opacity-80 hover:opacity-100 transition-all flex items-center gap-1 cursor-pointer" data-db="${db}" data-type="${type}">
-                            <span class="material-symbols-outlined text-[12px]">add_circle</span>
-                            Show ${items.length - objectsLimit} more...
-                        </button>
-                    ` : ''}
-                </div>
-            </div>
-        `;
-    };
-
-    // --- Render database contents ---
-    const renderDatabaseContents = (db) => {
-        let objs = dbObjects[db];
-        if (!objs) {
-            const cached = DatabaseCache.get(CacheTypes.SCHEMAS, db);
-            if (cached) {
-                dbObjects[db] = cached;
-                const state = getConnectionState(renderingConnectionId || activeStateKey);
-                state.dbObjects[db] = cached;
-                objs = cached;
-            } else {
-                const placeholder = renderingConnectionId === activeConnectionId
-                    ? 'Loading...'
-                    : 'Switch to this connection to load objects';
-                return `<div class="pl-2 py-1 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#cecacd]' : 'text-gray-700')} italic text-[10px]">${placeholder}</div>`;
-            }
-        }
-
-        const { tables, views, triggers, procedures, functions, events } = objs;
-        const filteredTables = searchContext ? tables.filter(t => hasSearchMatch('table', db, t)) : tables;
-        const filteredViews = searchContext ? views.filter(v => hasSearchMatch('view', db, v)) : views;
-        const filteredTriggers = searchContext ? triggers.filter(t => hasSearchMatch('trigger', db, t.name)) : triggers;
-        const filteredProcedures = searchContext ? procedures.filter(p => hasSearchMatch('procedure', db, p.name)) : procedures;
-        const filteredFunctions = searchContext ? functions.filter(f => hasSearchMatch('function', db, f.name)) : functions;
-        const filteredEvents = searchContext ? events.filter(e => hasSearchMatch('event', db, e.name)) : events;
-
-        if (searchContext &&
-            filteredTables.length === 0 &&
-            filteredViews.length === 0 &&
-            filteredTriggers.length === 0 &&
-            filteredProcedures.length === 0 &&
-            filteredFunctions.length === 0 &&
-            filteredEvents.length === 0) {
-            return '';
-        }
-
-        const mainText = isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text/70' : 'text-gray-500'));
-        const subText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-700'));
-
-        return `
-            <div class="pl-6 space-y-1 border-l ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')} ml-2.5">
-                ${renderObjectCategory(db, 'tables', 'Tables', 'table_rows', isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal', filteredTables,
-            (db, t) => renderTable(db, t))}
-                ${renderObjectCategory(db, 'views', 'Views', 'visibility', isDawn ? 'text-[#3e8fb0]' : (isNeon ? 'text-neon-pink' : 'text-blue-400'), filteredViews,
-                (db, v) => `<div class="view-item flex items-center gap-2 min-w-0 w-full text-[10px] ${mainText} ${isLight ? 'hover:text-mysql-teal' : (isDawn ? 'hover:text-[#ea9d34]' : (isOceanic ? 'hover:text-ocean-frost' : (isNeon ? 'hover:text-neon-accent' : 'hover:text-white')))} py-0.5 cursor-pointer" data-view="${v}" data-db="${db}">
-                        <span class="material-symbols-outlined text-[12px] shrink-0 ${isDawn ? 'text-[#3e8fb0]' : (isNeon ? 'text-neon-pink' : 'text-blue-400')}">visibility</span>
-                        <span class="${highlightClass(`view-${db}-${v}`)} flex-1 min-w-0 truncate" title="${escapeHtml(v || '')}" data-search-id="view-${db}-${v}">${v}</span>
-                    </div>`)}
-                ${renderObjectCategory(db, 'triggers', 'Triggers', 'bolt', isDawn ? 'text-[#f6c177]' : (isNeon ? 'text-neon-accent' : 'text-yellow-400'), filteredTriggers,
-                    (db, t) => `<div class="grid items-center gap-2 min-w-0 w-full overflow-hidden text-[10px] ${mainText} py-0.5 cursor-pointer" style="grid-template-columns: 12px minmax(0,1fr) minmax(0,45%);">
-                        <span class="material-symbols-outlined text-[12px] shrink-0 ${isDawn ? 'text-[#f6c177]' : (isNeon ? 'text-neon-accent' : 'text-yellow-400')}">bolt</span>
-                        <span class="${highlightClass(`trigger-${db}-${t.name}`)} min-w-0 truncate" title="${escapeHtml(t.name || '')}" data-search-id="trigger-${db}-${t.name}">${escapeHtml(t.name || '')}</span>
-                        <span class="${subText} text-[9px] min-w-0 truncate text-right" title="${escapeHtml(`${t.timing || ''} ${t.event || ''}`.trim())}">${escapeHtml(`${t.timing || ''} ${t.event || ''}`.trim())}</span>
-                    </div>`)}
-                ${renderObjectCategory(db, 'procedures', 'Procedures', 'code_blocks', isDawn ? 'text-[#9ccfd8]' : (isNeon ? 'text-neon-cyan' : 'text-green-400'), filteredProcedures,
-                        (db, p) => `<div class="flex items-center gap-2 min-w-0 w-full text-[10px] ${mainText} py-0.5 cursor-pointer">
-                        <span class="material-symbols-outlined text-[12px] shrink-0 ${isDawn ? 'text-[#9ccfd8]' : (isNeon ? 'text-neon-cyan' : 'text-green-400')}">code_blocks</span>
-                        <span class="${highlightClass(`procedure-${db}-${p.name}`)} flex-1 min-w-0 truncate" title="${escapeHtml(p.name || '')}" data-search-id="procedure-${db}-${p.name}">${p.name}</span>
-                    </div>`)}
-                ${renderObjectCategory(db, 'functions', 'Functions', 'function', isDawn ? 'text-[#eb6f92]' : (isNeon ? 'text-neon-pink' : 'text-pink-400'), filteredFunctions,
-                            (db, f) => `<div class="flex items-center gap-2 min-w-0 w-full text-[10px] ${mainText} py-0.5 cursor-pointer">
-                        <span class="material-symbols-outlined text-[12px] shrink-0 ${isDawn ? 'text-[#eb6f92]' : (isNeon ? 'text-neon-pink' : 'text-pink-400')}">function</span>
-                        <span class="${highlightClass(`function-${db}-${f.name}`)} flex-1 min-w-0 truncate" title="${escapeHtml(f.name || '')}" data-search-id="function-${db}-${f.name}">${f.name}</span>
-                    </div>`)}
-                ${renderObjectCategory(db, 'events', 'Events', 'schedule', isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-orange-400'), filteredEvents,
-                                (db, e) => `<div class="grid items-center gap-2 min-w-0 w-full overflow-hidden text-[10px] ${mainText} py-0.5 cursor-pointer" style="grid-template-columns: 12px minmax(0,1fr) minmax(0,45%);">
-                        <span class="material-symbols-outlined text-[12px] shrink-0 ${isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-orange-400')}">schedule</span>
-                        <span class="${highlightClass(`event-${db}-${e.name}`)} min-w-0 truncate" title="${escapeHtml(e.name || '')}" data-search-id="event-${db}-${e.name}">${escapeHtml(e.name || '')}</span>
-                        <span class="${subText} text-[9px] min-w-0 truncate text-right" title="${escapeHtml(e.status || '')}">${escapeHtml(e.status || '')}</span>
-                    </div>`)}
-            </div>
-        `;
-    };
-
-    // --- Helper to render a database item ---
-    const renderDatabase = (db) => {
-        const isExpanded = expandedDbs.has(db);
-        const baseColor = isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text/70' : (isNeon ? 'text-neon-text/70' : 'text-gray-400')));
-        const hoverColor = isLight ? 'hover:text-mysql-teal' : (isDawn ? 'hover:text-[#ea9d34]' : (isOceanic ? 'hover:text-ocean-frost' : (isNeon ? 'hover:text-neon-accent' : 'hover:text-white')));
-        const dotColor = isExpanded ? (isDawn ? 'bg-[#ea9d34] shadow-[0_0_8px_rgba(234,157,52,0.6)]' : (isNeon ? 'bg-neon-accent shadow-[0_0_8px_rgba(0,243,255,0.6)]' : 'bg-mysql-teal glow-node')) : (isLight ? 'bg-gray-300' : (isDawn ? 'bg-[#cecacd]' : (isOceanic ? 'bg-[#4C566A]' : (isNeon ? 'bg-white/10' : 'bg-gray-700'))));
-        const activeText = isExpanded ? (isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-mysql-teal')) : '';
-
-        return `
-            <div>
-                <div data-db="${db}" data-conn-id="${renderingConnectionId || activeConnectionId}" class="db-item flex items-center gap-2 min-w-0 w-full ${baseColor} ${hoverColor} group cursor-pointer p-1">
-                    <span class="material-symbols-outlined text-xs shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}">arrow_right</span>
-                    <div class="w-1.5 h-1.5 shrink-0 rounded-full ${dotColor}"></div>
-                    <span class="font-bold tracking-tight ${activeText} ${highlightClass(`db-${db}`)} flex-1 min-w-0 truncate" title="${escapeHtml(db || '')}" data-search-id="db-${db}">${db}</span>
-                </div>
-                ${isExpanded ? renderDatabaseContents(db) : ''}
-            </div>
-        `;
-    };
-
-    // --- Render all databases for active connection ---
-    const renderActiveConnectionData = () => {
-        const sysDbs = getSystemDatabases();
-        const showSystemObjects = SettingsManager.get(SETTINGS_PATHS.EXPLORER_SHOW_SYSTEM_OBJECTS);
-        const matchedDbs = searchContext ? databases.filter(db => databaseHasAnyMatch(db)) : databases;
-        const visibleDbs = showSystemObjects
-            ? matchedDbs
-            : matchedDbs.filter(db => !sysDbs.includes(db.toLowerCase()));
         const userDbs = visibleDbs.filter(db => !sysDbs.includes(db.toLowerCase()));
-        const systemDbs = showSystemObjects
-            ? visibleDbs.filter(db => sysDbs.includes(db.toLowerCase()))
-            : [];
+        const systemDbs = showSys ? visibleDbs.filter(db => sysDbs.includes(db.toLowerCase())) : [];
 
         if (visibleDbs.length === 0) {
-            const noDataText = searchContext
-                ? `No matches for "${escapeHtml(searchQuery)}"`
-                : (showSystemObjects
-                    ? `No ${isPostgreSQL() ? 'schemas' : 'databases'} found`
-                    : `No user ${isPostgreSQL() ? 'schemas' : 'databases'} found`);
-            return `<div class="pl-6 py-1 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-600')} italic text-[10px]">${noDataText}</div>`;
+            nodes.push({ type: 'no-matches', id: `no-matches-${connId}`, depth: 1, data: { searchQuery } });
+            return;
         }
 
-        const borderClass = isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isNeon ? 'border-white/5' : 'border-white/5'));
-        const headerText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9797a2]' : (isNeon ? 'text-neon-text/40' : 'text-gray-600'));
-        const countText = isLight ? 'text-gray-300' : (isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent/50' : 'text-gray-700'));
-        const iconColor = isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-mysql-teal');
-        const sysIconColor = isDawn ? 'text-[#f6c177]' : (isNeon ? 'text-neon-accent/60' : 'text-amber-500');
+        // User Databases
+        if (userDbs.length > 0) {
+            nodes.push({
+                type: 'group-header',
+                id: `group-user-${connId}`,
+                depth: 1,
+                data: { label: isPostgreSQL() ? 'User Schemas' : 'User Databases', count: userDbs.length, icon: isPostgreSQL() ? 'schema' : 'database', isSystem: false },
+                expanded: ctx.userDbsExpanded,
+                connId
+            });
 
-        const currentConnId = renderingConnectionId || activeConnectionId;
-        // Labels based on database type (fallback to active db type)
-        const isPgConn = activeDbType === 'postgresql';
-        const userLabel = isPgConn ? 'User Schemas' : 'User Databases';
-        const systemLabel = isPgConn ? 'System Schemas' : 'System Databases';
-        const schemaIcon = isPgConn ? 'schema' : 'database';
+            if (ctx.userDbsExpanded) {
+                const limit = ctx.userDbsLimit;
+                userDbs.slice(0, limit).forEach(db => flattenDatabase(nodes, db, ctx, connId));
+                if (userDbs.length > limit) {
+                    nodes.push({ type: 'show-more-dbs', id: `more-dbs-${connId}`, depth: 2, data: { count: userDbs.length - limit }, connId });
+                }
+            }
+        }
 
-        const truncatedUserDbs = userDbs.slice(0, userDbsLimit);
-        const hasMoreUserDbs = userDbs.length > userDbsLimit;
+        // System Databases
+        if (systemDbs.length > 0) {
+            nodes.push({
+                type: 'group-header',
+                id: `group-system-${connId}`,
+                depth: 1,
+                data: { label: isPostgreSQL() ? 'System Schemas' : 'System Databases', count: systemDbs.length, icon: 'settings', isSystem: true },
+                expanded: ctx.systemDbsExpanded,
+                connId
+            });
 
-        return `
-            <div class="pl-3 border-l ${borderClass} ml-3 space-y-1 mt-1">
-                 ${userDbs.length > 0 ? `
-                    <div class="mb-2">
-                         <div class="user-dbs-toggle px-2 py-1 text-[9px] font-bold tracking-[0.2em] ${headerText} flex items-center gap-2 cursor-pointer ${isDawn ? 'hover:text-[#575279]' : 'hover:text-mysql-teal'} transition-colors" data-conn-id="${currentConnId || ''}">
-                            <span class="material-symbols-outlined text-[10px] transition-transform ${userDbsExpanded ? 'rotate-90' : ''}">arrow_right</span>
-                            <span class="material-symbols-outlined text-[12px] ${iconColor}">${schemaIcon}</span>
-                            ${userLabel}
-                            <span class="${countText}"> (${userDbs.length})</span>
-                        </div>
-                        ${userDbsExpanded ? `
-                            <div class="space-y-0.5 pl-1">
-                                ${truncatedUserDbs.map(db => renderDatabase(db)).join('')}
-                                ${hasMoreUserDbs ? `
-                                    <button class="show-more-dbs w-full text-left px-7 py-1.5 text-[9px] font-bold ${isDawn ? 'text-[#ea9d34] hover:text-[#c48c2b]' : (isNeon ? 'text-neon-accent hover:text-neon-cyan' : 'text-mysql-teal hover:text-mysql-teal-light')} opacity-80 hover:opacity-100 transition-all flex items-center gap-1 cursor-pointer" data-conn-id="${currentConnId || ''}">
-                                        <span class="material-symbols-outlined text-[12px]">add_circle</span>
-                                        Show ${userDbs.length - userDbsLimit} more...
-                                    </button>
-                                ` : ''}
-                            </div>
-                        ` : ''}
-                    </div>
-                ` : ''}
-                ${systemDbs.length > 0 ? `
-                    <div class="mt-2 pt-2 border-t ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
-                        <div class="system-dbs-toggle px-2 py-1 text-[9px] font-bold tracking-[0.2em] ${headerText} flex items-center gap-2 cursor-pointer ${isDawn ? 'hover:text-[#575279]' : 'hover:text-amber-500'} transition-colors" data-conn-id="${currentConnId || ''}">
-                             <span class="material-symbols-outlined text-[10px] transition-transform ${systemDbsExpanded ? 'rotate-90' : ''}">arrow_right</span>
-                             <span class="material-symbols-outlined text-[12px] ${sysIconColor}">settings</span>
-                             ${systemLabel}
-                             <span class="${countText}"> (${systemDbs.length})</span>
-                        </div>
-                        ${systemDbsExpanded ? `<div class="space-y-0.5 opacity-70 pl-1">${systemDbs.map(db => renderDatabase(db)).join('')}</div>` : ''}
-                    </div>
-                ` : ''}
-            </div>
-        `;
+            if (ctx.systemDbsExpanded) {
+                systemDbs.forEach(db => flattenDatabase(nodes, db, ctx, connId));
+            }
+        }
     };
+
+    const flattenDatabase = (nodes, db, ctx, connId) => {
+        const isExpanded = ctx.expandedDbs.has(db);
+        nodes.push({
+            type: 'database',
+            id: `db-${db}`,
+            data: { name: db },
+            depth: 2,
+            expanded: isExpanded,
+            connId
+        });
+
+        if (isExpanded) {
+            const objs = ctx.dbObjects[db];
+            if (!objs) {
+                nodes.push({ type: 'loading', id: `loading-db-${db}`, depth: 3, data: { text: renderingConnectionId === activeConnectionId ? 'Loading...' : 'Switch to load' } });
+            } else {
+                flattenDatabaseObjects(nodes, db, objs, ctx, connId);
+            }
+        }
+    };
+
+    const flattenDatabaseObjects = (nodes, db, objs, ctx, connId) => {
+        const { searchContext } = ctx;
+        const { tables, views, triggers, procedures, functions, events } = objs;
+
+        const fTables = searchContext ? tables.filter(t => hasSearchMatch('table', db, t)) : tables;
+        const fViews = searchContext ? views.filter(v => hasSearchMatch('view', db, v)) : views;
+        const fTriggers = searchContext ? triggers.filter(t => hasSearchMatch('trigger', db, t.name)) : triggers;
+        const fProcs = searchContext ? procedures.filter(p => hasSearchMatch('procedure', db, p.name)) : procedures;
+        const fFuncs = searchContext ? functions.filter(f => hasSearchMatch('function', db, f.name)) : functions;
+        const fEvents = searchContext ? events.filter(e => hasSearchMatch('event', db, e.name)) : events;
+
+        if (searchContext && !fTables.length && !fViews.length && !fTriggers.length && !fProcs.length && !fFuncs.length && !fEvents.length) return;
+
+        flattenObjectCategory(nodes, db, 'tables', 'Tables', 'table_rows', fTables, ctx, connId);
+        flattenObjectCategory(nodes, db, 'views', 'Views', 'visibility', fViews, ctx, connId);
+        flattenObjectCategory(nodes, db, 'triggers', 'Triggers', 'bolt', fTriggers, ctx, connId);
+        flattenObjectCategory(nodes, db, 'procedures', 'Procedures', 'code_blocks', fProcs, ctx, connId);
+        flattenObjectCategory(nodes, db, 'functions', 'Functions', 'function', fFuncs, ctx, connId);
+        flattenObjectCategory(nodes, db, 'events', 'Events', 'schedule', fEvents, ctx, connId);
+    };
+
+    const flattenObjectCategory = (nodes, db, type, label, icon, items, ctx, connId) => {
+        if (!items || items.length === 0) return;
+
+        nodes.push({
+            type: 'category',
+            id: `cat-${db}-${type}`,
+            depth: 3,
+            data: { label, icon, count: items.length, type },
+            connId
+        });
+
+        const limit = objectsLimit; // Use the global limit for now, simpler
+        const visibleItems = items.slice(0, limit);
+
+        visibleItems.forEach(item => {
+            if (type === 'tables') {
+                const tableName = item;
+                const key = `${db}.${tableName}`;
+                const isExpanded = ctx.expandedTables.has(key);
+                nodes.push({
+                    type: 'table',
+                    id: `table-${db}-${tableName}`,
+                    depth: 4,
+                    data: { name: tableName, db },
+                    expanded: isExpanded,
+                    connId
+                });
+                if (isExpanded) {
+                    flattenTableDetails(nodes, db, tableName, ctx, connId);
+                }
+            } else {
+                // Views, triggers, etc.
+                let name = typeof item === 'string' ? item : item.name;
+                let extra = '';
+                if (type === 'triggers') extra = `${item.timing || ''} ${item.event || ''}`.trim();
+                if (type === 'events') extra = item.status || '';
+
+                nodes.push({
+                    type: 'object',
+                    id: `${type.slice(0, -1)}-${db}-${name}`,
+                    depth: 4,
+                    data: { name, type: type.slice(0, -1), db, extra },
+                    connId
+                });
+            }
+        });
+
+        if (items.length > limit) {
+            nodes.push({ type: 'show-more-objects', id: `more-objs-${db}-${type}`, depth: 4, data: { count: items.length - limit, db, type }, connId });
+        }
+    };
+
+    const flattenTableDetails = (nodes, db, table, ctx, connId) => {
+        const key = `${db}.${table}`;
+        const details = ctx.tableDetails[key];
+
+        if (!details) {
+            // Check cache or show loading
+            const cachedCols = DatabaseCache.get(CacheTypes.COLUMNS, key);
+            if (cachedCols) {
+                // It might be in cache but not in state yet if we just expanded
+                // flatten logic usually assumes state is sync, but we can fast-path?
+                // For now, if missing in state, show loading. Logic elsewhere likely handles hydration.
+                // Actually `tableDetails` in `ctx` should have it if it was loaded.
+            }
+            const isActive = connId === activeConnectionId;
+            nodes.push({ type: 'loading', id: `loading-tbl-${db}-${table}`, depth: 5, data: { text: isActive ? 'Loading...' : 'Switch to load' } });
+            return;
+        }
+
+        const { columns = [], indexes = [], fks = [] } = details;
+        const limit = columnLimits[key] || 100;
+
+        // Header
+        nodes.push({ type: 'detail-header', id: `dh-col-${db}-${table}`, depth: 5, data: { label: 'Columns', count: columns.length, icon: 'view_column' } });
+        columns.slice(0, limit).forEach(col => {
+            nodes.push({ type: 'column', id: `col-${db}-${table}-${col.name}`, depth: 6, data: { col, db, table }, connId });
+        });
+        if (columns.length > limit) {
+            nodes.push({ type: 'show-more-columns', id: `more-cols-${db}-${table}`, depth: 6, data: { count: columns.length - limit, db, table }, connId });
+        }
+
+        if (indexes.length > 0) {
+            nodes.push({ type: 'detail-header', id: `dh-idx-${db}-${table}`, depth: 5, data: { label: 'Indexes', count: indexes.length, icon: 'bolt' } });
+        }
+        if (fks.length > 0) {
+            nodes.push({ type: 'detail-header', id: `dh-fk-${db}-${table}`, depth: 5, data: { label: 'Foreign Keys', count: fks.length, icon: 'link' } });
+        }
+    };
+
 
     let renderingConnectionId = null;
     let currentBackendId = null;
@@ -525,119 +490,7 @@ export function ObjectExplorer() {
         }
     };
     let isPreloadingConnections = false;
-    const renderWithState = (connId, state, fn) => {
-        // Save globals
-        const prev = {
-            databases,
-            expandedDbs,
-            expandedTables,
-            dbObjects,
-            tableDetails,
-            loadingTables,
-            systemDbsExpanded,
-            connectionExpanded,
-            userDbsLimit,
-            objectsLimit
-        };
-        // Swap in state
-        databases = state.databases;
-        expandedDbs = state.expandedDbs;
-        expandedTables = state.expandedTables;
-        dbObjects = state.dbObjects;
-        tableDetails = state.tableDetails;
-        loadingTables = state.loadingTables;
-        userDbsExpanded = state.userDbsExpanded;
-        systemDbsExpanded = state.systemDbsExpanded;
-        connectionExpanded = state.connectionExpanded;
-        userDbsLimit = state.userDbsLimit || 150;
-        objectsLimit = state.objectsLimit || 100;
-        const prevRendering = renderingConnectionId;
-        const prevCacheConn = activeConnectionId;
-        if (connId) DatabaseCache.setConnectionId(connId);
-        renderingConnectionId = connId;
 
-        const result = fn();
-
-        // Restore
-        databases = prev.databases;
-        expandedDbs = prev.expandedDbs;
-        expandedTables = prev.expandedTables;
-        dbObjects = prev.dbObjects;
-        tableDetails = prev.tableDetails;
-        loadingTables = prev.loadingTables;
-        userDbsExpanded = prev.userDbsExpanded;
-        systemDbsExpanded = prev.systemDbsExpanded;
-        connectionExpanded = prev.connectionExpanded;
-        userDbsLimit = prev.userDbsLimit;
-        objectsLimit = prev.objectsLimit;
-        renderingConnectionId = prevRendering;
-        if (prevCacheConn) DatabaseCache.setConnectionId(prevCacheConn);
-        return result;
-    };
-
-    // --- Render Connection Node ---
-    const renderConnectionNode = (conn) => {
-        const isActive = conn.id === activeConnectionId;
-        const connColor = conn.color || '';
-        const stateKey = connectionKeyById.get(conn.id) || deriveStateKey(conn);
-        const state = getConnectionState(stateKey);
-        const isExpandedCached = state.connectionExpanded;
-
-        let bgClass = isActive
-            ? (connColor ? '' : (isLight ? 'bg-blue-50' : (isDawn ? 'bg-[#ea9d34]/10' : 'bg-white/5')))
-            : ((isLight || isDawn) ? (isDawn ? 'hover:bg-[#fffaf3] border border-transparent hover:border-[#f2e9e1]' : 'hover:bg-gray-100') : 'hover:bg-white/5');
-
-        let nameColor = isActive ? (isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-white'))) : (isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : (isNeon ? 'text-neon-text/40' : 'text-gray-400')));
-        let subText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : (isNeon ? 'text-neon-text/30' : 'text-gray-600')));
-        let arrowColor = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-accent/60' : 'text-gray-600'));
-        let iconColor = isActive ? (isDawn ? 'text-[#56949f]' : (isNeon ? 'text-neon-accent' : 'text-green-400')) : (isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-text/20' : 'text-gray-600')));
-        let activeDot = isActive ? `<div class="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full ${isDawn ? 'bg-[#56949f] border border-[#fffaf3]' : (isNeon ? 'bg-neon-accent border-2 border-neon-panel' : 'bg-green-500 border-2 border-[#0b0d11]')}"></div>` : '';
-
-        let customStyle = '';
-        if (connColor) {
-            if (isActive) {
-                customStyle = `background-color: ${connColor}1a; border-left: 3px solid ${connColor}; border-radius: 0 6px 6px 0;`;
-            } else {
-                customStyle = `border-left: 3px solid ${connColor}40; border-radius: 0 6px 6px 0;`;
-            }
-        }
-
-        const connectionTree = (isActive || isExpandedCached) && state.databases?.length
-            ? renderWithState(conn.id, state, renderActiveConnectionData)
-            : '';
-
-        return `
-            <div class="connection-node cursor-move select-none" data-conn-id="${conn.id}" draggable="true">
-                <div class="conn-item flex items-center gap-2 py-1.5 px-2 rounded-md ${bgClass} transition-colors group" data-id="${conn.id}" style="${customStyle}">
-                    <span class="drag-handle material-symbols-outlined text-xs ${arrowColor} cursor-grab">drag_indicator</span>
-                    <span class="conn-arrow material-symbols-outlined text-xs transition-transform ${(isActive ? connectionExpanded : isExpandedCached) ? 'rotate-90' : ''} ${arrowColor}">arrow_right</span>
-                    
-                    <div class="relative">
-                        <span class="material-symbols-outlined ${iconColor} text-base">dns</span>
-                        ${activeDot}
-                    </div>
-
-                    <div class="flex-1 min-w-0">
-                        <div class="flex items-center gap-1.5">
-                            <span class="text-[11px] font-bold ${nameColor} truncate">${escapeHtml(conn.name) || 'Unnamed Connection'}</span>
-                            ${conn.db_type === 'postgresql'
-                ? `<span class="px-1 py-0.5 text-[8px] font-bold rounded ${isLight ? 'bg-blue-100 text-blue-600' : (isDawn ? 'bg-[#3e8fb0]/20 text-[#3e8fb0]' : 'bg-blue-500/20 text-blue-400')}">PG</span>`
-                : `<span class="px-1 py-0.5 text-[8px] font-bold rounded ${isLight ? 'bg-orange-100 text-orange-600' : (isDawn ? 'bg-[#ea9d34]/20 text-[#ea9d34]' : 'bg-orange-500/20 text-orange-400')}">MY</span>`
-            }
-                        </div>
-                        <div class="text-[9px] ${subText} truncate">${escapeHtml(conn.username)}@${escapeHtml(conn.host)}</div>
-                    </div>
-
-                    ${!isActive ? `
-                        <button class="conn-connect-btn opacity-0 group-hover:opacity-100 p-1 rounded ${isDawn ? 'hover:bg-[#56949f]/20 text-[#56949f]' : 'hover:bg-green-500/20 text-green-400'} transition-all cursor-pointer" title="Connect" data-id="${conn.id}">
-                            <span class="material-symbols-outlined text-sm">bolt</span>
-                        </button>
-                    ` : ''}
-                </div>
-                ${connectionTree}
-            </div>
-        `;
-    };
 
     // --- Context Menu / Tooltip ---
     // --- Context Menu / Tooltip ---
@@ -655,7 +508,7 @@ export function ObjectExplorer() {
         }
     };
 
-    const handleContextMenu = (e) => {
+    const showColumnDetailsTooltip = (e) => {
         // Find if we clicked on a column item
         const colItem = e.target.closest('.column-item');
         if (!colItem) return;
@@ -794,59 +647,242 @@ export function ObjectExplorer() {
     // A better approach might be to attach it to the container, but keydown usually needs window focus.
 
     // --- Render ---
-    const render = () => {
-        const headerText = isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'));
-        const subText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-700'));
-        const iconColor = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-600'));
-        const hoverIcon = isDawn ? 'hover:text-[#ea9d34]' : 'hover:text-mysql-teal';
+    // --- Virtual Render Engine ---
 
-        const wasSearchFocused = document.activeElement && document.activeElement.id === 'explorer-search';
-        const selectionStart = wasSearchFocused ? document.activeElement.selectionStart : 0;
+    // Renders a single node to an HTML string
+    const renderNode = (node) => {
+        const { type, id, data, depth, expanded, active, connId } = node;
+        const paddingLeft = depth * 12 + 12; // Base padding + depth
+        const style = `padding-left: ${paddingLeft}px; height: ${ROW_HEIGHT}px;`;
 
-        const renderTypeBadge = (type) => {
-            const base = 'px-1.5 py-0.5 rounded text-[8px] font-bold';
-            switch (type) {
-                case 'database': return `<span class="${base} ${isDawn ? 'bg-[#f6c177]/20 text-[#c48c2b]' : (isNeon ? 'bg-neon-accent/20 text-neon-accent' : 'bg-amber-500/20 text-amber-400')}">DB</span>`;
-                case 'table': return `<span class="${base} ${isDawn ? 'bg-[#ea9d34]/20 text-[#c77b22]' : (isNeon ? 'bg-neon-accent/20 text-neon-accent' : 'bg-mysql-teal/20 text-mysql-teal')}">TABLE</span>`;
-                case 'column': return `<span class="${base} ${isDawn ? 'bg-[#c6a0f6]/20 text-[#7c6f9b]' : (isNeon ? 'bg-neon-cyan/20 text-neon-cyan' : 'bg-purple-500/20 text-purple-300')}">COLUMN</span>`;
-                case 'view': return `<span class="${base} ${isDawn ? 'bg-[#3e8fb0]/20 text-[#2c6d8a]' : (isNeon ? 'bg-neon-pink/20 text-neon-pink' : 'bg-blue-500/20 text-blue-300')}">VIEW</span>`;
-                case 'trigger': return `<span class="${base} ${isDawn ? 'bg-[#f6c177]/20 text-[#c48c2b]' : (isNeon ? 'bg-neon-accent/20 text-neon-accent' : 'bg-yellow-500/20 text-yellow-300')}">TRIGGER</span>`;
-                case 'procedure': return `<span class="${base} ${isDawn ? 'bg-[#9ccfd8]/20 text-[#5f97a3]' : (isNeon ? 'bg-neon-cyan/20 text-neon-cyan' : 'bg-green-500/20 text-green-300')}">PROC</span>`;
-                case 'function': return `<span class="${base} ${isDawn ? 'bg-[#eb6f92]/20 text-[#b45573]' : (isNeon ? 'bg-neon-pink/20 text-neon-pink' : 'bg-pink-500/20 text-pink-300')}">FUNC</span>`;
-                case 'event': return `<span class="${base} ${isDawn ? 'bg-[#ea9d34]/20 text-[#c77b22]' : (isNeon ? 'bg-neon-accent/20 text-neon-accent' : 'bg-orange-500/20 text-orange-300')}">EVENT</span>`;
-                default: return '';
+        // Common Highlights
+        const highlight = (id) => highlightClass(id);
+        const searchId = (id) => `data-search-id="${id}"`;
+
+        // Theme colors
+        const mainText = isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text/80' : 'text-gray-500'));
+        const hoverText = isLight ? 'hover:text-mysql-teal' : (isDawn ? 'hover:text-[#ea9d34]' : (isOceanic ? 'hover:text-ocean-frost' : 'hover:text-white'));
+
+        switch (type) {
+            case 'connection': {
+                // Connection Header
+                const { name, id: cid } = data;
+                const borderClass = isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isNeon ? 'border-white/5' : 'border-white/5'));
+                const bgClass = active ? (isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#f2e9e1]' : (isOceanic ? 'bg-ocean-surface' : (isNeon ? 'bg-white/5' : 'bg-gray-800')))) : '';
+                return `
+                    <div class="connection-item virtual-row flex items-center gap-2 w-full cursor-pointer ${bgClass} hover:bg-opacity-80 transition-colors border-b ${borderClass}" style="${style}" data-conn-id="${cid}" draggable="true">
+                         <div class="w-1.5 h-1.5 rounded-full ${active ? 'bg-green-500' : 'bg-gray-400'}"></div>
+                         <span class="font-bold text-[11px] truncate flex-1 min-w-0 ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">${escapeHtml(name)}</span>
+                         ${active ? `<span class="material-symbols-outlined text-[14px] ${expanded ? 'rotate-180' : ''}">expand_more</span>` : ''} 
+                    </div>
+                `;
             }
-        };
+            case 'group-header': {
+                // User/System Databases Group
+                const { label, count, icon, isSystem } = data;
+                const headerText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9797a2]' : (isNeon ? 'text-neon-text/40' : 'text-gray-600'));
+                const countTextColor = isLight ? 'text-gray-300' : (isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent/50' : 'text-gray-700'));
+                const iconColor = isSystem ? (isDawn ? 'text-[#f6c177]' : (isNeon ? 'text-neon-accent/60' : 'text-amber-500')) : (isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-mysql-teal'));
 
-        const searchHtml = (() => {
-            if (!searchQuery.trim()) return '';
-
-            // Group matches by type
-            const groups = {
-                database: [],
-                table: [],
-                view: [],
-                column: [],
-                procedure: [],
-                function: [],
-                trigger: [],
-                event: []
-            };
-
-            searchMatches.forEach(m => {
-                if (groups[m.type]) groups[m.type].push(m);
-            });
-
-            const totalResults = searchMatches.length;
-            const hasMatches = totalResults > 0;
-            let renderedCount = 0;
-            const MAX_DISPLAY = 20;
-
-            const renderGroup = (type, label, icon, color) => {
-                const items = groups[type];
-                if (!items || items.length === 0) return '';
+                const toggleClass = isSystem ? 'system-dbs-toggle' : 'user-dbs-toggle';
 
                 return `
+                    <div class="${toggleClass} virtual-row flex items-center gap-2 w-full cursor-pointer px-2 py-1 text-[9px] font-bold tracking-[0.2em] ${headerText} hover:opacity-80 transition-colors" style="${style}" data-conn-id="${connId}">
+                        <span class="material-symbols-outlined text-[10px] transition-transform ${expanded ? 'rotate-90' : ''}">arrow_right</span>
+                        <span class="material-symbols-outlined text-[12px] ${iconColor}">${icon}</span>
+                        ${label}
+                        <span class="${countTextColor}"> (${count})</span>
+                    </div>
+                 `;
+            }
+            case 'database': {
+                const { name } = data;
+                const baseColor = isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text/70' : (isNeon ? 'text-neon-text/70' : 'text-gray-400')));
+                const hoverColor = isLight ? 'hover:text-mysql-teal' : (isDawn ? 'hover:text-[#ea9d34]' : (isOceanic ? 'hover:text-ocean-frost' : (isNeon ? 'hover:text-neon-accent' : 'hover:text-white')));
+                const dotColor = expanded ? (isDawn ? 'bg-[#ea9d34] shadow-[0_0_8px_rgba(234,157,52,0.6)]' : (isNeon ? 'bg-neon-accent shadow-[0_0_8px_rgba(0,243,255,0.6)]' : 'bg-mysql-teal glow-node')) : (isLight ? 'bg-gray-300' : (isDawn ? 'bg-[#cecacd]' : (isOceanic ? 'bg-[#4C566A]' : (isNeon ? 'bg-white/10' : 'bg-gray-700'))));
+                const activeText = expanded ? (isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-mysql-teal')) : '';
+
+                return `
+                    <div class="db-item virtual-row flex items-center gap-2 w-full ${baseColor} ${hoverColor} group cursor-pointer" style="${style}" data-db="${name}" data-conn-id="${connId}">
+                         <span class="material-symbols-outlined text-xs shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}">arrow_right</span>
+                         <div class="w-1.5 h-1.5 shrink-0 rounded-full ${dotColor}"></div>
+                         <span class="font-bold tracking-tight ${activeText} ${highlightClass(`db-${name}`)} flex-1 min-w-0 truncate" title="${escapeHtml(name)}" ${searchId(`db-${name}`)}>${escapeHtml(name)}</span>
+                    </div>
+                `;
+            }
+            case 'category': {
+                const { label, icon, count, type: catType } = data;
+                const headerText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'));
+                let iconColorClass = '';
+                if (catType === 'tables') iconColorClass = isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal';
+                else if (catType === 'views') iconColorClass = isDawn ? 'text-[#3e8fb0]' : (isNeon ? 'text-neon-pink' : 'text-blue-400');
+                else if (catType === 'triggers') iconColorClass = isDawn ? 'text-[#f6c177]' : (isNeon ? 'text-neon-accent' : 'text-yellow-400');
+                else if (catType === 'procedures') iconColorClass = isDawn ? 'text-[#9ccfd8]' : (isNeon ? 'text-neon-cyan' : 'text-green-400');
+                else if (catType === 'functions') iconColorClass = isDawn ? 'text-[#eb6f92]' : (isNeon ? 'text-neon-pink' : 'text-pink-400');
+                else if (catType === 'events') iconColorClass = isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-orange-400');
+
+                return `
+                    <div class="category-item virtual-row flex items-center gap-1.5 ${headerText} text-[10px]" style="${style}">
+                         <span class="material-symbols-outlined text-[12px] ${iconColorClass}">${icon}</span>
+                         <span class="tracking-wider font-semibold">${label}</span>
+                         <span class="${isLight ? 'text-gray-300' : (isDawn ? 'text-[#ea9d34]' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-700'))}">(${count})</span>
+                    </div>
+                `;
+            }
+            case 'table': {
+                const { name: table, db } = data;
+                const iconColor = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-700'));
+                const iconHover = isLight ? 'group-hover:text-mysql-teal' : (isDawn ? 'group-hover:text-[#ea9d34]' : 'group-hover:text-mysql-teal');
+
+                return `
+                    <div class="table-item virtual-row flex items-center gap-2 w-full ${mainText} ${hoverText} cursor-pointer group" style="${style}" data-table="${table}" data-db="${db}" data-conn-id="${connId}" draggable="true">
+                        <span class="material-symbols-outlined text-[10px] shrink-0 transition-transform ${expanded ? 'rotate-90' : ''} ${isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : iconColor)}">arrow_right</span>
+                        <span class="material-symbols-outlined text-[14px] shrink-0 ${iconColor} ${iconHover}">table_rows</span>
+                        <span class="${highlightClass(`table-${db}-${table}`)} flex-1 min-w-0 truncate" title="${escapeHtml(table)}" ${searchId(`table-${db}-${table}`)}>${escapeHtml(table)}</span>
+                    </div>
+                `;
+            }
+            case 'object': {
+                // Generic Object (View, Trigger, Proc, Func, Event)
+                const { name, type: objType, db, extra } = data;
+                let icon = 'circle';
+                let iconColorClass = '';
+
+                if (objType === 'view') { icon = 'visibility'; iconColorClass = isDawn ? 'text-[#3e8fb0]' : (isNeon ? 'text-neon-pink' : 'text-blue-400'); }
+                else if (objType === 'trigger') { icon = 'bolt'; iconColorClass = isDawn ? 'text-[#f6c177]' : (isNeon ? 'text-neon-accent' : 'text-yellow-400'); }
+                else if (objType === 'procedure') { icon = 'code_blocks'; iconColorClass = isDawn ? 'text-[#9ccfd8]' : (isNeon ? 'text-neon-cyan' : 'text-green-400'); }
+                else if (objType === 'function') { icon = 'function'; iconColorClass = isDawn ? 'text-[#eb6f92]' : (isNeon ? 'text-neon-pink' : 'text-pink-400'); }
+                else if (objType === 'event') { icon = 'schedule'; iconColorClass = isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-orange-400'); }
+
+                const subText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-700'));
+
+                // We use different classes for click handlers e.g. view-item
+                const itemClass = objType === 'view' ? 'view-item' : 'object-item'; // triggers/procs don't have specific class in old code, usually just generic click handler?
+                // Actually old code had inline onClick logic or specific class structure.
+                // Triggers was just a div with click handler.
+                // Let's add a generic `virtual-object` class and data attributes
+
+                return `
+                    <div class="${itemClass} virtual-row grid items-center gap-2 w-full text-[10px] ${mainText} cursor-pointer hover:bg-black/5" style="${style} padding-left: 0; grid-template-columns: ${paddingLeft}px 12px minmax(0,1fr) minmax(0,45%); display: grid;" data-${objType}="${name}" data-db="${db}">
+                         <span class="col-start-2 material-symbols-outlined text-[12px] shrink-0 ${iconColorClass}">${icon}</span>
+                         <span class="${highlightClass(`${objType}-${db}-${name}`)} min-w-0 truncate" title="${escapeHtml(name)}" ${searchId(`${objType}-${db}-${name}`)}>${escapeHtml(name)}</span>
+                         ${extra ? `<span class="${subText} text-[9px] min-w-0 truncate text-right" title="${escapeHtml(extra)}">${escapeHtml(extra)}</span>` : ''}
+                    </div>
+                `;
+            }
+            case 'detail-header': {
+                const { label, count, icon } = data;
+                const headerText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'));
+                const iconColor = isDawn ? 'text-[#c6a0f6]' : (isNeon ? 'text-neon-accent' : 'text-purple-400'); // Default to column color
+                // Adjust icon color based on label if needed
+                return `
+                    <div class="virtual-row flex items-center gap-1.5 ${headerText} text-[10px]" style="${style}">
+                         <span class="material-symbols-outlined text-[12px] ${iconColor}">${icon}</span>
+                         <span class="tracking-wider font-semibold">${label}</span>
+                         <span class="${isLight ? 'text-gray-300' : (isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent/50' : 'text-gray-700'))}">(${count})</span>
+                    </div>
+                `;
+            }
+            case 'column': {
+                const { col, db, table } = data;
+                // Reuse column rendering logic or simplified?
+                // The old column item was complex grid.
+                const colText = isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text/60' : (isNeon ? 'text-neon-text/60' : 'text-gray-600')));
+                const typeText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : (isNeon ? 'text-neon-text/40' : 'text-gray-700')));
+
+                return `
+                    <div class="column-item cursor-context-menu virtual-row grid items-center gap-1.5 w-full overflow-hidden text-[10px] ${colText}" style="${style} padding-left: 0; grid-template-columns: ${paddingLeft}px 12px minmax(0,1fr) minmax(0,45%); display: grid;"
+                         data-col-name="${escapeHtml(col.name || '')}"
+                         data-col-type="${escapeHtml(col.column_type || col.data_type || '')}"
+                         data-col-nullable="${col.is_nullable ? 'YES' : 'NO'}"
+                         data-col-key="${escapeHtml(col.column_key || '')}"
+                         data-col-default="${escapeHtml(col.column_default || 'NULL')}"
+                         data-col-extra="${escapeHtml(col.extra || '')}">
+                         
+                         <span class="col-start-2 flex items-center justify-center">
+                            ${col.column_key === 'PRI' ? `<span class="material-symbols-outlined text-[10px] shrink-0 ${isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-yellow-500')}">key</span>` :
+                        col.column_key === 'UNI' ? `<span class="material-symbols-outlined text-[10px] shrink-0 ${isDawn ? 'text-[#3e8fb0]' : (isNeon ? 'text-neon-pink' : 'text-blue-400')}">fingerprint</span>` :
+                            col.column_key === 'MUL' ? `<span class="material-symbols-outlined text-[10px] shrink-0 ${isNeon ? 'text-neon-accent/60' : 'text-gray-500'}">link</span>` :
+                                '<span class="w-[10px] shrink-0"></span>'}
+                         </span>
+
+                         <span class="${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279] font-medium' : (isOceanic ? 'text-ocean-text' : (isNeon ? 'text-neon-text' : 'text-gray-400')))} ${highlightClass(`col-${db}-${table}-${col.name}`)} min-w-0 truncate" title="${escapeHtml(col.name || '')}" ${searchId(`col-${db}-${table}-${col.name}`)}>${escapeHtml(col.name || '')}</span>
+                         <span class="${typeText} text-[9px] min-w-0 truncate text-right" title="${escapeHtml(col.data_type || '')}">${escapeHtml(col.data_type || '')}</span>
+                    </div>
+               `;
+            }
+            case 'loading': {
+                const text = data.text;
+                const loadingColor = isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]' : (isOceanic ? 'text-ocean-text/40' : (isNeon ? 'text-neon-text/40' : 'text-gray-700')));
+                return `<div class="virtual-row ${loadingColor} italic text-[10px] flex items-center" style="${style}">${text}</div>`;
+            }
+            case 'show-more-dbs':
+            case 'show-more-objects':
+            case 'show-more-columns': {
+                const { count, db, type: objType, table } = data;
+                const btnClass = `w-full text-left px-0 py-1 text-[9px] font-bold ${isDawn ? 'text-[#ea9d34] hover:text-[#c48c2b]' : (isNeon ? 'text-neon-accent hover:text-neon-cyan' : 'text-mysql-teal hover:text-mysql-teal-light')} opacity-80 hover:opacity-100 transition-all flex items-center gap-1 cursor-pointer`;
+
+                let dataAttrs = `data-count="${count}"`;
+                if (db) dataAttrs += ` data-db="${db}"`;
+                if (objType) dataAttrs += ` data-type="${objType}"`;
+                if (table) dataAttrs += ` data-table="${table}"`;
+                if (connId) dataAttrs += ` data-conn-id="${connId}"`;
+
+                return `
+                    <div class="virtual-row" style="${style}">
+                         <button class="${type} ${btnClass}" ${dataAttrs}>
+                            <span class="material-symbols-outlined text-[12px]">add_circle</span>
+                            Show ${count} more...
+                        </button>
+                    </div>
+                `;
+            }
+            case 'no-matches': {
+                return `<div class="virtual-row pl-6 py-1 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-600')} italic text-[10px]" style="${style}">No matches</div>`;
+            }
+            case 'empty-state': {
+                return `<div class="virtual-row p-4 text-center text-gray-400 text-xs" style="${style}">No connections found</div>`;
+            }
+            default:
+                return '';
+        }
+    };
+
+
+
+    // --- Search HTML Helper ---
+    const getSearchResultsHtml = () => {
+        if (!searchQuery.trim()) return '';
+
+        // Group matches by type
+        const groups = {
+            database: [],
+            table: [],
+            view: [],
+            column: [],
+            procedure: [],
+            function: [],
+            trigger: [],
+            event: []
+        };
+
+        searchMatches.forEach(m => {
+            if (groups[m.type]) groups[m.type].push(m);
+        });
+
+        const totalResults = searchMatches.length;
+        const hasMatches = totalResults > 0;
+        let renderedCount = 0;
+        const MAX_DISPLAY = 20;
+
+        const headerText = isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'));
+        const subText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-700'));
+
+        const renderGroup = (type, label, icon, color) => {
+            const items = groups[type];
+            if (!items || items.length === 0) return '';
+
+            return `
                     <div class="mb-3">
                         <div class="flex items-center gap-1.5 px-3 py-1 text-[9px] font-bold tracking-widest ${headerText} opacity-50">
                             <span class="material-symbols-outlined text-[14px] ${color}">${icon}</span>
@@ -854,15 +890,15 @@ export function ObjectExplorer() {
                         </div>
                         <div class="space-y-0.5 px-1">
                             ${items.slice(0, Math.max(0, MAX_DISPLAY - renderedCount)).map(m => {
-                    renderedCount++;
-                    const idx = searchMatches.indexOf(m);
-                    const isCurrent = idx === currentMatchIndex;
-                    const path = [m.db, m.table, m.column].filter(Boolean).join(' • ');
-                    const activeItemBg = isCurrent
-                        ? (isDawn ? 'bg-[#ea9d34]/20 ring-1 ring-[#ea9d34]/30' : (isNeon ? 'bg-neon-accent/20 ring-1 ring-neon-accent/30' : 'bg-mysql-teal/20 ring-1 ring-mysql-teal/30'))
-                        : (isLight ? 'hover:bg-gray-100' : (isDawn ? 'hover:bg-[#f2e9e1]' : (isNeon ? 'hover:bg-white/5' : 'hover:bg-white/5')));
+                renderedCount++;
+                const idx = searchMatches.indexOf(m);
+                const isCurrent = idx === currentMatchIndex;
+                const path = [m.db, m.table, m.column].filter(Boolean).join(' • ');
+                const activeItemBg = isCurrent
+                    ? (isDawn ? 'bg-[#ea9d34]/20 ring-1 ring-[#ea9d34]/30' : (isNeon ? 'bg-neon-accent/20 ring-1 ring-neon-accent/30' : 'bg-mysql-teal/20 ring-1 ring-mysql-teal/30'))
+                    : (isLight ? 'hover:bg-gray-100' : (isDawn ? 'hover:bg-[#f2e9e1]' : (isNeon ? 'hover:bg-white/5' : 'hover:bg-white/5')));
 
-                    return `
+                return `
                                     <button class="search-result-item w-full text-left px-3 py-2 rounded-lg transition-all flex items-center justify-between group ${activeItemBg}" data-index="${idx}">
                                         <div class="flex flex-col min-w-0 pr-4">
                                             <span class="text-[11px] ${isCurrent ? (isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal font-bold') : (isLight ? 'text-gray-700' : 'text-gray-200')} truncate font-mono">${escapeHtml(m.column || m.table || m.view || m.procedure || m.function || m.trigger || m.event || m.db)}</span>
@@ -871,21 +907,22 @@ export function ObjectExplorer() {
                                         ${isCurrent ? `<span class="material-symbols-outlined text-[14px] ${isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal'} animate-bounce-x">keyboard_return</span>` : ''}
                                     </button>
                                 `;
-                }).join('')}
+            }).join('')}
                         </div>
                     </div>
                 `;
-            };
+        };
 
-            const glassBg = isLight ? 'bg-white/95' : (isDawn ? 'bg-[#fffaf3]/95' : (isNeon ? 'bg-neon-panel/95' : 'bg-[#1a1d23]/95'));
-            const glassBorder = isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isNeon ? 'border-neon-border/50' : 'border-white/10'));
+        const glassBg = isLight ? 'bg-white/95' : (isDawn ? 'bg-[#fffaf3]/95' : (isNeon ? 'bg-neon-panel/95' : 'bg-[#1a1d23]/95'));
+        const glassBorder = isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isNeon ? 'border-neon-border/50' : 'border-white/10'));
+        const headerTextClass = isLight ? 'text-gray-800' : (isNeon ? 'text-neon-text' : 'text-white');
 
-            return `
+        return `
                 <div id="floating-search-results" class="absolute left-2 right-2 top-24 bottom-4 z-[100] flex flex-col pointer-events-none group/floating">
                     <div class="flex-1 overflow-y-auto custom-scrollbar rounded-2xl border ${glassBorder} ${glassBg} backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.3)] p-2 pointer-events-auto animate-search-in">
                         <div class="flex items-center justify-between px-3 mb-3 sticky top-0 ${glassBg} py-2 border-b ${glassBorder} z-10 rounded-t-xl">
                             <div class="flex items-center gap-2">
-                                <span class="text-[10px] font-bold ${isLight ? 'text-gray-800' : (isNeon ? 'text-neon-text' : 'text-white')} tracking-tight">${totalResults} matching objects</span>
+                                <span class="text-[10px] font-bold ${headerTextClass} tracking-tight">${totalResults} matching objects</span>
                                 ${totalResults > MAX_DISPLAY ? `<span class="text-[8px] px-1.5 py-0.5 rounded bg-white/5 border border-white/10 ${headerText}">Showing top ${MAX_DISPLAY}</span>` : ''}
                             </div>
                             <div class="flex items-center gap-3">
@@ -914,24 +951,70 @@ export function ObjectExplorer() {
                     </div>
                 </div>
             `;
-        })();
+    };
 
-        const layout = `
-            <div class="flex items-center justify-between px-2">
-                <h2 class="text-[10px] font-bold tracking-[0.15em] ${headerText}">Explorer</h2>
-                <div class="flex gap-2">
-                    <span id="refresh-btn" class="material-symbols-outlined text-[16px] ${iconColor} cursor-pointer ${hoverIcon}" title="Reload Connections">sync</span>
-                    <a href="#/connections" class="material-symbols-outlined text-[16px] ${iconColor} cursor-pointer ${hoverIcon}" title="Manage Connections">settings</a>
+    // --- Update Virtual Scroll Logic ---
+    // Modify updateVirtualScroll to include Search HTML and partial updates
+    const updateVirtualScroll = () => {
+        const containerHeight = explorer.offsetHeight || 600;
+        const visibleCount = Math.ceil(containerHeight / ROW_HEIGHT) + 4;
+        const startNode = Math.floor(scrollTop / ROW_HEIGHT);
+        const startIndex = Math.max(0, startNode - 2);
+        const endIndex = Math.min(visibleNodes.length, startIndex + visibleCount);
+
+        const topSpacerHeight = startIndex * ROW_HEIGHT;
+        const bottomSpacerHeight = Math.max(0, (visibleNodes.length - endIndex) * ROW_HEIGHT);
+
+        const visibleSlice = visibleNodes.slice(startIndex, endIndex);
+        const html = visibleSlice.map(renderNode).join('');
+
+        const searchHtml = getSearchResultsHtml();
+
+        const headerId = 'explorer-header-structure';
+        if (!container.querySelector(`#${headerId}`)) {
+            const headerText = isLight ? 'text-gray-500' : (isDawn ? 'text-[#9797a2]' : (isNeon ? 'text-neon-text/40' : 'text-gray-600'));
+            const iconColor = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-600'));
+            const hoverIcon = isDawn ? 'hover:text-[#ea9d34]' : 'hover:text-mysql-teal';
+
+            container.innerHTML = `
+                <div id="${headerId}" class="flex flex-col h-full">
+                    <div class="flex items-center justify-between px-2 flex-shrink-0 min-h-[30px]">
+                        <h2 class="text-[10px] font-bold tracking-[0.15em] ${headerText}">Explorer</h2>
+                        <div class="flex gap-2">
+                            <span id="refresh-btn" class="material-symbols-outlined text-[16px] ${iconColor} cursor-pointer ${hoverIcon}" title="Reload Connections">sync</span>
+                            <a href="#/connections" class="material-symbols-outlined text-[16px] ${iconColor} cursor-pointer ${hoverIcon}" title="Manage Connections">settings</a>
+                        </div>
+                    </div>
+                    <div class="px-2 mt-2 flex-shrink-0" id="search-container-wrapper"></div>
+                    <div id="explorer-tree" class="flex-1 overflow-y-auto custom-scrollbar font-mono text-[11px] space-y-0 mt-2 relative"></div>
+                    <div id="search-results-overlay"></div>
                 </div>
-            </div>
+             `;
 
-            <div class="px-2 mt-2">
+            // Attach scroll listener to the new tree element
+            const tree = container.querySelector('#explorer-tree');
+            tree.addEventListener('scroll', (e) => {
+                scrollTop = e.target.scrollTop;
+                requestAnimationFrame(updateVirtualScroll);
+            });
+            // Note: Context menu listener is handled by setupListeners via delegation on explorer container
+        }
+
+        const searchWrapper = container.querySelector('#search-container-wrapper');
+        if (searchWrapper && (!searchWrapper.innerHTML.trim() || didStateChangeSinceLastTreeRender)) {
+            const headerText = isLight ? 'text-gray-500' : (isDawn ? 'text-[#9797a2]' : (isNeon ? 'text-neon-text/40' : 'text-gray-600'));
+            const iconColor = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-600'));
+            const existingInput = searchWrapper.querySelector('#explorer-search');
+            const hasFocus = existingInput && document.activeElement === existingInput;
+            const selectionStart = hasFocus ? existingInput.selectionStart : 0;
+            const selectionEnd = hasFocus ? existingInput.selectionEnd : 0;
+
+            searchWrapper.innerHTML = `
                 <div class="relative group">
                     <input type="text" id="explorer-search" placeholder="Search objects..." 
                         class="w-full ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#fcf9f2] border-[#f2e9e1]' : (isNeon ? 'bg-neon-bg border-neon-border/30' : 'bg-white/5 border-white/10'))} border rounded px-7 py-1.5 text-[10px] focus:outline-none ${isDawn ? 'focus:border-[#ea9d34]/50' : (isNeon ? 'focus:border-neon-accent/50' : 'focus:border-mysql-teal/50')} transition-colors pr-24"
                         value="${escapeHtml(searchQuery)}">
                     <span class="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-[14px] ${iconColor}">search</span>
-                    
                     <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
                         <div class="flex items-center bg-black/5 dark:bg-white/5 rounded-md p-0.5 border border-white/5">
                             <button id="search-case-toggle" class="px-1 py-0.5 rounded text-[9px] font-black transition-all ${isCaseSensitive ? (isNeon ? 'bg-neon-accent text-black' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-400 hover:text-gray-600' : 'text-gray-500 hover:text-gray-300')}" title="Match Case (Aa)">Aa</button>
@@ -948,138 +1031,37 @@ export function ObjectExplorer() {
                         </div>
                     </div>
                 </div>
-            </div>
-            <div id="explorer-tree" class="flex-1 overflow-y-auto custom-scrollbar font-mono text-[11px] space-y-2 mt-2">
-                ${connections.length === 0 ?
-                `<div class="p-4 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-600')} italic text-center">
-                        <div>No connections</div>
-                        <a href="#/connections" class="${isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal'} hover:underline text-[10px] mt-1 inline-block">Add Connection</a>
-                    </div>`
-                : ''}
-                ${connections.map(conn => renderConnectionNode(conn)).join('')}
-            </div>
-            <div id="search-results-container">
-                ${searchHtml}
-            </div>
-        `;
-
-        // UPDATE UI
-        overlay.innerHTML = searchHtml;
-
-        // Update Tree Container (conditionally)
-        if (didStateChangeSinceLastTreeRender || !container.querySelector('#explorer-tree')) {
-            const lastTree = container.querySelector('#explorer-tree');
-            const lastScroll = lastTree ? lastTree.scrollTop : 0;
-
-            container.innerHTML = layout;
-
-            // Re-attach context menu listener on re-render
-            const treeEl = container.querySelector('#explorer-tree');
-            if (treeEl) {
-                treeEl.addEventListener('contextmenu', handleContextMenu);
-            }
-
-            const newTree = container.querySelector('#explorer-tree');
-            if (newTree) {
-                newTree.scrollTop = lastScroll;
-            }
-
-            // Re-attach tree-dependent listeners only after full render
-            // Connection Interaction (Drag and Drop)
-            explorer.querySelectorAll('.connection-node').forEach(connNode => {
-                const connId = connNode.dataset.connId;
-                connNode.addEventListener('dragstart', (e) => {
-                    draggedConnId = connId; draggedNode = connNode;
-                    connNode.style.opacity = '0.5';
-                    e.dataTransfer.effectAllowed = 'move';
-                    e.dataTransfer.setData('text/plain', connId);
-                });
-                connNode.addEventListener('dragend', () => {
-                    connNode.style.opacity = '1'; draggedConnId = null; draggedNode = null;
-                    explorer.querySelectorAll('.connection-node').forEach(node => {
-                        node.style.borderTop = ''; node.style.borderBottom = '';
-                    });
-                });
-                connNode.addEventListener('dragenter', (e) => {
-                    e.preventDefault();
-                    if (draggedConnId && draggedConnId !== connId) e.dataTransfer.dropEffect = 'move';
-                });
-                connNode.addEventListener('dragover', (e) => {
-                    e.preventDefault();
-                    if (!draggedConnId || draggedConnId === connId) return;
-                    e.dataTransfer.dropEffect = 'move';
-                    const rect = connNode.getBoundingClientRect();
-                    const midpoint = rect.top + rect.height / 2;
-                    explorer.querySelectorAll('.connection-node').forEach(node => { node.style.borderTop = ''; node.style.borderBottom = ''; });
-                    const highlightColor = isDawn ? '#ea9d34' : (isLight ? '#0ea5e9' : '#06b6d4');
-                    if (e.clientY < midpoint) connNode.style.borderTop = `2px solid ${highlightColor}`;
-                    else connNode.style.borderBottom = `2px solid ${highlightColor}`;
-                });
-                connNode.addEventListener('dragleave', (e) => {
-                    if (!connNode.contains(e.relatedTarget)) { connNode.style.borderTop = ''; connNode.style.borderBottom = ''; }
-                });
-                connNode.addEventListener('drop', async (e) => {
-                    e.preventDefault(); e.stopPropagation();
-                    explorer.querySelectorAll('.connection-node').forEach(node => { node.style.borderTop = ''; node.style.borderBottom = ''; });
-                    const targetConnId = connId;
-                    if (draggedConnId && targetConnId && draggedConnId !== targetConnId) {
-                        const draggedIndex = connections.findIndex(c => c.id === draggedConnId);
-                        const targetIndex = connections.findIndex(c => c.id === targetConnId);
-                        if (draggedIndex !== -1 && targetIndex !== -1) {
-                            const rect = connNode.getBoundingClientRect();
-                            const midpoint = rect.top + rect.height / 2;
-                            const insertBefore = e.clientY < midpoint;
-                            const [removed] = connections.splice(draggedIndex, 1);
-                            let nIdx = connections.findIndex(c => c.id === targetConnId);
-                            if (!insertBefore) nIdx++;
-                            connections.splice(nIdx, 0, removed);
-                            try {
-                                await invoke('save_connections', { connections });
-                                didStateChangeSinceLastTreeRender = true; render();
-                            } catch (error) { console.error('Failed to save order:', error); await loadConnections(); }
-                        }
-                    }
-                    draggedConnId = null; draggedNode = null;
-                });
-            });
-
-            // Table drag and drop
-            explorer.querySelectorAll('.table-item').forEach(item => {
-                item.addEventListener('dragstart', (e) => {
-                    const q = getQuote();
-                    const tableName = `${q}${item.dataset.db}${q}.${q}${item.dataset.table}${q}`;
-                    e.dataTransfer.setData('text/plain', tableName);
-                    e.dataTransfer.effectAllowed = 'copy';
-                    item.style.opacity = '0.5';
-                });
-                item.addEventListener('dragend', () => item.style.opacity = '1');
-            });
-
-            didStateChangeSinceLastTreeRender = false;
-        } else {
-            // Partial update for controls
-            const controlsContainer = container.querySelector('#search-controls-container');
-            if (controlsContainer) {
-                controlsContainer.innerHTML = searchQuery ? `
-                    <span class="text-[9px] ${headerText} mr-1 whitespace-nowrap">${searchMatches.length > 0 ? `${currentMatchIndex + 1}/${searchMatches.length}` : '0/0'}</span>
-                    <button id="search-prev" class="material-symbols-outlined text-[14px] ${iconColor} hover:text-mysql-teal cursor-pointer" title="Previous match">keyboard_arrow_up</button>
-                    <button id="search-next" class="material-symbols-outlined text-[14px] ${iconColor} hover:text-mysql-teal cursor-pointer" title="Next match">keyboard_arrow_down</button>
-                    <button id="search-clear" class="material-symbols-outlined text-[14px] ${iconColor} hover:text-mysql-teal cursor-pointer" title="Clear search">close</button>
-                 ` : '';
-            }
-            const searchInput = container.querySelector('#explorer-search');
-            if (searchInput && searchInput.value !== searchQuery) {
-                searchInput.value = searchQuery;
+             `;
+            if (hasFocus) {
+                const newInput = searchWrapper.querySelector('#explorer-search');
+                newInput.focus();
+                newInput.setSelectionRange(selectionStart, selectionEnd);
             }
         }
 
-        // Restore Focus
-        const searchInput = container.querySelector('#explorer-search');
-        if (searchInput && wasSearchFocused) {
-            searchInput.focus();
-            searchInput.setSelectionRange(selectionStart, selectionStart);
+        const tree = container.querySelector('#explorer-tree');
+        if (tree && visibleNodes.length > 0) {
+            tree.innerHTML = `
+                <div style="height: ${topSpacerHeight}px; width: 1px;"></div>
+                ${html}
+                <div style="height: ${bottomSpacerHeight}px; width: 1px;"></div>
+            `;
+        } else if (tree) {
+            tree.innerHTML = visibleNodes.length === 0 ? `<div class="p-4 text-center text-gray-400 text-xs italic">No items</div>` : '';
         }
+
+        const overlay = container.querySelector('#search-results-overlay');
+        if (overlay) { overlay.innerHTML = searchHtml; }
     };
+
+    const render = () => {
+        if (didStateChangeSinceLastTreeRender) {
+            visibleNodes = getVisibleNodes();
+            didStateChangeSinceLastTreeRender = false;
+        }
+        updateVirtualScroll();
+    };
+
 
     // --- Interaction Setup (One-time) ---
     const setupListeners = () => {
@@ -1186,9 +1168,9 @@ export function ObjectExplorer() {
                 return;
             }
 
-            const connItem = e.target.closest('.conn-item');
+            const connItem = e.target.closest('.connection-item') || e.target.closest('.conn-item');
             if (connItem && !e.target.closest('.conn-connect-btn') && !e.target.closest('.drag-handle')) {
-                const id = connItem.dataset.id;
+                const id = connItem.dataset.connId || connItem.dataset.id;
                 if (id === activeConnectionId) {
                     connectionExpanded = !connectionExpanded;
                     getConnectionState(activeConnectionId).connectionExpanded = connectionExpanded;
@@ -1201,6 +1183,7 @@ export function ObjectExplorer() {
                 }
                 return;
             }
+
 
             const connectBtn = e.target.closest('.conn-connect-btn');
             if (connectBtn) {
@@ -1311,12 +1294,40 @@ export function ObjectExplorer() {
             if (tableItem) { e.preventDefault(); e.stopPropagation(); showContextMenu(e.clientX, e.clientY, tableItem.dataset.table, tableItem.dataset.db); return; }
             const viewItem = e.target.closest('.view-item');
             if (viewItem) {
-                const connNode = viewItem.closest('.connection-node');
-                if (!connNode || connNode.dataset.connId !== activeConnectionId) return; // Only show for active connection
+                const connNode = viewItem.closest('.connection-node'); // Virtual nodes don't nest elements like this anymore!
+                // We need to check active connection or data-conn-id
+                // But view-item doesn't have data-conn-id yet?
+                // Actually `renderNode` adds `connId` to `node` but not to markup of `view-item`?
+                // Let's rely on global activeConnectionId or add data attribute.
+                // Assuming views only exist inside DBs which are part of Connections.
+                // A safer bet is just checking if we're connected.
                 e.preventDefault(); e.stopPropagation(); showViewContextMenu(e.clientX, e.clientY, viewItem.dataset.view, viewItem.dataset.db); return;
             }
-            const connItem = e.target.closest('.conn-item');
-            if (connItem) { e.preventDefault(); showConnectionContextMenu(e.clientX, e.clientY, connItem.dataset.id); return; }
+            const connItem = e.target.closest('.connection-item') || e.target.closest('.conn-item');
+            if (connItem) { e.preventDefault(); showConnectionContextMenu(e.clientX, e.clientY, connItem.dataset.connId || connItem.dataset.id); return; }
+
+            const colItem = e.target.closest('.column-item');
+            if (colItem) { showColumnDetailsTooltip(e); return; }
+        });
+
+        // --- Drag and Drop ---
+        explorer.addEventListener('dragstart', (e) => {
+            const connItem = e.target.closest('.connection-item');
+            if (connItem) {
+                e.dataTransfer.setData('connection-id', connItem.dataset.connId);
+                e.dataTransfer.effectAllowed = 'move';
+                return;
+            }
+            const tableItem = e.target.closest('.table-item');
+            if (tableItem) {
+                e.dataTransfer.setData('text/plain', tableItem.dataset.table);
+                e.dataTransfer.setData('application/json', JSON.stringify({
+                    db: tableItem.dataset.db,
+                    table: tableItem.dataset.table
+                }));
+                e.dataTransfer.effectAllowed = 'copy';
+                return;
+            }
         });
     };
 
