@@ -65,6 +65,61 @@ export function ServerMonitor() {
         return true;
     };
 
+    const parseInnoDBStatus = (raw) => {
+        if (!raw || typeof raw !== 'string') return null;
+
+        const status = {
+            buffer_pool_size: 0,
+            buffer_pool_used: 0,
+            buffer_pool_hit_rate: 0,
+            row_operations: { reads: 0, inserts: 0, updates: 0, deletes: 0 },
+            log_sequence_number: 0,
+            pending_writes: 0
+        };
+
+        try {
+            // Buffer Pool
+            const bpSizeMatch = raw.match(/Buffer pool size\s+(\d+)/i);
+            const bpFreeMatch = raw.match(/Free buffers\s+(\d+)/i);
+            if (bpSizeMatch) {
+                // MySQL reports this in pages (usually 16KB)
+                status.buffer_pool_size = parseInt(bpSizeMatch[1]) * 16384;
+                if (bpFreeMatch) {
+                    status.buffer_pool_used = status.buffer_pool_size - (parseInt(bpFreeMatch[1]) * 16384);
+                }
+            }
+
+            const hitRateMatch = raw.match(/Buffer pool hit rate\s+(\d+)\s*\/\s*(\d+)/i);
+            if (hitRateMatch) {
+                const hits = parseInt(hitRateMatch[1]);
+                const total = parseInt(hitRateMatch[2]);
+                if (total > 0) status.buffer_pool_hit_rate = (hits / total) * 100;
+            }
+
+            // Row Operations
+            const readsMatch = raw.match(/(\d+)\s+queries inside InnoDB/i); // Fallback-ish
+            const rowsMatch = raw.match(/Number of rows inserted\s+(\d+),\s*updated\s+(\d+),\s*deleted\s+(\d+),\s*read\s+(\d+)/i);
+            if (rowsMatch) {
+                status.row_operations.inserts = parseInt(rowsMatch[1]);
+                status.row_operations.updates = parseInt(rowsMatch[2]);
+                status.row_operations.deletes = parseInt(rowsMatch[3]);
+                status.row_operations.reads = parseInt(rowsMatch[4]);
+            }
+
+            // I/O
+            const lsnMatch = raw.match(/Log sequence number\s+(\d+)/i);
+            if (lsnMatch) status.log_sequence_number = parseInt(lsnMatch[1]);
+
+            const pendingMatch = raw.match(/(\d+)\s+pending log flushes/i);
+            if (pendingMatch) status.pending_writes = parseInt(pendingMatch[1]);
+
+        } catch (e) {
+            console.warn('Failed to parse some InnoDB status metrics:', e);
+        }
+
+        return status;
+    };
+
     const loadData = async () => {
         await LoadingManager.wrap('server-monitor', null, async () => {
             try {
@@ -121,7 +176,7 @@ export function ServerMonitor() {
 
                 serverStatus = status;
                 processList = processes;
-                innodbStatus = innodb;
+                innodbStatus = parseInnoDBStatus(innodb);
                 replicationStatus = replication;
                 slowQueries = slow;
                 locks = lockData;
@@ -439,7 +494,7 @@ export function ServerMonitor() {
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
         const i = innodbStatus;
 
-        if (!i) return '<p class="text-gray-500">No InnoDB data available</p>';
+        if (!i || !i.row_operations) return '<p class="text-gray-500 p-6">No structured InnoDB data available (or parsing failed)</p>';
 
         return `
             <div class="grid grid-cols-2 gap-6">
@@ -474,19 +529,19 @@ export function ServerMonitor() {
                     </h3>
                     <div class="grid grid-cols-2 gap-4">
                         <div class="p-4 rounded-lg ${isLight ? 'bg-blue-50' : (isDawn ? 'bg-[#286983]/10' : 'bg-blue-500/10')} text-center">
-                            <p class="text-2xl font-bold ${isDawn ? 'text-[#286983]' : 'text-blue-500'}">${formatNumber(i.row_operations.reads)}</p>
+                            <p class="text-2xl font-bold ${isDawn ? 'text-[#286983]' : 'text-blue-500'}">${formatNumber(i.row_operations?.reads || 0)}</p>
                             <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Reads</p>
                         </div>
                         <div class="p-4 rounded-lg ${isLight ? 'bg-green-50' : (isDawn ? 'bg-[#56949f]/10' : 'bg-green-500/10')} text-center">
-                            <p class="text-2xl font-bold ${isDawn ? 'text-[#56949f]' : 'text-green-500'}">${formatNumber(i.row_operations.inserts)}</p>
+                            <p class="text-2xl font-bold ${isDawn ? 'text-[#56949f]' : 'text-green-500'}">${formatNumber(i.row_operations?.inserts || 0)}</p>
                             <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Inserts</p>
                         </div>
                         <div class="p-4 rounded-lg ${isLight ? 'bg-yellow-50' : (isDawn ? 'bg-[#ea9d34]/10' : 'bg-yellow-500/10')} text-center">
-                            <p class="text-2xl font-bold ${isDawn ? 'text-[#ea9d34]' : 'text-yellow-500'}">${formatNumber(i.row_operations.updates)}</p>
+                            <p class="text-2xl font-bold ${isDawn ? 'text-[#ea9d34]' : 'text-yellow-500'}">${formatNumber(i.row_operations?.updates || 0)}</p>
                             <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Updates</p>
                         </div>
                         <div class="p-4 rounded-lg ${isLight ? 'bg-red-50' : (isDawn ? 'bg-[#b4637a]/10' : 'bg-red-500/10')} text-center">
-                            <p class="text-2xl font-bold ${isDawn ? 'text-[#b4637a]' : 'text-red-500'}">${formatNumber(i.row_operations.deletes)}</p>
+                            <p class="text-2xl font-bold ${isDawn ? 'text-[#b4637a]' : 'text-red-500'}">${formatNumber(i.row_operations?.deletes || 0)}</p>
                             <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Deletes</p>
                         </div>
                     </div>

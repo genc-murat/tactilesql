@@ -32,8 +32,10 @@ export function TitleBar() {
     const titleDiv = document.createElement('div');
     titleDiv.className = "flex items-center gap-2";
 
-
-
+    const titleSpan = document.createElement('span');
+    titleSpan.className = `text-[10px] font-bold tracking-widest ${(isLight || isDawn) ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-500')} uppercase transition-colors duration-300`;
+    titleSpan.textContent = "TactileSQL";
+    titleDiv.appendChild(titleSpan);
 
     content.appendChild(titleDiv);
 
@@ -49,11 +51,16 @@ export function TitleBar() {
     // --- Theme Handling ---
     const onThemeChange = (e) => {
         theme = e.detail.theme;
-        isLight = theme === 'light';
-        isDawn = theme === 'dawn';
-        isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const flags = ThemeManager.getThemeFlags();
+        isLight = flags.isLight;
+        isDawn = flags.isDawn;
+        isOceanic = flags.isOceanic || flags.isEmber || flags.isAurora;
+
         container.className = `h-8 ${isLight ? 'bg-gray-100 border-gray-200' : (isDawn ? 'bg-[#f2e9e1] border-[#eaddd0]' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50' : 'bg-[#0a0c10] border-white/5'))} flex items-center relative select-none z-[100] border-b w-full shrink-0 transition-all duration-300`;
-        titleSpan.className = `text-[10px] font-bold tracking-widest ${(isLight || isDawn) ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-500')} uppercase transition-colors duration-300`;
+
+        if (titleSpan) {
+            titleSpan.className = `text-[10px] font-bold tracking-widest ${(isLight || isDawn) ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/60' : 'text-gray-500')} uppercase transition-colors duration-300`;
+        }
     };
     window.addEventListener('themechange', onThemeChange);
 

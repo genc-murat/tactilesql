@@ -98,12 +98,12 @@ function normalizeKey(e) {
     if (e.shiftKey) parts.push('shift');
 
     // Normalize key name
-    let key = e.key.toLowerCase();
+    let key = (e.key || '').toLowerCase();
     if (key === ' ') key = 'space';
     if (key === 'escape') key = 'escape';
 
     // Handle special keys
-    if (!['control', 'alt', 'shift', 'meta'].includes(key)) {
+    if (key && !['control', 'alt', 'shift', 'meta'].includes(key)) {
         parts.push(key);
     }
 
