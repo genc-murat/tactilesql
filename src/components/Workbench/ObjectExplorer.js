@@ -142,7 +142,7 @@ export function ObjectExplorer() {
     let didStateChangeSinceLastTreeRender = true; // flag to force tree re-render
 
     // --- Virtual Scrolling State ---
-    const ROW_HEIGHT = 28; // px
+    const ROW_HEIGHT = 22; // px
     let scrollTop = 0;
     let containerHeight = 0;
     let visibleNodes = [];
@@ -672,8 +672,8 @@ export function ObjectExplorer() {
                 return `
                     <div class="connection-item virtual-row flex items-center gap-2 w-full cursor-pointer ${bgClass} hover:bg-opacity-80 transition-colors border-b ${borderClass}" style="${style}" data-conn-id="${cid}" draggable="true">
                          <div class="w-1.5 h-1.5 rounded-full ${active ? 'bg-green-500' : 'bg-gray-400'}"></div>
-                         <span class="font-bold text-[11px] truncate flex-1 min-w-0 ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">${escapeHtml(name)}</span>
-                         ${active ? `<span class="material-symbols-outlined text-[14px] ${expanded ? 'rotate-180' : ''}">expand_more</span>` : ''} 
+                         <span class="font-bold text-[10px] truncate flex-1 min-w-0 ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">${escapeHtml(name)}</span>
+                         ${active ? `<span class="material-symbols-outlined text-[12px] ${expanded ? 'rotate-180' : ''}">expand_more</span>` : ''} 
                     </div>
                 `;
             }
@@ -687,9 +687,9 @@ export function ObjectExplorer() {
                 const toggleClass = isSystem ? 'system-dbs-toggle' : 'user-dbs-toggle';
 
                 return `
-                    <div class="${toggleClass} virtual-row flex items-center gap-2 w-full cursor-pointer px-2 py-1 text-[9px] font-bold tracking-[0.2em] ${headerText} hover:opacity-80 transition-colors" style="${style}" data-conn-id="${connId}">
+                    <div class="${toggleClass} virtual-row flex items-center gap-2 w-full cursor-pointer px-2 py-1 text-[8px] font-bold tracking-[0.2em] ${headerText} hover:opacity-80 transition-colors" style="${style}" data-conn-id="${connId}">
                         <span class="material-symbols-outlined text-[10px] transition-transform ${expanded ? 'rotate-90' : ''}">arrow_right</span>
-                        <span class="material-symbols-outlined text-[12px] ${iconColor}">${icon}</span>
+                        <span class="material-symbols-outlined text-[11px] ${iconColor}">${icon}</span>
                         ${label}
                         <span class="${countTextColor}"> (${count})</span>
                     </div>
@@ -722,8 +722,8 @@ export function ObjectExplorer() {
                 else if (catType === 'events') iconColorClass = isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-orange-400');
 
                 return `
-                    <div class="category-item virtual-row flex items-center gap-1.5 ${headerText} text-[10px]" style="${style}">
-                         <span class="material-symbols-outlined text-[12px] ${iconColorClass}">${icon}</span>
+                    <div class="category-item virtual-row flex items-center gap-1.5 ${headerText} text-[9px]" style="${style}">
+                         <span class="material-symbols-outlined text-[11px] ${iconColorClass}">${icon}</span>
                          <span class="tracking-wider font-semibold">${label}</span>
                          <span class="${isLight ? 'text-gray-300' : (isDawn ? 'text-[#ea9d34]' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-700'))}">(${count})</span>
                     </div>
@@ -766,10 +766,10 @@ export function ObjectExplorer() {
                 // Let's add a generic `virtual-object` class and data attributes
 
                 return `
-                    <div class="${itemClass} virtual-row grid items-center gap-2 w-full text-[10px] ${mainText} cursor-pointer hover:bg-black/5" style="${style} padding-left: 0; grid-template-columns: ${paddingLeft}px 12px minmax(0,1fr) minmax(0,45%); display: grid;" data-${objType}="${name}" data-db="${db}">
-                         <span class="col-start-2 material-symbols-outlined text-[12px] shrink-0 ${iconColorClass}">${icon}</span>
+                    <div class="${itemClass} virtual-row grid items-center gap-2 w-full text-[9px] ${mainText} cursor-pointer hover:bg-black/5" style="${style} padding-left: 0; grid-template-columns: ${paddingLeft}px 12px minmax(0,1fr) minmax(0,45%); display: grid;" data-${objType}="${name}" data-db="${db}">
+                         <span class="col-start-2 material-symbols-outlined text-[11px] shrink-0 ${iconColorClass}">${icon}</span>
                          <span class="${highlightClass(`${objType}-${db}-${name}`)} min-w-0 truncate" title="${escapeHtml(name)}" ${searchId(`${objType}-${db}-${name}`)}>${escapeHtml(name)}</span>
-                         ${extra ? `<span class="${subText} text-[9px] min-w-0 truncate text-right" title="${escapeHtml(extra)}">${escapeHtml(extra)}</span>` : ''}
+                         ${extra ? `<span class="${subText} text-[8px] min-w-0 truncate text-right" title="${escapeHtml(extra)}">${escapeHtml(extra)}</span>` : ''}
                     </div>
                 `;
             }
@@ -779,8 +779,8 @@ export function ObjectExplorer() {
                 const iconColor = isDawn ? 'text-[#c6a0f6]' : (isNeon ? 'text-neon-accent' : 'text-purple-400'); // Default to column color
                 // Adjust icon color based on label if needed
                 return `
-                    <div class="virtual-row flex items-center gap-1.5 ${headerText} text-[10px]" style="${style}">
-                         <span class="material-symbols-outlined text-[12px] ${iconColor}">${icon}</span>
+                    <div class="virtual-row flex items-center gap-1.5 ${headerText} text-[9px]" style="${style}">
+                         <span class="material-symbols-outlined text-[11px] ${iconColor}">${icon}</span>
                          <span class="tracking-wider font-semibold">${label}</span>
                          <span class="${isLight ? 'text-gray-300' : (isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent/50' : 'text-gray-700'))}">(${count})</span>
                     </div>
@@ -797,7 +797,7 @@ export function ObjectExplorer() {
                 const colPadding = Math.max(0, paddingLeft - 8);
 
                 return `
-                    <div class="column-item cursor-context-menu virtual-row grid items-center gap-1 w-full overflow-hidden text-[10px] ${colText}" style="${style} padding-left: 0; grid-template-columns: ${colPadding}px 12px minmax(0,1fr) minmax(0,45%); display: grid;"
+                    <div class="column-item cursor-context-menu virtual-row grid items-center gap-1 w-full overflow-hidden text-[9px] ${colText}" style="${style} padding-left: 0; grid-template-columns: ${colPadding}px 12px minmax(0,1fr) minmax(0,45%); display: grid;"
                          data-col-name="${escapeHtml(col.name || '')}"
                          data-col-type="${escapeHtml(col.column_type || col.data_type || '')}"
                          data-col-nullable="${col.is_nullable ? 'YES' : 'NO'}"
@@ -820,13 +820,13 @@ export function ObjectExplorer() {
             case 'loading': {
                 const text = data.text;
                 const loadingColor = isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]' : (isOceanic ? 'text-ocean-text/40' : (isNeon ? 'text-neon-text/40' : 'text-gray-700')));
-                return `<div class="virtual-row ${loadingColor} italic text-[10px] flex items-center" style="${style}">${text}</div>`;
+                return `<div class="virtual-row ${loadingColor} italic text-[9px] flex items-center" style="${style}">${text}</div>`;
             }
             case 'show-more-dbs':
             case 'show-more-objects':
             case 'show-more-columns': {
                 const { count, db, type: objType, table } = data;
-                const btnClass = `w-full text-left px-0 py-1 text-[9px] font-bold ${isDawn ? 'text-[#ea9d34] hover:text-[#c48c2b]' : (isNeon ? 'text-neon-accent hover:text-neon-cyan' : 'text-mysql-teal hover:text-mysql-teal-light')} opacity-80 hover:opacity-100 transition-all flex items-center gap-1 cursor-pointer`;
+                const btnClass = `w-full text-left px-0 py-1 text-[8px] font-bold ${isDawn ? 'text-[#ea9d34] hover:text-[#c48c2b]' : (isNeon ? 'text-neon-accent hover:text-neon-cyan' : 'text-mysql-teal hover:text-mysql-teal-light')} opacity-80 hover:opacity-100 transition-all flex items-center gap-1 cursor-pointer`;
 
                 let dataAttrs = `data-count="${count}"`;
                 if (db) dataAttrs += ` data-db="${db}"`;
@@ -844,7 +844,7 @@ export function ObjectExplorer() {
                 `;
             }
             case 'no-matches': {
-                return `<div class="virtual-row pl-6 py-1 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-600')} italic text-[10px]" style="${style}">No matches</div>`;
+                return `<div class="virtual-row pl-6 py-1 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-600')} italic text-[9px]" style="${style}">No matches</div>`;
             }
             case 'empty-state': {
                 return `<div class="virtual-row p-4 text-center text-gray-400 text-xs" style="${style}">No connections found</div>`;
@@ -907,10 +907,10 @@ export function ObjectExplorer() {
                 return `
                                     <button class="search-result-item w-full text-left px-3 py-2 rounded-lg transition-all flex items-center justify-between group ${activeItemBg}" data-index="${idx}">
                                         <div class="flex flex-col min-w-0 pr-4">
-                                            <span class="text-[11px] ${isCurrent ? (isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal font-bold') : (isLight ? 'text-gray-700' : 'text-gray-200')} truncate font-mono">${escapeHtml(m.column || m.table || m.view || m.procedure || m.function || m.trigger || m.event || m.db)}</span>
-                                            ${path && (m.column || m.table) ? `<span class="text-[9px] ${subText} opacity-50 truncate">${escapeHtml(path)}</span>` : ''}
+                                            <span class="text-[10px] ${isCurrent ? (isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal font-bold') : (isLight ? 'text-gray-700' : 'text-gray-200')} truncate font-mono">${escapeHtml(m.column || m.table || m.view || m.procedure || m.function || m.trigger || m.event || m.db)}</span>
+                                            ${path && (m.column || m.table) ? `<span class="text-[8px] ${subText} opacity-50 truncate">${escapeHtml(path)}</span>` : ''}
                                         </div>
-                                        ${isCurrent ? `<span class="material-symbols-outlined text-[14px] ${isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal'} animate-bounce-x">keyboard_return</span>` : ''}
+                                        ${isCurrent ? `<span class="material-symbols-outlined text-[12px] ${isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal'} animate-bounce-x">keyboard_return</span>` : ''}
                                     </button>
                                 `;
             }).join('')}
@@ -928,7 +928,7 @@ export function ObjectExplorer() {
                     <div class="flex-1 overflow-y-auto custom-scrollbar rounded-2xl border ${glassBorder} ${glassBg} backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.3)] p-2 pointer-events-auto animate-search-in">
                         <div class="flex items-center justify-between px-3 mb-3 sticky top-0 ${glassBg} py-2 border-b ${glassBorder} z-10 rounded-t-xl">
                             <div class="flex items-center gap-2">
-                                <span class="text-[10px] font-bold ${headerTextClass} tracking-tight">${totalResults} matching objects</span>
+                                <span class="text-[9px] font-bold ${headerTextClass} tracking-tight">${totalResults} matching objects</span>
                                 ${totalResults > MAX_DISPLAY ? `<span class="text-[8px] px-1.5 py-0.5 rounded bg-white/5 border border-white/10 ${headerText}">Showing top ${MAX_DISPLAY}</span>` : ''}
                             </div>
                             <div class="flex items-center gap-3">
@@ -992,7 +992,7 @@ export function ObjectExplorer() {
                         </div>
                     </div>
                     <div class="px-2 mt-2 flex-shrink-0" id="search-container-wrapper"></div>
-                    <div id="explorer-tree" class="flex-1 overflow-y-auto custom-scrollbar font-mono text-[11px] space-y-0 mt-2 relative"></div>
+                    <div id="explorer-tree" class="flex-1 overflow-y-auto custom-scrollbar font-mono text-[10px] space-y-0 mt-2 relative"></div>
                     <div id="search-results-overlay"></div>
                 </div>
              `;
@@ -1018,7 +1018,7 @@ export function ObjectExplorer() {
             searchWrapper.innerHTML = `
                 <div class="relative group">
                     <input type="text" id="explorer-search" placeholder="Search objects..." 
-                        class="w-full ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#fcf9f2] border-[#f2e9e1]' : (isNeon ? 'bg-neon-bg border-neon-border/30' : 'bg-white/5 border-white/10'))} border rounded px-7 py-1.5 text-[10px] focus:outline-none ${isDawn ? 'focus:border-[#ea9d34]/50' : (isNeon ? 'focus:border-neon-accent/50' : 'focus:border-mysql-teal/50')} transition-colors pr-24"
+                        class="w-full ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#fcf9f2] border-[#f2e9e1]' : (isNeon ? 'bg-neon-bg border-neon-border/30' : 'bg-white/5 border-white/10'))} border rounded px-7 py-1.5 text-[9px] focus:outline-none ${isDawn ? 'focus:border-[#ea9d34]/50' : (isNeon ? 'focus:border-neon-accent/50' : 'focus:border-mysql-teal/50')} transition-colors pr-24"
                         value="${escapeHtml(searchQuery)}">
                     <span class="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-[14px] ${iconColor}">search</span>
                     <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
