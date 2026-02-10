@@ -140,7 +140,7 @@ export function Settings() {
         if (t === 'neon') return 'bg-neon-bg';
         return 'bg-base-dark';
     };
-    container.className = `h-full overflow-auto ${getBgClass(theme)} transition-colors duration-300`;
+    container.className = `h-full overflow-auto custom-scrollbar ${getBgClass(theme)} transition-colors duration-300`;
 
     let isLight = theme === 'light' || theme === 'dawn';
     let isDawn = theme === 'dawn';
