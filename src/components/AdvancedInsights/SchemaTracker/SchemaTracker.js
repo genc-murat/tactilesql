@@ -5,6 +5,7 @@ import { SchemaTrackerApi } from '../../../api/schemaTracker.js';
 import { ThemeManager } from '../../../utils/ThemeManager.js';
 import { Dialog } from '../../UI/Dialog.js'; // Assuming basic dialog exists
 import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
 export function SchemaTracker() {
     let theme = ThemeManager.getCurrentTheme();
@@ -264,6 +265,12 @@ export function SchemaTracker() {
         if (isDbSelectorOpen) {
             setTimeout(() => window.addEventListener('click', closeDropdown, { once: true }), 0);
         }
+
+        header.ondblclick = async (e) => {
+            if (e.target.closest('button') || e.target.closest('a') || e.target.closest('input')) return;
+            const appWindow = getCurrentWindow();
+            await appWindow.toggleMaximize();
+        };
 
         subContainer.appendChild(header);
 

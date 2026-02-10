@@ -1,4 +1,5 @@
 import { ThemeManager } from '../../utils/ThemeManager.js';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
 export function Header() {
     const header = document.createElement('header');
@@ -44,6 +45,13 @@ export function Header() {
     };
 
     render();
+
+    header.ondblclick = async (e) => {
+        // Only trigger if clicking on the header itself or non-interactive children
+        if (e.target.closest('button') || e.target.closest('a') || e.target.closest('input')) return;
+        const appWindow = getCurrentWindow();
+        await appWindow.toggleMaximize();
+    };
 
     window.addEventListener('themechange', (e) => {
         theme = e.detail.theme;

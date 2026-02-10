@@ -1,5 +1,6 @@
 import { WindowControls } from './WindowControls.js';
 import { ThemeManager } from '../utils/ThemeManager.js';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
 export function TitleBar() {
     let theme = ThemeManager.getCurrentTheme();
@@ -14,6 +15,13 @@ export function TitleBar() {
     const dragRegion = document.createElement('div');
     dragRegion.setAttribute('data-tauri-drag-region', '');
     dragRegion.className = "absolute inset-0 w-full h-full z-0";
+
+    // Double click to maximize
+    dragRegion.ondblclick = async () => {
+        const appWindow = getCurrentWindow();
+        await appWindow.toggleMaximize();
+    };
+
     container.appendChild(dragRegion);
 
     // Content Layer
