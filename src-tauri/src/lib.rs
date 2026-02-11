@@ -305,6 +305,7 @@ pub fn run() {
             db::get_user_privileges,
             // Server Monitoring
             db::get_server_status,
+            db::get_monitor_snapshot,
             db::get_process_list,
             db::kill_process,
             db::get_innodb_status,

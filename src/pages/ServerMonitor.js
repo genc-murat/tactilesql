@@ -123,68 +123,24 @@ export function ServerMonitor() {
     const loadData = async () => {
         await LoadingManager.wrap('server-monitor', null, async () => {
             try {
-                const activeDbType = localStorage.getItem('activeDbType') || 'mysql';
-                const isPostgres = activeDbType === 'postgresql';
-
-                const lockDataPromise = (!isPostgres && lockFeatureAvailability.locks)
-                    ? invoke('get_locks').catch((e) => {
-                        if (!disableLockFeatureIfUnsupported('locks', e)) {
-                            console.warn('Failed to fetch locks:', e);
-                        }
-                        return [];
-                    })
-                    : Promise.resolve([]);
-
-                const lockAnalysisPromise = (!isPostgres && lockFeatureAvailability.analysis)
-                    ? invoke('get_lock_analysis').catch((e) => {
-                        if (!disableLockFeatureIfUnsupported('analysis', e)) {
-                            console.warn('Lock analysis not available:', e);
-                        }
-                        return null;
-                    })
-                    : Promise.resolve(null);
-
-                // Load data - some commands are MySQL specific
-                const [status, processes, replication, lockData, lockAnalysisData] = await Promise.all([
-                    invoke('get_server_status'),
-                    invoke('get_process_list'),
-                    invoke('get_replication_status'),
-                    lockDataPromise,
-                    lockAnalysisPromise
-                ]);
-
-                // MySQL-specific data
-                let innodb = null;
-                let slow = [];
-                if (!isPostgres) {
-                    try {
-                        innodb = await invoke('get_innodb_status');
-                    } catch (e) {
-                        console.warn('InnoDB status not available:', e);
-                    }
-                }
-
-                // Slow queries - works for both MySQL and PostgreSQL
-                try {
-                    slow = await invoke('get_slow_queries', { limit: 50 });
-                } catch (e) {
-                    console.warn('Slow queries not available:', e);
-                }
+                // Load all data in a single unified call
+                const snapshot = await invoke('get_monitor_snapshot');
 
                 prevStatus = serverStatus;
                 prevTimestamp = Date.now();
 
-                serverStatus = status;
-                processList = processes;
-                innodbStatus = parseInnoDBStatus(innodb);
-                replicationStatus = replication;
-                slowQueries = slow;
-                locks = lockData;
-                lockAnalysis = lockAnalysisData;
+                serverStatus = snapshot.server_status;
+                processList = snapshot.processes;
+                innodbStatus = parseInnoDBStatus(snapshot.innodb_status);
+                replicationStatus = snapshot.replication;
+                slowQueries = snapshot.slow_queries;
+                locks = snapshot.locks;
+                lockAnalysis = snapshot.lock_analysis;
+                
                 isLoading = false;
                 render();
             } catch (error) {
-                console.error('Failed to load monitoring data:', error);
+                console.error('Failed to load monitoring snapshot:', error);
                 isLoading = false;
                 render();
             }

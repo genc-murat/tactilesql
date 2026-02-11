@@ -1,4 +1,5 @@
-use crate::db_types::{AppState, DatabaseType, ProcessInfo, ServerStatus};
+use crate::db::lock_analysis::build_lock_analysis;
+use crate::db_types::{AppState, DatabaseType, MonitorSnapshot, ProcessInfo, ServerStatus};
 use crate::mysql;
 use crate::postgres;
 use tauri::State;
@@ -6,6 +7,76 @@ use tauri::State;
 // =====================================================
 // SERVER MONITORING
 // =====================================================
+
+#[tauri::command]
+pub async fn get_monitor_snapshot(app_state: State<'_, AppState>) -> Result<MonitorSnapshot, String> {
+    let db_type = {
+        let guard = app_state.active_db_type.lock().await;
+        guard.clone()
+    };
+
+    match db_type {
+        DatabaseType::PostgreSQL => {
+            let guard = app_state.postgres_pool.lock().await;
+            let pool = guard
+                .as_ref()
+                .ok_or("No PostgreSQL connection established")?;
+
+            let server_status = postgres::get_server_status(pool).await?;
+            let processes = postgres::get_process_list(pool).await?;
+            let replication = postgres::get_replication_status(pool).await?;
+            let slow_queries = postgres::get_slow_queries(pool, 50).await?;
+            let locks = postgres::get_locks(pool).await?;
+            
+            let lock_edges = postgres::get_lock_graph_edges(pool).await.unwrap_or_default();
+            let lock_analysis = if !lock_edges.is_empty() {
+                Some(build_lock_analysis(&db_type, lock_edges))
+            } else {
+                None
+            };
+
+            Ok(MonitorSnapshot {
+                server_status,
+                processes,
+                replication,
+                slow_queries,
+                locks,
+                lock_analysis,
+                innodb_status: None,
+            })
+        }
+        DatabaseType::MySQL => {
+            let guard = app_state.mysql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
+
+            let server_status = mysql::get_server_status(pool).await?;
+            let processes = mysql::get_process_list(pool).await?;
+            let replication = mysql::get_replication_status(pool).await?;
+            let slow_queries = mysql::get_slow_queries(pool, 50).await?;
+            let locks = mysql::get_locks(pool).await?;
+            let innodb_status = Some(mysql::get_innodb_status(pool).await.unwrap_or_default());
+
+            let lock_edges = mysql::get_lock_graph_edges(pool).await.unwrap_or_default();
+            let lock_analysis = if !lock_edges.is_empty() {
+                Some(build_lock_analysis(&db_type, lock_edges))
+            } else {
+                None
+            };
+
+            Ok(MonitorSnapshot {
+                server_status,
+                processes,
+                replication,
+                slow_queries,
+                locks,
+                lock_analysis,
+                innodb_status,
+            })
+        }
+        DatabaseType::Disconnected => Err("No connection established".into()),
+    }
+}
+
 #[tauri::command]
 pub async fn get_server_status(app_state: State<'_, AppState>) -> Result<ServerStatus, String> {
     let db_type = {

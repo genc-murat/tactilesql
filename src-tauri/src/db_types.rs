@@ -449,3 +449,15 @@ pub struct AiIndexRecommendations {
     pub analyzed_queries: i32,
     pub analysis_summary: String,
 }
+
+// --- Monitor Snapshot ---
+#[derive(Serialize, Debug)]
+pub struct MonitorSnapshot {
+    pub server_status: ServerStatus,
+    pub processes: Vec<ProcessInfo>,
+    pub replication: serde_json::Value,
+    pub slow_queries: Vec<SlowQuery>,
+    pub locks: Vec<LockInfo>,
+    pub lock_analysis: Option<LockAnalysis>,
+    pub innodb_status: Option<String>,
+}
