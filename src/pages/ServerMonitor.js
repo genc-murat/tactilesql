@@ -24,10 +24,13 @@ export function ServerMonitor() {
     let slowQueries = [];
     let locks = [];
     let lockAnalysis = null;
+    let waitEvents = [];
+    let tableUsage = [];
+    let healthMetrics = [];
     let isLoading = true;
     let autoRefresh = true;
     let refreshInterval = null;
-    let activeTab = 'overview'; // 'overview' | 'processes' | 'innodb' | 'slow' | 'locks' | 'replication'
+    let activeTab = 'overview'; // 'overview' | 'processes' | 'innodb' | 'slow' | 'locks' | 'replication' | 'usage'
     const lockFeatureAvailability = { locks: true, analysis: true };
     const lockFeatureWarningShown = { locks: false, analysis: false };
 
@@ -72,6 +75,19 @@ export function ServerMonitor() {
             lockFeatureWarningShown[feature] = true;
         }
         return true;
+    };
+
+    const isExplainable = (sql) => {
+        if (!sql || typeof sql !== 'string') return false;
+        const normalized = sql.trim().toUpperCase();
+        return normalized.startsWith('SELECT') || 
+               normalized.startsWith('INSERT') || 
+               normalized.startsWith('UPDATE') || 
+               normalized.startsWith('DELETE') || 
+               normalized.startsWith('REPLACE') ||
+               normalized.startsWith('VALUES') ||
+               normalized.startsWith('WITH') ||
+               normalized.startsWith('EXECUTE');
     };
 
     const parseInnoDBStatus = (raw) => {
@@ -169,6 +185,9 @@ export function ServerMonitor() {
                 slowQueries = snapshot.slow_queries;
                 locks = snapshot.locks;
                 lockAnalysis = snapshot.lock_analysis;
+                waitEvents = snapshot.wait_events || [];
+                tableUsage = snapshot.table_usage || [];
+                healthMetrics = snapshot.health_metrics || [];
                 
                 isLoading = false;
                 render();
@@ -261,10 +280,14 @@ export function ServerMonitor() {
                         <span class="material-symbols-outlined text-base mr-1 align-middle">sync_alt</span>
                         Replication
                     </button>
+                    <button class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'usage' ? 'bg-mysql-teal text-white shadow-lg' : ((isLight || isDawn) ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white')}" data-tab="usage">
+                        <span class="material-symbols-outlined text-base mr-1 align-middle">database</span>
+                        Top Tables
+                    </button>
                 </div>
 
                 <!-- Content -->
-                <div class="flex-1 ${activeTab === 'overview' ? 'overflow-y-auto pr-2' : 'overflow-hidden'} flex flex-col custom-scrollbar">
+                <div class="flex-1 ${activeTab === 'overview' || activeTab === 'usage' ? 'overflow-y-auto pr-2' : 'overflow-hidden'} flex flex-col custom-scrollbar">
                     ${isLoading ? renderLoading() : renderTabContent()}
                 </div>
             </div>
@@ -296,7 +319,8 @@ export function ServerMonitor() {
             case 'innodb': return renderInnoDB();
             case 'slow': return renderSlowQueries();
             case 'locks': return renderLocks();
-            case 'replication': return renderReplication();
+            case 'replication': return replicationStatus && replicationStatus.replicas ? renderPostgresReplication() : renderReplication();
+            case 'usage': return renderUsage();
             default: return renderOverview();
         }
     };
@@ -312,6 +336,8 @@ export function ServerMonitor() {
         const qps = history.qps.length > 0 ? history.qps[history.qps.length - 1] : 0;
 
         return `
+            ${renderHealthMetrics()}
+
             <div class="grid grid-cols-4 gap-4 mb-6">
                 <!-- Uptime -->
                 <div class="rounded-xl p-4 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))}">
@@ -365,12 +391,14 @@ export function ServerMonitor() {
                             <span class="material-symbols-outlined ${s.slow_queries > 0 ? 'text-red-500' : 'text-green-500'}">hourglass_empty</span>
                         </div>
                         <div>
-                            <p class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'} uppercase tracking-wider">Slow Queries</p>
-                            <p class="text-xl font-bold ${s.slow_queries > 0 ? 'text-red-500' : (isLight ? 'text-gray-900' : 'text-white')}">${formatNumber(s.slow_queries)}</p>
+                            <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-white')} uppercase tracking-wider">Slow Queries</p>
+                            <p class="text-xl font-bold ${s.slow_queries > 0 ? 'text-red-500' : (isLight ? 'text-gray-900' : (isDawn ? 'text-[#9893a5]' : 'text-white'))}">${formatNumber(s.slow_queries)}</p>
                         </div>
                     </div>
                 </div>
             </div>
+
+            ${renderWaitEvents()}
 
             <!-- Charts Section -->
             <div class="grid grid-cols-2 gap-6 mb-6">
@@ -521,7 +549,10 @@ export function ServerMonitor() {
                                     <td class="px-4 py-3 ${isLight ? 'text-gray-500' : 'text-gray-400'} text-xs">${escapeHtml(p.state) || '-'}</td>
                                     <td class="px-4 py-3 ${isLight ? 'text-gray-600' : 'text-gray-300'} max-w-[300px] truncate font-mono text-xs" title="${escapeHtml(p.info)}">${escapeHtml(p.info) || '-'}</td>
                                     <td class="px-4 py-3 text-center">
-                                        <button class="kill-btn px-2 py-1 rounded text-xs bg-red-500/20 text-red-500 hover:bg-red-500/30 transition-colors" data-id="${p.id}">Kill</button>
+                                        <div class="flex items-center justify-center gap-2">
+                                            <button class="kill-btn px-2 py-1 rounded text-xs bg-red-500/20 text-red-500 hover:bg-red-500/30 transition-colors" data-id="${p.id}">Kill</button>
+                                            ${p.info && isExplainable(p.info) ? `<button class="analyze-btn px-2 py-1 rounded text-xs bg-mysql-teal/20 text-mysql-teal hover:bg-mysql-teal/30 transition-colors" data-sql="${escapeHtml(p.info)}">Analyze</button>` : ''}
+                                        </div>
                                     </td>
                                 </tr>
                             `).join('')}
@@ -718,9 +749,16 @@ SET GLOBAL long_query_time = 1;</pre>
                                         </div>
                                     </td>
                                     <td class="px-4 py-3 text-center align-top pt-3">
-                                        <button class="view-slow-query-btn p-1.5 rounded-lg ${isLight ? 'hover:bg-gray-200 text-gray-400 hover:text-gray-600' : 'hover:bg-white/10 text-gray-500 hover:text-white'} transition-colors" data-index="${idx}" title="View Details">
-                                            <span class="material-symbols-outlined text-[18px]">visibility</span>
-                                        </button>
+                                        <div class="flex items-center justify-center gap-1">
+                                            <button class="view-slow-query-btn p-1.5 rounded-lg ${isLight ? 'hover:bg-gray-200 text-gray-400 hover:text-gray-600' : 'hover:bg-white/10 text-gray-500 hover:text-white'} transition-colors" data-index="${idx}" title="View Details">
+                                                <span class="material-symbols-outlined text-[18px]">visibility</span>
+                                            </button>
+                                            ${isExplainable(q.sql_text) ? `
+                                            <button class="analyze-btn p-1.5 rounded-lg ${isLight ? 'hover:bg-gray-200 text-mysql-teal hover:text-mysql-teal/80' : 'hover:bg-white/10 text-mysql-cyan hover:text-mysql-cyan/80'} transition-colors" data-sql="${escapeHtml(q.sql_text)}" title="Analyze Query">
+                                                <span class="material-symbols-outlined text-[18px]">insights</span>
+                                            </button>
+                                            ` : ''}
+                                        </div>
                                     </td>
                                 </tr>
                             `;
@@ -993,7 +1031,7 @@ SET GLOBAL long_query_time = 1;</pre>
                 <div class="rounded-xl p-12 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))} text-center">
                     <span class="material-symbols-outlined text-5xl ${isLight ? 'text-gray-400' : 'text-gray-600'} mb-4">sync_disabled</span>
                     <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} mb-2">Not a Replica</h3>
-                    <p class="${isLight ? 'text-gray-500' : 'text-gray-400'}">This server is not configured as a replication replica.</p>
+                    <p class="${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">This server is not configured as a replication replica.</p>
                 </div>
             `;
         }
@@ -1039,6 +1077,170 @@ SET GLOBAL long_query_time = 1;</pre>
                             <p class="text-sm text-red-500">${r.last_error}</p>
                         </div>
                     ` : ''}
+                </div>
+            </div>
+        `;
+    };
+
+    const renderPostgresReplication = () => {
+        const isLight = theme === 'light';
+        const isDawn = theme === 'dawn';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const r = replicationStatus;
+
+        if (!r || !r.replicas || r.replicas.length === 0) {
+            return `
+                <div class="rounded-xl p-12 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))} text-center">
+                    <span class="material-symbols-outlined text-5xl ${isLight ? 'text-gray-400' : 'text-gray-600'} mb-4">sync_disabled</span>
+                    <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} mb-2">No Active Replicas</h3>
+                    <p class="${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">No replication clients are currently connected.</p>
+                </div>
+            `;
+        }
+
+        return `
+            <div class="space-y-6">
+                <div class="rounded-xl overflow-hidden ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))}">
+                    <div class="p-4 border-b ${isLight ? 'border-gray-200' : 'border-white/10'}">
+                        <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} flex items-center gap-2">
+                            <span class="material-symbols-outlined text-mysql-teal">sync_alt</span>
+                            Connected Replicas
+                        </h3>
+                    </div>
+                    <div class="overflow-auto">
+                        <table class="w-full text-sm">
+                            <thead class="${isLight ? 'bg-gray-100' : 'bg-white/5'}">
+                                <tr class="${isLight ? 'text-gray-600' : 'text-gray-400'} text-xs uppercase tracking-wider">
+                                    <th class="px-4 py-3 text-left">Client Addr</th>
+                                    <th class="px-4 py-3 text-left">State</th>
+                                    <th class="px-4 py-3 text-left">Sent LSN</th>
+                                    <th class="px-4 py-3 text-left">Write LSN</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y ${isLight ? 'divide-gray-100' : 'divide-white/5'}">
+                                ${r.replicas.map(rep => `
+                                    <tr class="${isLight ? 'hover:bg-gray-50' : 'hover:bg-white/5'} transition-colors">
+                                        <td class="px-4 py-3 ${isLight ? 'text-gray-900' : 'text-white'} font-mono">${rep.client_addr}</td>
+                                        <td class="px-4 py-3">
+                                            <span class="px-2 py-0.5 rounded text-xs ${rep.state === 'streaming' ? 'bg-green-500/20 text-green-500' : 'bg-yellow-500/20 text-yellow-500'}">${rep.state}</span>
+                                        </td>
+                                        <td class="px-4 py-3 font-mono text-xs ${isLight ? 'text-gray-600' : 'text-gray-400'}">${rep.sent_lsn}</td>
+                                        <td class="px-4 py-3 font-mono text-xs ${isLight ? 'text-gray-600' : 'text-gray-400'}">${rep.write_lsn}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+    };
+
+    const renderHealthMetrics = () => {
+        if (!healthMetrics || healthMetrics.length === 0) return '';
+        const isLight = theme === 'light';
+        const isDawn = theme === 'dawn';
+        
+        return `
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                ${healthMetrics.map(m => {
+                    const statusColor = m.status === 'healthy' ? 'text-green-500' : (m.status === 'warning' ? 'text-yellow-500' : 'text-red-500');
+                    const bgColor = m.status === 'healthy' ? 'bg-green-500/10' : (m.status === 'warning' ? 'bg-yellow-500/10' : 'bg-red-500/10');
+                    const borderColor = m.status === 'healthy' ? 'border-green-500/20' : (m.status === 'warning' ? 'border-yellow-500/20' : 'border-red-500/20');
+                    
+                    return `
+                        <div class="rounded-xl p-4 border ${bgColor} ${borderColor}">
+                            <div class="flex items-center justify-between mb-1">
+                                <span class="text-xs font-semibold uppercase tracking-wider ${isLight ? 'text-gray-600' : 'text-gray-400'}">${m.label}</span>
+                                <span class="material-symbols-outlined ${statusColor} text-lg">
+                                    ${m.status === 'healthy' ? 'check_circle' : (m.status === 'warning' ? 'warning' : 'error')}
+                                </span>
+                            </div>
+                            <div class="text-xl font-bold ${isLight ? 'text-gray-900' : 'text-white'}">${m.value}</div>
+                            ${m.description ? `<p class="text-[10px] mt-1 ${isLight ? 'text-gray-500' : 'text-gray-400'}">${m.description}</p>` : ''}
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    };
+
+    const renderWaitEvents = () => {
+        if (!waitEvents || waitEvents.length === 0) return '';
+        const isLight = theme === 'light';
+        
+        return `
+            <div class="rounded-xl p-6 mb-6 ${isLight ? 'bg-white border border-gray-200' : 'bg-[#13161b] border border-white/10'}">
+                <h3 class="text-sm font-semibold ${isLight ? 'text-gray-900' : 'text-white'} mb-4 flex items-center gap-2">
+                    <span class="material-symbols-outlined text-amber-500 text-lg">hourglass_empty</span>
+                    Active Wait Events
+                </h3>
+                <div class="space-y-3">
+                    ${waitEvents.slice(0, 5).map(e => `
+                        <div>
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="${isLight ? 'text-gray-700' : 'text-gray-300'} font-medium">${e.event_name} <span class="text-[10px] opacity-50">(${e.event_type})</span></span>
+                                <span class="${isLight ? 'text-gray-500' : 'text-gray-400'} font-mono">${e.percentage.toFixed(1)}%</span>
+                            </div>
+                            <div class="h-1.5 rounded-full ${isLight ? 'bg-gray-100' : 'bg-white/5'} overflow-hidden">
+                                <div class="h-full rounded-full bg-amber-500" style="width: ${e.percentage}%"></div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    };
+
+    const renderUsage = () => {
+        const isLight = theme === 'light';
+        const isDawn = theme === 'dawn';
+        
+        if (!tableUsage || tableUsage.length === 0) {
+            return `
+                <div class="rounded-xl p-12 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : 'bg-[#13161b] border border-white/10')} text-center">
+                    <span class="material-symbols-outlined text-5xl text-gray-500 mb-4">analytics</span>
+                    <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} mb-2">Usage Data Not Available</h3>
+                    <p class="${isLight ? 'text-gray-500' : 'text-gray-400'}">Performance schema or statistics collectors might be disabled.</p>
+                </div>
+            `;
+        }
+
+        return `
+            <div class="rounded-xl ${isLight ? 'bg-white border border-gray-200' : 'bg-[#13161b] border border-white/10'} overflow-hidden">
+                <div class="p-4 border-b ${isLight ? 'border-gray-200' : 'border-white/10'}">
+                    <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} flex items-center gap-2">
+                        <span class="material-symbols-outlined text-mysql-teal">database</span>
+                        Top Resource Consuming Tables
+                    </h3>
+                </div>
+                <div class="overflow-auto">
+                    <table class="w-full text-sm">
+                        <thead class="${isLight ? 'bg-gray-100' : 'bg-white/5'}">
+                            <tr class="${isLight ? 'text-gray-600' : 'text-gray-400'} text-xs uppercase tracking-wider">
+                                <th class="px-4 py-3 text-left">Schema</th>
+                                <th class="px-4 py-3 text-left">Table</th>
+                                <th class="px-4 py-3 text-right">Read Ops</th>
+                                <th class="px-4 py-3 text-right">Write Ops</th>
+                                <th class="px-4 py-3 text-right">Fetch Latency</th>
+                                <th class="px-4 py-3 text-right">Write Latency</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y ${isLight ? 'divide-gray-100' : 'divide-white/5'}">
+                            ${tableUsage.map(u => `
+                                <tr class="${isLight ? 'hover:bg-gray-50' : 'hover:bg-white/5'} transition-colors">
+                                    <td class="px-4 py-3 ${isLight ? 'text-gray-500' : 'text-gray-400'}">${u.schema}</td>
+                                    <td class="px-4 py-3 ${isLight ? 'text-gray-900' : 'text-white'} font-medium">${u.table}</td>
+                                    <td class="px-4 py-3 text-right font-mono">${formatNumber(u.read_ops)}</td>
+                                    <td class="px-4 py-3 text-right font-mono">${formatNumber(u.write_ops)}</td>
+                                    <td class="px-4 py-3 text-right font-mono ${u.fetch_latency_ms > 100 ? 'text-orange-500' : ''}">${u.fetch_latency_ms > 0 ? u.fetch_latency_ms.toFixed(2) + 'ms' : '-'}</td>
+                                    <td class="px-4 py-3 text-right font-mono ${u.insert_latency_ms + u.update_latency_ms + u.delete_latency_ms > 500 ? 'text-red-500 font-bold' : ''}">
+                                        ${(u.insert_latency_ms + u.update_latency_ms + u.delete_latency_ms) > 0 ? (u.insert_latency_ms + u.update_latency_ms + u.delete_latency_ms).toFixed(2) + 'ms' : '-'}
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
                 </div>
             </div>
         `;
@@ -1093,6 +1295,17 @@ SET GLOBAL long_query_time = 1;</pre>
         container.querySelectorAll('.kill-blocking-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 killProcess(parseInt(btn.dataset.id));
+            });
+        });
+
+        // Analyze buttons
+        container.querySelectorAll('.analyze-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const sql = btn.dataset.sql;
+                if (sql) {
+                    // Custom event to open query analyzer
+                    window.dispatchEvent(new CustomEvent('openqueryanalyzer', { detail: { sql } }));
+                }
             });
         });
     };

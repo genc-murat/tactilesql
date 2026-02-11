@@ -1,9 +1,15 @@
 import { invoke } from '@tauri-apps/api/core';
 import { ThemeManager } from '../../utils/ThemeManager.js';
+import { Dialog } from './Dialog.js';
 
 export async function showQueryAnalyzerModal(query) {
-    const analysisResult = await invoke('analyze_query', { query });
-    QueryAnalyzerModal.show(analysisResult);
+    try {
+        const analysisResult = await invoke('analyze_query', { query });
+        QueryAnalyzerModal.show(analysisResult);
+    } catch (error) {
+        console.error('Query analysis failed:', error);
+        Dialog.alert(`Failed to analyze query: ${error}`, 'Analysis Error');
+    }
 }
 
 export const QueryAnalyzerModal = {

@@ -19,6 +19,8 @@ TactileSQL is a modern, desktop-first SQL workbench for MySQL and PostgreSQL, bu
 - **AI Assistant**: SQL generation and natural language query support powered by multiple providers (OpenAI, Gemini, Anthropic, DeepSeek, Groq, Mistral, and Local AI).
 - **AI Query Assistance**: Step-by-step query explanation (**Shift+Click Explain**), performance optimization suggestions (**Right-Click Analyze**), and automated error fixing (**Fix with AI**).
 - **AI Query Profiler Analysis**: One-click AI interpretation of query performance metrics with actionable optimization advice.
+- **Robust Query Analysis**: Hardened `EXPLAIN` engine with query normalization (auto-semicolon stripping), verb validation, and PostgreSQL-specific DML support (`VALUES`, `EXECUTE`).
+- **One-Click Performance Analysis**: Instantly trigger the Query Analyzer for active processes or slow query logs directly from the monitoring dashboard.
 - **Latency prediction & slow-query early warning** based on historical execution patterns.
 - **Parameter suggestions** using historical value distributions.
 - **What‑If Optimizer** to compare query variants with estimated cost.
@@ -231,14 +233,15 @@ Task Center docs:
 
 ### Server Monitor
 
-- **Real-time Metrics**: Live CPU, memory, and disk usage monitoring
-- **Connection Stats**: Active connections, threads running, and connection pool status
-- **Query Performance**: Queries per second, slow query tracking, and execution stats
-- **InnoDB Status**: Buffer pool, transaction logs, and storage engine metrics
-- **Blocking Analysis**: Lock graph (`blocking -> waiting` edges), chain decomposition, and deadlock cycle detection
-- **Root-Cause Guidance**: Session-level root blocker prioritization plus severity-based automatic recommendations
-- **Safe Mitigation Actions**: One-click termination of blocking backends directly from lock analysis cards
-- **Auto-refresh**: Configurable refresh intervals (1s, 5s, 10s, 30s, 60s)
+- **Unified Monitoring Dashboard**: Multi-tab interface for Processes, InnoDB Deep Dive, Slow Queries, Locks, Replication, and Resource Usage.
+- **Real-time Metrics**: Live CPU, memory, traffic (Bps), and QPS tracking with historical sparklines and charts.
+- **Deep-Dive InnoDB Analytics**: Granular storage engine metrics including buffer pool hit rates, row operations (Reads/Inserts/Updates/Deletes), and I/O flushes.
+- **Integrated Query Analysis**: Instantly trigger the Query Analyzer for any active session or slow log entry with a single click.
+- **Blocking & Lock Analysis**: Visual lock graph (`blocking -> waiting`), chain decomposition, and automated root-cause detection.
+- **Replication Health**: Real-time status for MySQL Slaves and PostgreSQL Replicas including LSN lag and thread states.
+- **Resource Usage**: Identify top resource-consuming tables by fetch/write latency and operation counts.
+- **Safe Mitigation**: Kill runaway or blocking sessions directly from the process list or lock graph.
+- **Auto-refresh**: Configurable polling intervals (3s default) with manual refresh overrides.
 
 ### Schema Designer
 
@@ -399,6 +402,7 @@ The Rust backend exposes the following commands (used by the UI):
 
 ### Monitoring
 - `get_server_status` — Server status counters and runtime metrics
+- `get_monitor_snapshot` — Unified snapshot of all monitoring telemetry
 - `get_process_list` — Active backend/session list
 - `kill_process` — Terminate blocking or runaway sessions
 - `get_locks` — Raw lock inventory (engine lock metadata)

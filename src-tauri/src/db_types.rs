@@ -450,6 +450,39 @@ pub struct AiIndexRecommendations {
     pub analysis_summary: String,
 }
 
+// --- Wait Event Summary ---
+#[derive(Serialize, Debug, Clone)]
+pub struct WaitEventSummary {
+    pub event_type: String, // e.g., 'IO', 'Lock', 'CPU'
+    pub event_name: String,
+    pub total_waits: i64,
+    pub total_latency_ms: f64,
+    pub avg_latency_ms: f64,
+    pub percentage: f64,
+}
+
+// --- Table Resource Usage ---
+#[derive(Serialize, Debug, Clone)]
+pub struct TableResourceUsage {
+    pub schema: String,
+    pub table: String,
+    pub read_ops: i64,
+    pub write_ops: i64,
+    pub fetch_latency_ms: f64,
+    pub insert_latency_ms: f64,
+    pub update_latency_ms: f64,
+    pub delete_latency_ms: f64,
+}
+
+// --- Health Metric ---
+#[derive(Serialize, Debug, Clone)]
+pub struct HealthMetric {
+    pub label: String,
+    pub value: String,
+    pub status: String, // 'healthy' | 'warning' | 'critical'
+    pub description: Option<String>,
+}
+
 // --- Monitor Snapshot ---
 #[derive(Serialize, Debug)]
 pub struct MonitorSnapshot {
@@ -460,4 +493,7 @@ pub struct MonitorSnapshot {
     pub locks: Vec<LockInfo>,
     pub lock_analysis: Option<LockAnalysis>,
     pub innodb_status: Option<String>,
+    pub wait_events: Vec<WaitEventSummary>,
+    pub table_usage: Vec<TableResourceUsage>,
+    pub health_metrics: Vec<HealthMetric>,
 }

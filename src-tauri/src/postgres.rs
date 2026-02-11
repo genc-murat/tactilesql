@@ -1331,6 +1331,14 @@ pub async fn get_replication_status(pool: &Pool<Postgres>) -> Result<serde_json:
 // --- Query Analysis ---
 
 pub async fn analyze_query(pool: &Pool<Postgres>, query: &str) -> Result<QueryAnalysis, String> {
+    let query = query.trim().trim_end_matches(';').trim();
+
+    // Check if query is explainable (PostgreSQL supports SELECT, INSERT, UPDATE, DELETE, VALUES, or EXECUTE)
+    let first_word = query.split_whitespace().next().unwrap_or("").to_uppercase();
+    if !["SELECT", "INSERT", "UPDATE", "DELETE", "VALUES", "EXECUTE"].contains(&first_word.as_str()) {
+        return Err(format!("Query analysis (EXPLAIN) is not supported for {} statements. It is only supported for SELECT, INSERT, UPDATE, DELETE, VALUES, and EXECUTE.", first_word));
+    }
+
     let explain_query = format!("EXPLAIN (FORMAT JSON, ANALYZE false) {}", query);
 
     let row = sqlx::query(&explain_query)
@@ -2270,4 +2278,126 @@ pub async fn get_explain_analyze_metrics(
         metrics.execution_time_ms,
     );
     Ok(map)
+}
+
+pub async fn get_wait_events(pool: &Pool<Postgres>) -> Result<Vec<WaitEventSummary>, String> {
+    let query = r#"
+        SELECT 
+            wait_event_type,
+            wait_event,
+            count(*) as total_waits
+        FROM pg_stat_activity
+        WHERE wait_event IS NOT NULL
+        GROUP BY wait_event_type, wait_event
+        ORDER BY count(*) DESC
+    "#;
+
+    let rows = sqlx::query(query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch wait events: {}", e))?;
+
+    let total_waits_all: i64 = rows.iter().map(|r| r.try_get::<i64, _>("total_waits").unwrap_or(0)).sum();
+
+    let mut events = Vec::new();
+    for row in rows {
+        let total_waits: i64 = row.try_get("total_waits").unwrap_or(0);
+        events.push(WaitEventSummary {
+            event_type: row.try_get::<String, _>("wait_event_type").unwrap_or_else(|_| "Other".to_string()),
+            event_name: row.try_get::<String, _>("wait_event").unwrap_or_else(|_| "Unknown".to_string()),
+            total_waits,
+            total_latency_ms: 0.0,
+            avg_latency_ms: 0.0,
+            percentage: if total_waits_all > 0 { (total_waits as f64 / total_waits_all as f64) * 100.0 } else { 0.0 },
+        });
+    }
+
+    Ok(events)
+}
+
+pub async fn get_table_resource_usage(pool: &Pool<Postgres>) -> Result<Vec<TableResourceUsage>, String> {
+    let query = r#"
+        SELECT 
+            schemaname as schema,
+            relname as table,
+            seq_scan + idx_scan as read_ops,
+            n_tup_ins + n_tup_upd + n_tup_del as write_ops
+        FROM pg_stat_user_tables
+        ORDER BY (seq_scan + idx_scan + n_tup_ins + n_tup_upd + n_tup_del) DESC
+        LIMIT 20
+    "#;
+
+    let rows = sqlx::query(query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch table resource usage: {}", e))?;
+
+    let mut usage = Vec::new();
+    for row in rows {
+        usage.push(TableResourceUsage {
+            schema: row.try_get("schema").unwrap_or_default(),
+            table: row.try_get("table").unwrap_or_default(),
+            read_ops: row.try_get::<i64, _>("read_ops").unwrap_or(0),
+            write_ops: row.try_get::<i64, _>("write_ops").unwrap_or(0),
+            fetch_latency_ms: 0.0,
+            insert_latency_ms: 0.0,
+            update_latency_ms: 0.0,
+            delete_latency_ms: 0.0,
+        });
+    }
+
+    Ok(usage)
+}
+
+pub async fn get_health_metrics(pool: &Pool<Postgres>) -> Result<Vec<HealthMetric>, String> {
+    let mut metrics = Vec::new();
+
+    // 1. Connection Usage
+    let max_conn_row = sqlx::query("SHOW max_connections").fetch_one(pool).await.map_err(|e| e.to_string())?;
+    let max_connections: i64 = max_conn_row.try_get::<String, _>(0).unwrap_or_else(|_| "100".to_string()).parse().unwrap_or(100);
+    
+    let current_conn_row = sqlx::query("SELECT count(*) FROM pg_stat_activity").fetch_one(pool).await.map_err(|e| e.to_string())?;
+    let current_connections: i64 = current_conn_row.try_get(0).unwrap_or(0);
+
+    let conn_ratio = current_connections as f64 / max_connections as f64;
+    metrics.push(HealthMetric {
+        label: "Connection Usage".to_string(),
+        value: format!("{}/{}", current_connections, max_connections),
+        status: if conn_ratio > 0.9 { "critical".to_string() } else if conn_ratio > 0.7 { "warning".to_string() } else { "healthy".to_string() },
+        description: Some(format!("{:.1}% of maximum connections used", conn_ratio * 100.0)),
+    });
+
+    // 2. Transaction Age
+    let xact_age_row = sqlx::query(r#"
+        SELECT max(EXTRACT(EPOCH FROM (now() - xact_start)))::bigint as max_age
+        FROM pg_stat_activity 
+        WHERE state != 'idle'
+    "#).fetch_one(pool).await.map_err(|e| e.to_string())?;
+    
+    let age_secs: i64 = xact_age_row.try_get("max_age").unwrap_or(0);
+    if age_secs > 0 {
+        metrics.push(HealthMetric {
+            label: "Max Transaction Age".to_string(),
+            value: format!("{}s", age_secs),
+            status: if age_secs > 3600 { "critical".to_string() } else if age_secs > 300 { "warning".to_string() } else { "healthy".to_string() },
+            description: Some("Age of the longest running active transaction".to_string()),
+        });
+    }
+
+    // 3. Cache Hit Ratio
+    let cache_row = sqlx::query(r#"
+        SELECT 
+            sum(blks_hit) / (sum(blks_hit) + sum(blks_read) + 1)::float as hit_ratio
+        FROM pg_stat_database
+    "#).fetch_one(pool).await.map_err(|e| e.to_string())?;
+    
+    let hit_ratio: f64 = cache_row.try_get::<f64, _>(0).unwrap_or(0.0) * 100.0;
+    metrics.push(HealthMetric {
+        label: "Cache Hit Ratio".to_string(),
+        value: format!("{:.2}%", hit_ratio),
+        status: if hit_ratio < 90.0 { "critical".to_string() } else if hit_ratio < 95.0 { "warning".to_string() } else { "healthy".to_string() },
+        description: Some("Percentage of database blocks found in shared buffers".to_string()),
+    });
+
+    Ok(metrics)
 }

@@ -8,6 +8,7 @@ import { initKeyboardShortcuts, registerHandler, showShortcutsHelp } from './uti
 import { QueryComparator } from './components/Awareness/QueryComparator.js';
 import { AnomalyDashboard } from './components/Awareness/AnomalyDashboard.js';
 import { isFeatureEnabled } from './config/featureFlags.js';
+import { showQueryAnalyzerModal } from './components/UI/QueryAnalyzerModal.js';
 
 // Lazy load page components for better initial load time
 const lazyLoad = (importFn, exportName) => async () => {
@@ -187,6 +188,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Expose toggles globally via Custom Events
     window.addEventListener('tactilesql:toggle-comparator', () => comparator.toggle());
     window.addEventListener('tactilesql:toggle-anomaly-dashboard', () => anomalyDashboard.toggle());
+
+    // Query Analyzer Global Trigger
+    window.addEventListener('openqueryanalyzer', (e) => {
+        const { sql } = e.detail;
+        if (sql) {
+            showQueryAnalyzerModal(sql);
+        }
+    });
 
     // Manually trigger initial route since 'load' event already fired
     router.handleRoute();

@@ -35,6 +35,10 @@ pub async fn get_monitor_snapshot(app_state: State<'_, AppState>) -> Result<Moni
                 None
             };
 
+            let wait_events = postgres::get_wait_events(pool).await.unwrap_or_default();
+            let table_usage = postgres::get_table_resource_usage(pool).await.unwrap_or_default();
+            let health_metrics = postgres::get_health_metrics(pool).await.unwrap_or_default();
+
             Ok(MonitorSnapshot {
                 server_status,
                 processes,
@@ -43,6 +47,9 @@ pub async fn get_monitor_snapshot(app_state: State<'_, AppState>) -> Result<Moni
                 locks,
                 lock_analysis,
                 innodb_status: None,
+                wait_events,
+                table_usage,
+                health_metrics,
             })
         }
         DatabaseType::MySQL => {
@@ -63,6 +70,10 @@ pub async fn get_monitor_snapshot(app_state: State<'_, AppState>) -> Result<Moni
                 None
             };
 
+            let wait_events = mysql::get_wait_events(pool).await.unwrap_or_default();
+            let table_usage = mysql::get_table_resource_usage(pool).await.unwrap_or_default();
+            let health_metrics = mysql::get_health_metrics(pool).await.unwrap_or_default();
+
             Ok(MonitorSnapshot {
                 server_status,
                 processes,
@@ -71,6 +82,9 @@ pub async fn get_monitor_snapshot(app_state: State<'_, AppState>) -> Result<Moni
                 locks,
                 lock_analysis,
                 innodb_status,
+                wait_events,
+                table_usage,
+                health_metrics,
             })
         }
         DatabaseType::Disconnected => Err("No connection established".into()),

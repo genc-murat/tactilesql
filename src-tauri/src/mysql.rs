@@ -1267,6 +1267,14 @@ pub async fn get_lock_graph_edges(pool: &Pool<MySql>) -> Result<Vec<LockGraphEdg
 // --- Query Analysis ---
 
 pub async fn analyze_query(pool: &Pool<MySql>, query: &str) -> Result<QueryAnalysis, String> {
+    let query = query.trim().trim_end_matches(';').trim();
+    
+    // Check if query is explainable (MySQL supports SELECT, DELETE, INSERT, REPLACE, UPDATE)
+    let first_word = query.split_whitespace().next().unwrap_or("").to_uppercase();
+    if !["SELECT", "INSERT", "UPDATE", "DELETE", "REPLACE"].contains(&first_word.as_str()) {
+        return Err(format!("Query analysis (EXPLAIN) is not supported for {} statements. It is only supported for SELECT, INSERT, UPDATE, DELETE, and REPLACE.", first_word));
+    }
+
     let explain_query = format!("EXPLAIN FORMAT=JSON {}", query);
 
     let result = sqlx::query(&explain_query).fetch_one(pool).await;
@@ -1846,6 +1854,152 @@ mod tests {
         assert!(has_index_usage_signal(&payload, "idx_orders_created_at"));
         assert!(!has_index_usage_signal(&payload, "idx_other"));
     }
+}
+
+pub async fn get_wait_events(pool: &Pool<MySql>) -> Result<Vec<WaitEventSummary>, String> {
+    let query = r#"
+        SELECT 
+            EVENT_NAME as event_name,
+            COUNT_STAR as total_waits,
+            SUM_TIMER_WAIT / 1000000000 as total_latency_ms,
+            AVG_TIMER_WAIT / 1000000000 as avg_latency_ms
+        FROM performance_schema.events_waits_summary_global_by_event_name
+        WHERE SUM_TIMER_WAIT > 0
+          AND EVENT_NAME NOT LIKE 'idle%'
+        ORDER BY SUM_TIMER_WAIT DESC
+        LIMIT 20
+    "#;
+
+    let rows = sqlx::query(query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch wait events: {}", e))?;
+
+    let total_latency: f64 = rows.iter().map(|r| r.try_get::<f64, _>("total_latency_ms").unwrap_or(0.0)).sum();
+
+    let mut events = Vec::new();
+    for row in rows {
+        let name: String = row.try_get("event_name").unwrap_or_default();
+        let total_waits: i64 = row.try_get::<i64, _>("total_waits").unwrap_or(0);
+        let total_lat: f64 = row.try_get::<f64, _>("total_latency_ms").unwrap_or(0.0);
+        let avg_lat: f64 = row.try_get::<f64, _>("avg_latency_ms").unwrap_or(0.0);
+        
+        let event_type = if name.contains("io/") { "IO" }
+                        else if name.contains("lock/") { "Lock" }
+                        else if name.contains("sync/") { "Sync" }
+                        else { "Other" };
+
+        events.push(WaitEventSummary {
+            event_type: event_type.to_string(),
+            event_name: name,
+            total_waits,
+            total_latency_ms: total_lat,
+            avg_latency_ms: avg_lat,
+            percentage: if total_latency > 0.0 { (total_lat / total_latency) * 100.0 } else { 0.0 },
+        });
+    }
+
+    Ok(events)
+}
+
+pub async fn get_table_resource_usage(pool: &Pool<MySql>) -> Result<Vec<TableResourceUsage>, String> {
+    let query = r#"
+        SELECT 
+            OBJECT_SCHEMA as `schema`,
+            OBJECT_NAME as `table`,
+            COUNT_READ as read_ops,
+            COUNT_WRITE as write_ops,
+            SUM_TIMER_FETCH / 1000000000 as fetch_latency_ms,
+            SUM_TIMER_INSERT / 1000000000 as insert_latency_ms,
+            SUM_TIMER_UPDATE / 1000000000 as update_latency_ms,
+            SUM_TIMER_DELETE / 1000000000 as delete_latency_ms
+        FROM performance_schema.table_io_waits_summary_by_table
+        WHERE OBJECT_SCHEMA NOT IN ('mysql', 'performance_schema', 'information_schema', 'sys')
+          AND (COUNT_READ > 0 OR COUNT_WRITE > 0)
+        ORDER BY (SUM_TIMER_WAIT) DESC
+        LIMIT 20
+    "#;
+
+    let rows = sqlx::query(query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch table resource usage: {}", e))?;
+
+    let mut usage = Vec::new();
+    for row in rows {
+        usage.push(TableResourceUsage {
+            schema: row.try_get("schema").unwrap_or_default(),
+            table: row.try_get("table").unwrap_or_default(),
+            read_ops: row.try_get::<i64, _>("read_ops").unwrap_or(0),
+            write_ops: row.try_get::<i64, _>("write_ops").unwrap_or(0),
+            fetch_latency_ms: row.try_get::<f64, _>("fetch_latency_ms").unwrap_or(0.0),
+            insert_latency_ms: row.try_get::<f64, _>("insert_latency_ms").unwrap_or(0.0),
+            update_latency_ms: row.try_get::<f64, _>("update_latency_ms").unwrap_or(0.0),
+            delete_latency_ms: row.try_get::<f64, _>("delete_latency_ms").unwrap_or(0.0),
+        });
+    }
+
+    Ok(usage)
+}
+
+pub async fn get_health_metrics(pool: &Pool<MySql>) -> Result<Vec<HealthMetric>, String> {
+    let mut metrics = Vec::new();
+
+    // 1. Connection Usage
+    let max_conn_row = sqlx::query("SELECT @@max_connections").fetch_one(pool).await.map_err(|e| e.to_string())?;
+    let max_connections: i64 = max_conn_row.try_get::<i64, _>(0).unwrap_or(151);
+    
+    let status_rows = sqlx::query("SHOW GLOBAL STATUS LIKE 'Threads_connected'").fetch_all(pool).await.map_err(|e| e.to_string())?;
+    let current_connections: i64 = if !status_rows.is_empty() {
+        status_rows[0].try_get::<String, _>(1).unwrap_or_default().parse().unwrap_or(0)
+    } else { 0 };
+
+    let conn_ratio = current_connections as f64 / max_connections as f64;
+    metrics.push(HealthMetric {
+        label: "Connection Usage".to_string(),
+        value: format!("{}/{}", current_connections, max_connections),
+        status: if conn_ratio > 0.9 { "critical".to_string() } else if conn_ratio > 0.7 { "warning".to_string() } else { "healthy".to_string() },
+        description: Some(format!("{:.1}% of maximum connections used", conn_ratio * 100.0)),
+    });
+
+    // 2. Slow Queries (Total)
+    let slow_row = sqlx::query("SHOW GLOBAL STATUS LIKE 'Slow_queries'").fetch_all(pool).await.map_err(|e| e.to_string())?;
+    let slow_queries: i64 = if !slow_row.is_empty() {
+        slow_row[0].try_get::<String, _>(1).unwrap_or_default().parse().unwrap_or(0)
+    } else { 0 };
+
+    metrics.push(HealthMetric {
+        label: "Slow Queries".to_string(),
+        value: slow_queries.to_string(),
+        status: if slow_queries > 100 { "warning".to_string() } else { "healthy".to_string() },
+        description: Some("Total number of slow queries since startup".to_string()),
+    });
+
+    // 3. Buffer Pool Hit Rate
+    let bp_rows = sqlx::query(r#"
+        SHOW GLOBAL STATUS WHERE Variable_name IN ('Innodb_buffer_pool_read_requests', 'Innodb_buffer_pool_reads')
+    "#).fetch_all(pool).await.map_err(|e| e.to_string())?;
+    
+    let mut reads = 0;
+    let mut requests = 0;
+    for row in bp_rows {
+        let name: String = row.try_get(0).unwrap_or_default();
+        let val: i64 = row.try_get::<String, _>(1).unwrap_or_default().parse().unwrap_or(0);
+        if name == "Innodb_buffer_pool_reads" { reads = val; }
+        else { requests = val; }
+    }
+
+    if requests > 0 {
+        let hit_rate = 100.0 * (1.0 - (reads as f64 / requests as f64));
+        metrics.push(HealthMetric {
+            label: "Buffer Pool Hit Rate".to_string(),
+            value: format!("{:.2}%", hit_rate),
+            status: if hit_rate < 90.0 { "critical".to_string() } else if hit_rate < 95.0 { "warning".to_string() } else { "healthy".to_string() },
+            description: Some("Efficiency of InnoDB buffer pool".to_string()),
+        });
+    }
+
+    Ok(metrics)
 }
 
 // --- Slow Queries ---
