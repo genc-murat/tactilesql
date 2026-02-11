@@ -973,15 +973,34 @@ pub async fn get_server_status(pool: &Pool<Postgres>) -> Result<ServerStatus, St
         Err(_) => 0,
     };
 
+    // Get total transactions as a proxy for queries, and blocks read/written as proxy for network/IO
+    let stat_query = r#"
+        SELECT 
+            sum(xact_commit + xact_rollback) as queries,
+            sum(blks_read * 8192) as bytes_received,
+            sum(blks_hit * 8192) as bytes_sent
+        FROM pg_stat_database
+    "#;
+    let stat_row = sqlx::query(stat_query).fetch_one(pool).await;
+    
+    let (queries, bytes_received, bytes_sent) = match stat_row {
+        Ok(row) => (
+            row.try_get::<i64, _>("queries").unwrap_or(0),
+            row.try_get::<i64, _>("bytes_received").unwrap_or(0),
+            row.try_get::<i64, _>("bytes_sent").unwrap_or(0),
+        ),
+        Err(_) => (0, 0, 0),
+    };
+
     Ok(ServerStatus {
         uptime,
         threads_connected: connections,
         threads_running: active,
-        questions: 0,
-        slow_queries: 0,
+        queries,
+        slow_queries: 0, // Need pg_stat_statements for accurate count
         connections,
-        bytes_received: 0,
-        bytes_sent: 0,
+        bytes_received,
+        bytes_sent,
     })
 }
 

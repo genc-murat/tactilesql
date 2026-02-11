@@ -3,6 +3,7 @@ import { Dialog } from '../components/UI/Dialog.js';
 import { ThemeManager } from '../utils/ThemeManager.js';
 import { escapeHtml, formatBytes, formatNumber } from '../utils/helpers.js';
 import { LoadingManager } from '../components/UI/LoadingStates.js';
+import { Charting } from '../utils/Charting.js';
 
 export function ServerMonitor() {
     let theme = ThemeManager.getCurrentTheme();
@@ -29,6 +30,14 @@ export function ServerMonitor() {
     let activeTab = 'overview'; // 'overview' | 'processes' | 'innodb' | 'slow' | 'locks' | 'replication'
     const lockFeatureAvailability = { locks: true, analysis: true };
     const lockFeatureWarningShown = { locks: false, analysis: false };
+
+    // History for charts
+    const history = {
+        qps: [],
+        threads: [],
+        bytes_in: [],
+        bytes_out: []
+    };
 
     // Previous values for delta calculations
     let prevStatus = null;
@@ -125,9 +134,33 @@ export function ServerMonitor() {
             try {
                 // Load all data in a single unified call
                 const snapshot = await invoke('get_monitor_snapshot');
+                const now = Date.now();
 
-                prevStatus = serverStatus;
-                prevTimestamp = Date.now();
+                // Calculate rates
+                if (prevStatus && prevTimestamp) {
+                    const elapsed = (now - prevTimestamp) / 1000;
+                    if (elapsed > 0) {
+                        const qps = (snapshot.server_status.queries - prevStatus.queries) / elapsed;
+                        const bin = (snapshot.server_status.bytes_received - prevStatus.bytes_received) / elapsed;
+                        const bout = (snapshot.server_status.bytes_sent - prevStatus.bytes_sent) / elapsed;
+
+                        history.qps.push(Math.max(0, qps));
+                        history.bytes_in.push(Math.max(0, bin));
+                        history.bytes_out.push(Math.max(0, bout));
+                        history.threads.push(snapshot.server_status.threads_running);
+
+                        // Keep max 60 points (approx 3 minutes at 3s refresh)
+                        if (history.qps.length > 60) {
+                            history.qps.shift();
+                            history.bytes_in.shift();
+                            history.bytes_out.shift();
+                            history.threads.shift();
+                        }
+                    }
+                }
+
+                prevStatus = snapshot.server_status;
+                prevTimestamp = now;
 
                 serverStatus = snapshot.server_status;
                 processList = snapshot.processes;
@@ -231,11 +264,15 @@ export function ServerMonitor() {
                 </div>
 
                 <!-- Content -->
-                <div class="flex-1 overflow-hidden flex flex-col">
+                <div class="flex-1 ${activeTab === 'overview' ? 'overflow-y-auto pr-2' : 'overflow-hidden'} flex flex-col custom-scrollbar">
                     ${isLoading ? renderLoading() : renderTabContent()}
                 </div>
             </div>
         `;
+
+        if (!isLoading && activeTab === 'overview') {
+            renderCharts();
+        }
 
         attachEvents();
     };
@@ -272,6 +309,8 @@ export function ServerMonitor() {
 
         if (!s) return '<p class="text-gray-500">No data available</p>';
 
+        const qps = history.qps.length > 0 ? history.qps[history.qps.length - 1] : 0;
+
         return `
             <div class="grid grid-cols-4 gap-4 mb-6">
                 <!-- Uptime -->
@@ -289,27 +328,33 @@ export function ServerMonitor() {
 
                 <!-- Connections -->
                 <div class="rounded-xl p-4 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))}">
-                    <div class="flex items-center gap-3 mb-2">
-                        <div class="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
-                            <span class="material-symbols-outlined text-blue-500">people</span>
+                    <div class="flex items-center justify-between gap-3 mb-2">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                                <span class="material-symbols-outlined text-blue-500">people</span>
+                            </div>
+                            <div>
+                                <p class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'} uppercase tracking-wider">Threads</p>
+                                <p class="text-xl font-bold ${isLight ? 'text-gray-900' : 'text-white'}">${s.threads_connected} <span class="text-sm font-normal ${isLight ? 'text-gray-500' : 'text-gray-400'}">/ ${s.threads_running} running</span></p>
+                            </div>
                         </div>
-                        <div>
-                            <p class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'} uppercase tracking-wider">Threads</p>
-                            <p class="text-xl font-bold ${isLight ? 'text-gray-900' : 'text-white'}">${s.threads_connected} <span class="text-sm font-normal ${isLight ? 'text-gray-500' : 'text-gray-400'}">/ ${s.threads_running} running</span></p>
-                        </div>
+                        <div class="opacity-50">${Charting.getSparkline(history.threads, '#3b82f6')}</div>
                     </div>
                 </div>
 
                 <!-- Queries -->
                 <div class="rounded-xl p-4 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))}">
-                    <div class="flex items-center gap-3 mb-2">
-                        <div class="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
-                            <span class="material-symbols-outlined text-purple-500">query_stats</span>
+                    <div class="flex items-center justify-between gap-3 mb-2">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                                <span class="material-symbols-outlined text-purple-500">query_stats</span>
+                            </div>
+                            <div>
+                                <p class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'} uppercase tracking-wider">Activity</p>
+                                <p class="text-xl font-bold ${isLight ? 'text-gray-900' : 'text-white'}">${qps.toFixed(1)} <span class="text-sm font-normal ${isLight ? 'text-gray-500' : 'text-gray-400'}">QPS</span></p>
+                            </div>
                         </div>
-                        <div>
-                            <p class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'} uppercase tracking-wider">Total Queries</p>
-                            <p class="text-xl font-bold ${isLight ? 'text-gray-900' : 'text-white'}">${formatNumber(s.queries)}</p>
-                        </div>
+                        <div class="opacity-50">${Charting.getSparkline(history.qps, '#a855f7')}</div>
                     </div>
                 </div>
 
@@ -327,21 +372,45 @@ export function ServerMonitor() {
                 </div>
             </div>
 
-            <!-- Traffic & Connections -->
+            <!-- Charts Section -->
             <div class="grid grid-cols-2 gap-6 mb-6">
-                <!-- Network Traffic -->
+                <!-- QPS Chart -->
+                <div class="rounded-xl p-6 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))}">
+                    <h3 class="text-sm font-semibold ${isLight ? 'text-gray-900' : 'text-white'} mb-4 flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <span class="material-symbols-outlined text-purple-500 text-lg">insights</span>
+                            Queries Per Second
+                        </div>
+                        <span class="text-xs font-mono text-purple-500">${qps.toFixed(2)} q/s</span>
+                    </h3>
+                    <div id="qps-chart" class="h-32 w-full"></div>
+                </div>
+
+                <!-- Network Chart -->
+                <div class="rounded-xl p-6 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))}">
+                    <h3 class="text-sm font-semibold ${isLight ? 'text-gray-900' : 'text-white'} mb-4 flex items-center gap-2">
+                        <span class="material-symbols-outlined text-mysql-teal text-lg">swap_vert</span>
+                        Network Traffic (Bytes/s)
+                    </h3>
+                    <div id="network-chart" class="h-32 w-full"></div>
+                </div>
+            </div>
+
+            <!-- Traffic & Connections Info -->
+            <div class="grid grid-cols-2 gap-6 mb-6">
+                <!-- Network Traffic Totals -->
                 <div class="rounded-xl p-6 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))}">
                     <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} mb-4 flex items-center gap-2">
-                        <span class="material-symbols-outlined text-mysql-teal">swap_vert</span>
-                        Network Traffic
+                        <span class="material-symbols-outlined text-mysql-teal">cloud_sync</span>
+                        Network Stats
                     </h3>
                     <div class="grid grid-cols-2 gap-4">
                         <div class="p-4 rounded-lg ${isLight ? 'bg-green-50' : (isDawn ? 'bg-[#56949f]/10' : 'bg-green-500/10')}">
-                            <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')} mb-1">Received</p>
+                            <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')} mb-1">Total Received</p>
                             <p class="text-2xl font-bold ${isDawn ? 'text-[#56949f]' : 'text-green-500'}">${formatBytes(s.bytes_received)}</p>
                         </div>
                         <div class="p-4 rounded-lg ${isLight ? 'bg-blue-50' : (isDawn ? 'bg-[#286983]/10' : 'bg-blue-500/10')}">
-                            <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')} mb-1">Sent</p>
+                            <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')} mb-1">Total Sent</p>
                             <p class="text-2xl font-bold ${isDawn ? 'text-[#286983]' : 'text-blue-500'}">${formatBytes(s.bytes_sent)}</p>
                         </div>
                     </div>
@@ -356,15 +425,15 @@ export function ServerMonitor() {
                     <div class="grid grid-cols-3 gap-4">
                         <div class="text-center">
                             <p class="text-2xl font-bold ${isLight ? 'text-gray-900' : 'text-white'}">${formatNumber(s.connections)}</p>
-                            <p class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">Total</p>
+                            <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Total</p>
                         </div>
                         <div class="text-center">
                             <p class="text-2xl font-bold text-red-500">${formatNumber(s.aborted_connects)}</p>
-                            <p class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">Aborted Conn</p>
+                            <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Aborted Conn</p>
                         </div>
                         <div class="text-center">
                             <p class="text-2xl font-bold text-yellow-500">${formatNumber(s.aborted_clients)}</p>
-                            <p class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}">Aborted Clients</p>
+                            <p class="text-xs ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : 'text-gray-400')}">Aborted Clients</p>
                         </div>
                     </div>
                 </div>
@@ -388,6 +457,25 @@ export function ServerMonitor() {
                 </div>
             </div>
         `;
+    };
+
+    const renderCharts = () => {
+        const qpsContainer = container.querySelector('#qps-chart');
+        const networkContainer = container.querySelector('#network-chart');
+
+        if (qpsContainer) {
+            Charting.renderLineChart(qpsContainer, history.qps, {
+                color: '#a855f7',
+                fillColor: 'rgba(168, 85, 247, 0.1)'
+            });
+        }
+
+        if (networkContainer) {
+            Charting.renderLineChart(networkContainer, history.bytes_in, {
+                color: '#10b981',
+                fillColor: 'rgba(16, 185, 129, 0.1)'
+            });
+        }
     };
 
     const renderProcesses = () => {
@@ -788,7 +876,7 @@ SET GLOBAL long_query_time = 1;</pre>
                                     <th class="px-4 py-3 text-left">Lock Data</th>
                                 </tr>
                             </thead>
-                            <tbody class="divide-y ${isLight ? 'divide-gray-100' : 'divide-white/5'}">
+                            <tbody class="divide-y ${isLight ? 'divide-gray-100' : (isDawn ? 'divide-[#f2e9e1]' : 'divide-white/5')}">
                                 ${locks.map(lock => `
                                     <tr class="${isLight ? 'hover:bg-gray-50' : 'hover:bg-white/5'} transition-colors">
                                         <td class="px-4 py-3 ${isLight ? 'text-gray-900' : 'text-white'} font-mono text-xs">${escapeHtml(lock.lock_id || '')}</td>
@@ -845,7 +933,7 @@ SET GLOBAL long_query_time = 1;</pre>
                         </div>
 
                         ${topBlockers.length > 0 ? `
-                            <div class="p-4 border-b ${isLight ? 'border-gray-200' : 'border-white/10'}">
+                            <div class="p-4 border-b ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/10')}">
                                 <h4 class="text-sm font-semibold mb-3 ${isLight ? 'text-gray-900' : 'text-white'}">Root Blockers</h4>
                                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
                                     ${topBlockers.map(node => `

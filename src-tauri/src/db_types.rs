@@ -238,7 +238,7 @@ pub struct ServerStatus {
     pub uptime: i64,
     pub threads_connected: i64,
     pub threads_running: i64,
-    pub questions: i64,
+    pub queries: i64,
     pub slow_queries: i64,
     pub connections: i64,
     pub bytes_received: i64,
