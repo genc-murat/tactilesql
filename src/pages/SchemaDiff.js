@@ -13,7 +13,7 @@ export function SchemaDiff() {
 
     const container = document.createElement('div');
     const updateContainerClass = () => {
-        container.className = `min-h-full flex flex-col transition-colors duration-200 font-sans ${isLight ? 'bg-gray-50 text-gray-800' : (isDawn ? 'bg-[#fffaf3] text-[#575279]' : (isOceanic ? 'bg-ocean-bg text-ocean-text' : (isNeon ? 'bg-neon-bg text-neon-text' : 'bg-base-dark text-gray-300')))}`;
+        container.className = `h-full flex flex-col transition-colors duration-200 font-sans ${isLight ? 'bg-gray-50 text-gray-800' : (isDawn ? 'bg-[#fffaf3] text-[#575279]' : (isOceanic ? 'bg-ocean-bg text-ocean-text' : (isNeon ? 'bg-neon-bg text-neon-text' : 'bg-base-dark text-gray-300')))}`;
     };
     updateContainerClass();
 
@@ -28,6 +28,16 @@ export function SchemaDiff() {
     let targetTablesList = [];
     let selectedSourceTable = '';
     let selectedTargetTable = '';
+
+    // UI State
+    let searchTerm = '';
+    let filterType = 'all'; // 'all' | 'create' | 'alter' | 'drop'
+    let activePanel = 'diff'; // 'script' | 'diff'
+    let selectedDiff = null;
+    let sourceDDL = '';
+    let targetDDL = '';
+    let sourceSchemaData = [];
+    let targetSchemaData = [];
 
     let isComparing = false;
     let diffResults = null;
@@ -44,6 +54,53 @@ export function SchemaDiff() {
 
 
     // --- Logic ---
+    const swapDatabases = () => {
+        const tempDb = sourceDb;
+        sourceDb = targetDb;
+        targetDb = tempDb;
+
+        const tempTables = sourceTablesList;
+        sourceTablesList = targetTablesList;
+        targetTablesList = tempTables;
+
+        const tempSelected = selectedSourceTable;
+        selectedSourceTable = selectedTargetTable;
+        selectedTargetTable = tempSelected;
+
+        diffResults = null;
+        generatedSql = '';
+        selectedDiff = null;
+        render();
+    };
+
+    const selectDiff = async (diff) => {
+        selectedDiff = diff;
+        activePanel = 'diff';
+        sourceDDL = '';
+        targetDDL = '';
+        sourceSchemaData = [];
+        targetSchemaData = [];
+        render();
+
+        try {
+            const [sSchema, tSchema, sDDL, tDDL] = await Promise.all([
+                diff.sourceTable ? invoke('get_table_schema', { database: sourceDb, table: diff.sourceTable }) : Promise.resolve([]),
+                diff.targetTable ? invoke('get_table_schema', { database: targetDb, table: diff.targetTable }) : Promise.resolve([]),
+                diff.sourceTable ? invoke('get_table_ddl', { database: sourceDb, table: diff.sourceTable }) : Promise.resolve('-- No Source'),
+                diff.targetTable ? invoke('get_table_ddl', { database: targetDb, table: diff.targetTable }) : Promise.resolve('-- No Target')
+            ]);
+
+            sourceSchemaData = sSchema;
+            targetSchemaData = tSchema;
+            sourceDDL = sDDL;
+            targetDDL = tDDL;
+            render();
+        } catch (error) {
+            console.error('Failed to fetch data for diff:', error);
+            render();
+        }
+    };
+
     const loadDatabases = async () => {
         try {
             databases = await invoke('get_databases');
@@ -119,7 +176,7 @@ export function SchemaDiff() {
                 // 1. Missing In Target (CREATE)
                 for (const table of missingInTarget) {
                     const ddl = await invoke('get_table_ddl', { database: sourceDb, table });
-                    diffs.push({ type: 'create', table, reason: 'Missing in Target' });
+                    diffs.push({ type: 'create', table, sourceTable: table, targetTable: null, reason: 'Missing in Target' });
                     sqlCommands.push(`-- Creating missing table: ${table}\n${ddl};\n`);
                     cCreate++;
                 }
@@ -127,7 +184,7 @@ export function SchemaDiff() {
                 // 2. Missing In Source (DROP)
                 if (missingInSource.length > 0) sqlCommands.push(`-- Dropping obsolete tables`);
                 for (const table of missingInSource) {
-                    diffs.push({ type: 'drop', table, reason: 'Extra in Target' });
+                    diffs.push({ type: 'drop', table, sourceTable: null, targetTable: table, reason: 'Extra in Target' });
                     sqlCommands.push(`DROP TABLE \`${targetDb}\`.\`${table}\`;`);
                     cDrop++;
                 }
@@ -136,7 +193,7 @@ export function SchemaDiff() {
                 for (const table of commonTables) {
                     const changes = await compareTableSchemas(table, table);
                     if (changes.diffs.length > 0) {
-                        diffs.push({ type: 'alter', table, changes: changes.diffs });
+                        diffs.push({ type: 'alter', table, sourceTable: table, targetTable: table, changes: changes.diffs });
                         sqlCommands.push(`-- Altering table structure for: ${table}`);
                         sqlCommands.push(`ALTER TABLE \`${targetDb}\`.\`${table}\` \n    ${changes.alters.join(',\n    ')};`);
                         cAlter++;
@@ -146,10 +203,25 @@ export function SchemaDiff() {
                 const tableAlias = selectedTargetTable;
                 const changes = await compareTableSchemas(selectedSourceTable, selectedTargetTable);
                 if (changes.diffs.length > 0) {
-                    diffs.push({ type: 'alter', table: tableAlias, changes: changes.diffs, reason: `Match with ${selectedSourceTable}` });
+                    diffs.push({ 
+                        type: 'alter', 
+                        table: tableAlias, 
+                        sourceTable: selectedSourceTable,
+                        targetTable: selectedTargetTable,
+                        changes: changes.diffs, 
+                        reason: `Match with ${selectedSourceTable}` 
+                    });
                     sqlCommands.push(`-- Altering table structure for: ${tableAlias} (match with ${selectedSourceTable})`);
                     sqlCommands.push(`ALTER TABLE \`${targetDb}\`.\`${tableAlias}\` \n    ${changes.alters.join(',\n    ')};`);
                     cAlter++;
+                } else {
+                    diffs.push({ 
+                        type: 'identical', 
+                        table: tableAlias, 
+                        sourceTable: selectedSourceTable,
+                        targetTable: selectedTargetTable,
+                        reason: 'Structures are identical' 
+                    });
                 }
             }
 
@@ -188,7 +260,7 @@ export function SchemaDiff() {
                 colDiffs.push({ type: 'add_col', column: name, details: `${sCol.column_type}` });
                 tableAlters.push(`ADD COLUMN \`${name}\` ${sCol.column_type} ${sCol.is_nullable ? 'NULL' : 'NOT NULL'} ${sCol.column_default ? `DEFAULT '${sCol.column_default}'` : ''} ${sCol.extra}`);
             } else {
-                if (sCol.column_type !== tCol.column_type || sCol.is_nullable !== tCol.is_nullable) {
+                if (sCol.column_type !== tCol.column_type || sCol.is_nullable !== tCol.is_nullable || sCol.column_default !== tCol.column_default) {
                     colDiffs.push({ type: 'mod_col', column: name, details: `${tCol.column_type} -> ${sCol.column_type}` });
                     tableAlters.push(`MODIFY COLUMN \`${name}\` ${sCol.column_type} ${sCol.is_nullable ? 'NULL' : 'NOT NULL'} ${sCol.column_default ? `DEFAULT '${sCol.column_default}'` : ''} ${sCol.extra}`);
                 }
@@ -210,6 +282,7 @@ export function SchemaDiff() {
     const getDiffIcon = (type) => {
         if (type === 'create') return 'add_circle';
         if (type === 'drop') return 'delete';
+        if (type === 'identical') return 'check_circle';
         return 'edit';
     };
 
@@ -217,26 +290,30 @@ export function SchemaDiff() {
         if (isLight) {
             if (type === 'create') return 'text-emerald-600';
             if (type === 'drop') return 'text-red-600';
+            if (type === 'identical') return 'text-gray-400';
             return 'text-amber-600';
         }
         if (isDawn) {
-            if (type === 'create') return 'text-[#286983]'; // Pine
-            if (type === 'drop') return 'text-[#b4637a]'; // Love
-            return 'text-[#ea9d34]'; // Gold
+            if (type === 'create') return 'text-[#286983]';
+            if (type === 'drop') return 'text-[#b4637a]';
+            if (type === 'identical') return 'text-[#9893a5]';
+            return 'text-[#ea9d34]';
         }
         if (isOceanic) {
             if (type === 'create') return 'text-ocean-mint';
             if (type === 'drop') return 'text-red-400';
+            if (type === 'identical') return 'text-ocean-text/40';
             return 'text-yellow-400';
         }
         if (isNeon) {
             if (type === 'create') return 'text-neon-text';
             if (type === 'drop') return 'text-neon-accent';
+            if (type === 'identical') return 'text-white/20';
             return 'text-cyan-400';
         }
-        // Dark
         if (type === 'create') return 'text-green-400';
         if (type === 'drop') return 'text-red-400';
+        if (type === 'identical') return 'text-gray-600';
         return 'text-amber-400';
     };
 
@@ -305,7 +382,6 @@ export function SchemaDiff() {
             iconPrimary: 'bg-neon-accent/20 text-neon-accent',
             buttonPrimary: 'bg-neon-accent hover:bg-neon-accent/80 text-white shadow-[0_0_15px_rgba(255,0,153,0.3)]'
         };
-        // Dark (Default)
         return {
             panel: 'bg-panel-dark border-white/5',
             border: 'border-white/5',
@@ -324,8 +400,113 @@ export function SchemaDiff() {
         };
     };
 
+    const renderVisualDiff = () => {
+        const themeClasses = getClasses();
+        const sCols = new Map(sourceSchemaData.map(c => [c.name, c]));
+        const tCols = new Map(targetSchemaData.map(c => [c.name, c]));
+        const allColNames = Array.from(new Set([...sCols.keys(), ...tCols.keys()]));
+        
+        return `
+            <div class="flex-1 overflow-hidden flex flex-col h-full">
+                <!-- Legend & Summary -->
+                <div class="px-6 py-3 border-b ${themeClasses.border} flex items-center justify-between bg-black/5 shrink-0">
+                    <div class="flex items-center gap-4 text-[10px] uppercase font-bold opacity-60">
+                        <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> New</div>
+                        <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-500"></span> Modified</div>
+                        <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-red-500"></span> Removed</div>
+                    </div>
+                    <div class="text-[10px] font-bold ${themeClasses.textMuted} tracking-widest uppercase">
+                        ${allColNames.length} Columns Total
+                    </div>
+                </div>
+
+                <!-- Fixed Header Row -->
+                <div class="px-6 mt-4 shrink-0">
+                    <div class="grid grid-cols-[1fr_40px_1fr] bg-panel-dark font-bold text-[10px] tracking-widest uppercase border ${themeClasses.border} rounded-t-xl overflow-hidden shadow-sm">
+                        <div class="p-3 border-r ${themeClasses.border} flex items-center justify-between">
+                            <span>Source: ${sourceDb}</span>
+                            <span class="material-symbols-outlined text-sm opacity-50">database</span>
+                        </div>
+                        <div class="flex items-center justify-center bg-black/20 text-indigo-400">VS</div>
+                        <div class="p-3 flex items-center justify-between">
+                            <span class="material-symbols-outlined text-sm opacity-50">database</span>
+                            <span>Target: ${targetDb}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Scrollable Body -->
+                <div class="flex-1 overflow-y-auto custom-scrollbar px-6 pb-6">
+                    <div class="border-x border-b ${themeClasses.border} rounded-b-xl overflow-hidden divide-y ${themeClasses.border} bg-black/10">
+                        ${allColNames.map(name => {
+                            const s = sCols.get(name);
+                            const t = tCols.get(name);
+                            
+                            let status = 'identical';
+                            if (!s) status = 'removed';
+                            else if (!t) status = 'added';
+                            else if (s.column_type !== t.column_type || s.is_nullable !== t.is_nullable || s.column_default !== t.column_default) status = 'modified';
+
+                            const getStatusColor = () => {
+                                if (status === 'added') return 'bg-emerald-500/5 border-l-emerald-500';
+                                if (status === 'removed') return 'bg-red-500/5 border-l-red-500';
+                                if (status === 'modified') return 'bg-amber-500/5 border-l-amber-500';
+                                return 'border-l-transparent opacity-60 hover:opacity-100';
+                            };
+
+                            const renderCell = (col, isSource) => {
+                                if (!col) return `
+                                    <div class="flex-1 flex flex-col items-center justify-center opacity-20 py-8 italic text-[11px]">
+                                        <span class="material-symbols-outlined text-base mb-1">block</span>
+                                        Missing
+                                    </div>
+                                `;
+                                
+                                const other = isSource ? t : s;
+                                const isTypeDiff = other && col.column_type !== other.column_type;
+                                const isNullDiff = other && col.is_nullable !== other.is_nullable;
+                                const isDefaultDiff = other && col.column_default !== other.column_default;
+
+                                return `
+                                    <div class="flex-1 p-4 flex flex-col gap-1.5">
+                                        <div class="flex items-center gap-2">
+                                            ${col.column_key === 'PRI' ? '<span class="material-symbols-outlined text-amber-400 text-xs" title="Primary Key">key</span>' : ''}
+                                            <span class="font-bold text-sm ${themeClasses.textMain}">${col.name}</span>
+                                        </div>
+                                        <div class="flex flex-wrap gap-2">
+                                            <span class="px-1.5 py-0.5 rounded bg-black/30 text-[10px] font-mono ${isTypeDiff ? 'text-amber-400 ring-1 ring-amber-400/50 shadow-[0_0_8px_rgba(251,191,36,0.2)]' : themeClasses.textMuted}">${col.column_type}</span>
+                                            <span class="px-1.5 py-0.5 rounded bg-black/30 text-[10px] ${isNullDiff ? 'text-amber-400 ring-1 ring-amber-400/50' : 'opacity-40'}">${col.is_nullable ? 'NULL' : 'NOT NULL'}</span>
+                                            ${col.column_default ? `<span class="px-1.5 py-0.5 rounded bg-black/30 text-[10px] italic ${isDefaultDiff ? 'text-amber-400 ring-1 ring-amber-400/50' : 'opacity-40'}">DEF: ${col.column_default}</span>` : ''}
+                                        </div>
+                                    </div>
+                                `;
+                            };
+
+                            return `
+                                <div class="grid grid-cols-[1fr_40px_1fr] border-l-4 ${getStatusColor()} ${themeClasses.itemHover} transition-all duration-200">
+                                    ${renderCell(s, true)}
+                                    <div class="flex items-center justify-center bg-black/5 border-x ${themeClasses.border}">
+                                        <span class="material-symbols-outlined text-base opacity-30">
+                                            ${status === 'added' ? 'arrow_forward' : (status === 'removed' ? 'arrow_back' : (status === 'modified' ? 'sync_alt' : 'drag_handle'))}
+                                        </span>
+                                    </div>
+                                    ${renderCell(t, false)}
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+    };
+
     const render = () => {
         const themeClasses = getClasses();
+        const filteredDiffs = (diffResults || []).filter(diff => {
+            const matchesSearch = diff.table.toLowerCase().includes(searchTerm.toLowerCase());
+            const matchesType = filterType === 'all' || diff.type === filterType;
+            return matchesSearch && matchesType;
+        });
 
         container.innerHTML = `
             <!-- Header -->
@@ -369,7 +550,9 @@ export function SchemaDiff() {
                         ` : ''}
                     </div>
                     
-                    <span class="material-symbols-outlined ${themeClasses.textMuted} text-sm">arrow_forward</span>
+                    <button id="swap-btn" class="p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-colors" title="Swap Source and Target">
+                        <span class="material-symbols-outlined ${themeClasses.textMuted} text-lg">swap_horiz</span>
+                    </button>
                     
                     <!-- Target Group -->
                     <div class="flex items-center gap-2">
@@ -387,18 +570,36 @@ export function SchemaDiff() {
             <main class="flex-1 flex overflow-hidden">
                 <!-- Compact Sidebar: Diff List -->
                 <aside class="w-[350px] border-r ${themeClasses.border} flex flex-col ${themeClasses.panel}">
-                    <div class="px-4 py-3 border-b ${themeClasses.border} flex items-center justify-between ${isLight ? 'bg-gray-50/50' : (isDawn ? 'bg-[#faf4ed]/50' : 'bg-black/10')}">
-                        <h2 class="font-bold text-xs tracking-wide ${themeClasses.textMuted}">DIFFERENCES (${counts.total})</h2>
-                        <div class="flex items-center gap-2 text-[10px]">
-                            <span class="font-bold ${themeClasses.textMuted} opacity-80">
-                                <span class="text-emerald-500">${counts.create}</span> C
-                            </span>
-                             <span class="font-bold ${themeClasses.textMuted} opacity-80">
-                                <span class="text-amber-500">${counts.alter}</span> A
-                            </span>
-                             <span class="font-bold ${themeClasses.textMuted} opacity-80">
-                                <span class="text-red-500">${counts.drop}</span> D
-                            </span>
+                    <div class="px-4 py-3 border-b ${themeClasses.border} flex flex-col gap-2 ${isLight ? 'bg-gray-50/50' : (isDawn ? 'bg-[#faf4ed]/50' : 'bg-black/10')} shrink-0">
+                        <div class="flex items-center justify-between">
+                            <h2 class="font-bold text-xs tracking-wide ${themeClasses.textMuted}">DIFFERENCES (${filteredDiffs.length})</h2>
+                            <div class="flex items-center gap-2 text-[10px]">
+                                <span class="font-bold ${themeClasses.textMuted} opacity-80">
+                                    <span class="text-emerald-500">${counts.create}</span> C
+                                </span>
+                                 <span class="font-bold ${themeClasses.textMuted} opacity-80">
+                                    <span class="text-amber-500">${counts.alter}</span> A
+                                </span>
+                                 <span class="font-bold ${themeClasses.textMuted} opacity-80">
+                                    <span class="text-red-500">${counts.drop}</span> D
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Search -->
+                        <div class="relative">
+                            <span class="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-sm ${themeClasses.textMuted}">search</span>
+                            <input type="text" id="diff-search" placeholder="Search tables..." value="${searchTerm}"
+                                class="w-full bg-black/5 dark:bg-white/5 border border-transparent focus:border-indigo-500/50 rounded px-7 py-1 text-[11px] outline-none ${themeClasses.textMain}">
+                        </div>
+
+                        <!-- Filters -->
+                        <div class="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+                            ${['all', 'create', 'alter', 'drop'].map(type => `
+                                <button class="filter-chip px-2 py-0.5 rounded text-[10px] font-bold border ${filterType === type ? 'bg-indigo-500 text-white border-indigo-500' : `${themeClasses.badgeNeutral} border-transparent`} transition-all capitalize" data-type="${type}">
+                                    ${type}
+                                </button>
+                            `).join('')}
                         </div>
                     </div>
                     
@@ -409,18 +610,20 @@ export function SchemaDiff() {
                                 <span class="material-symbols-outlined text-4xl ${themeClasses.textMuted} mb-2">difference</span>
                                 <p class="text-xs ${themeClasses.textMuted}">Ready to compare</p>
                             </div>
-                        ` : diffResults.length === 0 ? `
-                             <div class="flex flex-col items-center justify-center h-32 ${isDawn ? 'text-[#286983]' : 'text-emerald-500'} mt-10">
-                                <span class="material-symbols-outlined text-4xl mb-2">check_circle</span>
-                                <p class="font-bold text-sm">Fully Synced</p>
+                        ` : filteredDiffs.length === 0 ? `
+                             <div class="flex flex-col items-center justify-center h-32 opacity-40 mt-10">
+                                <span class="material-symbols-outlined text-4xl mb-2">search_off</span>
+                                <p class="text-xs ${themeClasses.textMuted}">No differences found</p>
                             </div>
                         ` : `
                             <div class="divide-y ${themeClasses.border}">
-                            ${diffResults.map(diff => `
-                                <div class="group px-4 py-2.5 ${themeClasses.itemHover} transition-colors cursor-pointer border-l-2 ${diff.type === 'create' ? (isDawn ? 'border-l-[#286983]' : (isNeon ? 'border-l-neon-text shadow-[inset_4px_0_10px_-4px_rgba(0,243,255,0.3)]' : 'border-l-emerald-500')) :
+                            ${filteredDiffs.map(diff => {
+                                const isSelected = selectedDiff === diff;
+                                return `
+                                <div class="diff-item group px-4 py-2.5 ${isSelected ? (isLight ? 'bg-indigo-50' : 'bg-indigo-500/10') : themeClasses.itemHover} transition-colors cursor-pointer border-l-2 ${diff.type === 'create' ? (isDawn ? 'border-l-[#286983]' : (isNeon ? 'border-l-neon-text shadow-[inset_4px_0_10px_-4px_rgba(0,243,255,0.3)]' : 'border-l-emerald-500')) :
                 diff.type === 'drop' ? (isDawn ? 'border-l-[#eb6f92]' : (isNeon ? 'border-l-neon-accent shadow-[inset_4px_0_10px_-4px_rgba(255,0,153,0.3)]' : 'border-l-red-500')) :
-                    (isDawn ? 'border-l-[#ea9d34]' : (isNeon ? 'border-l-cyan-400' : 'border-l-amber-500'))
-            }">
+                    (diff.type === 'identical' ? 'border-l-gray-500/20' : (isDawn ? 'border-l-[#ea9d34]' : (isNeon ? 'border-l-cyan-400' : 'border-l-amber-500')))
+            }" data-table="${diff.table}" data-type="${diff.type}">
                                     <div class="flex items-start justify-between mb-1">
                                         <div class="flex items-center gap-2 min-w-0">
                                             <span class="material-symbols-outlined text-base ${getDiffColorClass(diff.type)}">${getDiffIcon(diff.type)}</span>
@@ -429,58 +632,70 @@ export function SchemaDiff() {
                                          <span class="text-[9px] font-bold uppercase tracking-wider opacity-70 ${getDiffColorClass(diff.type)}">${diff.type}</span>
                                     </div>
                                     <p class="text-[10px] ${themeClasses.textMuted} pl-6 truncate">${diff.reason || (diff.changes ? `${diff.changes.length} columns changed` : '')}</p>
-                                    
-                                    ${diff.changes ? `
-                                        <div class="mt-2 pl-6 space-y-1">
-                                            ${diff.changes.map(c => `
-                                                <div class="flex items-center gap-1.5 text-[11px]">
-                                                    <span class="material-symbols-outlined text-[10px] ${c.type === 'add_col' ? (isDawn ? 'text-[#286983]' : (isNeon ? 'text-neon-text' : 'text-emerald-500')) : (c.type === 'drop_col' ? (isDawn ? 'text-[#eb6f92]' : (isNeon ? 'text-neon-accent' : 'text-red-500')) : (isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-cyan-400' : 'text-amber-500')))}">
-                                                        ${c.type === 'add_col' ? 'add' : (c.type === 'drop_col' ? 'remove' : 'edit')}
-                                                    </span>
-                                                    <span class="font-mono ${themeClasses.textMuted} text-[10px] truncate max-w-[120px]">${c.column}</span>
-                                                    ${c.details ? `<span class="text-[9px] px-1 py-0.5 rounded ${themeClasses.badgeNeutral} font-mono truncate max-w-[80px]">${c.details}</span>` : ''}
-                                                </div>
-                                            `).join('')}
-                                        </div>
-                                    ` : ''}
                                 </div>
-                            `).join('')}
+                            `}).join('')}
                             </div>
                         `}
                     </div>
                 </aside>
                 
-                <!-- Right Panel: SQL Sync Script -->
-                <div class="flex-1 flex flex-col ${themeClasses.sectionBg}">
-                    <div class="px-5 py-3 border-b ${themeClasses.border} flex items-center justify-between ${themeClasses.panel}">
-                        <div class="flex items-center gap-2">
-                            <span class="material-symbols-outlined ${themeClasses.textMuted} text-base">terminal</span>
-                            <h2 class="font-bold text-xs tracking-wide ${themeClasses.textMain}">SYNC SCRIPT (SQL)</h2>
+                <!-- Right Panel -->
+                <div class="flex-1 flex flex-col overflow-hidden ${themeClasses.sectionBg}">
+                    <!-- Tabs -->
+                    <div class="px-5 pt-3 border-b ${themeClasses.border} flex items-center justify-between ${themeClasses.panel} shrink-0">
+                        <div class="flex gap-6">
+                            <button id="tab-diff" class="pb-2 text-xs font-bold transition-all relative ${activePanel === 'diff' ? (isLight ? 'text-indigo-600' : 'text-mysql-teal') : themeClasses.textMuted}">
+                                VISUAL DIFF
+                                ${activePanel === 'diff' ? `<div class="absolute bottom-0 left-0 right-0 h-0.5 ${isLight ? 'bg-indigo-600' : 'bg-mysql-teal'} rounded-t-full"></div>` : ''}
+                            </button>
+                            <button id="tab-script" class="pb-2 text-xs font-bold transition-all relative ${activePanel === 'script' ? (isLight ? 'text-indigo-600' : 'text-mysql-teal') : themeClasses.textMuted}">
+                                SYNC SCRIPT (SQL)
+                                ${activePanel === 'script' ? `<div class="absolute bottom-0 left-0 right-0 h-0.5 ${isLight ? 'bg-indigo-600' : 'bg-mysql-teal'} rounded-t-full"></div>` : ''}
+                            </button>
                         </div>
-                        <button id="copy-sql-btn" class="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded ${themeClasses.badgeNeutral} hover:opacity-80 transition-opacity">
-                            <span class="material-symbols-outlined text-xs">content_copy</span>
-                            Copy
-                        </button>
+                        
+                        ${activePanel === 'script' ? `
+                            <button id="copy-sql-btn" class="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 mb-2 rounded ${themeClasses.badgeNeutral} hover:opacity-80 transition-opacity">
+                                <span class="material-symbols-outlined text-xs">content_copy</span>
+                                Copy SQL
+                            </button>
+                        ` : ''}
+                    </div>
+
+                    <!-- Panel Content -->
+                    <div class="flex-1 overflow-hidden flex flex-col">
+                        ${activePanel === 'script' ? `
+                             <div class="flex-1 p-6 font-mono text-xs leading-relaxed overflow-y-auto custom-scrollbar ${themeClasses.codeBg}">
+                                <div class="max-w-4xl mx-auto">
+                                    <pre class="whitespace-pre-wrap select-text ${themeClasses.codeText}">${highlightSQL(generatedSql)}</pre>
+                                </div>
+                            </div>
+                        ` : `
+                            <div class="flex-1 flex flex-col overflow-hidden">
+                                ${!selectedDiff ? `
+                                    <div class="flex-1 flex flex-col items-center justify-center opacity-40">
+                                        <div class="w-20 h-20 rounded-full bg-black/10 flex items-center justify-center mb-4">
+                                            <span class="material-symbols-outlined text-4xl">analytics</span>
+                                        </div>
+                                        <p class="text-sm font-bold tracking-wide uppercase opacity-50">Select a table to see structural differences</p>
+                                    </div>
+                                ` : renderVisualDiff()}
+                            </div>
+                        `}
                     </div>
                     
-                    <div class="flex-1 p-6 font-mono text-xs leading-relaxed overflow-y-auto custom-scrollbar ${themeClasses.codeBg}">
-                        <div class="max-w-4xl mx-auto">
-                            <pre class="whitespace-pre-wrap select-text ${themeClasses.codeText}">${highlightSQL(generatedSql)}</pre>
-                        </div>
-                    </div>
-                    
-                    <div class="px-5 py-2 border-t ${themeClasses.border} ${themeClasses.panel} flex items-center justify-between text-[10px] ${themeClasses.textMuted}">
+                    <div class="px-5 py-2 border-t ${themeClasses.border} ${themeClasses.panel} flex items-center justify-between text-[10px] ${themeClasses.textMuted} shrink-0">
                         <div class="flex gap-4">
-                            <span>Rows: <span class="${themeClasses.textMain} font-bold">-</span></span>
-                            <span>Tables: <span class="${themeClasses.textMain} font-bold">${counts.total}</span></span>
+                            <span>Changes: <span class="${themeClasses.textMain} font-bold">${counts.total}</span></span>
+                            ${selectedDiff ? `<span>Viewing: <span class="${themeClasses.textMain} font-bold">${selectedDiff.table}</span></span>` : ''}
                         </div>
                         <div class="flex items-center gap-1.5">
                              ${sourceDb && targetDb ? `
                                 <span class="w-1.5 h-1.5 rounded-full ${isDawn ? 'bg-[#286983]' : 'bg-emerald-500'} animate-pulse"></span>
-                                Connected
+                                Connection Live
                              ` : `
                                 <span class="w-1.5 h-1.5 rounded-full bg-gray-500"></span>
-                                Ready
+                                Standby
                              `}
                         </div>
                     </div>
@@ -573,6 +788,43 @@ export function SchemaDiff() {
             navigator.clipboard.writeText(generatedSql);
             Dialog.alert('SQL script copied to clipboard', 'Copied');
         });
+
+        // Search & Filter listeners
+        container.querySelector('#diff-search')?.addEventListener('input', (e) => {
+            searchTerm = e.target.value;
+            render();
+            container.querySelector('#diff-search')?.focus();
+            const input = container.querySelector('#diff-search');
+            input.setSelectionRange(input.value.length, input.value.length);
+        });
+
+        container.querySelectorAll('.filter-chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                filterType = chip.dataset.type;
+                render();
+            });
+        });
+
+        container.querySelectorAll('.diff-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const table = item.dataset.table;
+                const type = item.dataset.type;
+                const diff = diffResults.find(d => d.table === table && d.type === type);
+                if (diff) selectDiff(diff);
+            });
+        });
+
+        container.querySelector('#tab-script')?.addEventListener('click', () => {
+            activePanel = 'script';
+            render();
+        });
+
+        container.querySelector('#tab-diff')?.addEventListener('click', () => {
+            activePanel = 'diff';
+            render();
+        });
+
+        container.querySelector('#swap-btn')?.addEventListener('click', swapDatabases);
     };
 
     // --- Events ---
