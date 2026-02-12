@@ -28,11 +28,13 @@ export function ServerMonitor() {
     let tableUsage = [];
     let healthMetrics = [];
     let alerts = [];
+    let bloatData = [];
     let isLoading = true;
+    let isAnalyzingBloat = false;
     let autoRefresh = true;
     let refreshInterval = null;
     let historyLoaded = false;
-    let activeTab = 'overview'; // 'overview' | 'processes' | 'innodb' | 'slow' | 'locks' | 'replication' | 'usage' | 'alerts'
+    let activeTab = 'overview'; // 'overview' | 'processes' | 'innodb' | 'slow' | 'locks' | 'replication' | 'usage' | 'alerts' | 'maintenance'
     const lockFeatureAvailability = { locks: true, analysis: true };
     const lockFeatureWarningShown = { locks: false, analysis: false };
 

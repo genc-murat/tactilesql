@@ -83,6 +83,7 @@ mod ssh_tunnel;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(db::AppState::default())
         .setup(|app| {
             // Get all webview windows and set size constraints
@@ -326,6 +327,7 @@ pub fn run() {
             db::get_monitor_alerts,
             db::save_monitor_alert,
             db::delete_monitor_alert,
+            db::get_bloat_analysis,
             db::get_process_list,
             db::kill_process,
             db::get_innodb_status,

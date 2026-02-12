@@ -1,5 +1,5 @@
 use crate::db::lock_analysis::build_lock_analysis;
-use crate::db_types::{AppState, DatabaseType, MonitorSnapshot, ProcessInfo, ServerStatus};
+use crate::db_types::{AppState, DatabaseType, MonitorSnapshot, ProcessInfo, ServerStatus, BloatInfo};
 use crate::mysql;
 use crate::postgres;
 use tauri::State;
@@ -9,6 +9,22 @@ use super::monitor_store::{HistoricalMetric, MonitorAlert};
 // =====================================================
 // SERVER MONITORING
 // =====================================================
+
+#[tauri::command]
+pub async fn get_bloat_analysis(app_state: State<'_, AppState>) -> Result<Vec<BloatInfo>, String> {
+    let db_type = {
+        let guard = app_state.active_db_type.lock().await;
+        guard.clone()
+    };
+
+    if db_type != DatabaseType::PostgreSQL {
+        return Err("Bloat analysis is currently only supported for PostgreSQL".to_string());
+    }
+
+    let guard = app_state.postgres_pool.lock().await;
+    let pool = guard.as_ref().ok_or("No PostgreSQL connection established")?;
+    postgres::get_bloat_analysis(pool).await
+}
 
 #[tauri::command]
 pub async fn get_monitor_history(

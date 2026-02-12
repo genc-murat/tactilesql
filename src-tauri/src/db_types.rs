@@ -483,6 +483,17 @@ pub struct TableResourceUsage {
     pub delete_latency_ms: f64,
 }
 
+// --- Bloat Info ---
+#[derive(Serialize, Debug, Clone)]
+pub struct BloatInfo {
+    pub schema: String,
+    pub table: String,
+    pub bloat_pct: f64,
+    pub wasted_bytes: i64,
+    pub total_bytes: i64,
+    pub table_type: String, // 'table' | 'index'
+}
+
 // --- Health Metric ---
 #[derive(Serialize, Debug, Clone)]
 pub struct HealthMetric {

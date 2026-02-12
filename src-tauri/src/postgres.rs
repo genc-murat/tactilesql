@@ -2450,3 +2450,58 @@ pub async fn get_health_metrics(pool: &Pool<Postgres>) -> Result<Vec<HealthMetri
 
     Ok(metrics)
 }
+
+pub async fn get_bloat_analysis(pool: &Pool<Postgres>) -> Result<Vec<BloatInfo>, String> {
+    // This is a simplified version of standard bloat queries
+    // It compares current size with statistical estimates
+    let query = r#"
+        SELECT
+          schemaname as schema,
+          tblname as table,
+          bs * (relpages - est_pages)::bigint as wasted_bytes,
+          pg_relation_size(quote_ident(schemaname) || '.' || quote_ident(tblname))::bigint as total_bytes,
+          CASE WHEN relpages > 0 THEN 100 * (relpages - est_pages)::float / relpages ELSE 0 END as bloat_pct,
+          'table' as type
+        FROM (
+          SELECT
+            ceil( reltuples / ( (bs-24)/avgwidth ) ) as est_pages,
+            bs, schemaname, tblname, relpages
+          FROM (
+            SELECT
+              current_setting('block_size')::numeric as bs,
+              n.nspname as schemaname,
+              c.relname as tblname,
+              c.reltuples,
+              c.relpages,
+              (SELECT sum(avg_width) FROM pg_stats WHERE schemaname = n.nspname AND tablename = c.relname) as avgwidth
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relkind = 'r'
+              AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+          ) as stats
+          WHERE reltuples > 0 AND avgwidth > 0
+        ) as final
+        WHERE relpages > est_pages
+        ORDER BY wasted_bytes DESC
+        LIMIT 50
+    "#;
+
+    let rows = sqlx::query(query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch bloat analysis: {}", e))?;
+
+    let mut results = Vec::new();
+    for row in rows {
+        results.push(BloatInfo {
+            schema: row.try_get("schema").unwrap_or_default(),
+            table: row.try_get("table").unwrap_or_default(),
+            bloat_pct: row.try_get::<f64, _>("bloat_pct").unwrap_or(0.0),
+            wasted_bytes: row.try_get::<i64, _>("wasted_bytes").unwrap_or(0),
+            total_bytes: row.try_get::<i64, _>("total_bytes").unwrap_or(0),
+            table_type: row.try_get("type").unwrap_or_else(|_| "table".to_string()),
+        });
+    }
+
+    Ok(results)
+}
