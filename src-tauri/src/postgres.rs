@@ -2399,5 +2399,54 @@ pub async fn get_health_metrics(pool: &Pool<Postgres>) -> Result<Vec<HealthMetri
         description: Some("Percentage of database blocks found in shared buffers".to_string()),
     });
 
+    // 4. Index Hit Ratio
+    if let Ok(idx_row) = sqlx::query(r#"
+        SELECT 
+            sum(idx_blks_hit) / (sum(idx_blks_hit) + sum(idx_blks_read) + 1)::float as idx_hit_ratio
+        FROM pg_statio_user_tables
+    "#).fetch_one(pool).await {
+        let idx_hit_ratio: f64 = idx_row.try_get::<f64, _>(0).unwrap_or(0.0) * 100.0;
+        metrics.push(HealthMetric {
+            label: "Index Hit Ratio".to_string(),
+            value: format!("{:.2}%", idx_hit_ratio),
+            status: if idx_hit_ratio < 85.0 { "critical".to_string() } else if idx_hit_ratio < 95.0 { "warning".to_string() } else { "healthy".to_string() },
+            description: Some("Percentage of index blocks found in shared buffers".to_string()),
+        });
+    }
+
+    // 5. Deadlocks & Conflicts
+    if let Ok(deadlock_row) = sqlx::query(r#"
+        SELECT sum(deadlocks) as deadlocks, sum(conflicts) as conflicts
+        FROM pg_stat_database
+    "#).fetch_one(pool).await {
+        let deadlocks: i64 = deadlock_row.try_get("deadlocks").unwrap_or(0);
+        let conflicts: i64 = deadlock_row.try_get("conflicts").unwrap_or(0);
+        
+        metrics.push(HealthMetric {
+            label: "Deadlocks / Conflicts".to_string(),
+            value: format!("{} / {}", deadlocks, conflicts),
+            status: if deadlocks > 0 { "warning".to_string() } else { "healthy".to_string() },
+            description: Some("Total deadlocks and query conflicts since startup".to_string()),
+        });
+    }
+
+    // 6. Transaction Throughput (Last snapshot commits/rollbacks is handled by Frontend rates, 
+    // but we can show totals here)
+    if let Ok(xact_row) = sqlx::query(r#"
+        SELECT sum(xact_commit) as commits, sum(xact_rollback) as rollbacks
+        FROM pg_stat_database
+    "#).fetch_one(pool).await {
+        let commits: i64 = xact_row.try_get("commits").unwrap_or(0);
+        let rollbacks: i64 = xact_row.try_get("rollbacks").unwrap_or(0);
+        let rb_ratio = if commits > 0 { (rollbacks as f64 / (commits + rollbacks) as f64) * 100.0 } else { 0.0 };
+        
+        metrics.push(HealthMetric {
+            label: "Transaction Health".to_string(),
+            value: format!("{:.2}% RB", rb_ratio),
+            status: if rb_ratio > 5.0 { "critical".to_string() } else if rb_ratio > 1.0 { "warning".to_string() } else { "healthy".to_string() },
+            description: Some(format!("Total commits: {}, Rollbacks: {}", commits, rollbacks)),
+        });
+    }
+
     Ok(metrics)
 }

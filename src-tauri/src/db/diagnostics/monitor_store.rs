@@ -1,9 +1,22 @@
 use sqlx::{Pool, Sqlite};
 use crate::db_types::{ServerStatus};
 use chrono::{DateTime, Utc};
+use serde::{Serialize, Deserialize};
 
 pub struct MonitorStore {
     pool: Pool<Sqlite>,
+}
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow, Clone)]
+pub struct MonitorAlert {
+    pub id: Option<i64>,
+    pub connection_id: String,
+    pub metric_name: String, // e.g., "threads_running", "qps", "slow_queries"
+    pub threshold: f64,
+    pub operator: String, // ">", "<", ">=", "<="
+    pub is_enabled: bool,
+    pub cooldown_secs: i64,
+    pub last_triggered: Option<DateTime<Utc>>,
 }
 
 impl MonitorStore {
@@ -30,6 +43,17 @@ impl MonitorStore {
                 bytes_sent INTEGER NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_metrics_conn_time ON server_metrics_history(connection_id, timestamp);
+
+            CREATE TABLE IF NOT EXISTS monitoring_alerts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                connection_id TEXT NOT NULL,
+                metric_name TEXT NOT NULL,
+                threshold REAL NOT NULL,
+                operator TEXT NOT NULL,
+                is_enabled BOOLEAN NOT NULL DEFAULT 1,
+                cooldown_secs INTEGER NOT NULL DEFAULT 300,
+                last_triggered DATETIME
+            );
             "#,
         )
         .execute(&self.pool)
@@ -93,6 +117,78 @@ impl MonitorStore {
         .map_err(|e| e.to_string())?;
 
         Ok(rows)
+    }
+
+    // --- Alert Management ---
+
+    pub async fn get_alerts(&self, connection_id: &str) -> Result<Vec<MonitorAlert>, String> {
+        let rows = sqlx::query_as::<_, MonitorAlert>(
+            "SELECT * FROM monitoring_alerts WHERE connection_id = ?"
+        )
+        .bind(connection_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| e.to_string())?;
+        Ok(rows)
+    }
+
+    pub async fn save_alert(&self, alert: &MonitorAlert) -> Result<i64, String> {
+        let id = if let Some(id) = alert.id {
+            sqlx::query(
+                r#"
+                UPDATE monitoring_alerts 
+                SET metric_name = ?, threshold = ?, operator = ?, is_enabled = ?, cooldown_secs = ?
+                WHERE id = ?
+                "#,
+            )
+            .bind(&alert.metric_name)
+            .bind(alert.threshold)
+            .bind(&alert.operator)
+            .bind(alert.is_enabled)
+            .bind(alert.cooldown_secs)
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| e.to_string())?;
+            id
+        } else {
+            let res = sqlx::query(
+                r#"
+                INSERT INTO monitoring_alerts (connection_id, metric_name, threshold, operator, is_enabled, cooldown_secs)
+                VALUES (?, ?, ?, ?, ?, ?)
+                "#,
+            )
+            .bind(&alert.connection_id)
+            .bind(&alert.metric_name)
+            .bind(alert.threshold)
+            .bind(&alert.operator)
+            .bind(alert.is_enabled)
+            .bind(alert.cooldown_secs)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| e.to_string())?;
+            res.last_insert_rowid()
+        };
+        Ok(id)
+    }
+
+    pub async fn delete_alert(&self, id: i64) -> Result<(), String> {
+        sqlx::query("DELETE FROM monitoring_alerts WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub async fn mark_alert_triggered(&self, id: i64) -> Result<(), String> {
+        sqlx::query("UPDATE monitoring_alerts SET last_triggered = ? WHERE id = ?")
+            .bind(Utc::now())
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(())
     }
 }
 

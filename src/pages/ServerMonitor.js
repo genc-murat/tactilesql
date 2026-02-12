@@ -27,11 +27,12 @@ export function ServerMonitor() {
     let waitEvents = [];
     let tableUsage = [];
     let healthMetrics = [];
+    let alerts = [];
     let isLoading = true;
     let autoRefresh = true;
     let refreshInterval = null;
     let historyLoaded = false;
-    let activeTab = 'overview'; // 'overview' | 'processes' | 'innodb' | 'slow' | 'locks' | 'replication' | 'usage'
+    let activeTab = 'overview'; // 'overview' | 'processes' | 'innodb' | 'slow' | 'locks' | 'replication' | 'usage' | 'alerts'
     const lockFeatureAvailability = { locks: true, analysis: true };
     const lockFeatureWarningShown = { locks: false, analysis: false };
 
@@ -85,6 +86,14 @@ export function ServerMonitor() {
         } catch (error) {
             console.error('Failed to load historical metrics:', error);
             historyLoaded = true; // Don't keep retrying if it fails
+        }
+    };
+
+    const loadAlerts = async () => {
+        try {
+            alerts = await invoke('get_monitor_alerts');
+        } catch (error) {
+            console.error('Failed to load monitor alerts:', error);
         }
     };
 
@@ -1276,6 +1285,8 @@ SET GLOBAL long_query_time = 1;</pre>
             `;
         }
 
+        const maxOps = Math.max(...tableUsage.map(u => u.read_ops + u.write_ops), 1);
+
         return `
             <div class="rounded-xl ${isLight ? 'bg-white border border-gray-200' : 'bg-[#13161b] border border-white/10'} overflow-hidden">
                 <div class="p-4 border-b ${isLight ? 'border-gray-200' : 'border-white/10'}">
@@ -1290,6 +1301,7 @@ SET GLOBAL long_query_time = 1;</pre>
                             <tr class="${isLight ? 'text-gray-600' : 'text-gray-400'} text-xs uppercase tracking-wider">
                                 <th class="px-4 py-3 text-left">Schema</th>
                                 <th class="px-4 py-3 text-left">Table</th>
+                                <th class="px-4 py-3 text-right w-48">Activity Map</th>
                                 <th class="px-4 py-3 text-right">Read Ops</th>
                                 <th class="px-4 py-3 text-right">Write Ops</th>
                                 <th class="px-4 py-3 text-right">Fetch Latency</th>
@@ -1297,20 +1309,97 @@ SET GLOBAL long_query_time = 1;</pre>
                             </tr>
                         </thead>
                         <tbody class="divide-y ${isLight ? 'divide-gray-100' : 'divide-white/5'}">
-                            ${tableUsage.map(u => `
+                            ${tableUsage.map(u => {
+                                const readWidth = (u.read_ops / maxOps) * 100;
+                                const writeWidth = (u.write_ops / maxOps) * 100;
+                                
+                                return `
                                 <tr class="${isLight ? 'hover:bg-gray-50' : 'hover:bg-white/5'} transition-colors">
                                     <td class="px-4 py-3 ${isLight ? 'text-gray-500' : 'text-gray-400'}">${u.schema}</td>
                                     <td class="px-4 py-3 ${isLight ? 'text-gray-900' : 'text-white'} font-medium">${u.table}</td>
-                                    <td class="px-4 py-3 text-right font-mono">${formatNumber(u.read_ops)}</td>
-                                    <td class="px-4 py-3 text-right font-mono">${formatNumber(u.write_ops)}</td>
+                                    <td class="px-4 py-3">
+                                        <div class="flex h-1.5 rounded-full overflow-hidden bg-gray-500/10 w-full mt-1">
+                                            <div class="bg-blue-500" style="width: ${readWidth}%" title="Reads"></div>
+                                            <div class="bg-red-500" style="width: ${writeWidth}%" title="Writes"></div>
+                                        </div>
+                                    </td>
+                                    <td class="px-4 py-3 text-right font-mono text-blue-500/80">${formatNumber(u.read_ops)}</td>
+                                    <td class="px-4 py-3 text-right font-mono text-red-500/80">${formatNumber(u.write_ops)}</td>
                                     <td class="px-4 py-3 text-right font-mono ${u.fetch_latency_ms > 100 ? 'text-orange-500' : ''}">${u.fetch_latency_ms > 0 ? u.fetch_latency_ms.toFixed(2) + 'ms' : '-'}</td>
                                     <td class="px-4 py-3 text-right font-mono ${u.insert_latency_ms + u.update_latency_ms + u.delete_latency_ms > 500 ? 'text-red-500 font-bold' : ''}">
                                         ${(u.insert_latency_ms + u.update_latency_ms + u.delete_latency_ms) > 0 ? (u.insert_latency_ms + u.update_latency_ms + u.delete_latency_ms).toFixed(2) + 'ms' : '-'}
                                     </td>
                                 </tr>
-                            `).join('')}
+                            `;}).join('')}
                         </tbody>
                     </table>
+                </div>
+            </div>
+        `;
+    };
+
+    const renderAlerts = () => {
+        const isLight = theme === 'light';
+        const isDawn = theme === 'dawn';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+
+        return `
+            <div class="space-y-6">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} flex items-center gap-2">
+                        <span class="material-symbols-outlined text-mysql-teal">notifications_active</span>
+                        Configurable Threshold Alerts
+                    </h3>
+                    <button id="add-alert-btn" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-mysql-teal text-white hover:bg-mysql-teal/90 transition-all shadow-md">
+                        <span class="material-symbols-outlined text-sm">add</span>
+                        New Alert
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    ${alerts.length === 0 ? `
+                        <div class="col-span-full py-12 text-center rounded-xl border-2 border-dashed ${isLight ? 'border-gray-200' : 'border-white/10'}">
+                            <span class="material-symbols-outlined text-4xl text-gray-500 mb-2">notifications_off</span>
+                            <p class="${isLight ? 'text-gray-500' : 'text-gray-400'}">No alerts configured. Set up alerts to get notified of performance issues.</p>
+                        </div>
+                    ` : alerts.map(alert => `
+                        <div class="rounded-xl p-5 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1]' : 'bg-[#13161b] border border-white/10')} relative group">
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${alert.is_enabled ? 'bg-green-500/20 text-green-500' : 'bg-gray-500/20 text-gray-500'}">
+                                    ${alert.is_enabled ? 'Active' : 'Disabled'}
+                                </span>
+                                <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button class="edit-alert-btn p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white" data-id="${alert.id}">
+                                        <span class="material-symbols-outlined text-sm">edit</span>
+                                    </button>
+                                    <button class="delete-alert-btn p-1 rounded hover:bg-red-500/10 text-gray-400 hover:text-red-500" data-id="${alert.id}">
+                                        <span class="material-symbols-outlined text-sm">delete</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="mb-4">
+                                <p class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'} mb-1">Metric</p>
+                                <p class="text-sm font-semibold ${isLight ? 'text-gray-900' : 'text-white'} font-mono">${alert.metric_name}</p>
+                            </div>
+                            <div class="flex items-center gap-4">
+                                <div>
+                                    <p class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'} mb-1">Condition</p>
+                                    <p class="text-lg font-bold text-mysql-teal">${alert.operator} ${alert.threshold}</p>
+                                </div>
+                                <div>
+                                    <p class="text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'} mb-1">Cooldown</p>
+                                    <p class="text-sm ${isLight ? 'text-gray-700' : 'text-gray-300'}">${alert.cooldown_secs}s</p>
+                                </div>
+                            </div>
+                            ${alert.last_triggered ? `
+                                <div class="mt-4 pt-3 border-t ${isLight ? 'border-gray-100' : 'border-white/5'}">
+                                    <p class="text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-500'}">
+                                        Last triggered: ${new Date(alert.last_triggered).toLocaleString()}
+                                    </p>
+                                </div>
+                            ` : ''}
+                        </div>
+                    `).join('')}
                 </div>
             </div>
         `;
@@ -1336,7 +1425,11 @@ SET GLOBAL long_query_time = 1;</pre>
         // Tab switching
         container.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {
-                activeTab = btn.dataset.tab;
+                const newTab = btn.dataset.tab;
+                if (newTab === 'alerts' && activeTab !== 'alerts') {
+                    loadAlerts();
+                }
+                activeTab = newTab;
                 render();
             });
         });
@@ -1353,6 +1446,9 @@ SET GLOBAL long_query_time = 1;</pre>
             render();
             loadData();
         });
+
+        // AI Analyze
+        container.querySelector('#ai-analyze-btn')?.addEventListener('click', analyzeWithAi);
 
         // Kill process buttons
         container.querySelectorAll('.kill-btn').forEach(btn => {
@@ -1373,10 +1469,22 @@ SET GLOBAL long_query_time = 1;</pre>
             btn.addEventListener('click', () => {
                 const sql = btn.dataset.sql;
                 if (sql) {
-                    // Custom event to open query analyzer
                     window.dispatchEvent(new CustomEvent('openqueryanalyzer', { detail: { sql } }));
                 }
             });
+        });
+
+        // Alert management events
+        container.querySelector('#add-alert-btn')?.addEventListener('click', () => openAlertModal());
+        container.querySelectorAll('.edit-alert-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const id = parseInt(btn.dataset.id);
+                const alert = alerts.find(a => a.id === id);
+                if (alert) openAlertModal(alert);
+            });
+        });
+        container.querySelectorAll('.delete-alert-btn').forEach(btn => {
+            btn.addEventListener('click', () => deleteAlert(parseInt(btn.dataset.id)));
         });
     };
 

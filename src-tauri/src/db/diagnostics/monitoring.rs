@@ -4,7 +4,7 @@ use crate::mysql;
 use crate::postgres;
 use tauri::State;
 use chrono::{DateTime, Utc};
-use super::monitor_store::HistoricalMetric;
+use super::monitor_store::{HistoricalMetric, MonitorAlert};
 
 // =====================================================
 // SERVER MONITORING
@@ -112,6 +112,30 @@ pub async fn get_monitor_snapshot(app_state: State<'_, AppState>) -> Result<Moni
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
+}
+
+#[tauri::command]
+pub async fn get_monitor_alerts(app_state: State<'_, AppState>) -> Result<Vec<MonitorAlert>, String> {
+    let store_guard = app_state.monitor_store.lock().await;
+    let store = store_guard.as_ref().ok_or("Monitor store not initialized")?;
+    store.get_alerts("default_active").await
+}
+
+#[tauri::command]
+pub async fn save_monitor_alert(
+    app_state: State<'_, AppState>,
+    alert: MonitorAlert,
+) -> Result<i64, String> {
+    let store_guard = app_state.monitor_store.lock().await;
+    let store = store_guard.as_ref().ok_or("Monitor store not initialized")?;
+    store.save_alert(&alert).await
+}
+
+#[tauri::command]
+pub async fn delete_monitor_alert(app_state: State<'_, AppState>, id: i64) -> Result<(), String> {
+    let store_guard = app_state.monitor_store.lock().await;
+    let store = store_guard.as_ref().ok_or("Monitor store not initialized")?;
+    store.delete_alert(id).await
 }
 
 #[tauri::command]

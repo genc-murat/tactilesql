@@ -35,6 +35,7 @@ pub struct AppState {
     pub task_manager_store: Arc<Mutex<Option<crate::task_manager::storage::TaskManagerStore>>>,
     pub monitor_store: Arc<Mutex<Option<crate::db::diagnostics::monitor_store::MonitorStore>>>,
     pub last_monitor_tick: Arc<Mutex<i64>>,
+    pub last_monitor_status: Arc<Mutex<Option<ServerStatus>>>,
     pub task_scheduler_state: Arc<Mutex<crate::task_manager::models::SchedulerState>>,
     pub task_last_retention_purge_epoch: Arc<Mutex<i64>>,
     pub local_db_pool: Arc<Mutex<Option<Pool<Sqlite>>>>,
@@ -56,6 +57,7 @@ impl Default for AppState {
             task_manager_store: Arc::new(Mutex::new(None)),
             monitor_store: Arc::new(Mutex::new(None)),
             last_monitor_tick: Arc::new(Mutex::new(0)),
+            last_monitor_status: Arc::new(Mutex::new(None)),
             task_scheduler_state: Arc::new(Mutex::new(
                 crate::task_manager::models::SchedulerState::Running,
             )),
@@ -81,6 +83,7 @@ impl Clone for AppState {
             task_manager_store: Arc::clone(&self.task_manager_store),
             monitor_store: Arc::clone(&self.monitor_store),
             last_monitor_tick: Arc::clone(&self.last_monitor_tick),
+            last_monitor_status: Arc::clone(&self.last_monitor_status),
             task_scheduler_state: Arc::clone(&self.task_scheduler_state),
             task_last_retention_purge_epoch: Arc::clone(&self.task_last_retention_purge_epoch),
             local_db_pool: Arc::clone(&self.local_db_pool),
@@ -239,7 +242,7 @@ pub struct UserPrivileges {
 }
 
 // --- Server Status ---
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone)]
 pub struct ServerStatus {
     pub uptime: i64,
     pub threads_connected: i64,

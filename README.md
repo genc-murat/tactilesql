@@ -233,17 +233,14 @@ Task Center docs:
 
 ### Server Monitor
 
-- **Unified Monitoring Dashboard**: Multi-tab interface for Processes, InnoDB Deep Dive, Slow Queries, Locks, Replication, and Resource Usage.
+- **Unified Monitoring Dashboard**: Multi-tab interface for Processes, InnoDB Deep Dive, Slow Queries, Locks, Replication, Resource Usage, and Alerts.
+- **Configurable Threshold Alerts**: Set custom metric thresholds (QPS, threads, slow queries) and receive real-time system notifications via Tauri.
 - **Real-time & Historical Metrics**: Live CPU, memory, traffic (Bps), and QPS tracking with 30-second resolution background telemetry.
 - **Historical Trend Analysis**: Persistent storage of performance metrics in local SQLite, enabling visualization of historical patterns upon startup.
 - **AI-Driven Performance Analysis**: One-click "Ask AI Analysis" to get expert insights, bottleneck identification, and optimization suggestions based on current server health and metrics.
-- **Deep-Dive InnoDB Analytics**: Granular storage engine metrics including buffer pool hit rates, row operations (Reads/Inserts/Updates/Deletes), and I/O flushes.
-- **Integrated Query Analysis**: Instantly trigger the Query Analyzer for any active session or slow log entry with a single click.
-- **Blocking & Lock Analysis**: Visual lock graph (`blocking -> waiting`), chain decomposition, and automated root-cause detection.
-- **Replication Health**: Real-time status for MySQL Slaves and PostgreSQL Replicas including LSN lag and thread states.
-- **Resource Usage**: Identify top resource-consuming tables by fetch/write latency and operation counts.
+- **Advanced Postgres Stats**: Deep-dive metrics for PostgreSQL including Cache Hit Ratio, Index Hit Ratio, and Deadlock counters.
+- **Visual Resource Heatmap**: Identify top resource-consuming tables with integrated read/write activity bars and latency signals.
 - **Safe Mitigation**: Kill runaway or blocking sessions directly from the process list or lock graph.
-- **Auto-refresh**: Configurable polling intervals (3s default) with manual refresh overrides.
 
 ### Schema Designer
 
