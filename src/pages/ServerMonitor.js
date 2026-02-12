@@ -30,6 +30,7 @@ export function ServerMonitor() {
     let isLoading = true;
     let autoRefresh = true;
     let refreshInterval = null;
+    let historyLoaded = false;
     let activeTab = 'overview'; // 'overview' | 'processes' | 'innodb' | 'slow' | 'locks' | 'replication' | 'usage'
     const lockFeatureAvailability = { locks: true, analysis: true };
     const lockFeatureWarningShown = { locks: false, analysis: false };
@@ -45,6 +46,47 @@ export function ServerMonitor() {
     // Previous values for delta calculations
     let prevStatus = null;
     let prevTimestamp = null;
+
+    const loadHistory = async () => {
+        try {
+            const end = new Date();
+            const start = new Date(end.getTime() - 3600000); // 1 hour ago
+            
+            const historicalData = await invoke('get_monitor_history', {
+                startTime: start.toISOString(),
+                endTime: end.toISOString()
+            });
+
+            if (historicalData && historicalData.length > 1) {
+                const qpsHistory = [];
+                const bytesInHistory = [];
+                const bytesOutHistory = [];
+                const threadsHistory = [];
+
+                for (let i = 1; i < historicalData.length; i++) {
+                    const curr = historicalData[i];
+                    const prev = historicalData[i - 1];
+                    const elapsed = (new Date(curr.timestamp).getTime() - new Date(prev.timestamp).getTime()) / 1000;
+
+                    if (elapsed > 0) {
+                        qpsHistory.push(Math.max(0, (curr.queries - prev.queries) / elapsed));
+                        bytesInHistory.push(Math.max(0, (curr.bytes_received - prev.bytes_received) / elapsed));
+                        bytesOutHistory.push(Math.max(0, (curr.bytes_sent - prev.bytes_sent) / elapsed));
+                        threadsHistory.push(curr.threads_running);
+                    }
+                }
+
+                history.qps = qpsHistory;
+                history.bytes_in = bytesInHistory;
+                history.bytes_out = bytesOutHistory;
+                history.threads = threadsHistory;
+            }
+            historyLoaded = true;
+        } catch (error) {
+            console.error('Failed to load historical metrics:', error);
+            historyLoaded = true; // Don't keep retrying if it fails
+        }
+    };
 
     const formatUptime = (seconds) => {
         const days = Math.floor(seconds / 86400);
@@ -143,6 +185,30 @@ export function ServerMonitor() {
         }
 
         return status;
+    };
+
+    const analyzeWithAi = async () => {
+        const metricsSummary = {
+            status: serverStatus,
+            health: healthMetrics,
+            waits: waitEvents,
+            topTables: tableUsage.slice(0, 5)
+        };
+
+        const dbType = localStorage.getItem('activeDbType') || 'mysql';
+        const prompt = `As a database performance expert, analyze the following real-time ${dbType} server metrics and provide insights or optimization suggestions:
+        
+Metrics Summary:
+${JSON.stringify(metricsSummary, null, 2)}
+
+Please identify any potential bottlenecks, resource issues, or suspicious patterns.`;
+
+        window.dispatchEvent(new CustomEvent('openaichat', { 
+            detail: { 
+                prompt,
+                context: "Server Monitor Analysis"
+            } 
+        }));
     };
 
     const loadData = async () => {
@@ -245,6 +311,10 @@ export function ServerMonitor() {
                             <input type="checkbox" id="auto-refresh" ${autoRefresh ? 'checked' : ''} class="w-4 h-4 rounded border-gray-300 text-mysql-teal focus:ring-mysql-teal">
                             <span class="text-sm ${isLight ? 'text-gray-600' : 'text-gray-400'}">Auto-refresh (3s)</span>
                         </label>
+                        <button id="ai-analyze-btn" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-500/10 border border-purple-500/30 text-purple-500 hover:bg-purple-500/20 transition-all shadow-sm">
+                            <span class="material-symbols-outlined text-sm">psychology</span>
+                            Ask AI Analysis
+                        </button>
                         <button id="refresh-btn" class="flex items-center gap-2 px-4 py-2 rounded-lg ${isLight ? 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] text-[#575279] hover:bg-[#faf4ed]' : (isOceanic ? 'bg-ocean-panel border border-ocean-border text-ocean-text hover:bg-ocean-panel/80' : 'bg-white/10 border border-white/20 text-gray-300 hover:bg-white/20'))} transition-all">
                             <span class="material-symbols-outlined text-sm ${isLoading ? 'animate-spin' : ''}">refresh</span>
                             Refresh

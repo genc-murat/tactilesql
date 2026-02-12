@@ -219,6 +219,18 @@ pub fn run() {
                             Err(e) => eprintln!("Failed to init Query Story Store: {}", e),
                         }
 
+                        // Monitor Store
+                        match crate::db::diagnostics::monitor_store::MonitorStore::new(pool.clone())
+                            .await
+                        {
+                            Ok(store) => {
+                                let mut guard = state.monitor_store.lock().await;
+                                *guard = Some(store);
+                                println!("Monitor Store initialized.");
+                            }
+                            Err(e) => eprintln!("Failed to init Monitor Store: {}", e),
+                        }
+
                     }
                     Err(e) => eprintln!("Failed to initialize Local Storage: {}", e),
                 }
@@ -227,6 +239,10 @@ pub fn run() {
             // Start Scheduler
             let scheduler_handle = app.handle().clone();
             crate::scheduler::start_scheduler(scheduler_handle);
+
+            // Start Monitoring Worker
+            let monitor_handle = app.handle().clone();
+            crate::db::diagnostics::worker::start_monitoring_worker(monitor_handle);
 
             Ok(())
         })
@@ -306,6 +322,7 @@ pub fn run() {
             // Server Monitoring
             db::get_server_status,
             db::get_monitor_snapshot,
+            db::get_monitor_history,
             db::get_process_list,
             db::kill_process,
             db::get_innodb_status,

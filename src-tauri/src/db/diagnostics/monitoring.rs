@@ -3,10 +3,33 @@ use crate::db_types::{AppState, DatabaseType, MonitorSnapshot, ProcessInfo, Serv
 use crate::mysql;
 use crate::postgres;
 use tauri::State;
+use chrono::{DateTime, Utc};
+use super::monitor_store::HistoricalMetric;
 
 // =====================================================
 // SERVER MONITORING
 // =====================================================
+
+#[tauri::command]
+pub async fn get_monitor_history(
+    app_state: State<'_, AppState>,
+    start_time: String,
+    end_time: String,
+) -> Result<Vec<HistoricalMetric>, String> {
+    let start = DateTime::parse_from_rfc3339(&start_time)
+        .map_err(|e| format!("Invalid start time: {}", e))?
+        .with_timezone(&Utc);
+    let end = DateTime::parse_from_rfc3339(&end_time)
+        .map_err(|e| format!("Invalid end time: {}", e))?
+        .with_timezone(&Utc);
+
+    let store_guard = app_state.monitor_store.lock().await;
+    let store = store_guard.as_ref().ok_or("Monitor store not initialized")?;
+
+    // Using the same placeholder for connection_id
+    let connection_id = "default_active";
+    store.get_history(connection_id, start, end).await
+}
 
 #[tauri::command]
 pub async fn get_monitor_snapshot(app_state: State<'_, AppState>) -> Result<MonitorSnapshot, String> {

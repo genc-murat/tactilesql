@@ -234,7 +234,9 @@ Task Center docs:
 ### Server Monitor
 
 - **Unified Monitoring Dashboard**: Multi-tab interface for Processes, InnoDB Deep Dive, Slow Queries, Locks, Replication, and Resource Usage.
-- **Real-time Metrics**: Live CPU, memory, traffic (Bps), and QPS tracking with historical sparklines and charts.
+- **Real-time & Historical Metrics**: Live CPU, memory, traffic (Bps), and QPS tracking with 30-second resolution background telemetry.
+- **Historical Trend Analysis**: Persistent storage of performance metrics in local SQLite, enabling visualization of historical patterns upon startup.
+- **AI-Driven Performance Analysis**: One-click "Ask AI Analysis" to get expert insights, bottleneck identification, and optimization suggestions based on current server health and metrics.
 - **Deep-Dive InnoDB Analytics**: Granular storage engine metrics including buffer pool hit rates, row operations (Reads/Inserts/Updates/Deletes), and I/O flushes.
 - **Integrated Query Analysis**: Instantly trigger the Query Analyzer for any active session or slow log entry with a single click.
 - **Blocking & Lock Analysis**: Visual lock graph (`blocking -> waiting`), chain decomposition, and automated root-cause detection.
@@ -403,6 +405,7 @@ The Rust backend exposes the following commands (used by the UI):
 ### Monitoring
 - `get_server_status` — Server status counters and runtime metrics
 - `get_monitor_snapshot` — Unified snapshot of all monitoring telemetry
+- `get_monitor_history` — Retrieve historical server metrics for trend analysis
 - `get_process_list` — Active backend/session list
 - `kill_process` — Terminate blocking or runaway sessions
 - `get_locks` — Raw lock inventory (engine lock metadata)
