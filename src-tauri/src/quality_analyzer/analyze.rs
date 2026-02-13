@@ -8,6 +8,7 @@ pub async fn analyze_table_mysql(
     table: &str,
     connection_id: &str,
     sample_percent: Option<f64>,
+    custom_rules: Option<Vec<CustomRule>>,
 ) -> Result<TableQualityReport, String> {
     // 1. Get Row Count
     let count_query = format!("SELECT COUNT(*) FROM {}.{}", database, table);
@@ -27,6 +28,7 @@ pub async fn analyze_table_mysql(
             last_updated: None,
             column_metrics: Vec::new(),
             issues: Vec::new(),
+            custom_rule_results: None,
             schema_snapshot_id: None,
             schema_name: Some(database.to_string()),
         });
@@ -61,7 +63,7 @@ pub async fn analyze_table_mysql(
     if !freshness_cols.is_empty() {
         let freshness_query = format!("SELECT {} FROM {}.{}", freshness_cols.join(", "), database, table);
         if let Ok(row) = sqlx::query(&freshness_query).fetch_one(pool).await {
-            let mut latest: Option<DateTime<Utc>> = None;
+            let mut latest: Option<chrono::DateTime<Utc>> = None;
             for i in 0..freshness_cols.len() {
                 if let Ok(ts) = row.try_get::<Option<chrono::NaiveDateTime>, _>(i) {
                     if let Some(ndt) = ts {
@@ -340,6 +342,42 @@ pub async fn analyze_table_mysql(
         }
     }
 
+    // 4. Custom Rules Execution
+    let mut custom_rule_results = Vec::new();
+    if let Some(rules) = custom_rules {
+        for rule in rules {
+            let rule_query = format!(
+                "SELECT SUM(CASE WHEN ({}) THEN 1 ELSE 0 END) as passed, SUM(CASE WHEN NOT ({}) THEN 1 ELSE 0 END) as failed FROM {}.{} {}",
+                rule.sql_assertion, rule.sql_assertion, database, table, sampling_where
+            );
+            if let Ok(row) = sqlx::query(&rule_query).fetch_one(pool).await {
+                let passed: i64 = row.try_get(0).unwrap_or(0);
+                let failed: i64 = row.try_get(1).unwrap_or(0);
+                let total = (passed + failed) as f32;
+                let failure_pct = if total > 0.0 { (failed as f32 / total) * 100.0 } else { 0.0 };
+
+                custom_rule_results.push(CustomRuleResult {
+                    rule_name: rule.rule_name.clone(),
+                    sql_assertion: rule.sql_assertion.clone(),
+                    passed_count: passed as u64,
+                    failed_count: failed as u64,
+                    failure_percentage: failure_pct,
+                });
+
+                if failure_pct > 0.0 {
+                    issues.push(DataQualityIssue {
+                        issue_type: IssueType::CustomRuleFailure,
+                        severity: if failure_pct > 10.0 { IssueSeverity::Critical } else { IssueSeverity::Warning },
+                        description: format!("Rule '{}' failed for {:.1}% of records.", rule.rule_name, failure_pct),
+                        column_name: None,
+                        affected_row_count: Some(failed as u64),
+                        drill_down_query: Some(format!("SELECT * FROM {}.{} WHERE NOT ({}) LIMIT 50", database, table, rule.sql_assertion)),
+                    });
+                }
+            }
+        }
+    }
+
     Ok(TableQualityReport {
         id: None,
         connection_id: connection_id.to_string(),
@@ -350,6 +388,7 @@ pub async fn analyze_table_mysql(
         last_updated,
         column_metrics,
         issues,
+        custom_rule_results: if custom_rule_results.is_empty() { None } else { Some(custom_rule_results) },
         schema_snapshot_id: None,
         schema_name: Some(database.to_string()),
     })
@@ -373,6 +412,7 @@ pub async fn analyze_table_postgres(
     table: &str,
     connection_id: &str,
     sample_percent: Option<f64>,
+    custom_rules: Option<Vec<CustomRule>>,
 ) -> Result<TableQualityReport, String> {
     let count_query = format!("SELECT COUNT(*) FROM {}.{}", schema, table);
     let total_row_count: i64 = sqlx::query_scalar(&count_query)
@@ -391,6 +431,7 @@ pub async fn analyze_table_postgres(
             last_updated: None,
             column_metrics: Vec::new(),
             issues: Vec::new(),
+            custom_rule_results: None,
             schema_snapshot_id: None,
             schema_name: Some(schema.to_string()),
         });
@@ -424,9 +465,9 @@ pub async fn analyze_table_postgres(
     if !freshness_cols.is_empty() {
         let freshness_query = format!("SELECT {} FROM {}.{}", freshness_cols.join(", "), schema, table);
         if let Ok(row) = sqlx::query(&freshness_query).fetch_one(pool).await {
-            let mut latest: Option<DateTime<Utc>> = None;
+            let mut latest: Option<chrono::DateTime<Utc>> = None;
             for i in 0..freshness_cols.len() {
-                if let Ok(ts) = row.try_get::<Option<DateTime<Utc>>, _>(i) {
+                if let Ok(ts) = row.try_get::<Option<chrono::DateTime<Utc>>, _>(i) {
                     if let Some(dt) = ts {
                         if latest.is_none() || Some(dt) > latest {
                             latest = Some(dt);
@@ -709,6 +750,42 @@ pub async fn analyze_table_postgres(
         }
     }
 
+    // 4. Custom Rules Execution (Postgres)
+    let mut custom_rule_results = Vec::new();
+    if let Some(rules) = custom_rules {
+        for rule in rules {
+            let rule_query = format!(
+                "SELECT SUM(CASE WHEN ({}) THEN 1 ELSE 0 END) as passed, SUM(CASE WHEN NOT ({}) THEN 1 ELSE 0 END) as failed FROM {}.{} {}",
+                rule.sql_assertion, rule.sql_assertion, schema, table, tablesample
+            );
+            if let Ok(row) = sqlx::query(&rule_query).fetch_one(pool).await {
+                let passed: i64 = row.try_get(0).unwrap_or(0);
+                let failed: i64 = row.try_get(1).unwrap_or(0);
+                let total = (passed + failed) as f32;
+                let failure_pct = if total > 0.0 { (failed as f32 / total) * 100.0 } else { 0.0 };
+
+                custom_rule_results.push(CustomRuleResult {
+                    rule_name: rule.rule_name.clone(),
+                    sql_assertion: rule.sql_assertion.clone(),
+                    passed_count: passed as u64,
+                    failed_count: failed as u64,
+                    failure_percentage: failure_pct,
+                });
+
+                if failure_pct > 0.0 {
+                    issues.push(DataQualityIssue {
+                        issue_type: IssueType::CustomRuleFailure,
+                        severity: if failure_pct > 10.0 { IssueSeverity::Critical } else { IssueSeverity::Warning },
+                        description: format!("Rule '{}' failed for {:.1}% of records.", rule.rule_name, failure_pct),
+                        column_name: None,
+                        affected_row_count: Some(failed as u64),
+                        drill_down_query: Some(format!("SELECT * FROM {}.{} WHERE NOT ({}) LIMIT 50", schema, table, rule.sql_assertion)),
+                    });
+                }
+            }
+        }
+    }
+
     Ok(TableQualityReport {
         id: None,
         connection_id: connection_id.to_string(),
@@ -719,6 +796,7 @@ pub async fn analyze_table_postgres(
         last_updated,
         column_metrics,
         issues,
+        custom_rule_results: if custom_rule_results.is_empty() { None } else { Some(custom_rule_results) },
         schema_snapshot_id: None,
         schema_name: Some(schema.to_string()),
     })

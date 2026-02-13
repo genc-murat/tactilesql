@@ -31,7 +31,7 @@ export function QualityDashboard() {
                 label: isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-text/50' : 'text-gray-400')),
                 accent: isDawn ? 'text-[#ea9d34]' : (isEmber ? 'text-purple-400' : (isAurora ? 'text-cyan-400' : (isNeon ? 'text-cyan-400' : 'text-mysql-teal')))
             },
-            input: `w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 transition-all cursor-pointer ${isLight
+            input: `w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 transition-all ${isLight
                 ? 'bg-white border-gray-300 text-gray-900 focus:border-mysql-teal focus:ring-mysql-teal/20'
                 : (isDawn
                     ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] focus:border-[#ea9d34] focus:ring-[#ea9d34]/20'
@@ -67,10 +67,11 @@ export function QualityDashboard() {
         selectedDatabase: null,
         tables: [],
         selectedTable: null,
-        selectedSampleRate: null, // null means Full Scan
+        selectedSampleRate: null,
 
         currentReport: null,
         trends: [],
+        rules: [],
 
         activeTab: 'overview',
         isLoading: false,
@@ -211,7 +212,6 @@ export function QualityDashboard() {
     const init = async () => {
         try {
             state.connections = await invoke('load_connections');
-            // Check local storage for active connection
             const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || 'null');
             if (activeConfig && activeConfig.id) {
                 await selectConnection(activeConfig.id);
@@ -232,6 +232,7 @@ export function QualityDashboard() {
         state.tables = [];
         state.currentReport = null;
         state.trends = [];
+        state.rules = [];
         resetAiState();
 
         const conn = state.connections.find(c => c.id === connId);
@@ -263,6 +264,7 @@ export function QualityDashboard() {
         state.tables = [];
         state.currentReport = null;
         state.trends = [];
+        state.rules = [];
         resetAiState();
 
         try {
@@ -279,10 +281,12 @@ export function QualityDashboard() {
         state.currentReport = null;
         state.activeTab = 'overview';
         state.trends = [];
+        state.rules = [];
         resetAiState();
 
         if (tableName) {
             fetchTrends(tableName);
+            fetchRules(tableName);
         }
         render();
     };
@@ -303,6 +307,16 @@ export function QualityDashboard() {
             render();
         } catch (err) {
             console.warn("Failed to fetch trends", err);
+        }
+    };
+
+    const fetchRules = async (tableName) => {
+        if (!state.selectedConnectionId || !tableName || !state.selectedDatabase) return;
+        try {
+            state.rules = await QualityAnalyzerApi.getRules(state.selectedConnectionId, tableName, state.selectedDatabase);
+            render();
+        } catch (err) {
+            console.warn("Failed to fetch rules", err);
         }
     };
 
@@ -443,10 +457,45 @@ export function QualityDashboard() {
         try {
             await invoke('execute_query', { query: sql });
             toastSuccess('Remediation applied successfully.');
-            // Refresh report
             runAnalysis();
         } catch (error) {
             Dialog.alert(`Failed to apply fix: ${error}`, 'Execution Error');
+        }
+    };
+
+    const addRule = async () => {
+        const name = await Dialog.prompt('Rule Name (e.g., "Valid Price")', 'Add Custom Rule');
+        if (!name) return;
+        const assertion = await Dialog.prompt('SQL Assertion (e.g., "price > 0")', 'Add Custom Rule');
+        if (!assertion) return;
+
+        try {
+            await QualityAnalyzerApi.saveRule({
+                connection_id: state.selectedConnectionId,
+                table_name: state.selectedTable,
+                schema_name: state.selectedDatabase,
+                rule_name: name,
+                sql_assertion: assertion,
+                is_active: true,
+                created_at: new Date().toISOString()
+            });
+            toastSuccess('Rule added successfully.');
+            fetchRules(state.selectedTable);
+        } catch (err) {
+            toastError('Failed to add rule: ' + err);
+        }
+    };
+
+    const deleteRule = async (id) => {
+        const confirmed = await Dialog.confirm('Delete this rule?', 'Confirm Delete');
+        if (!confirmed) return;
+
+        try {
+            await QualityAnalyzerApi.deleteRule(id);
+            toastSuccess('Rule deleted.');
+            fetchRules(state.selectedTable);
+        } catch (err) {
+            toastError('Failed to delete rule: ' + err);
         }
     };
 
@@ -455,14 +504,12 @@ export function QualityDashboard() {
         container.innerHTML = '';
         container.className = classes.container;
 
-        // Header / Toolbar
         const header = document.createElement('div');
         header.className = classes.header;
 
         const controls = document.createElement('div');
         controls.className = 'flex items-end gap-3 flex-wrap';
 
-        // Helper to create dropdown group with CustomDropdown
         const createDropdown = (label, id, items, value, onSelect, disabled = false) => {
             const div = document.createElement('div');
             div.className = 'flex flex-col gap-1.5 min-w-[200px] flex-1';
@@ -493,25 +540,21 @@ export function QualityDashboard() {
             return { div, dropdown };
         };
 
-        // Connection Dropdown
         const connItems = state.connections.map(c => ({ value: c.id, label: c.name, icon: 'database' }));
         const connDropdown = createDropdown('Connection', 'conn-dropdown', connItems, state.selectedConnectionId, (val) => selectConnection(val));
         controls.appendChild(connDropdown.div);
         dropdowns.connection = connDropdown.dropdown;
 
-        // Database Dropdown
         const dbItems = state.databases.map(db => ({ value: db, label: db, icon: 'storage' }));
         const dbDropdown = createDropdown(state.activeDbType === 'postgresql' ? 'Schema' : 'Database', 'db-dropdown', dbItems, state.selectedDatabase, (val) => selectDatabase(val), !state.selectedConnectionId);
         controls.appendChild(dbDropdown.div);
         dropdowns.database = dbDropdown.dropdown;
 
-        // Table Dropdown
         const tableItems = state.tables.map(t => ({ value: t, label: t, icon: 'table' }));
         const tableDropdown = createDropdown('Table', 'table-dropdown', tableItems, state.selectedTable, (val) => selectTable(val), !state.selectedDatabase);
         controls.appendChild(tableDropdown.div);
         dropdowns.table = tableDropdown.dropdown;
 
-        // Sample Rate Dropdown
         const sampleItems = [
             { value: null, label: 'Full Scan', icon: 'auto_awesome_motion' },
             { value: 10, label: 'Sample 10%', icon: 'filter_list' },
@@ -524,9 +567,8 @@ export function QualityDashboard() {
         controls.appendChild(sampleDropdown.div);
         dropdowns.sample = sampleDropdown.dropdown;
 
-        // Run Button
         const btnContainer = document.createElement('div');
-        btnContainer.className = 'pb-[1px] flex gap-2'; // Align with inputs
+        btnContainer.className = 'pb-[1px] flex gap-2';
         const runBtn = document.createElement('button');
         runBtn.id = 'run-btn';
         runBtn.className = `px-5 py-2.5 rounded-lg text-sm font-bold uppercase tracking-wide transition-all ${(!state.selectedTable || state.isLoading)
@@ -563,10 +605,8 @@ export function QualityDashboard() {
         }
 
         controls.appendChild(btnContainer);
-
         header.appendChild(controls);
 
-        // Tabs
         if (state.selectedTable) {
             const tabs = document.createElement('div');
             tabs.className = `flex gap-6 mt-2 relative ${classes.text.secondary}`;
@@ -583,13 +623,13 @@ export function QualityDashboard() {
 
             tabs.appendChild(createTab('overview', 'Overview'));
             tabs.appendChild(createTab('trends', `Trends (${state.trends.length})`));
+            tabs.appendChild(createTab('rules', `Rules (${state.rules.length})`));
 
             header.appendChild(tabs);
         }
 
         container.appendChild(header);
 
-        // Content Area
         const contentArea = document.createElement('div');
         contentArea.className = classes.content;
         container.appendChild(contentArea);
@@ -623,6 +663,8 @@ export function QualityDashboard() {
             }
         } else if (state.activeTab === 'trends') {
             renderTrends(contentArea);
+        } else if (state.activeTab === 'rules') {
+            renderRules(contentArea);
         }
     };
 
@@ -644,7 +686,6 @@ export function QualityDashboard() {
         const grid = document.createElement('div');
         grid.className = 'grid grid-cols-[300px_1fr] gap-6 max-w-7xl mx-auto';
 
-        // Freshness Badge Helper
         const getFreshnessInfo = (lastUpdated) => {
             if (!lastUpdated) return null;
             const lu = new Date(lastUpdated);
@@ -666,7 +707,6 @@ export function QualityDashboard() {
 
         const freshness = getFreshnessInfo(report.last_updated);
 
-        // Score Card
         const scoreCard = document.createElement('div');
         scoreCard.className = `${classes.card} flex flex-col items-center justify-center row-span-2`;
         scoreCard.innerHTML = `
@@ -701,7 +741,6 @@ export function QualityDashboard() {
         `;
         grid.appendChild(scoreCard);
 
-        // Issues Summary
         const issuesCard = document.createElement('div');
         issuesCard.className = `${classes.card} flex flex-col`;
         issuesCard.innerHTML = `<h3 class="text-sm font-bold uppercase tracking-wider ${classes.text.secondary} mb-4">Top Issues</h3>`;
@@ -741,7 +780,7 @@ export function QualityDashboard() {
 
                 if (issue.drill_down_query) {
                     const drillBtn = document.createElement('button');
-                    drillBtn.className = `shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[10px] font-bold uppercase transition-all ${isDawn ? 'bg-[#ea9d34]/10 text-[#ea9d34] hover:bg-[#ea9d34]/20' : 'bg-mysql-teal/10 text-mysql-teal hover:bg-mysql-teal/20'}`;
+                    drillBtn.className = `shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[10px] font-bold uppercase transition-all ${theme === 'dawn' ? 'bg-[#ea9d34]/10 text-[#ea9d34] hover:bg-[#ea9d34]/20' : 'bg-mysql-teal/10 text-mysql-teal hover:bg-mysql-teal/20'}`;
                     drillBtn.innerHTML = '<span class="material-symbols-outlined text-sm">visibility</span> Analyze';
                     drillBtn.onclick = () => {
                         const title = `Drill-down: ${formatIssueType(issue.issue_type)} in ${issue.column_name || 'table'}`;
@@ -835,7 +874,6 @@ export function QualityDashboard() {
 
             aiCard.appendChild(analysisWrap);
 
-            // Remediation SQL parsing
             const remediationSqls = parseRemediationSql(state.aiAnalysis);
             if (remediationSqls.length > 0) {
                 const remediationTitle = document.createElement('div');
@@ -877,7 +915,6 @@ export function QualityDashboard() {
         });
         grid.appendChild(aiCard);
 
-        // Metrics Table
         const metricsCard = document.createElement('div');
         metricsCard.className = `${classes.card} col-span-2 overflow-hidden`;
         metricsCard.innerHTML = `<h3 class="text-sm font-bold uppercase tracking-wider ${classes.text.secondary} mb-4">Column Metrics</h3>`;
@@ -935,30 +972,106 @@ export function QualityDashboard() {
         metricsCard.appendChild(tableWrapper);
         grid.appendChild(metricsCard);
 
+        if (report.custom_rule_results && report.custom_rule_results.length > 0) {
+            const rulesCard = document.createElement('div');
+            rulesCard.className = `${classes.card} col-span-2`;
+            rulesCard.innerHTML = `
+                <h3 class="text-sm font-bold uppercase tracking-wider ${classes.text.secondary} mb-4">Custom Rule Results</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    ${report.custom_rule_results.map(r => `
+                        <div class="p-3 rounded-lg border ${theme === 'light' ? 'bg-gray-50 border-gray-100' : 'bg-black/20 border-white/5'}">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-xs font-bold ${classes.text.primary}">${r.rule_name}</span>
+                                <span class="text-[10px] font-bold ${r.failure_percentage > 0 ? 'text-red-400' : 'text-green-400'} uppercase">
+                                    ${r.failure_percentage > 0 ? 'Failed' : 'Passed'}
+                                </span>
+                            </div>
+                            <div class="text-[10px] font-mono opacity-50 mb-3 truncate" title="${r.sql_assertion}">${r.sql_assertion}</div>
+                            <div class="flex items-center gap-2">
+                                <div class="flex-1 h-1 rounded-full ${theme === 'light' ? 'bg-gray-200' : 'bg-white/10'} overflow-hidden">
+                                    <div class="h-full bg-red-400" style="width: ${r.failure_percentage}%"></div>
+                                </div>
+                                <span class="text-[10px] font-mono ${classes.text.secondary}">${r.failure_percentage.toFixed(1)}% fail</span>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            grid.appendChild(rulesCard);
+        }
+
         parent.appendChild(grid);
+    }
+
+    function renderRules(parent) {
+        const wrap = document.createElement('div');
+        wrap.className = 'max-w-4xl mx-auto space-y-6';
+
+        const header = document.createElement('div');
+        header.className = 'flex items-center justify-between';
+        header.innerHTML = `
+            <div>
+                <h3 class="text-lg font-bold ${classes.text.primary}">Custom Quality Rules</h3>
+                <p class="text-xs ${classes.text.secondary}">Define SQL assertions to validate your business rules.</p>
+            </div>
+            <button id="add-rule-btn" class="px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${theme === 'dawn' ? 'bg-[#ea9d34] text-white hover:bg-[#d7821a]' : (theme === 'neon' ? 'bg-cyan-400 text-black hover:bg-cyan-300' : 'bg-mysql-teal text-white hover:bg-mysql-cyan')} shadow-md flex items-center gap-2">
+                <span class="material-symbols-outlined text-sm">add</span> Add Rule
+            </button>
+        `;
+        header.querySelector('#add-rule-btn').onclick = addRule;
+        wrap.appendChild(header);
+
+        if (state.rules.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = `${classes.card} py-12 flex flex-col items-center justify-center opacity-50`;
+            empty.innerHTML = `
+                <span class="material-symbols-outlined text-5xl mb-3">rule</span>
+                <p class="text-sm">No custom rules defined for this table.</p>
+            `;
+            wrap.appendChild(empty);
+        } else {
+            const list = document.createElement('div');
+            list.className = 'grid grid-cols-1 gap-4';
+            state.rules.forEach(rule => {
+                const card = document.createElement('div');
+                card.className = `${classes.card} flex items-center justify-between group`;
+                card.innerHTML = `
+                    <div class="flex-1">
+                        <div class="flex items-center gap-3">
+                            <span class="text-sm font-bold ${classes.text.primary}">${rule.rule_name}</span>
+                            <span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase ${rule.is_active ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-gray-500/10 text-gray-400 border border-gray-500/20'}">
+                                ${rule.is_active ? 'Active' : 'Inactive'}
+                            </span>
+                        </div>
+                        <div class="mt-1 text-xs font-mono opacity-60 overflow-hidden text-ellipsis">${rule.sql_assertion}</div>
+                    </div>
+                    <div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button class="delete-rule-btn p-2 rounded hover:bg-red-500/10 text-red-400 transition-colors" title="Delete Rule">
+                            <span class="material-symbols-outlined text-sm">delete</span>
+                        </button>
+                    </div>
+                `;
+                card.querySelector('.delete-rule-btn').onclick = () => deleteRule(rule.id);
+                list.appendChild(card);
+            });
+            wrap.appendChild(list);
+        }
+
+        parent.appendChild(wrap);
     }
 
     function parseRemediationSql(text) {
         if (!text) return [];
         const fixes = [];
-        
-        // Match sections under Remediation Scripts
         const remediationSection = text.split(/### Remediation Scripts/i)[1];
         if (!remediationSection) return [];
-
         const nextHeaderIdx = remediationSection.search(/\n### /);
         const sectionContent = nextHeaderIdx === -1 ? remediationSection : remediationSection.substring(0, nextHeaderIdx);
-
-        // Find individual fixes (#### Title + ```sql)
         const fixRegex = /####\s*(.*?)\n\s*```sql\n([\s\S]*?)```/g;
         let match;
         while ((match = fixRegex.exec(sectionContent)) !== null) {
-            fixes.push({
-                title: match[1].trim(),
-                sql: match[2].trim()
-            });
+            fixes.push({ title: match[1].trim(), sql: match[2].trim() });
         }
-
         return fixes;
     }
 
@@ -975,10 +1088,8 @@ export function QualityDashboard() {
             `;
             return;
         }
-
         const card = document.createElement('div');
         card.className = `${classes.card} h-full flex flex-col`;
-
         card.innerHTML = `
             <div class="flex items-center justify-between mb-6">
                 <h3 class="text-sm font-bold uppercase tracking-wider ${classes.text.secondary}">Quality Score Trend</h3>
@@ -994,33 +1105,25 @@ export function QualityDashboard() {
         const width = 800;
         const height = 300;
         const padding = 40;
-
         const dataPoints = data.map((d, i) => ({
             date: new Date(d.timestamp),
             score: d.overall_score,
             report: d,
             index: i
         }));
-
         const minTime = Math.min(...dataPoints.map(d => d.date));
         const maxTime = Math.max(...dataPoints.map(d => d.date));
         const timeRange = maxTime - minTime || 1;
-
         const xScale = (date) => padding + ((date - minTime) / timeRange) * (width - padding * 2);
         const yScale = (score) => height - padding - (score / 100) * (height - padding * 2);
-
         const points = dataPoints.map(d => `${xScale(d.date)},${yScale(d.score)}`).join(' ');
-
-        // Colors base on theme
         const gridColor = theme === 'light' ? '#e5e7eb' : (theme === 'dawn' ? '#f2e9e1' : (theme === 'neon' ? '#ffffff10' : '#ffffff20'));
         const textColor = theme === 'light' ? '#9ca3af' : (theme === 'dawn' ? '#9893a5' : (theme === 'neon' ? '#00f3ff60' : '#6b7280'));
         const lineColor = theme === 'dawn' ? '#ea9d34' : (theme === 'neon' ? '#00f3ff' : '#0ea5e9');
-
         const yGrid = [0, 25, 50, 75, 100].map(val => `
             <line x1="${padding}" y1="${yScale(val)}" x2="${width - padding}" y2="${yScale(val)}" stroke="${gridColor}" stroke-dasharray="4" />
             <text x="${padding - 10}" y="${yScale(val)}" dy="4" text-anchor="end" font-size="10" fill="${textColor}">${val}</text>
         `).join('');
-
         const dots = dataPoints.map(d => `
             <circle cx="${xScale(d.date)}" cy="${yScale(d.score)}" r="6" 
                 fill="${getScoreColor(d.score)}" 
@@ -1031,10 +1134,7 @@ export function QualityDashboard() {
                 <title>${d.score.toFixed(1)} on ${d.date.toLocaleString()}</title>
             </circle>
         `).join('');
-
-        // Container for event delegation
         const chartId = `chart-${Math.random().toString(36).substr(2, 9)}`;
-        
         setTimeout(() => {
             const svgEl = document.getElementById(chartId);
             if (svgEl) {
@@ -1053,7 +1153,6 @@ export function QualityDashboard() {
                 };
             }
         }, 0);
-
         return `
             <svg id="${chartId}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="width: 100%; height: 100%;">
                 ${yGrid}
@@ -1072,7 +1171,6 @@ export function QualityDashboard() {
 
     function renderTopValuesAndPatterns(metric) {
         let html = '';
-
         if (metric.top_values && metric.top_values.length > 0) {
             html += `
                 <div class="mb-2">
@@ -1087,7 +1185,6 @@ export function QualityDashboard() {
                 </div>
             `;
         }
-
         if (metric.pattern_metrics && metric.pattern_metrics.length > 0) {
             html += `
                 <div>
@@ -1102,14 +1199,13 @@ export function QualityDashboard() {
                 </div>
             `;
         }
-
         return html || '<span class="opacity-30 text-xs">-</span>';
     }
 
     function getScoreColor(score) {
-        if (score >= 90) return '#10b981'; // Green
-        if (score >= 70) return '#f59e0b'; // Amber
-        return '#ef4444'; // Red
+        if (score >= 90) return '#10b981';
+        if (score >= 70) return '#f59e0b';
+        return '#ef4444';
     }
 
     function formatIssueType(type) {
@@ -1134,20 +1230,17 @@ export function QualityDashboard() {
         return 'Unknown';
     }
 
-    // Theme listener
     const onThemeChange = (e) => {
         theme = e.detail.theme;
         classes = getClasses(theme);
-        render(); // Re-render with new classes
+        render();
     };
     window.addEventListener('themechange', onThemeChange);
 
-    // Cleanup
     container.onUnmount = () => {
         window.removeEventListener('themechange', onThemeChange);
     };
 
     init();
-
     return container;
 }

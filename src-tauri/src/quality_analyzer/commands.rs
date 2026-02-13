@@ -1,5 +1,5 @@
 use crate::db::AppState;
-use crate::quality_analyzer::models::{QualityAiReport, TableQualityReport};
+use crate::quality_analyzer::models::{CustomRule, QualityAiReport, TableQualityReport};
 use tauri::{command, State};
 
 #[command]
@@ -10,7 +10,18 @@ pub async fn run_quality_analysis(
     schema: Option<String>,
     sample_percent: Option<f64>,
 ) -> Result<TableQualityReport, String> {
-    // 1. Determine DB Type and Pool
+    // 1. Fetch Custom Rules
+    let rules = {
+        let store_guard = app_state.quality_analyzer_store.lock().await;
+        if let Some(store) = store_guard.as_ref() {
+            store.get_rules(&connection_id, &table, schema.as_deref()).await.unwrap_or_default()
+        } else {
+            Vec::new()
+        }
+    };
+    let active_rules: Vec<CustomRule> = rules.into_iter().filter(|r| r.is_active).collect();
+
+    // 2. Determine DB Type and Pool
     let db_type = {
         let guard = app_state.active_db_type.lock().await;
         guard.clone()
@@ -38,6 +49,7 @@ pub async fn run_quality_analysis(
                 &table,
                 &connection_id,
                 sample_percent,
+                Some(active_rules),
             )
             .await?
         }
@@ -63,6 +75,7 @@ pub async fn run_quality_analysis(
                 &table,
                 &connection_id,
                 sample_percent,
+                Some(active_rules),
             )
             .await?
         }
@@ -71,14 +84,10 @@ pub async fn run_quality_analysis(
         }
     };
 
-    // 2. Fetch Latest Schema Snapshot ID (Best effort)
+    // 3. Fetch Latest Schema Snapshot ID (Best effort)
     let schema_snapshot_id = {
         let store_guard = app_state.schema_tracker_store.lock().await;
         if let Some(store) = store_guard.as_ref() {
-            // We don't have a direct "get_latest" method, but get_snapshots returns order by timestamp DESC
-            // We can fetch limit 1 for optimization if we add that method, or just get all and take first
-            // For performance, let's just get all (assuming < 100 snapshots usually) or add a specialized query?
-            // Re-using get_snapshots for now.
             if let Ok(snapshots) = store.get_snapshots(&connection_id, None).await {
                 snapshots.first().and_then(|s| s.id)
             } else {
@@ -89,11 +98,11 @@ pub async fn run_quality_analysis(
         }
     };
 
-    // 3. Inject Snapshot ID and Schema Name into Report
+    // 4. Inject Snapshot ID and Schema Name into Report
     let mut report = report;
     report.schema_snapshot_id = schema_snapshot_id;
 
-    // 4. Save Report
+    // 5. Save Report
     {
         let store_guard = app_state.quality_analyzer_store.lock().await;
         if let Some(store) = store_guard.as_ref() {
@@ -160,6 +169,47 @@ pub async fn get_quality_ai_report(
     let store_guard = app_state.quality_analyzer_store.lock().await;
     if let Some(store) = store_guard.as_ref() {
         store.get_ai_report(&connection_id, quality_report_id).await
+    } else {
+        Err("Quality Analyzer Store not initialized".to_string())
+    }
+}
+
+#[command]
+pub async fn save_quality_rule(
+    app_state: State<'_, AppState>,
+    rule: CustomRule,
+) -> Result<i64, String> {
+    let store_guard = app_state.quality_analyzer_store.lock().await;
+    if let Some(store) = store_guard.as_ref() {
+        store.save_rule(&rule).await
+    } else {
+        Err("Quality Analyzer Store not initialized".to_string())
+    }
+}
+
+#[command]
+pub async fn get_quality_rules(
+    app_state: State<'_, AppState>,
+    connection_id: String,
+    table_name: String,
+    schema_name: Option<String>,
+) -> Result<Vec<CustomRule>, String> {
+    let store_guard = app_state.quality_analyzer_store.lock().await;
+    if let Some(store) = store_guard.as_ref() {
+        store.get_rules(&connection_id, &table_name, schema_name.as_deref()).await
+    } else {
+        Err("Quality Analyzer Store not initialized".to_string())
+    }
+}
+
+#[command]
+pub async fn delete_quality_rule(
+    app_state: State<'_, AppState>,
+    id: i64,
+) -> Result<(), String> {
+    let store_guard = app_state.quality_analyzer_store.lock().await;
+    if let Some(store) = store_guard.as_ref() {
+        store.delete_rule(id).await
     } else {
         Err("Quality Analyzer Store not initialized".to_string())
     }

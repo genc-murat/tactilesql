@@ -1,4 +1,4 @@
-use crate::quality_analyzer::models::{QualityAiReport, TableQualityReport};
+use crate::quality_analyzer::models::{CustomRule, QualityAiReport, TableQualityReport};
 use sqlx::{sqlite::SqliteRow, Pool, Row, Sqlite};
 
 pub struct QualityAnalyzerStore {
@@ -38,9 +38,21 @@ impl QualityAnalyzerStore {
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS quality_rules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                connection_id TEXT NOT NULL,
+                table_name TEXT NOT NULL,
+                schema_name TEXT,
+                rule_name TEXT NOT NULL,
+                sql_assertion TEXT NOT NULL,
+                is_active INTEGER DEFAULT 1,
+                created_at INTEGER NOT NULL
+            );
             
             CREATE INDEX IF NOT EXISTS idx_quality_conn_table ON quality_reports(connection_id, table_name);
             CREATE INDEX IF NOT EXISTS idx_quality_ai_conn_report ON quality_ai_reports(connection_id, quality_report_id);
+            CREATE INDEX IF NOT EXISTS idx_quality_rules_conn_table ON quality_rules(connection_id, table_name);
             "#
         )
         .execute(&self.pool)
@@ -239,6 +251,67 @@ impl QualityAnalyzerStore {
             Some(row) => Ok(Some(Self::row_to_ai_report(&row)?)),
             None => Ok(None),
         }
+    }
+
+    pub async fn save_rule(&self, rule: &CustomRule) -> Result<i64, String> {
+        let now = chrono::Utc::now().timestamp();
+        let id = sqlx::query(
+            r#"
+            INSERT INTO quality_rules (connection_id, table_name, schema_name, rule_name, sql_assertion, is_active, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            RETURNING id
+            "#
+        )
+        .bind(&rule.connection_id)
+        .bind(&rule.table_name)
+        .bind(&rule.schema_name)
+        .bind(&rule.rule_name)
+        .bind(&rule.sql_assertion)
+        .bind(if rule.is_active { 1 } else { 0 })
+        .bind(now)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| format!("Failed to save rule: {}", e))?
+        .try_get::<i64, _>("id")
+        .map_err(|e| e.to_string())?;
+
+        Ok(id)
+    }
+
+    pub async fn get_rules(&self, connection_id: &str, table_name: &str, schema_name: Option<&str>) -> Result<Vec<CustomRule>, String> {
+        let rows = sqlx::query(
+            "SELECT * FROM quality_rules WHERE connection_id = ? AND table_name = ? AND (schema_name = ? OR schema_name IS NULL)"
+        )
+        .bind(connection_id)
+        .bind(table_name)
+        .bind(schema_name)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| format!("Failed to fetch rules: {}", e))?;
+
+        let mut rules = Vec::new();
+        for row in rows {
+            rules.push(CustomRule {
+                id: Some(row.try_get("id").unwrap_or_default()),
+                connection_id: row.try_get("connection_id").unwrap_or_default(),
+                table_name: row.try_get("table_name").unwrap_or_default(),
+                schema_name: row.try_get("schema_name").ok(),
+                rule_name: row.try_get("rule_name").unwrap_or_default(),
+                sql_assertion: row.try_get("sql_assertion").unwrap_or_default(),
+                is_active: row.try_get::<i32, _>("is_active").unwrap_or(1) == 1,
+                created_at: Self::timestamp_to_datetime(row.try_get("created_at").unwrap_or_default()),
+            });
+        }
+        Ok(rules)
+    }
+
+    pub async fn delete_rule(&self, id: i64) -> Result<(), String> {
+        sqlx::query("DELETE FROM quality_rules WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| format!("Failed to delete rule: {}", e))?;
+        Ok(())
     }
 
     fn row_to_ai_report(row: &SqliteRow) -> Result<QualityAiReport, String> {

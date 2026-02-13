@@ -39,5 +39,34 @@ export const QualityAnalyzerApi = {
      */
     async getAiReport(connectionId, qualityReportId) {
         return await invoke('get_quality_ai_report', { connectionId, qualityReportId });
+    },
+
+    /**
+     * Save a custom quality rule.
+     * @param {Object} rule
+     * @returns {Promise<number>}
+     */
+    async saveRule(rule) {
+        return await invoke('save_quality_rule', { rule });
+    },
+
+    /**
+     * Get custom quality rules for a table.
+     * @param {string} connectionId
+     * @param {string} tableName
+     * @param {string} schemaName
+     * @returns {Promise<CustomRule[]>}
+     */
+    async getRules(connectionId, tableName, schemaName) {
+        return await invoke('get_quality_rules', { connectionId, tableName, schemaName });
+    },
+
+    /**
+     * Delete a custom quality rule.
+     * @param {number} id
+     * @returns {Promise<void>}
+     */
+    async deleteRule(id) {
+        return await invoke('delete_quality_rule', { id });
     }
 };

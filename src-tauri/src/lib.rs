@@ -370,6 +370,9 @@ pub fn run() {
             quality_analyzer::commands::get_quality_reports,
             quality_analyzer::commands::save_quality_ai_report,
             quality_analyzer::commands::get_quality_ai_report,
+            quality_analyzer::commands::save_quality_rule,
+            quality_analyzer::commands::get_quality_rules,
+            quality_analyzer::commands::delete_quality_rule,
             // Dependency Engine
             dependency_engine::commands::get_dependency_graph,
             // ER Diagram
