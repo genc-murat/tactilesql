@@ -3,12 +3,12 @@ use crate::quality_analyzer::models::{QualityAiReport, TableQualityReport};
 use tauri::{command, State};
 
 #[command]
-
 pub async fn run_quality_analysis(
     app_state: State<'_, AppState>,
     connection_id: String,
     table: String,
     schema: Option<String>,
+    sample_percent: Option<f64>,
 ) -> Result<TableQualityReport, String> {
     // 1. Determine DB Type and Pool
     let db_type = {
@@ -37,6 +37,7 @@ pub async fn run_quality_analysis(
                 &db_name,
                 &table,
                 &connection_id,
+                sample_percent,
             )
             .await?
         }
@@ -52,7 +53,7 @@ pub async fn run_quality_analysis(
                 let row: (String,) = sqlx::query_as("SELECT current_schema()")
                     .fetch_one(pool)
                     .await
-                    .map_err(|e| e.to_string())?;
+                    .map_err(|e| format!("Postgres: Failed to get current schema: {}", e))?;
                 row.0
             };
 
@@ -61,6 +62,7 @@ pub async fn run_quality_analysis(
                 &schema_name,
                 &table,
                 &connection_id,
+                sample_percent,
             )
             .await?
         }

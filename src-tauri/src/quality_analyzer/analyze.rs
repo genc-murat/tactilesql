@@ -6,13 +6,29 @@ pub async fn analyze_table_mysql(
     database: &str,
     table: &str,
     connection_id: &str,
+    sample_percent: Option<f64>,
 ) -> Result<TableQualityReport, String> {
     // 1. Get Row Count
     let count_query = format!("SELECT COUNT(*) FROM {}.{}", database, table);
-    let row_count: i64 = sqlx::query_scalar(&count_query)
+    let total_row_count: i64 = sqlx::query_scalar(&count_query)
         .fetch_one(pool)
         .await
         .map_err(|e| format!("Failed to get row count: {}", e))?;
+
+    if total_row_count == 0 {
+        return Ok(TableQualityReport {
+            id: None,
+            connection_id: connection_id.to_string(),
+            table_name: table.to_string(),
+            timestamp: chrono::Utc::now(),
+            overall_score: 100.0,
+            row_count: 0,
+            column_metrics: Vec::new(),
+            issues: Vec::new(),
+            schema_snapshot_id: None,
+            schema_name: Some(database.to_string()),
+        });
+    }
 
     // 2. Get Columns
     let columns_query = format!(
@@ -27,131 +43,128 @@ pub async fn analyze_table_mysql(
     let mut column_metrics = Vec::new();
     let mut issues = Vec::new();
 
-    // 3. Analyze Columns (NULLs, Distincts)
-    // Optimization: We could do this in one massive query, but for MVP iteration is safer/simpler
-    for (col_name, data_type) in columns {
-        let null_query = format!(
-            "SELECT COUNT(*) FROM {}.{} WHERE {} IS NULL",
-            database, table, col_name
-        );
-        let null_count: i64 = sqlx::query_scalar(&null_query)
-            .fetch_one(pool)
-            .await
-            .unwrap_or(0);
+    // 3. Optimized Metrics Gathering (Single Query for NULLs, Distincts, Stats)
+    let mut select_expressions = Vec::new();
+    struct ColMeta {
+        name: String,
+        data_type: String,
+        is_numeric: bool,
+    }
+    let mut cols_meta = Vec::new();
 
-        let distinct_query = format!(
-            "SELECT COUNT(DISTINCT {}) FROM {}.{}",
-            col_name, database, table
-        );
-        let distinct_count: i64 = sqlx::query_scalar(&distinct_query)
-            .fetch_one(pool)
-            .await
-            .unwrap_or(0);
+    // Sampling clause
+    let sampling_where = if let Some(p) = sample_percent {
+        format!("WHERE RAND() < {}", p / 100.0)
+    } else {
+        "".to_string()
+    };
 
-        // Basic Stats (Min/Max/Avg/StdDev) for numeric
-        let mut min_val = None;
-        let mut max_val = None;
-        let mut mean_val = None;
+    select_expressions.push("COUNT(*)".to_string());
 
-        // Simplified type check
+    for (col_name, data_type) in &columns {
         let is_numeric = ["int", "decimal", "float", "double", "numeric"]
             .iter()
             .any(|t| data_type.contains(t));
+        
+        cols_meta.push(ColMeta {
+            name: col_name.clone(),
+            data_type: data_type.clone(),
+            is_numeric,
+        });
 
-        if is_numeric && row_count > 0 {
-            let stats_query = format!(
-                "SELECT MIN({}), MAX({}), AVG({}), STDDEV({}) FROM {}.{}",
-                col_name, col_name, col_name, col_name, database, table
-            );
-            if let Ok(row) = sqlx::query(&stats_query).fetch_one(pool).await {
-                // MySQL returns Option<Value>
-                let min: Option<String> = row.try_get(0).unwrap_or(None);
-                let max: Option<String> = row.try_get(1).unwrap_or(None);
-                let avg: Option<f64> = row.try_get(2).unwrap_or(None);
-                let stddev: Option<f64> = row.try_get(3).unwrap_or(None);
+        select_expressions.push(format!("SUM(CASE WHEN `{}` IS NULL THEN 1 ELSE 0 END)", col_name));
+        select_expressions.push(format!("COUNT(DISTINCT `{}`)", col_name));
 
-                min_val = min;
-                max_val = max;
-                mean_val = avg;
+        if is_numeric {
+            select_expressions.push(format!("MIN(`{}`)", col_name));
+            select_expressions.push(format!("MAX(`{}`)", col_name));
+            select_expressions.push(format!("AVG(`{}`)", col_name));
+            select_expressions.push(format!("STDDEV(`{}`)", col_name));
+        } else {
+            select_expressions.push("NULL".to_string());
+            select_expressions.push("NULL".to_string());
+            select_expressions.push("NULL".to_string());
+            select_expressions.push("NULL".to_string());
+        }
+    }
 
-                // Outlier Detection (Z-Score approach)
-                // If we have mean and stddev, we can check how many rows are > 3 sigmas
-                if let (Some(u), Some(s)) = (avg, stddev) {
-                    if s > 0.0 {
-                        let outlier_query = format!(
-                            "SELECT COUNT(*) FROM {}.{} WHERE ABS({} - {}) > 3 * {}",
-                            database, table, col_name, u, s
-                        );
-                        if let Ok(count) = sqlx::query_scalar::<_, i64>(&outlier_query)
-                            .fetch_one(pool)
-                            .await
-                        {
-                            if count > 0 {
-                                issues.push(DataQualityIssue {
-                                    issue_type: IssueType::OutlierDetected,
-                                    severity: IssueSeverity::Info,
-                                    description: format!(
-                                        "Column '{}' has {} outliers (> 3 stddev).",
-                                        col_name, count
-                                    ),
-                                    column_name: Some(col_name.clone()),
-                                    affected_row_count: Some(count as u64),
-                                });
-                            }
-                        }
+    let combined_query = format!(
+        "SELECT {} FROM {}.{} {}",
+        select_expressions.join(", "),
+        database, table, sampling_where
+    );
+
+    let row = sqlx::query(&combined_query)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| format!("Failed to run optimized metrics query: {}", e))?;
+
+    let sample_row_count: i64 = row.try_get(0).unwrap_or(0);
+    let mut current_idx = 1;
+
+    for meta in cols_meta {
+        let null_count: i64 = row.try_get(current_idx).unwrap_or(0);
+        let distinct_count: i64 = row.try_get(current_idx + 1).unwrap_or(0);
+        
+        let mut min_val = None;
+        let mut max_val = None;
+        let mut mean_val = None;
+        let mut stddev_val = None;
+
+        if meta.is_numeric {
+            min_val = row.try_get::<Option<String>, _>(current_idx + 2).unwrap_or(None);
+            max_val = row.try_get::<Option<String>, _>(current_idx + 3).unwrap_or(None);
+            mean_val = row.try_get::<Option<f64>, _>(current_idx + 4).unwrap_or(None);
+            stddev_val = row.try_get::<Option<f64>, _>(current_idx + 5).unwrap_or(None);
+        }
+
+        current_idx += 6;
+
+        let null_pct = if sample_row_count > 0 {
+            (null_count as f32 / sample_row_count as f32) * 100.0
+        } else {
+            0.0
+        };
+        let distinct_pct = if sample_row_count > 0 {
+            (distinct_count as f32 / sample_row_count as f32) * 100.0
+        } else {
+            0.0
+        };
+
+        if null_pct > 50.0 {
+            issues.push(DataQualityIssue {
+                issue_type: IssueType::HighNullRate,
+                severity: IssueSeverity::Warning,
+                description: format!("Column '{}' has {:.1}% NULL values.", meta.name, null_pct),
+                column_name: Some(meta.name.clone()),
+                affected_row_count: Some(null_count as u64),
+            });
+        }
+
+        if let (Some(u), Some(s)) = (mean_val, stddev_val) {
+            if s > 0.0 {
+                let outlier_query = format!(
+                    "SELECT COUNT(*) FROM {}.{} WHERE ABS(`{}` - {}) > 3 * {} {}",
+                    database, table, meta.name, u, s,
+                    if sampling_where.is_empty() { "".to_string() } else { format!("AND {}", sampling_where.replace("WHERE ", "")) }
+                );
+                if let Ok(count) = sqlx::query_scalar::<_, i64>(&outlier_query).fetch_one(pool).await {
+                    if count > 0 {
+                        issues.push(DataQualityIssue {
+                            issue_type: IssueType::OutlierDetected,
+                            severity: IssueSeverity::Info,
+                            description: format!("Column '{}' has {} outliers (> 3 stddev).", meta.name, count),
+                            column_name: Some(meta.name.clone()),
+                            affected_row_count: Some(count as u64),
+                        });
                     }
                 }
             }
         }
 
-        // Freshness Check (Heuristic)
-        if (col_name.contains("created_at")
-            || col_name.contains("updated_at")
-            || col_name.contains("timestamp"))
-            && row_count > 0
-        {
-            let max_date_query = format!("SELECT MAX({}) FROM {}.{}", col_name, database, table);
-            // We just want to see if it's stale (e.g. > 30 days)
-            // Getting generic datetime as string for simplicity
-            if let Ok(last_active) = sqlx::query_scalar::<_, Option<String>>(&max_date_query)
-                .fetch_one(pool)
-                .await
-            {
-                if let Some(_date_str) = last_active {}
-            }
-        }
-
-        let null_pct = if row_count > 0 {
-            (null_count as f32 / row_count as f32) * 100.0
-        } else {
-            0.0
-        };
-        let distinct_pct = if row_count > 0 {
-            (distinct_count as f32 / row_count as f32) * 100.0
-        } else {
-            0.0
-        };
-
-        // Issue Detection: High Null Rate
-        if null_pct > 50.0 {
-            issues.push(DataQualityIssue {
-                issue_type: IssueType::HighNullRate,
-                severity: IssueSeverity::Warning,
-                description: format!("Column '{}' has {:.1}% NULL values.", col_name, null_pct),
-                column_name: Some(col_name.clone()),
-                affected_row_count: Some(null_count as u64),
-            });
-        }
-
-        // Issue Detection: Low Cardinality (Potential Enum candidate) - Info only
-        if distinct_pct < 5.0 && distinct_count < 20 && row_count > 100 {
-            // Maybe not an issue, just a finding
-        }
-
-        // 3.5 Top Values (Value Distribution)
         let top_values_query = format!(
-            "SELECT CAST({} AS CHAR) as val, COUNT(*) as cnt FROM {}.{} WHERE {} IS NOT NULL GROUP BY {} ORDER BY cnt DESC LIMIT 5",
-            col_name, database, table, col_name, col_name
+            "SELECT CAST(`{}` AS CHAR) as val, COUNT(*) as cnt FROM {}.{} WHERE `{}` IS NOT NULL {} GROUP BY val ORDER BY cnt DESC LIMIT 5",
+            meta.name, database, table, meta.name, sampling_where
         );
         let mut top_values = Vec::new();
         if let Ok(rows) = sqlx::query(&top_values_query).fetch_all(pool).await {
@@ -164,7 +177,6 @@ pub async fn analyze_table_mysql(
             }
         }
 
-        // 3.6 Pattern Analysis
         let mut pattern_metrics = Vec::new();
         let patterns = [
             ("Email", r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"),
@@ -175,22 +187,22 @@ pub async fn analyze_table_mysql(
 
         for (name, regex) in patterns {
             let pattern_query = format!(
-                "SELECT COUNT(*) FROM {}.{} WHERE {} REGEXP '{}'",
-                database, table, col_name, regex
+                "SELECT COUNT(*) FROM {}.{} WHERE `{}` REGEXP '{}' {}",
+                database, table, meta.name, regex, sampling_where
             );
             if let Ok(count) = sqlx::query_scalar::<_, i64>(&pattern_query).fetch_one(pool).await {
                 if count > 0 {
                     pattern_metrics.push(PatternMetric {
                         pattern_name: name.to_string(),
                         count: count as u64,
-                        percentage: (count as f32 / row_count as f32) * 100.0,
+                        percentage: (count as f32 / sample_row_count as f32) * 100.0,
                     });
                 }
             }
         }
 
         column_metrics.push(ColumnQualityMetrics {
-            column_name: col_name,
+            column_name: meta.name,
             null_count: null_count as u64,
             null_percentage: null_pct,
             distinct_count: distinct_count as u64,
@@ -203,12 +215,10 @@ pub async fn analyze_table_mysql(
         });
     }
 
-    // 4. Analyze Duplicates (Exact Rows)
-    // Construct query: SELECT SUM(c) FROM (SELECT COUNT(*) - 1 as c FROM table GROUP BY all_cols HAVING COUNT(*) > 1) t
-    if !column_metrics.is_empty() {
+    if !column_metrics.is_empty() && sample_percent.is_none() {
         let all_cols = column_metrics
             .iter()
-            .map(|c| c.column_name.as_str())
+            .map(|c| format!("`{}`", c.column_name))
             .collect::<Vec<_>>()
             .join(", ");
         let dup_query = format!(
@@ -216,7 +226,6 @@ pub async fn analyze_table_mysql(
             database, table, all_cols
         );
 
-        // This query might return NULL if no duplicates, or a number
         let dup_count: Option<f64> = sqlx::query_scalar(&dup_query)
             .fetch_one(pool)
             .await
@@ -235,8 +244,6 @@ pub async fn analyze_table_mysql(
         }
     }
 
-    // 5. Analyze Referential Integrity (Orphans)
-    // Fetch FKs first
     let fk_query = format!(
         "SELECT COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME 
          FROM information_schema.KEY_COLUMN_USAGE 
@@ -250,12 +257,8 @@ pub async fn analyze_table_mysql(
         .unwrap_or_default();
 
     for (col, parent_tbl, parent_col) in fks {
-        // COUNT orphans
-        // SELECT COUNT(*) FROM child WHERE col IS NOT NULL AND col NOT IN (SELECT parent_col FROM parent)
-        // Optimization: LEFT JOIN is often faster for this check than NOT IN
-        // SELECT COUNT(*) FROM child c LEFT JOIN parent p ON c.col = p.pk WHERE p.pk IS NULL AND c.col IS NOT NULL
         let orphan_query = format!(
-            "SELECT COUNT(*) FROM {}.{} c LEFT JOIN {}.{} p ON c.{} = p.{} WHERE p.{} IS NULL AND c.{} IS NOT NULL",
+            "SELECT COUNT(*) FROM {}.{} c LEFT JOIN {}.{} p ON c.`{}` = p.`{}` WHERE p.`{}` IS NULL AND c.`{}` IS NOT NULL",
             database, table, database, parent_tbl, col, parent_col, parent_col, col
         );
 
@@ -284,7 +287,7 @@ pub async fn analyze_table_mysql(
         table_name: table.to_string(),
         timestamp: chrono::Utc::now(),
         overall_score: calculate_score(&issues),
-        row_count: row_count as u64,
+        row_count: total_row_count as u64,
         column_metrics,
         issues,
         schema_snapshot_id: None,
@@ -292,7 +295,6 @@ pub async fn analyze_table_mysql(
     })
 }
 
-// Helper to calculate score
 fn calculate_score(issues: &[DataQualityIssue]) -> f32 {
     let mut score: f32 = 100.0;
     for issue in issues {
@@ -310,15 +312,29 @@ pub async fn analyze_table_postgres(
     schema: &str,
     table: &str,
     connection_id: &str,
+    sample_percent: Option<f64>,
 ) -> Result<TableQualityReport, String> {
-    // 1. Get Row Count
     let count_query = format!("SELECT COUNT(*) FROM {}.{}", schema, table);
-    let row_count: i64 = sqlx::query_scalar(&count_query)
+    let total_row_count: i64 = sqlx::query_scalar(&count_query)
         .fetch_one(pool)
         .await
         .map_err(|e| format!("Failed to get row count: {}", e))?;
 
-    // 2. Get Columns
+    if total_row_count == 0 {
+        return Ok(TableQualityReport {
+            id: None,
+            connection_id: connection_id.to_string(),
+            table_name: table.to_string(),
+            timestamp: chrono::Utc::now(),
+            overall_score: 100.0,
+            row_count: 0,
+            column_metrics: Vec::new(),
+            issues: Vec::new(),
+            schema_snapshot_id: None,
+            schema_name: Some(schema.to_string()),
+        });
+    }
+
     let columns_query = format!(
         "SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = '{}' AND table_name = '{}'",
         schema, table
@@ -331,87 +347,125 @@ pub async fn analyze_table_postgres(
     let mut column_metrics = Vec::new();
     let mut issues = Vec::new();
 
-    // 3. Analyze Columns
-    for (col_name, data_type) in columns {
-        let null_query = format!(
-            "SELECT COUNT(*) FROM {}.{} WHERE {} IS NULL",
-            schema, table, col_name
-        );
-        let null_count: i64 = sqlx::query_scalar(&null_query)
-            .fetch_one(pool)
-            .await
-            .unwrap_or(0);
+    let mut select_expressions = Vec::new();
+    struct ColMeta {
+        name: String,
+        data_type: String,
+        is_numeric: bool,
+    }
+    let mut cols_meta = Vec::new();
 
-        let distinct_query = format!(
-            "SELECT COUNT(DISTINCT {}) FROM {}.{}",
-            col_name, schema, table
-        );
-        let distinct_count: i64 = sqlx::query_scalar(&distinct_query)
-            .fetch_one(pool)
-            .await
-            .unwrap_or(0);
+    let tablesample = if let Some(p) = sample_percent {
+        format!("TABLESAMPLE SYSTEM ({})", p)
+    } else {
+        "".to_string()
+    };
 
-        // Basic Stats (Min/Max/Avg/StdDev) for numeric
-        let mut min_val: Option<String> = None;
-        let mut max_val: Option<String> = None;
-        let mean_val: Option<f64> = None;
+    select_expressions.push("COUNT(*)".to_string());
 
+    for (col_name, data_type) in &columns {
         let is_numeric = ["int", "decimal", "float", "double", "numeric"]
             .iter()
             .any(|t| data_type.contains(t));
+        
+        cols_meta.push(ColMeta {
+            name: col_name.clone(),
+            data_type: data_type.clone(),
+            is_numeric,
+        });
 
-        if is_numeric && row_count > 0 {
-            let stats_query = format!(
-                "SELECT MIN({}), MAX({}), AVG({}::numeric), STDDEV({}::numeric) FROM {}.{}",
-                col_name, col_name, col_name, col_name, schema, table
-            );
+        select_expressions.push(format!("SUM(CASE WHEN \"{}\" IS NULL THEN 1 ELSE 0 END)", col_name));
+        select_expressions.push(format!("COUNT(DISTINCT \"{}\")", col_name));
 
-            if let Ok(row) = sqlx::query(&stats_query).fetch_one(pool).await {
-                let min: Option<String> = row.try_get(0).ok();
-                let max: Option<String> = row.try_get(1).ok();
+        if is_numeric {
+            select_expressions.push(format!("MIN(\"{}\")::text", col_name));
+            select_expressions.push(format!("MAX(\"{}\")::text", col_name));
+            select_expressions.push(format!("AVG(\"{}\")", col_name));
+            select_expressions.push(format!("STDDEV(\"{}\")", col_name));
+        } else {
+            select_expressions.push("NULL".to_string());
+            select_expressions.push("NULL".to_string());
+            select_expressions.push("NULL".to_string());
+            select_expressions.push("NULL".to_string());
+        }
+    }
 
-                min_val = min;
-                max_val = max;
-                // Average/Stddev usually come back as Decimal or f64
-                // Let's try formatting to string or casting in SQL to be safe if use generic
+    let combined_query = format!(
+        "SELECT {} FROM {}.{} {}",
+        select_expressions.join(", "),
+        schema, table, tablesample
+    );
 
-                // Better: sqlx::Row access by index
-                // Actually relying on string representation for min/max
+    let row = sqlx::query(&combined_query)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| format!("Failed to run optimized metrics query: {}", e))?;
 
-                // Re-fetching as specific types might be safer
-            }
+    let sample_row_count: i64 = row.try_get(0).unwrap_or(0);
+    let mut current_idx = 1;
 
-            // Simplification for Postgres strictness:
-            // Construct a safer query or use try_get string checks
-            // Disabling advanced stats for Postgres MVP to avoid type hell without extensive testing
+    for meta in cols_meta {
+        let null_count: i64 = row.try_get(current_idx).unwrap_or(0);
+        let distinct_count: i64 = row.try_get(current_idx + 1).unwrap_or(0);
+        
+        let mut min_val = None;
+        let mut max_val = None;
+        let mut mean_val = None;
+        let mut stddev_val = None;
+
+        if meta.is_numeric {
+            min_val = row.try_get::<Option<String>, _>(current_idx + 2).unwrap_or(None);
+            max_val = row.try_get::<Option<String>, _>(current_idx + 3).unwrap_or(None);
+            mean_val = row.try_get::<Option<f64>, _>(current_idx + 4).ok().flatten();
+            stddev_val = row.try_get::<Option<f64>, _>(current_idx + 5).ok().flatten();
         }
 
-        let null_pct = if row_count > 0 {
-            (null_count as f32 / row_count as f32) * 100.0
+        current_idx += 6;
+
+        let null_pct = if sample_row_count > 0 {
+            (null_count as f32 / sample_row_count as f32) * 100.0
         } else {
             0.0
         };
-        let distinct_pct = if row_count > 0 {
-            (distinct_count as f32 / row_count as f32) * 100.0
+        let distinct_pct = if sample_row_count > 0 {
+            (distinct_count as f32 / sample_row_count as f32) * 100.0
         } else {
             0.0
         };
 
-        // Issue Detection: High Null Rate
         if null_pct > 50.0 {
             issues.push(DataQualityIssue {
                 issue_type: IssueType::HighNullRate,
                 severity: IssueSeverity::Warning,
-                description: format!("Column '{}' has {:.1}% NULL values.", col_name, null_pct),
-                column_name: Some(col_name.clone()),
+                description: format!("Column '{}' has {:.1}% NULL values.", meta.name, null_pct),
+                column_name: Some(meta.name.clone()),
                 affected_row_count: Some(null_count as u64),
             });
         }
 
-        // 3.5 Top Values (Value Distribution)
+        if let (Some(u), Some(s)) = (mean_val, stddev_val) {
+            if s > 0.0 {
+                let outlier_query = format!(
+                    "SELECT COUNT(*) FROM {}.{} {} WHERE ABS(\"{}\"::numeric - {}) > 3 * {}",
+                    schema, table, tablesample, meta.name, u, s
+                );
+                if let Ok(count) = sqlx::query_scalar::<_, i64>(&outlier_query).fetch_one(pool).await {
+                    if count > 0 {
+                        issues.push(DataQualityIssue {
+                            issue_type: IssueType::OutlierDetected,
+                            severity: IssueSeverity::Info,
+                            description: format!("Column '{}' has {} outliers (> 3 stddev).", meta.name, count),
+                            column_name: Some(meta.name.clone()),
+                            affected_row_count: Some(count as u64),
+                        });
+                    }
+                }
+            }
+        }
+
         let top_values_query = format!(
-            "SELECT val, COUNT(*) as cnt FROM (SELECT {}::text as val FROM {}.{} WHERE {} IS NOT NULL) t GROUP BY val ORDER BY cnt DESC LIMIT 5",
-            col_name, schema, table, col_name
+            "SELECT val, COUNT(*) as cnt FROM (SELECT \"{}\"::text as val FROM {}.{} {} WHERE \"{}\" IS NOT NULL) t GROUP BY val ORDER BY cnt DESC LIMIT 5",
+            meta.name, schema, table, tablesample, meta.name
         );
         let mut top_values = Vec::new();
         if let Ok(rows) = sqlx::query(&top_values_query).fetch_all(pool).await {
@@ -424,7 +478,6 @@ pub async fn analyze_table_postgres(
             }
         }
 
-        // 3.6 Pattern Analysis
         let mut pattern_metrics = Vec::new();
         let patterns = [
             ("Email", r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"),
@@ -435,22 +488,22 @@ pub async fn analyze_table_postgres(
 
         for (name, regex) in patterns {
             let pattern_query = format!(
-                "SELECT COUNT(*) FROM {}.{} WHERE {}::text ~ '{}'",
-                schema, table, col_name, regex
+                "SELECT COUNT(*) FROM {}.{} {} WHERE \"{}\"::text ~ '{}'",
+                schema, table, tablesample, meta.name, regex
             );
             if let Ok(count) = sqlx::query_scalar::<_, i64>(&pattern_query).fetch_one(pool).await {
                 if count > 0 {
                     pattern_metrics.push(PatternMetric {
                         pattern_name: name.to_string(),
                         count: count as u64,
-                        percentage: (count as f32 / row_count as f32) * 100.0,
+                        percentage: (count as f32 / sample_row_count as f32) * 100.0,
                     });
                 }
             }
         }
 
         column_metrics.push(ColumnQualityMetrics {
-            column_name: col_name,
+            column_name: meta.name,
             null_count: null_count as u64,
             null_percentage: null_pct,
             distinct_count: distinct_count as u64,
@@ -463,11 +516,10 @@ pub async fn analyze_table_postgres(
         });
     }
 
-    // 4. Analyze Duplicates (Exact Rows)
-    if !column_metrics.is_empty() {
+    if !column_metrics.is_empty() && sample_percent.is_none() {
         let all_cols = column_metrics
             .iter()
-            .map(|c| c.column_name.as_str())
+            .map(|c| format!("\"{}\"", c.column_name))
             .collect::<Vec<_>>()
             .join(", ");
         let dup_query = format!(
@@ -475,7 +527,6 @@ pub async fn analyze_table_postgres(
             schema, table, all_cols
         );
 
-        // Postgres returns i64 for COUNT operations often, SUM might be numeric/decimal or i64
         let dup_count: Option<i64> = sqlx::query_scalar(&dup_query)
             .fetch_one(pool)
             .await
@@ -494,7 +545,6 @@ pub async fn analyze_table_postgres(
         }
     }
 
-    // 5. Analyze Referential Integrity (Orphans)
     let fk_query = format!(
         "SELECT
             kcu.column_name, 
@@ -519,7 +569,7 @@ pub async fn analyze_table_postgres(
 
     for (col, parent_tbl, parent_col) in fks {
         let orphan_query = format!(
-            "SELECT COUNT(*) FROM {}.{} c LEFT JOIN {}.{} p ON c.{} = p.{} WHERE p.{} IS NULL AND c.{} IS NOT NULL",
+            "SELECT COUNT(*) FROM {}.{} c LEFT JOIN {}.{} p ON c.\"{}\" = p.\"{}\" WHERE p.\"{}\" IS NULL AND c.\"{}\" IS NOT NULL",
             schema, table, schema, parent_tbl, col, parent_col, parent_col, col
         );
 
@@ -548,7 +598,7 @@ pub async fn analyze_table_postgres(
         table_name: table.to_string(),
         timestamp: chrono::Utc::now(),
         overall_score: calculate_score(&issues),
-        row_count: row_count as u64,
+        row_count: total_row_count as u64,
         column_metrics,
         issues,
         schema_snapshot_id: None,

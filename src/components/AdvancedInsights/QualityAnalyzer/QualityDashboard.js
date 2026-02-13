@@ -65,6 +65,7 @@ export function QualityDashboard() {
         selectedDatabase: null,
         tables: [],
         selectedTable: null,
+        selectedSampleRate: null, // null means Full Scan
 
         currentReport: null,
         trends: [],
@@ -86,7 +87,8 @@ export function QualityDashboard() {
     let dropdowns = {
         connection: null,
         database: null,
-        table: null
+        table: null,
+        sample: null
     };
 
     const resetAiState = () => {
@@ -310,7 +312,12 @@ export function QualityDashboard() {
         render();
 
         try {
-            const report = await QualityAnalyzerApi.runAnalysis(state.selectedConnectionId, state.selectedTable, state.selectedDatabase);
+            const report = await QualityAnalyzerApi.runAnalysis(
+                state.selectedConnectionId, 
+                state.selectedTable, 
+                state.selectedDatabase,
+                state.selectedSampleRate
+            );
             state.currentReport = report;
             state.activeTab = 'overview';
 
@@ -464,6 +471,19 @@ export function QualityDashboard() {
         const tableDropdown = createDropdown('Table', 'table-dropdown', tableItems, state.selectedTable, (val) => selectTable(val), !state.selectedDatabase);
         controls.appendChild(tableDropdown.div);
         dropdowns.table = tableDropdown.dropdown;
+
+        // Sample Rate Dropdown
+        const sampleItems = [
+            { value: null, label: 'Full Scan', icon: 'auto_awesome_motion' },
+            { value: 10, label: 'Sample 10%', icon: 'filter_list' },
+            { value: 1, label: 'Sample 1%', icon: 'filter_list' },
+        ];
+        const sampleDropdown = createDropdown('Sample Rate', 'sample-dropdown', sampleItems, state.selectedSampleRate, (val) => {
+            state.selectedSampleRate = val;
+            render();
+        }, !state.selectedTable);
+        controls.appendChild(sampleDropdown.div);
+        dropdowns.sample = sampleDropdown.dropdown;
 
         // Run Button
         const btnContainer = document.createElement('div');

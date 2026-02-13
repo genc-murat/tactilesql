@@ -5,10 +5,12 @@ export const QualityAnalyzerApi = {
      * Runs quality analysis for a table.
      * @param {string} connectionId 
      * @param {string} table 
+     * @param {string} schema
+     * @param {number} samplePercent
      * @returns {Promise<TableQualityReport>}
      */
-    async runAnalysis(connectionId, table, schema) {
-        return await invoke('run_quality_analysis', { connectionId, table, schema });
+    async runAnalysis(connectionId, table, schema, samplePercent = null) {
+        return await invoke('run_quality_analysis', { connectionId, table, schema, samplePercent });
     },
 
     /**
