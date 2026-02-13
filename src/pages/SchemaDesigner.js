@@ -92,8 +92,8 @@ export function SchemaDesigner() {
     };
 
     const flags = ThemeManager.getThemeFlags();
-    const { isLight, isDawn, isOceanic, isEmber, isAurora, isNeon } = flags;
-    const isNord = isOceanic || isEmber || isAurora;
+    let { isLight, isDawn, isOceanic, isEmber, isAurora, isNeon } = flags;
+    let isNord = isOceanic || isEmber || isAurora;
 
     const container = document.createElement('div');
     const getContainerClass = () => {
@@ -2237,8 +2237,15 @@ END"></textarea>
     // --- Theme Handling ---
     const onThemeChange = (e) => {
         theme = e.detail.theme;
-        isLight = theme === 'light';
-        isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const newFlags = ThemeManager.getThemeFlags();
+        isLight = newFlags.isLight;
+        isDawn = newFlags.isDawn;
+        isOceanic = newFlags.isOceanic;
+        isEmber = newFlags.isEmber;
+        isAurora = newFlags.isAurora;
+        isNeon = newFlags.isNeon;
+        isNord = isOceanic || isEmber || isAurora;
+
         container.className = getContainerClass(theme);
         render();
     };

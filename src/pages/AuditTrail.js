@@ -274,6 +274,7 @@ export function AuditTrail() {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isNeon = theme === 'neon';
 
         container.innerHTML = `
             <div class="h-full flex flex-col">
