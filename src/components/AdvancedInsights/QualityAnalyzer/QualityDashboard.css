@@ -21,3 +21,57 @@
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: rgba(156, 163, 175, 0.5);
 }
+
+@media print {
+    /* Hide everything except the dashboard content */
+    header, 
+    nav, 
+    .sidebar, 
+    .footer, 
+    .quality-dashboard > div:first-child, /* Hide header controls */
+    button, 
+    .no-print {
+        display: none !important;
+    }
+
+    /* Force white background and black text */
+    body, .quality-dashboard, .quality-dashboard * {
+        background: white !important;
+        color: black !important;
+        box-shadow: none !important;
+        border-color: #eee !important;
+    }
+
+    .quality-dashboard {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: auto !important;
+        overflow: visible !important;
+    }
+
+    .quality-dashboard > div:last-child {
+        overflow: visible !important;
+        padding: 0 !important;
+    }
+
+    .card {
+        border: 1px solid #ddd !important;
+        page-break-inside: avoid;
+        margin-bottom: 20px !important;
+    }
+
+    /* Progress bars in print */
+    .quality-dashboard .bg-red-400,
+    .quality-dashboard .bg-blue-400 {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    /* Ensure chart is visible */
+    svg {
+        width: 100% !important;
+        height: 300px !important;
+    }
+}

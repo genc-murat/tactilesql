@@ -136,6 +136,7 @@ pub async fn analyze_table_mysql(
                 description: format!("Column '{}' has {:.1}% NULL values.", meta.name, null_pct),
                 column_name: Some(meta.name.clone()),
                 affected_row_count: Some(null_count as u64),
+                drill_down_query: Some(format!("SELECT * FROM {}.{} WHERE `{}` IS NULL LIMIT 50", database, table, meta.name)),
             });
         }
 
@@ -154,6 +155,10 @@ pub async fn analyze_table_mysql(
                             description: format!("Column '{}' has {} outliers (> 3 stddev).", meta.name, count),
                             column_name: Some(meta.name.clone()),
                             affected_row_count: Some(count as u64),
+                            drill_down_query: Some(format!(
+                                "SELECT * FROM {}.{} WHERE ABS(`{}` - {}) > 3 * {} LIMIT 50",
+                                database, table, meta.name, u, s
+                            )),
                         });
                     }
                 }
@@ -237,6 +242,10 @@ pub async fn analyze_table_mysql(
                     description: format!("Found {} exact duplicate rows.", dups),
                     column_name: None,
                     affected_row_count: Some(dups as u64),
+                    drill_down_query: Some(format!(
+                        "SELECT *, COUNT(*) as dup_cnt FROM {}.{} GROUP BY {} HAVING COUNT(*) > 1 LIMIT 50",
+                        database, table, all_cols
+                    )),
                 });
             }
         }
@@ -275,6 +284,10 @@ pub async fn analyze_table_mysql(
                 ),
                 column_name: Some(col.clone()),
                 affected_row_count: Some(orphan_count as u64),
+                drill_down_query: Some(format!(
+                    "SELECT c.* FROM {}.{} c LEFT JOIN {}.{} p ON c.`{}` = p.`{}` WHERE p.`{}` IS NULL AND c.`{}` IS NOT NULL LIMIT 50",
+                    database, table, database, parent_tbl, col, parent_col, parent_col, col
+                )),
             });
         }
     }
@@ -436,6 +449,7 @@ pub async fn analyze_table_postgres(
                 description: format!("Column '{}' has {:.1}% NULL values.", meta.name, null_pct),
                 column_name: Some(meta.name.clone()),
                 affected_row_count: Some(null_count as u64),
+                drill_down_query: Some(format!("SELECT * FROM {}.{} WHERE \"{}\" IS NULL LIMIT 50", schema, table, meta.name)),
             });
         }
 
@@ -453,6 +467,10 @@ pub async fn analyze_table_postgres(
                             description: format!("Column '{}' has {} outliers (> 3 stddev).", meta.name, count),
                             column_name: Some(meta.name.clone()),
                             affected_row_count: Some(count as u64),
+                            drill_down_query: Some(format!(
+                                "SELECT * FROM {}.{} WHERE ABS(\"{}\"::numeric - {}) > 3 * {} LIMIT 50",
+                                schema, table, meta.name, u, s
+                            )),
                         });
                     }
                 }
@@ -536,6 +554,10 @@ pub async fn analyze_table_postgres(
                     description: format!("Found {} exact duplicate rows.", dups),
                     column_name: None,
                     affected_row_count: Some(dups as u64),
+                    drill_down_query: Some(format!(
+                        "SELECT *, COUNT(*) as dup_cnt FROM {}.{} GROUP BY {} HAVING COUNT(*) > 1 LIMIT 50",
+                        schema, table, all_cols
+                    )),
                 });
             }
         }
@@ -584,6 +606,10 @@ pub async fn analyze_table_postgres(
                 ),
                 column_name: Some(col.clone()),
                 affected_row_count: Some(orphan_count as u64),
+                drill_down_query: Some(format!(
+                    "SELECT c.* FROM {}.{} c LEFT JOIN {}.{} p ON c.\"{}\" = p.\"{}\" WHERE p.\"{}\" IS NULL AND c.\"{}\" IS NOT NULL LIMIT 50",
+                    schema, table, schema, parent_tbl, col, parent_col, parent_col, col
+                )),
             });
         }
     }

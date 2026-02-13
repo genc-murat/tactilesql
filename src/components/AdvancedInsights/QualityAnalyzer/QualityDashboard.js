@@ -4,6 +4,7 @@ import { ThemeManager } from '../../../utils/ThemeManager.js';
 import { AiService } from '../../../utils/AiService.js';
 import { toastError, toastSuccess } from '../../../utils/Toast.js';
 import { CustomDropdown } from '../../UI/CustomDropdown.js';
+import { showQueryAnalyzerModal } from '../../UI/QueryAnalyzerModal.js';
 import './QualityDashboard.css';
 
 export function QualityDashboard() {
@@ -411,6 +412,29 @@ export function QualityDashboard() {
         render();
     };
 
+    const exportReport = (format) => {
+        if (!state.currentReport) return;
+
+        const timestamp = new Date(state.currentReport.timestamp).toISOString().replace(/[:.]/g, '-');
+        const filename = `quality_report_${state.currentReport.table_name}_${timestamp}`;
+
+        if (format === 'json') {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({
+                report: state.currentReport,
+                aiAnalysis: state.aiAnalysis
+            }, null, 2));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", filename + ".json");
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+            toastSuccess('Report exported as JSON');
+        } else if (format === 'pdf') {
+            window.print();
+        }
+    };
+
     // Render Logic
     const render = () => {
         container.innerHTML = '';
@@ -487,7 +511,7 @@ export function QualityDashboard() {
 
         // Run Button
         const btnContainer = document.createElement('div');
-        btnContainer.className = 'pb-[1px]'; // Align with inputs
+        btnContainer.className = 'pb-[1px] flex gap-2'; // Align with inputs
         const runBtn = document.createElement('button');
         runBtn.id = 'run-btn';
         runBtn.className = `px-5 py-2.5 rounded-lg text-sm font-bold uppercase tracking-wide transition-all ${(!state.selectedTable || state.isLoading)
@@ -500,6 +524,29 @@ export function QualityDashboard() {
         runBtn.disabled = !state.selectedTable || state.isLoading;
         runBtn.onclick = runAnalysis;
         btnContainer.appendChild(runBtn);
+
+        if (state.currentReport) {
+            const exportBtn = document.createElement('div');
+            exportBtn.className = 'relative group';
+            exportBtn.innerHTML = `
+                <button class="px-3 py-2.5 rounded-lg border ${theme === 'light' ? 'border-gray-200 text-gray-600 hover:bg-gray-50' : 'border-white/10 text-gray-400 hover:bg-white/5'} transition-all flex items-center gap-2">
+                    <span class="material-symbols-outlined text-sm">download</span>
+                    <span class="text-xs font-bold uppercase">Export</span>
+                </button>
+                <div class="absolute right-0 top-full mt-1 hidden group-hover:block z-50 min-w-[120px] rounded-lg shadow-xl border ${theme === 'light' ? 'bg-white border-gray-200' : 'bg-[#1a1d23] border-white/10'} overflow-hidden">
+                    <button class="w-full px-4 py-2 text-left text-xs font-bold hover:bg-blue-500/10 hover:text-blue-400 transition-all border-b border-white/5 flex items-center gap-2" id="export-json">
+                        <span class="material-symbols-outlined text-sm">data_object</span> JSON
+                    </button>
+                    <button class="w-full px-4 py-2 text-left text-xs font-bold hover:bg-blue-500/10 hover:text-blue-400 transition-all flex items-center gap-2" id="export-pdf">
+                        <span class="material-symbols-outlined text-sm">picture_as_pdf</span> PDF / Print
+                    </button>
+                </div>
+            `;
+            exportBtn.querySelector('#export-json').onclick = () => exportReport('json');
+            exportBtn.querySelector('#export-pdf').onclick = () => exportReport('pdf');
+            btnContainer.appendChild(exportBtn);
+        }
+
         controls.appendChild(btnContainer);
 
         header.appendChild(controls);
@@ -622,7 +669,7 @@ export function QualityDashboard() {
         } else {
             const list = document.createElement('div');
             list.className = 'space-y-3';
-            report.issues.slice(0, 5).forEach(issue => {
+            report.issues.slice(0, 10).forEach((issue, idx) => {
                 const item = document.createElement('div');
                 const severity = formatIssueSeverity(issue.severity).toLowerCase();
                 const severityColors = {
@@ -632,14 +679,30 @@ export function QualityDashboard() {
                 };
                 const color = severityColors[severity] || 'bg-gray-500';
 
-                item.className = `flex gap-3 pb-3 border-b ${theme === 'light' ? 'border-gray-100' : 'border-white/5'} last:border-0`;
-                item.innerHTML = `
+                item.className = `flex items-center justify-between gap-3 pb-3 border-b ${theme === 'light' ? 'border-gray-100' : 'border-white/5'} last:border-0`;
+                
+                const left = document.createElement('div');
+                left.className = 'flex gap-3';
+                left.innerHTML = `
                     <div class="mt-1.5 w-2 h-2 rounded-full ${color} shrink-0"></div>
                     <div>
                         <div class="text-sm font-bold ${classes.text.primary}">${formatIssueType(issue.issue_type)}</div>
                         <div class="text-xs ${classes.text.secondary} mt-0.5">${issue.description}</div>
                     </div>
                 `;
+                item.appendChild(left);
+
+                if (issue.drill_down_query) {
+                    const drillBtn = document.createElement('button');
+                    drillBtn.className = `shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[10px] font-bold uppercase transition-all ${isDawn ? 'bg-[#ea9d34]/10 text-[#ea9d34] hover:bg-[#ea9d34]/20' : 'bg-mysql-teal/10 text-mysql-teal hover:bg-mysql-teal/20'}`;
+                    drillBtn.innerHTML = '<span class="material-symbols-outlined text-sm">visibility</span> Analyze';
+                    drillBtn.onclick = () => {
+                        const title = `Drill-down: ${formatIssueType(issue.issue_type)} in ${issue.column_name || 'table'}`;
+                        showQueryAnalyzerModal(title, issue.drill_down_query, state.selectedConnectionId);
+                    };
+                    item.appendChild(drillBtn);
+                }
+
                 list.appendChild(item);
             });
             issuesCard.appendChild(list);
@@ -836,9 +899,11 @@ export function QualityDashboard() {
         const height = 300;
         const padding = 40;
 
-        const dataPoints = data.map(d => ({
+        const dataPoints = data.map((d, i) => ({
             date: new Date(d.timestamp),
-            score: d.overall_score
+            score: d.overall_score,
+            report: d,
+            index: i
         }));
 
         const minTime = Math.min(...dataPoints.map(d => d.date));
@@ -861,13 +926,40 @@ export function QualityDashboard() {
         `).join('');
 
         const dots = dataPoints.map(d => `
-            <circle cx="${xScale(d.date)}" cy="${yScale(d.score)}" r="5" fill="${getScoreColor(d.score)}" stroke="${theme === 'light' ? '#fff' : '#1f2937'}" stroke-width="2">
+            <circle cx="${xScale(d.date)}" cy="${yScale(d.score)}" r="6" 
+                fill="${getScoreColor(d.score)}" 
+                stroke="${state.currentReport?.timestamp === d.report.timestamp ? (theme === 'neon' ? '#fff' : '#000') : (theme === 'light' ? '#fff' : '#1f2937')}" 
+                stroke-width="${state.currentReport?.timestamp === d.report.timestamp ? '3' : '2'}"
+                class="trend-dot cursor-pointer hover:r-8 transition-all"
+                data-timestamp="${d.report.timestamp}">
                 <title>${d.score.toFixed(1)} on ${d.date.toLocaleString()}</title>
             </circle>
         `).join('');
 
+        // Container for event delegation
+        const chartId = `chart-${Math.random().toString(36).substr(2, 9)}`;
+        
+        setTimeout(() => {
+            const svgEl = document.getElementById(chartId);
+            if (svgEl) {
+                svgEl.onclick = (e) => {
+                    const dot = e.target.closest('.trend-dot');
+                    if (dot) {
+                        const ts = dot.getAttribute('data-timestamp');
+                        const report = state.trends.find(t => t.timestamp === ts);
+                        if (report) {
+                            state.currentReport = report;
+                            state.activeTab = 'overview';
+                            loadSavedAiAnalysisForReport(report);
+                            render();
+                        }
+                    }
+                };
+            }
+        }, 0);
+
         return `
-            <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="width: 100%; height: 100%;">
+            <svg id="${chartId}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="width: 100%; height: 100%;">
                 ${yGrid}
                 <polyline points="${points}" fill="none" stroke="${lineColor}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
                 ${dots}

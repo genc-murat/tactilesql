@@ -64,6 +64,7 @@ pub struct DataQualityIssue {
     pub description: String,
     pub column_name: Option<String>,
     pub affected_row_count: Option<u64>,
+    pub drill_down_query: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
