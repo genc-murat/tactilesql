@@ -6,6 +6,7 @@ use crate::db_types::{
 };
 use crate::mysql;
 use crate::postgres;
+use crate::clickhouse;
 
 #[tauri::command]
 pub async fn get_databases(app_state: State<'_, AppState>) -> Result<Vec<String>, String> {
@@ -28,6 +29,11 @@ pub async fn get_databases(app_state: State<'_, AppState>) -> Result<Vec<String>
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_databases(pool).await
+        }
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+            clickhouse::get_databases(config).await
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
@@ -53,6 +59,11 @@ pub async fn get_schemas(app_state: State<'_, AppState>) -> Result<Vec<String>, 
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_databases(pool).await
+        }
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+            clickhouse::get_databases(config).await
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
@@ -80,6 +91,11 @@ pub async fn get_tables(
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_tables(pool, &database).await
+        }
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+            clickhouse::get_only_tables(config, &database).await
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
@@ -109,6 +125,11 @@ pub async fn get_table_schema(
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_table_schema(pool, &database, &table).await
         }
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+            clickhouse::get_table_schema(config, &database, &table).await
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -136,6 +157,11 @@ pub async fn get_table_ddl(
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_table_ddl(pool, &database, &table).await
+        }
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+            clickhouse::get_table_ddl(config, &database, &table).await
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
@@ -165,6 +191,10 @@ pub async fn get_table_indexes(
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_table_indexes(pool, &database, &table).await
         }
+        DatabaseType::ClickHouse => {
+            // ClickHouse indexes are quite different, return empty for now
+            Ok(vec![])
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -192,6 +222,10 @@ pub async fn get_table_foreign_keys(
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_table_foreign_keys(pool, &database, &table).await
+        }
+        DatabaseType::ClickHouse => {
+            // ClickHouse doesn't support foreign keys in the traditional sense
+            Ok(vec![])
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
@@ -239,6 +273,10 @@ pub async fn get_table_primary_keys(
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_table_primary_keys(pool, &database, &table).await
         }
+        DatabaseType::ClickHouse => {
+            // ClickHouse primary keys are different
+            Ok(vec![])
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -267,6 +305,9 @@ pub async fn get_table_constraints(
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_table_constraints(pool, &database, &table).await
         }
+        DatabaseType::ClickHouse => {
+            Ok(vec![])
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -294,6 +335,14 @@ pub async fn get_table_stats(
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_table_stats(pool, &database, &table).await
+        }
+        DatabaseType::ClickHouse => {
+            Ok(TableStats {
+                row_count: 0,
+                data_size: 0,
+                index_size: 0,
+                auto_increment: None,
+            })
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }

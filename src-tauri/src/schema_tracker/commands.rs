@@ -58,6 +58,21 @@ pub async fn capture_schema_snapshot(
             )
             .await?
         }
+        DatabaseType::ClickHouse => {
+            let config_guard = app_state.clickhouse_config.lock().await;
+            let config = config_guard.as_ref().ok_or("ClickHouse connection not established")?;
+
+            let db_name = if let Some(schema) = target_schema {
+                schema
+            } else {
+                let results = crate::clickhouse::execute_query(config, "SELECT DATABASE()".to_string()).await?;
+                let row = results.first().and_then(|r| r.rows.first()).and_then(|row| row.first());
+                row.and_then(|v| v.as_str()).map(|s| s.to_string()).ok_or("No database selected")?
+            };
+
+            crate::schema_tracker::capture::capture_snapshot_clickhouse(config, &db_name, &connection_id)
+                .await?
+        }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     };
 

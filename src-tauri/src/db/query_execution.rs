@@ -7,6 +7,7 @@ use tauri::State;
 use crate::db_types::{AppState, DatabaseType, QueryResult};
 use crate::mysql;
 use crate::postgres;
+use crate::clickhouse;
 
 static SYSTEM_QUERY_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     // Matches:
@@ -14,7 +15,7 @@ static SYSTEM_QUERY_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     // 2. Common keep-alive/metadata queries (SELECT VERSION(), SELECT 1, etc.)
     //    Allows for comments (/*...*/ or --) at start, case insensitivity, and aliases.
     Regex::new(r"(?ix)
-        \b(information_schema|performance_schema|mysql|pg_catalog|pg_toast|sqlite_|sys)\b
+        \b(information_schema|performance_schema|mysql|pg_catalog|pg_toast|sqlite_|sys|system)\b
         |
         ^\s* (/\*.*?\*/)? \s* select \s+ (version\(\)|1|current_database\(\)|current_schema\(\)|@@\w+)
     ").unwrap()
@@ -88,6 +89,10 @@ pub fn spawn_awareness_log(
                             } else {
                                 Err("Postgres pool not available".to_string())
                             }
+                        }
+                        DatabaseType::ClickHouse => {
+                            // ClickHouse execution plan not implemented yet
+                            Err("ClickHouse plan analysis not supported yet".to_string())
                         }
                         DatabaseType::Disconnected => Err("No connection established".to_string()),
                     };
@@ -189,6 +194,11 @@ pub async fn execute_query(
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::execute_query(pool, query.clone()).await
         }
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+            clickhouse::execute_query(config, query.clone()).await
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     };
 
@@ -216,7 +226,7 @@ pub async fn execute_query_profiled(
     app_state: State<'_, AppState>,
     query: String,
     profile_options: Option<ProfileOptions>,
-    query_timeout_seconds: Option<u64>,
+    _query_timeout_seconds: Option<u64>,
 ) -> Result<ProfiledQueryResponse, String> {
     let start_time = chrono::Utc::now();
 
@@ -237,7 +247,7 @@ pub async fn execute_query_profiled(
                 .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
             let res =
-                postgres::execute_query_with_timeout(pool, query.clone(), query_timeout_seconds)
+                postgres::execute_query_with_timeout(pool, query.clone(), _query_timeout_seconds)
                     .await?;
             let explain_metrics = if explain_analyze_enabled && is_safe_for_explain(&query) {
                 postgres::get_explain_analyze_metrics(pool, &query)
@@ -254,9 +264,19 @@ pub async fn execute_query_profiled(
             mysql::execute_query_with_status_with_timeout(
                 pool,
                 query.clone(),
-                query_timeout_seconds,
+                _query_timeout_seconds,
             )
             .await?
+        }
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+            let res = clickhouse::execute_query(
+                config,
+                query.clone(),
+            )
+            .await?;
+            (res, None)
         }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     };

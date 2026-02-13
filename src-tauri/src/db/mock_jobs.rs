@@ -8,7 +8,7 @@ use super::helpers::{i64_to_u64, i64_to_usize, parse_warnings_json, u64_to_i64, 
 use crate::db::sql_utils::{
     qualified_table_name, quote_column_name, value_to_sql_literal,
 };
-use crate::db_types::{AppState, DatabaseType};
+use crate::db_types::{AppState, ConnectionConfig, DatabaseType};
 use crate::mock_data;
 use crate::mysql;
 use crate::postgres;
@@ -493,6 +493,7 @@ async fn execute_mock_data_job(
     db_type: DatabaseType,
     mysql_pool: Option<sqlx::Pool<sqlx::MySql>>,
     postgres_pool: Option<sqlx::Pool<sqlx::Postgres>>,
+    clickhouse_config: Option<ConnectionConfig>,
     local_pool: Option<sqlx::Pool<sqlx::Sqlite>>,
     database: String,
     table: String,
@@ -521,6 +522,12 @@ async fn execute_mock_data_job(
                 .as_ref()
                 .ok_or("No MySQL connection established")?;
             mysql::get_table_schema(pool, &database, &table).await?
+        }
+        DatabaseType::ClickHouse => {
+            let config = clickhouse_config
+                .as_ref()
+                .ok_or("No ClickHouse connection established")?;
+            crate::clickhouse::get_table_schema(config, &database, &table).await?
         }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     };
@@ -716,6 +723,59 @@ async fn execute_mock_data_job(
                 .await
                 .map_err(|e| format!("Failed to commit mock generation transaction: {}", e))?;
         }
+        DatabaseType::ClickHouse => {
+            let config = clickhouse_config
+                .as_ref()
+                .ok_or("No ClickHouse connection established")?;
+
+            for batch in generated.rows.chunks(batch_size) {
+                if is_mock_job_cancel_requested(&operation_id).await {
+                    let mut warnings = base_warnings.clone();
+                    warnings.push("Operation cancelled.".to_string());
+                    let _ = update_mock_job(&operation_id, local_pool.as_ref(), |job| {
+                        job.status = MOCK_JOB_STATUS_CANCELLED.to_string();
+                        job.progress_pct = job.progress_pct.min(99);
+                        job.inserted_rows = inserted_rows;
+                        job.warnings = warnings.clone();
+                        job.finished_at = Some(chrono::Utc::now().to_rfc3339());
+                    })
+                    .await;
+                    return Ok(());
+                }
+
+                let values_sql = batch
+                    .iter()
+                    .map(|row| {
+                        let rendered = row
+                            .iter()
+                            .map(value_to_sql_literal)
+                            .collect::<Vec<String>>()
+                            .join(", ");
+                        format!("({})", rendered)
+                    })
+                    .collect::<Vec<String>>()
+                    .join(", ");
+
+                let sql = format!(
+                    "INSERT INTO {} ({}) VALUES {}",
+                    qualified_table, quoted_columns, values_sql
+                );
+                
+                crate::clickhouse::execute_query(config, sql)
+                    .await
+                    .map_err(|e| format!("Mock data insert failed: {}", e))?;
+
+                inserted_rows += batch.len();
+                let progress = 30u8.saturating_add(
+                    (((inserted_rows as f64 / safe_total as f64) * 65.0).round() as u8).min(65),
+                );
+                let _ = update_mock_job(&operation_id, local_pool.as_ref(), |job| {
+                    job.progress_pct = progress;
+                    job.inserted_rows = inserted_rows;
+                })
+                .await;
+            }
+        }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     }
 
@@ -764,6 +824,10 @@ pub async fn start_mock_data_generation(
         let guard = app_state.postgres_pool.lock().await;
         guard.clone()
     };
+    let clickhouse_config = {
+        let guard = app_state.clickhouse_config.lock().await;
+        guard.clone()
+    };
     let local_pool = clone_local_db_pool(&app_state).await;
     if let Some(pool) = local_pool.as_ref() {
         if let Err(err) = prepare_mock_job_storage(pool).await {
@@ -804,6 +868,7 @@ pub async fn start_mock_data_generation(
             db_type,
             mysql_pool,
             postgres_pool,
+            clickhouse_config,
             local_pool_for_task.clone(),
             database,
             table,
@@ -956,6 +1021,11 @@ pub async fn preview_mock_data(
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_table_schema(pool, &database, &table).await?
+        }
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+            crate::clickhouse::get_table_schema(config, &database, &table).await?
         }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     };

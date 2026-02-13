@@ -3,6 +3,7 @@ use tauri::State;
 use crate::db_types::{AppState, DatabaseType, EventInfo, RoutineInfo, TriggerInfo, ViewDefinition};
 use crate::mysql;
 use crate::postgres;
+use crate::clickhouse;
 
 #[tauri::command]
 pub async fn get_views(
@@ -26,6 +27,11 @@ pub async fn get_views(
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_views(pool, &database).await
+        }
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+            clickhouse::get_views(config, &database).await
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
@@ -55,6 +61,12 @@ pub async fn get_view_definition(
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_view_definition(pool, &database, &view).await
         }
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+            let definition = clickhouse::get_table_ddl(config, &database, &view).await?;
+            Ok(ViewDefinition { name: view, definition })
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -83,6 +95,12 @@ pub async fn alter_view(
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::alter_view(pool, &database, &definition).await
         }
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+            clickhouse::execute_query(config, definition).await?;
+            Ok("View updated successfully".to_string())
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -110,6 +128,7 @@ pub async fn get_triggers(
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_triggers(pool, &database).await
         }
+        DatabaseType::ClickHouse => Ok(Vec::new()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -138,6 +157,7 @@ pub async fn get_table_triggers(
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_table_triggers(pool, &database, &table).await
         }
+        DatabaseType::ClickHouse => Ok(Vec::new()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -165,6 +185,7 @@ pub async fn get_procedures(
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_procedures(pool, &database).await
         }
+        DatabaseType::ClickHouse => Ok(Vec::new()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -192,6 +213,7 @@ pub async fn get_functions(
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_functions(pool, &database).await
         }
+        DatabaseType::ClickHouse => Ok(Vec::new()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -216,6 +238,7 @@ pub async fn get_events(
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_events(pool, &database).await
         }
+        DatabaseType::ClickHouse => Ok(Vec::new()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }

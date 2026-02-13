@@ -252,6 +252,13 @@ pub async fn execute_step(
             )
             .await
         }
+        (DatabaseType::ClickHouse, _) | (_, DatabaseType::ClickHouse) => {
+            Err(format!(
+                "Data transfer involving ClickHouse is not yet fully supported (source: {}, target: {})",
+                db_type_label(&source.db_type),
+                db_type_label(&target.db_type)
+            ))
+        }
         _ => Err(format!(
             "Disconnected database type is not valid for transfer (source: {}, target: {})",
             db_type_label(&source.db_type),
@@ -322,6 +329,17 @@ async fn execute_step_file_sink(
         }
         DatabaseType::PostgreSQL => {
             execute_step_postgres_to_file_sink(
+                source,
+                target,
+                source_database,
+                target_database,
+                step,
+                dry_run,
+            )
+            .await
+        }
+        DatabaseType::ClickHouse => {
+            execute_step_clickhouse_to_file_sink(
                 source,
                 target,
                 source_database,
@@ -458,6 +476,65 @@ async fn execute_step_postgres_to_file_sink(
     })
 }
 
+async fn execute_step_clickhouse_to_file_sink(
+    source: &ResolvedTransferConnection,
+    target: &ResolvedTransferConnection,
+    source_database: &str,
+    target_database: &str,
+    step: &DataTransferPlanStep,
+    dry_run: bool,
+) -> Result<EngineStepResult, String> {
+    let source_table_ref = qualified_table_name(&DatabaseType::ClickHouse, source_database, &step.source_table);
+    let mode = step.mode.trim().to_ascii_lowercase();
+    let source_rows = query_row_count_clickhouse(&source.config, &source_table_ref).await?;
+    let target_column_hints =
+        resolve_sql_sink_target_hints(target, target_database, &step.target_table, &step.sink_type)
+            .await?;
+
+    if dry_run {
+        return Ok(EngineStepResult {
+            step_key: step.step_key.clone(),
+            source_rows,
+            written_rows: 0,
+            dry_run: true,
+        });
+    }
+
+    let sink_path = resolve_sink_path(step)?;
+    let mut sink_writer = create_file_sink_writer(
+        &step.sink_type,
+        &sink_path,
+        &target.db_type,
+        target_database,
+        &step.target_table,
+    )
+    .await?;
+
+    let written_rows = if source_rows == 0 {
+        0
+    } else {
+        transfer_rows_clickhouse_to_file_offset(
+            &source.config,
+            &source_table_ref,
+            &mode,
+            &step.key_columns,
+            source_rows,
+            &mut sink_writer,
+            &target_column_hints,
+        )
+        .await?
+    };
+
+    sink_writer.flush().await?;
+
+    Ok(EngineStepResult {
+        step_key: step.step_key.clone(),
+        source_rows,
+        written_rows,
+        dry_run: false,
+    })
+}
+
 fn resolve_sink_path(step: &DataTransferPlanStep) -> Result<String, String> {
     step.sink_path
         .as_deref()
@@ -544,6 +621,9 @@ async fn resolve_sql_sink_target_hints(
         DatabaseType::PostgreSQL => {
             let pool = crate::postgres::create_pool(&target.config).await?;
             resolve_target_column_hints_postgres(&pool, target_database, target_table).await
+        }
+        DatabaseType::ClickHouse => {
+            resolve_target_column_hints_clickhouse(&target.config, target_database, target_table).await
         }
         DatabaseType::Disconnected => {
             Err("Disconnected database type is not valid for SQL sink schema mapping".to_string())
@@ -981,6 +1061,24 @@ async fn resolve_target_column_hints_mysql(
 ) -> Result<TargetColumnHintMap, String> {
     let schema = crate::mysql::get_table_schema(pool, database, table).await?;
     Ok(build_target_column_hint_map(&schema))
+}
+
+async fn query_row_count_clickhouse(
+    config: &crate::db_types::ConnectionConfig,
+    qualified_table: &str,
+) -> Result<usize, String> {
+    let query = format!("SELECT COUNT(*) AS cnt FROM {}", qualified_table);
+    let results = crate::clickhouse::execute_query(config, query).await?;
+    query_row_count_from_result(&results)
+}
+
+async fn resolve_target_column_hints_clickhouse(
+    config: &crate::db_types::ConnectionConfig,
+    database: &str,
+    table: &str,
+) -> Result<TargetColumnHintMap, String> {
+    let columns = crate::clickhouse::get_table_schema(config, database, table).await?;
+    Ok(build_target_column_hint_map(&columns))
 }
 
 async fn resolve_target_column_hints_postgres(
@@ -1674,6 +1772,64 @@ async fn transfer_rows_postgres_to_file_offset(
     while offset < source_rows {
         let source_results = crate::postgres::execute_query(
             source_pool,
+            build_chunk_select_query(source_table_ref, TRANSFER_BATCH_SIZE, offset),
+        )
+        .await?;
+        let (chunk_columns, chunk_rows_data) = first_result_set(&source_results);
+        if chunk_rows_data.is_empty() {
+            break;
+        }
+
+        if source_columns.is_empty() {
+            source_columns = chunk_columns;
+            materialized_hints = Some(materialize_target_column_hints(
+                &source_columns,
+                target_column_hints,
+            ));
+        }
+
+        if source_columns.is_empty() {
+            break;
+        }
+
+        sink_writer
+            .write_rows(
+                &source_columns,
+                &chunk_rows_data,
+                mode,
+                key_columns,
+                materialized_hints.as_deref(),
+            )
+            .await?;
+        written_rows = written_rows.saturating_add(chunk_rows_data.len());
+
+        let processed_in_batch = chunk_rows_data.len();
+        offset = offset.saturating_add(processed_in_batch);
+        if processed_in_batch < TRANSFER_BATCH_SIZE {
+            break;
+        }
+    }
+
+    Ok(written_rows)
+}
+
+async fn transfer_rows_clickhouse_to_file_offset(
+    config: &crate::db_types::ConnectionConfig,
+    source_table_ref: &str,
+    mode: &str,
+    key_columns: &[String],
+    source_rows: usize,
+    sink_writer: &mut FileSinkWriter,
+    target_column_hints: &TargetColumnHintMap,
+) -> Result<usize, String> {
+    let mut written_rows = 0usize;
+    let mut offset = 0usize;
+    let mut source_columns = Vec::<String>::new();
+    let mut materialized_hints: Option<Vec<TargetColumnHint>> = None;
+
+    while offset < source_rows {
+        let source_results = crate::clickhouse::execute_query(
+            config,
             build_chunk_select_query(source_table_ref, TRANSFER_BATCH_SIZE, offset),
         )
         .await?;
@@ -2503,6 +2659,9 @@ fn build_insert_statement(
                     statement.push_str(&updates);
                 }
             }
+            DatabaseType::ClickHouse => {
+                return Err("Upsert mode is not yet supported for ClickHouse".to_string())
+            }
             DatabaseType::Disconnected => {
                 return Err("Disconnected database type is not valid for upsert".to_string())
             }
@@ -2556,6 +2715,7 @@ fn db_type_label(db_type: &DatabaseType) -> &'static str {
     match db_type {
         DatabaseType::MySQL => "mysql",
         DatabaseType::PostgreSQL => "postgresql",
+        DatabaseType::ClickHouse => "clickhouse",
         DatabaseType::Disconnected => "disconnected",
     }
 }
@@ -2684,7 +2844,7 @@ fn value_to_json_sql_literal(
                 format!("'{}'::json", escaped)
             }
         }
-        DatabaseType::MySQL => format!("CAST('{}' AS JSON)", escaped),
+        DatabaseType::MySQL | DatabaseType::ClickHouse => format!("CAST('{}' AS JSON)", escaped),
         DatabaseType::Disconnected => format!("'{}'", escaped),
     }
 }
@@ -2699,7 +2859,7 @@ fn value_to_binary_sql_literal(db_type: &DatabaseType, value: &Value) -> String 
 
     match db_type {
         DatabaseType::PostgreSQL => format!("decode('{}', 'hex')", hex),
-        DatabaseType::MySQL => format!("X'{}'", hex),
+        DatabaseType::MySQL | DatabaseType::ClickHouse => format!("X'{}'", hex),
         DatabaseType::Disconnected => format!("'{}'", escape_sql_string(&String::from_utf8_lossy(&bytes))),
     }
 }

@@ -354,6 +354,9 @@ fn build_lock_warnings(
                     );
                 }
             }
+            DatabaseType::ClickHouse => {
+                // ClickHouse specific warnings can be added here
+            }
             DatabaseType::Disconnected => {}
         }
     }
@@ -374,6 +377,7 @@ fn generate_create_table(table: &TableDefinition, db_type: &DatabaseType) -> Str
         let col_def = match db_type {
             DatabaseType::MySQL => format_column_mysql(col),
             DatabaseType::PostgreSQL => format_column_postgres(col),
+            DatabaseType::ClickHouse => format_column_mysql(col), // ClickHouse via MySQL bridge
             DatabaseType::Disconnected => String::new(),
         };
         columns_def.push(col_def);
@@ -384,15 +388,29 @@ fn generate_create_table(table: &TableDefinition, db_type: &DatabaseType) -> Str
         .iter()
         .map(|pk| pk.column_name.clone())
         .collect();
-    if !pk_cols.is_empty() {
-        columns_def.push(format!("PRIMARY KEY ({})", pk_cols.join(", ")));
+    
+    match db_type {
+        DatabaseType::PostgreSQL | DatabaseType::MySQL => {
+            if !pk_cols.is_empty() {
+                columns_def.push(format!("PRIMARY KEY ({})", pk_cols.join(", ")));
+            }
+            format!(
+                "CREATE TABLE {} (\n    {}\n)",
+                table.name,
+                columns_def.join(",\n    ")
+            )
+        }
+        DatabaseType::ClickHouse => {
+            // ClickHouse needs ENGINE
+            format!(
+                "CREATE TABLE {} (\n    {}\n) ENGINE = MergeTree() ORDER BY ({})",
+                table.name,
+                columns_def.join(",\n    "),
+                if pk_cols.is_empty() { "tuple()".to_string() } else { pk_cols.join(", ") }
+            )
+        }
+        DatabaseType::Disconnected => String::new(),
     }
-
-    format!(
-        "CREATE TABLE {} (\n    {}\n)",
-        table.name,
-        columns_def.join(",\n    ")
-    )
 }
 
 fn generate_alter_table(diff: &TableDiff, db_type: &DatabaseType) -> Vec<String> {
@@ -410,6 +428,11 @@ fn generate_alter_table(diff: &TableDiff, db_type: &DatabaseType) -> Vec<String>
                 "ALTER TABLE {} ADD COLUMN {}",
                 table,
                 format_column_postgres(col)
+            )),
+            DatabaseType::ClickHouse => stmts.push(format!(
+                "ALTER TABLE {} ADD COLUMN {}",
+                table,
+                format_column_mysql(col)
             )),
             DatabaseType::Disconnected => {}
         }
@@ -472,6 +495,11 @@ fn generate_alter_table(diff: &TableDiff, db_type: &DatabaseType) -> Vec<String>
                     stmts.push(format!("ALTER TABLE {} {}", table, change));
                 }
             }
+            DatabaseType::ClickHouse => stmts.push(format!(
+                "ALTER TABLE {} MODIFY COLUMN {}",
+                table,
+                format_column_mysql(&col_diff.new_column)
+            )),
             DatabaseType::Disconnected => {}
         }
     }
@@ -495,6 +523,7 @@ fn generate_alter_table(diff: &TableDiff, db_type: &DatabaseType) -> Vec<String>
         match db_type {
             DatabaseType::MySQL => stmts.push(format!("DROP INDEX {} ON {}", idx.name, table)),
             DatabaseType::PostgreSQL => stmts.push(format!("DROP INDEX {}", idx.name)),
+            DatabaseType::ClickHouse => stmts.push(format!("ALTER TABLE {} DROP INDEX {}", table, idx.name)),
             DatabaseType::Disconnected => {}
         }
     }

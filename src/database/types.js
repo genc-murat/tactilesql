@@ -5,7 +5,8 @@
 
 export const DatabaseType = {
     MYSQL: 'mysql',
-    POSTGRESQL: 'postgresql'
+    POSTGRESQL: 'postgresql',
+    CLICKHOUSE: 'clickhouse'
 };
 
 // Get current active database type
@@ -30,6 +31,11 @@ export const isPostgreSQL = () => {
 // Check if current database is MySQL
 export const isMySQL = () => {
     return getActiveDbType() === DatabaseType.MYSQL;
+};
+
+// Check if current database is ClickHouse
+export const isClickHouse = () => {
+    return getActiveDbType() === DatabaseType.CLICKHOUSE;
 };
 
 // Common SQL Keywords (shared between MySQL and PostgreSQL)

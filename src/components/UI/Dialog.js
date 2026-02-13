@@ -199,7 +199,7 @@ export class Dialog {
             const formContainer = document.createElement('div');
             formContainer.className = "mt-4 space-y-3 text-left";
 
-            fields.forEach(field => {
+            fields.forEach((field, index) => {
                 const fieldGroup = document.createElement('div');
                 fieldGroup.className = "space-y-1";
 
@@ -208,7 +208,7 @@ export class Dialog {
                 label.textContent = field.label || field.name;
 
                 const input = document.createElement('input');
-                input.id = `field-${field.name}`;
+                input.id = `field-input-${index}`;
                 input.type = "text";
                 input.className = `w-full ${isLight ? 'bg-white border-gray-200 text-gray-800 focus:border-mysql-teal' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279] focus:border-[#ea9d34]' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text focus:border-ocean-frost' : (isNeon ? 'bg-neon-bg border-neon-border/30 text-neon-text focus:border-neon-accent' : 'bg-[#0b0d11] border border-white/10 text-gray-300 focus:border-mysql-teal/50')))} rounded p-2 text-xs outline-none transition-colors`;
                 input.value = field.value || '';
@@ -244,8 +244,9 @@ export class Dialog {
 
             okBtn.onclick = () => {
                 const values = {};
-                fields.forEach(field => {
-                    values[field.name] = formContainer.querySelector(`#field-${field.name}`).value;
+                fields.forEach((field, index) => {
+                    const input = formContainer.querySelector(`#field-input-${index}`);
+                    values[field.name] = input ? input.value : '';
                 });
                 this.close();
                 resolve(values);

@@ -15,12 +15,15 @@ pub enum DatabaseType {
     Disconnected,
     MySQL,
     PostgreSQL,
+    ClickHouse,
 }
 
 // --- State Management ---
 pub struct AppState {
     pub mysql_pool: Arc<Mutex<Option<Pool<MySql>>>>,
     pub postgres_pool: Arc<Mutex<Option<Pool<Postgres>>>>,
+    pub clickhouse_pool: Arc<Mutex<Option<clickhouse::Client>>>,
+    pub clickhouse_config: Arc<Mutex<Option<ConnectionConfig>>>,
     pub active_db_type: Arc<Mutex<DatabaseType>>,
     pub encryption_key: Arc<Mutex<Option<Vec<u8>>>>,
     pub awareness_store: Arc<Mutex<Option<crate::awareness::store::AwarenessStore>>>,
@@ -46,6 +49,8 @@ impl Default for AppState {
         Self {
             mysql_pool: Arc::new(Mutex::new(None)),
             postgres_pool: Arc::new(Mutex::new(None)),
+            clickhouse_pool: Arc::new(Mutex::new(None)),
+            clickhouse_config: Arc::new(Mutex::new(None)),
             active_db_type: Arc::new(Mutex::new(DatabaseType::Disconnected)),
             encryption_key: Arc::new(Mutex::new(None)),
             awareness_store: Arc::new(Mutex::new(None)),
@@ -72,6 +77,8 @@ impl Clone for AppState {
         Self {
             mysql_pool: Arc::clone(&self.mysql_pool),
             postgres_pool: Arc::clone(&self.postgres_pool),
+            clickhouse_pool: Arc::clone(&self.clickhouse_pool),
+            clickhouse_config: Arc::clone(&self.clickhouse_config),
             active_db_type: Arc::clone(&self.active_db_type),
             encryption_key: Arc::clone(&self.encryption_key),
             awareness_store: Arc::clone(&self.awareness_store),

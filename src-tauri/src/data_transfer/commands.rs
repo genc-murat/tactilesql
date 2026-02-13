@@ -24,6 +24,7 @@ fn db_type_label(db_type: &crate::db_types::DatabaseType) -> &'static str {
     match db_type {
         crate::db_types::DatabaseType::MySQL => "mysql",
         crate::db_types::DatabaseType::PostgreSQL => "postgresql",
+        crate::db_types::DatabaseType::ClickHouse => "clickhouse",
         crate::db_types::DatabaseType::Disconnected => "disconnected",
     }
 }
@@ -138,6 +139,14 @@ async fn capture_schema_snapshot(
             let pool = crate::postgres::create_pool(&connection.config).await?;
             crate::schema_tracker::capture::capture_snapshot_postgres(
                 &pool,
+                scope,
+                &connection.connection_id,
+            )
+            .await
+        }
+        DatabaseType::ClickHouse => {
+            crate::schema_tracker::capture::capture_snapshot_clickhouse(
+                &connection.config,
                 scope,
                 &connection.connection_id,
             )

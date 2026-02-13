@@ -205,6 +205,39 @@ pub async fn build_er_graph(
                 }
             }
         }
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No active ClickHouse connection")?;
+
+            let tables = crate::clickhouse::get_only_tables(config, &database).await?;
+            for table in tables {
+                let table_schema = crate::clickhouse::get_table_schema(config, &database, &table).await?;
+                
+                let node_id = build_node_id(Some(&database), &table);
+                let columns = table_schema
+                    .iter()
+                    .map(|col| ErColumn {
+                        name: col.name.clone(),
+                        data_type: col.data_type.clone(),
+                        nullable: col.is_nullable,
+                        primary_key: false, // ClickHouse primary keys are complex and not standard
+                    })
+                    .collect::<Vec<_>>();
+
+                nodes.insert(
+                    node_id.clone(),
+                    ErNode {
+                        id: node_id.clone(),
+                        name: table.clone(),
+                        table: table.clone(),
+                        schema: Some(database.clone()),
+                        node_type: "Table".to_string(),
+                        is_stub: false,
+                        columns,
+                    },
+                );
+            }
+        }
         DatabaseType::Disconnected => {
             return Err("No connection established".to_string());
         }

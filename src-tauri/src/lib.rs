@@ -72,6 +72,7 @@ pub mod integration;
 pub mod mock_data;
 mod mysql;
 mod postgres;
+mod clickhouse;
 pub mod quality_analyzer;
 pub mod query_story;
 pub mod scheduler;

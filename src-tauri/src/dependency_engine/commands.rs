@@ -20,6 +20,7 @@ pub async fn get_dependency_graph(
     let db_type_cache_key = match db_type {
         DatabaseType::MySQL => "mysql",
         DatabaseType::PostgreSQL => "postgresql",
+        DatabaseType::ClickHouse => "clickhouse",
         DatabaseType::Disconnected => "disconnected",
     };
 
@@ -64,6 +65,18 @@ pub async fn get_dependency_graph(
                     .ok_or("No active PostgreSQL connection")?;
                 super::extractor::build_dependency_graph_postgres(
                     pool,
+                    &connection_id,
+                    database,
+                    table_name,
+                    hop_depth_usize,
+                )
+                .await
+            }
+            DatabaseType::ClickHouse => {
+                let guard = app_state.clickhouse_config.lock().await;
+                let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+                super::extractor::build_dependency_graph_clickhouse(
+                    config,
                     &connection_id,
                     database,
                     table_name,

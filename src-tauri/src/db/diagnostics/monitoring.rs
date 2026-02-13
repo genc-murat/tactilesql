@@ -2,6 +2,7 @@ use crate::db::lock_analysis::build_lock_analysis;
 use crate::db_types::{AppState, DatabaseType, MonitorSnapshot, ProcessInfo, ServerStatus, BloatInfo};
 use crate::mysql;
 use crate::postgres;
+use crate::clickhouse;
 use tauri::State;
 use chrono::{DateTime, Utc};
 use super::monitor_store::{HistoricalMetric, MonitorAlert};
@@ -126,6 +127,23 @@ pub async fn get_monitor_snapshot(app_state: State<'_, AppState>) -> Result<Moni
                 health_metrics,
             })
         }
+        DatabaseType::ClickHouse => {
+            let server_status = clickhouse::get_server_status(app_state.inner()).await?;
+            let processes = clickhouse::get_process_list(app_state.inner()).await?;
+
+            Ok(MonitorSnapshot {
+                server_status,
+                processes,
+                replication: serde_json::json!({"status": "Not supported"}),
+                slow_queries: Vec::new(),
+                locks: Vec::new(),
+                lock_analysis: None,
+                innodb_status: None,
+                wait_events: Vec::new(),
+                table_usage: Vec::new(),
+                health_metrics: Vec::new(),
+            })
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -174,6 +192,9 @@ pub async fn get_server_status(app_state: State<'_, AppState>) -> Result<ServerS
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_server_status(pool).await
         }
+        DatabaseType::ClickHouse => {
+            clickhouse::get_server_status(app_state.inner()).await
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -197,6 +218,9 @@ pub async fn get_process_list(app_state: State<'_, AppState>) -> Result<Vec<Proc
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_process_list(pool).await
+        }
+        DatabaseType::ClickHouse => {
+            clickhouse::get_process_list(app_state.inner()).await
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
@@ -225,6 +249,9 @@ pub async fn kill_process(
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::kill_process(pool, process_id).await
         }
+        DatabaseType::ClickHouse => {
+            Err("Kill process not supported for ClickHouse yet".to_string())
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -243,6 +270,7 @@ pub async fn get_innodb_status(app_state: State<'_, AppState>) -> Result<String,
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_innodb_status(pool).await
         }
+        DatabaseType::ClickHouse => Err("InnoDB status is MySQL specific".to_string()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -268,6 +296,9 @@ pub async fn get_replication_status(
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_replication_status(pool).await
+        }
+        DatabaseType::ClickHouse => {
+            Ok(serde_json::json!({"status": "Not supported"}))
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }

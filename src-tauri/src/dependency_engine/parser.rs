@@ -10,6 +10,7 @@ use super::graph::{EdgeType, SchemaQualifiedName};
 pub enum DbDialect {
     MySQL,
     PostgreSQL,
+    ClickHouse,
 }
 
 pub struct ParsingResult {
@@ -20,6 +21,8 @@ pub fn extract_dependencies(sql: &str, dialect_type: DbDialect) -> ParsingResult
     let dialect: Box<dyn Dialect> = match dialect_type {
         DbDialect::MySQL => Box::new(MySqlDialect {}),
         DbDialect::PostgreSQL => Box::new(PostgreSqlDialect {}),
+        // ClickHouse uses backticks for identifiers similar to MySQL
+        DbDialect::ClickHouse => Box::new(MySqlDialect {}),
     };
 
     let ast = Parser::parse_sql(&*dialect, sql);

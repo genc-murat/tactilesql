@@ -6,6 +6,7 @@
 use crate::db_types::{AppState, ConnectionConfig, DatabaseType, SSHTunnelConfig};
 use crate::mysql;
 use crate::postgres;
+use crate::clickhouse;
 use crate::ssh_tunnel;
 use super::crypto::{decrypt_password_with_key, encrypt_password_with_key};
 use std::fs;
@@ -70,6 +71,7 @@ pub async fn test_connection(config: ConnectionConfig) -> Result<String, String>
     let result = match effective_config.db_type {
         DatabaseType::PostgreSQL => postgres::test_connection(&effective_config).await,
         DatabaseType::MySQL => mysql::test_connection(&effective_config).await,
+        DatabaseType::ClickHouse => clickhouse::test_connection(&effective_config).await,
         DatabaseType::Disconnected => Err("Cannot test connection for 'Disconnected' type".into()),
     };
 
@@ -156,6 +158,20 @@ pub async fn establish_connection(
 
             Ok("MySQL connection established successfully".to_string())
         }
+        DatabaseType::ClickHouse => {
+            let client = clickhouse::create_client(&effective_config)?;
+
+            let mut ch_guard = app_state.clickhouse_pool.lock().await;
+            *ch_guard = Some(client);
+
+            let mut ch_config_guard = app_state.clickhouse_config.lock().await;
+            *ch_config_guard = Some(effective_config.clone());
+
+            let mut db_type_guard = app_state.active_db_type.lock().await;
+            *db_type_guard = DatabaseType::ClickHouse;
+
+            Ok("ClickHouse connection established successfully".to_string())
+        }
         DatabaseType::Disconnected => Err("Cannot establish a 'Disconnected' connection".into()),
     };
 
@@ -204,6 +220,14 @@ pub async fn disconnect(app_state: State<'_, AppState>) -> Result<String, String
             if let Some(pool) = guard.take() {
                 pool.close().await;
             }
+        }
+        DatabaseType::ClickHouse => {
+            let mut guard = app_state.clickhouse_pool.lock().await;
+            if let Some(_client) = guard.take() {
+                // ClickHouse HTTP client doesn't need explicit close
+            }
+            let mut config_guard = app_state.clickhouse_config.lock().await;
+            *config_guard = None;
         }
         DatabaseType::Disconnected => {}
     }

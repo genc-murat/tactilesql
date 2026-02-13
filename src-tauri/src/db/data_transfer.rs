@@ -5,6 +5,7 @@ use crate::db::sql_utils::{
 use crate::db_types::{AppState, DatabaseType, QueryResult};
 use crate::mysql;
 use crate::postgres;
+use crate::clickhouse;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fs;
@@ -52,6 +53,13 @@ pub async fn export_table_csv(
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             let schema = mysql::get_table_schema(pool, &database, &table).await?;
             let rows = mysql::execute_query(pool, query).await?;
+            (schema, rows)
+        }
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+            let schema = clickhouse::get_table_schema(config, &database, &table).await?;
+            let rows = clickhouse::execute_query(config, query).await?;
             (schema, rows)
         }
         DatabaseType::Disconnected => return Err("No connection established".into()),
@@ -135,6 +143,13 @@ pub async fn export_table_json(
             let rows = mysql::execute_query(pool, query).await?;
             (schema, rows)
         }
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+            let schema = clickhouse::get_table_schema(config, &database, &table).await?;
+            let rows = clickhouse::execute_query(config, query).await?;
+            (schema, rows)
+        }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     };
 
@@ -172,6 +187,7 @@ pub async fn export_table_json(
     ))
 }
 
+
 #[tauri::command]
 pub async fn export_table_sql(
     app_state: State<'_, AppState>,
@@ -206,6 +222,13 @@ pub async fn export_table_sql(
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             let ddl = mysql::get_table_ddl(pool, &database, &table).await?;
             let rows = mysql::execute_query(pool, query).await?;
+            (ddl, rows)
+        }
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+            let ddl = clickhouse::get_table_ddl(config, &database, &table).await?;
+            let rows = clickhouse::execute_query(config, query).await?;
             (ddl, rows)
         }
         DatabaseType::Disconnected => return Err("No connection established".into()),
@@ -273,6 +296,11 @@ pub async fn import_csv(
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_table_schema(pool, &database, &table).await?
+        }
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+            clickhouse::get_table_schema(config, &database, &table).await?
         }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     };
@@ -440,6 +468,55 @@ pub async fn import_csv(
                 .await
                 .map_err(|e| format!("Failed to commit import transaction: {}", e))?;
         }
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+            
+            for (row_idx, record) in reader.records().enumerate() {
+                let row_no = row_idx + line_offset;
+                let record = match record {
+                    Ok(rec) => rec,
+                    Err(e) => {
+                        errors.push(format!("Row {} parse error: {}", row_no, e));
+                        continue;
+                    }
+                };
+
+                if !has_headers && record.len() > column_mapping.len() {
+                    errors.push(format!(
+                        "Row {} has {} fields but table has {} columns",
+                        row_no,
+                        record.len(),
+                        column_mapping.len()
+                    ));
+                    continue;
+                }
+
+                let values = column_mapping
+                    .iter()
+                    .map(|(source_idx, _)| {
+                        let raw = record.get(*source_idx).unwrap_or("").trim();
+                        if raw.is_empty() || raw.eq_ignore_ascii_case("null") {
+                            "NULL".to_string()
+                        } else {
+                            format!("'{}'", escape_sql_string(raw))
+                        }
+                    })
+                    .collect::<Vec<String>>()
+                    .join(", ");
+
+                let sql = format!(
+                    "INSERT INTO {} ({}) VALUES ({})",
+                    qualified_table, quoted_columns, values
+                );
+                
+                if let Err(err) = clickhouse::execute_query(config, sql).await {
+                    errors.push(format!("Row {} insert failed: {}", row_no, err));
+                } else {
+                    rows_imported += 1;
+                }
+            }
+        }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     }
 
@@ -530,6 +607,33 @@ pub async fn backup_database(
                 output.push('\n');
             }
         }
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+            let tables = clickhouse::get_tables(config, &database).await?;
+
+            for table in tables {
+                output.push_str(&format!("-- Table: {}\n", table));
+                let ddl = clickhouse::get_table_ddl(config, &database, &table).await?;
+                output.push_str(&ensure_sql_terminated(&ddl));
+                output.push('\n');
+
+                if include_data {
+                    let query = format!(
+                        "SELECT * FROM {}",
+                        qualified_table_name(&db_type, &database, &table)
+                    );
+                    let results = clickhouse::execute_query(config, query).await?;
+                    if let Some(first) = results.first() {
+                        for stmt in build_insert_statements(&db_type, &database, &table, first) {
+                            output.push_str(&stmt);
+                            output.push('\n');
+                        }
+                    }
+                }
+                output.push('\n');
+            }
+        }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     }
 
@@ -569,6 +673,16 @@ pub async fn restore_database(
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             sqlx::raw_sql(&sql_content)
                 .execute(pool)
+                .await
+                .map_err(|e| format!("Restore failed: {}", e))?;
+        }
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+            
+            // ClickHouse HTTP client doesn't support raw_sql easily for arbitrary script execution
+            // We'll try to split and execute if needed, or just execute as one query if it's simple
+            clickhouse::execute_query(config, sql_content)
                 .await
                 .map_err(|e| format!("Restore failed: {}", e))?;
         }

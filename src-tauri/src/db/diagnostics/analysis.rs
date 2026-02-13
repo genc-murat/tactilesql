@@ -5,6 +5,7 @@ use crate::db_types::{
 };
 use crate::mysql;
 use crate::postgres;
+use crate::clickhouse;
 use std::collections::HashMap;
 use tauri::State;
 
@@ -38,6 +39,18 @@ pub async fn get_execution_plan(
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_execution_plan(pool, &query).await
         }
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+            // ClickHouse EXPLAIN is slightly different but we can try to use its SQL directly
+            let explain_query = format!("EXPLAIN {}", query);
+            let results = clickhouse::execute_query(config, explain_query).await?;
+            Ok(results.into_iter().next().map(|r| {
+                r.rows.into_iter().map(|row| {
+                    row.into_iter().map(|v| v.as_str().unwrap_or_default().to_string()).collect::<Vec<_>>().join(" | ")
+                }).collect::<Vec<_>>().join("\n")
+            }).unwrap_or_default())
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -62,6 +75,7 @@ pub async fn get_locks(app_state: State<'_, AppState>) -> Result<Vec<LockInfo>, 
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_locks(pool).await
         }
+        DatabaseType::ClickHouse => Ok(Vec::new()), // ClickHouse has a different locking model
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -86,6 +100,7 @@ pub async fn get_lock_analysis(app_state: State<'_, AppState>) -> Result<LockAna
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_lock_graph_edges(pool).await?
         }
+        DatabaseType::ClickHouse => Vec::new(),
         DatabaseType::Disconnected => return Err("No connection established".into()),
     };
 
@@ -115,6 +130,11 @@ pub async fn get_slow_queries(
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_slow_queries(pool, limit).await
         }
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+            clickhouse::get_slow_queries(config, limit).await
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -141,6 +161,11 @@ pub async fn analyze_query(
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::analyze_query(pool, &query).await
+        }
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+            clickhouse::analyze_query(config, &query).await
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
@@ -391,6 +416,16 @@ pub async fn simulate_index_drop(
                     engine_notes,
                 )
             }
+            DatabaseType::ClickHouse => {
+                // ClickHouse doesn't support easy 'what-if' index drop simulations
+                (
+                    "manual".to_string(),
+                    String::new(),
+                    String::new(),
+                    Vec::new(),
+                    vec!["Index simulation not yet supported for ClickHouse".to_string()],
+                )
+            }
             DatabaseType::Disconnected => return Err("No connection established".into()),
         };
 
@@ -519,6 +554,13 @@ pub async fn get_ai_index_recommendations(
                 .await
                 .unwrap_or_default()
         }
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+            clickhouse::get_table_indexes(config, &database, &table)
+                .await
+                .unwrap_or_default()
+        }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     };
 
@@ -539,6 +581,16 @@ pub async fn get_ai_index_recommendations(
             mysql::get_table_schema(pool, &database, &table)
                 .await
                 .unwrap_or_default()
+        }
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            if let Some(config) = guard.as_ref() {
+                clickhouse::get_table_schema(config, &database, &table)
+                    .await
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            }
         }
         DatabaseType::Disconnected => Vec::new(),
     };
@@ -647,6 +699,12 @@ pub async fn get_ai_index_recommendations(
                     table, col_name, database, table, col_name
                 )
             }
+            DatabaseType::ClickHouse => {
+                format!(
+                    "ALTER TABLE {}.{} ADD INDEX idx_{}_{} ({}) TYPE minmax GRANULARITY 3;",
+                    database, table, table, col_name, col_name
+                )
+            }
             DatabaseType::Disconnected => String::new(),
         };
 
@@ -700,6 +758,15 @@ pub async fn get_ai_index_recommendations(
                         "CREATE INDEX idx_{}_composite ON {}.{} ({});",
                         table,
                         database,
+                        table,
+                        top_cols.join(", ")
+                    )
+                }
+                DatabaseType::ClickHouse => {
+                    format!(
+                        "ALTER TABLE {}.{} ADD INDEX idx_{}_composite ({}) TYPE minmax GRANULARITY 3;",
+                        database,
+                        table,
                         table,
                         top_cols.join(", ")
                     )

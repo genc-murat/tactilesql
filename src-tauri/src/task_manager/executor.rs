@@ -99,6 +99,18 @@ async fn execute_sql_task(app: &AppHandle, task: &TaskDefinition) -> Result<Valu
                     .await?;
             summarize_result_sets(&results)
         }
+        DatabaseType::ClickHouse => {
+            let config = {
+                let guard = state.clickhouse_config.lock().await;
+                guard
+                    .as_ref()
+                    .cloned()
+                    .ok_or("No ClickHouse connection established".to_string())?
+            };
+            let results =
+                crate::clickhouse::execute_query_with_timeout(&config, sql.clone(), timeout_seconds).await?;
+            summarize_result_sets(&results)
+        }
         DatabaseType::Disconnected => return Err("No connection established".to_string()),
     };
 
@@ -205,6 +217,40 @@ async fn execute_backup_task(app: &AppHandle, task: &TaskDefinition) -> Result<V
                 output.push('\n');
             }
         }
+        DatabaseType::ClickHouse => {
+            let config = {
+                let guard = state.clickhouse_config.lock().await;
+                guard
+                    .as_ref()
+                    .cloned()
+                    .ok_or("No ClickHouse connection established".to_string())?
+            };
+
+            let tables = crate::clickhouse::get_tables(&config, &database).await?;
+            table_count = tables.len();
+
+            for table in tables {
+                output.push_str(&format!("-- Table: {}\n", table));
+                let ddl = crate::clickhouse::get_table_ddl(&config, &database, &table).await?;
+                output.push_str(&ensure_sql_terminated(&ddl));
+                output.push('\n');
+
+                if include_data {
+                    let query = format!(
+                        "SELECT * FROM {}",
+                        qualified_table_name(&db_type, &database, &table)
+                    );
+                    let results = crate::clickhouse::execute_query(&config, query).await?;
+                    if let Some(first) = results.first() {
+                        for stmt in build_insert_statements(&db_type, &database, &table, first) {
+                            output.push_str(&stmt);
+                            output.push('\n');
+                        }
+                    }
+                }
+                output.push('\n');
+            }
+        }
         DatabaseType::Disconnected => return Err("No connection established".to_string()),
     }
 
@@ -290,6 +336,34 @@ async fn execute_schema_snapshot_task(app: &AppHandle, task: &TaskDefinition) ->
                 &connection_id,
             )
             .await?
+        }
+        DatabaseType::ClickHouse => {
+            let config = {
+                let guard = state.clickhouse_config.lock().await;
+                guard
+                    .as_ref()
+                    .cloned()
+                    .ok_or("No ClickHouse connection established".to_string())?
+            };
+
+            let database = match get_payload_string(payload, &["database", "schema", "dbName"]) {
+                Some(value) => value,
+                None => {
+                    let results = crate::clickhouse::execute_query(&config, "SELECT DATABASE()".to_string()).await?;
+                    let row = results.first().and_then(|r| r.rows.first()).and_then(|row| row.first());
+                    row.and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_default()
+                }
+            };
+
+            if database.trim().is_empty() {
+                return Err(
+                    "Schema snapshot requires database. Provide payload.database or connect to a database."
+                        .to_string(),
+                );
+            }
+
+            crate::schema_tracker::capture::capture_snapshot_clickhouse(&config, &database, &connection_id)
+                .await?
         }
         DatabaseType::Disconnected => return Err("No connection established".to_string()),
     };
@@ -1187,6 +1261,19 @@ async fn apply_raw_sql_script(app: &AppHandle, script: &str) -> Result<(), Strin
                 .await
                 .map_err(|e| format!("Failed to apply sync script on MySQL: {}", e))?;
         }
+        DatabaseType::ClickHouse => {
+            let config = {
+                let guard = state.clickhouse_config.lock().await;
+                guard
+                    .as_ref()
+                    .cloned()
+                    .ok_or("No ClickHouse connection established".to_string())?
+            };
+            // ClickHouse HTTP doesn't have a direct equivalent to raw_sql execute in sqlx for full scripts.
+            // We just execute it as a query.
+            crate::clickhouse::execute_query(&config, sql.to_string()).await
+                .map_err(|e| format!("Failed to apply sync script on ClickHouse: {}", e))?;
+        }
         DatabaseType::Disconnected => return Err("No connection established".to_string()),
     }
 
@@ -1301,6 +1388,7 @@ fn db_type_label(db_type: &DatabaseType) -> &'static str {
     match db_type {
         DatabaseType::MySQL => "mysql",
         DatabaseType::PostgreSQL => "postgresql",
+        DatabaseType::ClickHouse => "clickhouse",
         DatabaseType::Disconnected => "disconnected",
     }
 }

@@ -1142,8 +1142,7 @@ export function ObjectExplorer() {
             const tableItem = e.target.closest('.table-item');
             if (tableItem) {
                 e.stopPropagation();
-                const connNode = tableItem.closest('.connection-node');
-                const connId = connNode?.dataset.connId;
+                const connId = tableItem.dataset.connId;
                 const db = tableItem.dataset.db;
                 const table = tableItem.dataset.table;
                 const key = `${db}.${table}`;

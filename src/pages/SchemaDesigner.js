@@ -1940,6 +1940,13 @@ END"></textarea>
     // --- Helper:    // --- Logic ---
 
     async function loadData() {
+        if (state.database === 'unknown_db' || state.tableName === 'unknown_table') {
+            state.isLoading = false;
+            state.error = 'No table selected. Please select a table from the Object Explorer.';
+            renderContent();
+            return;
+        }
+
         state.isLoading = true;
         state.error = null;
         renderContent();

@@ -371,3 +371,69 @@ pub async fn build_dependency_graph_postgres(
 
     Ok(graph)
 }
+
+pub async fn build_dependency_graph_clickhouse(
+    config: &crate::db_types::ConnectionConfig,
+    _connection_id: &str,
+    database: Option<String>,
+    table_name: Option<String>,
+    hop_depth: Option<usize>,
+) -> Result<DependencyGraph, String> {
+    let mut graph = DependencyGraph::new();
+    
+    // Get database scope
+    let target_db = match database {
+        Some(db) if !db.is_empty() => db,
+        _ => "default".to_string(), // Default if not specified
+    };
+
+    println!("DEBUG: [ClickHouse Extractor] Starting build for db: {}", target_db);
+
+    // 1) Fetch ALL tables (including views) to establish nodes
+    // Using system.tables to get everything in one go
+    let query = format!(
+        "SELECT name, engine, create_table_query FROM system.tables WHERE database = '{}'",
+        target_db.replace('\'', "\\'")
+    );
+
+    let results = crate::clickhouse::execute_query_generic(config, query).await?;
+    
+    // Process results
+    if let Some(first) = results.first() {
+        let name_idx = first.columns.iter().position(|c| c == "name");
+        let engine_idx = first.columns.iter().position(|c| c == "engine");
+        let query_idx = first.columns.iter().position(|c| c == "create_table_query");
+
+        for row in &first.rows {
+            let name = name_idx.and_then(|i| row.get(i)).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+            let engine = engine_idx.and_then(|i| row.get(i)).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+            let create_query = query_idx.and_then(|i| row.get(i)).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+
+            let node_type = if engine.contains("View") {
+                NodeType::View
+            } else {
+                NodeType::Table
+            };
+
+            let node_id = graph.add_node(Some(target_db.clone()), name.clone(), node_type.clone());
+
+            // If it's a view (or MaterializedView), parse the Create Query for dependencies
+            if node_type == NodeType::View && !create_query.is_empty() {
+                // Remove "CREATE VIEW ... AS" prefix to get just the SELECT part if possible, 
+                // but our parser handles full statements too.
+                // ClickHouse `create_table_query` is usually "CREATE VIEW db.name ... AS SELECT ..."
+                
+                let parser_result = extract_dependencies(&create_query, DbDialect::ClickHouse);
+                add_dependency_edges(&mut graph, &node_id, &target_db, parser_result.dependencies);
+            }
+        }
+    }
+
+    // 2) Optional focused neighborhood
+    if let Some(target) = table_name {
+        let hops = hop_depth.unwrap_or(2).max(1);
+        graph.filter_neighborhood(&target, Some(&target_db), hops);
+    }
+
+    Ok(graph)
+}

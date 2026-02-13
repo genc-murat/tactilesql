@@ -245,6 +245,7 @@ fn build_lock_recommendations(
     let db_hint = match db_type {
         DatabaseType::MySQL => "Check `innodb_lock_wait_timeout` and use `SHOW ENGINE INNODB STATUS` for distinct details.",
         DatabaseType::PostgreSQL => "For queue-like workloads, use FOR UPDATE NOWAIT/SKIP LOCKED and keep transactions short around critical rows.",
+        DatabaseType::ClickHouse => "ClickHouse uses lock-free MergeTree but system.processes can show queries waiting on heavy resource consumption.",
         DatabaseType::Disconnected => "Reconnect to a database to get DB-specific lock mitigation hints.",
     };
     recommendations.push(LockRecommendation {
@@ -377,6 +378,7 @@ pub fn build_lock_analysis(db_type: &DatabaseType, raw_edges: Vec<LockGraphEdge>
     let db_type_str = match db_type {
         DatabaseType::MySQL => "mysql".to_string(),
         DatabaseType::PostgreSQL => "postgresql".to_string(),
+        DatabaseType::ClickHouse => "clickhouse".to_string(),
         DatabaseType::Disconnected => "disconnected".to_string(),
     };
 

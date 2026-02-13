@@ -1,15 +1,23 @@
 /**
  * Database Adapter
  * Main entry point for database-specific operations
- * Automatically selects MySQL or PostgreSQL based on active connection
+ * Automatically selects MySQL, PostgreSQL or ClickHouse based on active connection
  */
 
 import { DatabaseType, getActiveDbType, isPostgreSQL, isMySQL, COMMON_SQL_KEYWORDS, COMMON_SQL_FUNCTIONS, COMMON_DATA_TYPES } from './types.js';
 import { MYSQL_KEYWORDS, MYSQL_FUNCTIONS, MYSQL_DATA_TYPES, MYSQL_SNIPPETS, MYSQL_QUOTE_CHAR, getMySQLExplainQuery, MYSQL_INFO_QUERIES } from './mysql.js';
 import { POSTGRESQL_KEYWORDS, POSTGRESQL_FUNCTIONS, POSTGRESQL_DATA_TYPES, POSTGRESQL_SNIPPETS, POSTGRESQL_QUOTE_CHAR, getPostgreSQLExplainQuery, POSTGRESQL_INFO_QUERIES } from './postgresql.js';
+import { CLICKHOUSE_KEYWORDS, CLICKHOUSE_FUNCTIONS, CLICKHOUSE_DATA_TYPES, CLICKHOUSE_SNIPPETS, CLICKHOUSE_QUOTE_CHAR, getClickhouseExplainQuery, CLICKHOUSE_INFO_QUERIES } from './clickhouse.js';
 
 // Re-export types for convenience
 export { DatabaseType, getActiveDbType, isPostgreSQL, isMySQL };
+
+/**
+ * Check if current database is ClickHouse
+ */
+export const isClickHouse = () => {
+    return getActiveDbType() === DatabaseType.CLICKHOUSE;
+};
 
 /**
  * Get all SQL keywords for the current database type
@@ -18,6 +26,8 @@ export const getSqlKeywords = () => {
     const dbType = getActiveDbType();
     if (dbType === DatabaseType.POSTGRESQL) {
         return [...COMMON_SQL_KEYWORDS, ...POSTGRESQL_KEYWORDS];
+    } else if (dbType === DatabaseType.CLICKHOUSE) {
+        return [...COMMON_SQL_KEYWORDS, ...CLICKHOUSE_KEYWORDS];
     }
     return [...COMMON_SQL_KEYWORDS, ...MYSQL_KEYWORDS];
 };
@@ -29,6 +39,8 @@ export const getSqlFunctions = () => {
     const dbType = getActiveDbType();
     if (dbType === DatabaseType.POSTGRESQL) {
         return [...COMMON_SQL_FUNCTIONS, ...POSTGRESQL_FUNCTIONS];
+    } else if (dbType === DatabaseType.CLICKHOUSE) {
+        return [...COMMON_SQL_FUNCTIONS, ...CLICKHOUSE_FUNCTIONS];
     }
     return [...COMMON_SQL_FUNCTIONS, ...MYSQL_FUNCTIONS];
 };
@@ -40,6 +52,8 @@ export const getDataTypes = () => {
     const dbType = getActiveDbType();
     if (dbType === DatabaseType.POSTGRESQL) {
         return [...COMMON_DATA_TYPES, ...POSTGRESQL_DATA_TYPES];
+    } else if (dbType === DatabaseType.CLICKHOUSE) {
+        return [...COMMON_DATA_TYPES, ...CLICKHOUSE_DATA_TYPES];
     }
     return [...COMMON_DATA_TYPES, ...MYSQL_DATA_TYPES];
 };
@@ -51,6 +65,8 @@ export const getSnippets = () => {
     const dbType = getActiveDbType();
     if (dbType === DatabaseType.POSTGRESQL) {
         return POSTGRESQL_SNIPPETS;
+    } else if (dbType === DatabaseType.CLICKHOUSE) {
+        return CLICKHOUSE_SNIPPETS;
     }
     return MYSQL_SNIPPETS;
 };
@@ -134,6 +150,8 @@ export const getQuoteChar = () => {
     const dbType = getActiveDbType();
     if (dbType === DatabaseType.POSTGRESQL) {
         return POSTGRESQL_QUOTE_CHAR;
+    } else if (dbType === DatabaseType.CLICKHOUSE) {
+        return CLICKHOUSE_QUOTE_CHAR;
     }
     return MYSQL_QUOTE_CHAR;
 };
@@ -153,6 +171,8 @@ export const getExplainQuery = (sql) => {
     const dbType = getActiveDbType();
     if (dbType === DatabaseType.POSTGRESQL) {
         return getPostgreSQLExplainQuery(sql);
+    } else if (dbType === DatabaseType.CLICKHOUSE) {
+        return getClickhouseExplainQuery(sql);
     }
     return getMySQLExplainQuery(sql);
 };
@@ -164,6 +184,8 @@ export const getInfoQueries = () => {
     const dbType = getActiveDbType();
     if (dbType === DatabaseType.POSTGRESQL) {
         return POSTGRESQL_INFO_QUERIES;
+    } else if (dbType === DatabaseType.CLICKHOUSE) {
+        return CLICKHOUSE_INFO_QUERIES;
     }
     return MYSQL_INFO_QUERIES;
 };
@@ -175,6 +197,8 @@ export const getDatabaseDisplayName = () => {
     const dbType = getActiveDbType();
     if (dbType === DatabaseType.POSTGRESQL) {
         return 'PostgreSQL';
+    } else if (dbType === DatabaseType.CLICKHOUSE) {
+        return 'ClickHouse';
     }
     return 'MySQL';
 };
@@ -214,6 +238,9 @@ export const isFeatureSupported = (feature) => {
     
     if (dbType === DatabaseType.MYSQL) {
         return !postgresOnlyFeatures.includes(feature);
+    } else if (dbType === DatabaseType.CLICKHOUSE) {
+        // ClickHouse supports many MySQL-like features via bridge
+        return true; 
     } else {
         return !mysqlOnlyFeatures.includes(feature);
     }
@@ -225,6 +252,7 @@ export default {
     getActiveDbType,
     isPostgreSQL,
     isMySQL,
+    isClickHouse,
     getSqlKeywords,
     getSqlFunctions,
     getDataTypes,

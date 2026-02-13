@@ -23,7 +23,7 @@ export function ConnectionManager() {
     const DEFAULT_CONFIG = {
         id: null,
         name: '',
-        dbType: 'mysql', // 'mysql' | 'postgresql'
+        dbType: 'mysql', // 'mysql' | 'postgresql' | 'clickhouse'
         host: 'localhost',
         port: 3306,
         username: 'root',
@@ -45,7 +45,8 @@ export function ConnectionManager() {
     // Database type defaults
     const DB_DEFAULTS = {
         mysql: { port: 3306, username: 'root', color: '#00c8ff' },
-        postgresql: { port: 5432, username: 'postgres', color: '#336791' }
+        postgresql: { port: 5432, username: 'postgres', color: '#336791' },
+        clickhouse: { port: 8123, username: 'default', color: '#ffcc00' }
     };
 
     let config = { ...DEFAULT_CONFIG };
@@ -74,8 +75,9 @@ export function ConnectionManager() {
         const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
 
         // Group connections by database type
-        const mysqlConnections = connections.filter(c => c.dbType !== 'postgresql');
+        const mysqlConnections = connections.filter(c => c.dbType === 'mysql' || !c.dbType || c.dbType === 'disconnected');
         const postgresConnections = connections.filter(c => c.dbType === 'postgresql');
+        const clickhouseConnections = connections.filter(c => c.dbType === 'clickhouse');
 
         // Helper function to render a single connection card
         const renderConnectionCard = (conn) => {
@@ -83,7 +85,8 @@ export function ConnectionManager() {
             const lastConnected = conn.last_connected ? new Date(conn.last_connected) : null;
             const timeAgo = lastConnected ? formatTimeAgo(lastConnected) : 'Never';
             const isPostgresConn = conn.dbType === 'postgresql';
-            const connColor = conn.color || (isPostgresConn ? '#336791' : '#00c8ff');
+            const isClickhouseConn = conn.dbType === 'clickhouse';
+            const connColor = conn.color || (isPostgresConn ? '#336791' : (isClickhouseConn ? '#ffcc00' : '#00c8ff'));
 
             return `
                 <div class="group relative p-4 rounded-xl border ${isActive ? 'border-green-500/50 bg-green-500/5' : (isLight ? 'border-gray-200 bg-white hover:border-mysql-teal/30' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3] hover:border-[#ea9d34]/30' : (isNeon ? 'border-neon-border/40 bg-neon-panel/20 hover:border-neon-border/60 shadow-lg shadow-black/20 hover:shadow-[0_0_20px_rgba(34,211,238,0.1)]' : (isOceanic ? 'border-ocean-border/50 bg-[#3B4252] hover:border-mysql-teal/30' : 'border-white/10 bg-[#13161b] hover:border-mysql-teal/30'))))} transition-all duration-200 cursor-pointer flex flex-col">
@@ -111,9 +114,11 @@ export function ConnectionManager() {
                             <div class="w-10 h-10 rounded-lg border flex items-center justify-center shrink-0" style="background-color: ${isActive ? 'rgb(34 197 94 / 0.1)' : (isNeon ? 'rgba(34,211,238,0.05)' : (connColor + '15'))}; border-color: ${isActive ? 'rgb(34 197 94 / 0.3)' : (isNeon ? 'rgba(34,211,238,0.2)' : (connColor + '50'))}">
                                 ${isPostgresConn ? `
                                     <svg class="w-5 h-5" viewBox="0 0 128 128"><path d="M93.809 92.112c.785-6.533.55-7.492 5.416-6.433l1.235.108c3.742.17 8.637-.602 11.513-1.938 6.191-2.873 9.861-7.668 3.758-6.409-13.924 2.873-14.881-1.842-14.881-1.842 14.703-21.815 20.849-49.508 15.545-56.287-14.47-18.489-39.517-9.746-39.936-9.52l-.134.025c-2.751-.571-5.83-.912-9.289-.968-6.301-.104-11.082 1.652-14.535 4.406 0 0-44.156-18.187-42.101 22.917 1.025 8.873 12.952 67.199 27.86 49.596 5.449-6.433 10.707-11.869 10.707-11.869 2.611 1.735 5.736 2.632 9.033 2.313l.255-.022c-.079.774-.129 1.534-.137 2.294-4.061 4.539-2.869 5.334-10.996 7.006-8.226 1.693-3.395 4.708-.24 5.499 3.822.959 12.66 2.318 18.632-6.072l-.227.884c1.438 1.151 2.14 7.466 1.932 13.196-.209 5.73-.361 9.668.214 12.739.574 3.073 1.44 10.296 7.58 8.171 5.137-1.778 8.934-6.371 9.362-14.036.303-5.437.89-4.623 1.297-9.472l.695-1.679c.803-6.622.175-8.747 4.685-7.755l1.107.199c3.348.309 7.73-.342 10.314-1.533 5.554-2.562 8.825-6.846 3.367-5.723z" fill="${isActive ? '#22c55e' : (isNeon ? '#22d3ee' : connColor)}"/></svg>
+                                ` : (isClickhouseConn ? `
+                                    <span class="material-symbols-outlined text-lg" style="color: ${isActive ? '#22c55e' : (isNeon ? '#22d3ee' : connColor)}">dataset</span>
                                 ` : `
                                     <span class="material-symbols-outlined text-lg" style="color: ${isActive ? '#22c55e' : (isNeon ? '#22d3ee' : connColor)}">database</span>
-                                `}
+                                `)}
                             </div>
                             <div class="flex-1 min-w-0">
                                 <h3 class="text-sm font-semibold ${isLight ? 'text-gray-800' : (isNeon ? 'text-neon-text shadow-[0_0_8px_rgba(34,211,238,0.2)]' : 'text-white')} mb-1 truncate" title="${escapeHtml(conn.name)}">${escapeHtml(conn.name)}</h3>
@@ -184,6 +189,7 @@ export function ConnectionManager() {
                 <div class="flex-1 overflow-y-auto custom-scrollbar pb-4">
                     ${renderDbSection('MySQL', 'database', '#00c8ff', mysqlConnections, 'mysql')}
                     ${renderDbSection('PostgreSQL', 'database', '#336791', postgresConnections, 'postgresql')}
+                    ${renderDbSection('ClickHouse', 'dataset', '#ffcc00', clickhouseConnections, 'clickhouse')}
                     
                     ${connections.length === 0 ? `
                         <div class="py-16 text-center flex flex-col items-center justify-center border ${isLight ? 'border-gray-200 bg-gray-50' : 'border-white/10 bg-white/5'} rounded-xl">
@@ -278,6 +284,10 @@ export function ConnectionManager() {
                                 <button type="button" data-db-type="postgresql" class="db-type-btn flex-1 py-2 px-3 rounded-lg border ${config.dbType === 'postgresql' ? (isLight ? 'border-[#336791] bg-[#336791]/10' : (isNeon ? 'border-neon-purple bg-neon-purple/20 shadow-[0_0_10px_rgba(192,132,252,0.2)]' : 'border-[#336791] bg-[#336791]/20')) : (isLight ? 'border-gray-200 bg-gray-50' : (isNeon ? 'border-neon-border/20 bg-neon-panel/20' : 'border-white/10 bg-white/5'))} transition-all flex items-center justify-center gap-2">
                                     <svg class="w-5 h-5" viewBox="0 0 128 128"><path d="M93.809 92.112c.785-6.533.55-7.492 5.416-6.433l1.235.108c3.742.17 8.637-.602 11.513-1.938 6.191-2.873 9.861-7.668 3.758-6.409-13.924 2.873-14.881-1.842-14.881-1.842 14.703-21.815 20.849-49.508 15.545-56.287-14.47-18.489-39.517-9.746-39.936-9.52l-.134.025c-2.751-.571-5.83-.912-9.289-.968-6.301-.104-11.082 1.652-14.535 4.406 0 0-44.156-18.187-42.101 22.917 1.025 8.873 12.952 67.199 27.86 49.596 5.449-6.433 10.707-11.869 10.707-11.869 2.611 1.735 5.736 2.632 9.033 2.313l.255-.022c-.079.774-.129 1.534-.137 2.294-4.061 4.539-2.869 5.334-10.996 7.006-8.226 1.693-3.395 4.708-.24 5.499 3.822.959 12.66 2.318 18.632-6.072l-.227.884c1.438 1.151 2.14 7.466 1.932 13.196-.209 5.73-.361 9.668.214 12.739.574 3.073 1.44 10.296 7.58 8.171 5.137-1.778 8.934-6.371 9.362-14.036.303-5.437.89-4.623 1.297-9.472l.695-1.679c.803-6.622.175-8.747 4.685-7.755l1.107.199c3.348.309 7.73-.342 10.314-1.533 5.554-2.562 8.825-6.846 3.367-5.723z" fill="${isNeon && config.dbType === 'postgresql' ? '#c084fc' : '#336791'}"/></svg>
                                     <span class="text-xs font-bold ${config.dbType === 'postgresql' ? (isNeon ? 'text-neon-text' : 'text-[#336791]') : (isLight ? 'text-gray-600' : 'text-gray-400')}">PostgreSQL</span>
+                                </button>
+                                <button type="button" data-db-type="clickhouse" class="db-type-btn flex-1 py-2 px-3 rounded-lg border ${config.dbType === 'clickhouse' ? (isLight ? 'border-[#ffcc00] bg-[#ffcc00]/10' : (isNeon ? 'border-yellow-400 bg-yellow-400/20 shadow-[0_0_10px_rgba(250,204,21,0.2)]' : 'border-[#ffcc00] bg-[#ffcc00]/20')) : (isLight ? 'border-gray-200 bg-gray-50' : (isNeon ? 'border-neon-border/20 bg-neon-panel/20' : 'border-white/10 bg-white/5'))} transition-all flex items-center justify-center gap-2">
+                                    <span class="material-symbols-outlined ${config.dbType === 'clickhouse' ? (isNeon ? 'text-yellow-400' : 'text-[#ffcc00]') : (isLight ? 'text-gray-600' : 'text-gray-400')}">dataset</span>
+                                    <span class="text-xs font-bold ${config.dbType === 'clickhouse' ? (isNeon ? 'text-neon-text' : 'text-[#ffcc00]') : (isLight ? 'text-gray-600' : 'text-gray-400')}">ClickHouse</span>
                                 </button>
                             </div>
                         </div>

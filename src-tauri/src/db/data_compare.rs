@@ -6,6 +6,7 @@
 use crate::db_types::{ColumnSchema, DatabaseType, PrimaryKey, QueryResult};
 use crate::mysql;
 use crate::postgres;
+use crate::clickhouse;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -663,7 +664,7 @@ pub fn build_delete_statement_for_row(
     ))
 }
 
-// =====================================================
+// ================= ====================================
 // DATABASE LOADING FUNCTIONS
 // =====================================================
 
@@ -685,6 +686,13 @@ pub async fn load_table_schema_for_compare(
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_table_schema(pool, database, table).await
+        }
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard
+                .as_ref()
+                .ok_or("No ClickHouse connection established")?;
+            clickhouse::get_table_schema(config, database, table).await
         }
         DatabaseType::Disconnected => Err("No connection established".to_string()),
     }
@@ -708,6 +716,13 @@ pub async fn load_table_primary_keys_for_compare(
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_table_primary_keys(pool, database, table).await
+        }
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard
+                .as_ref()
+                .ok_or("No ClickHouse connection established")?;
+            clickhouse::get_table_primary_keys(config, database, table).await
         }
         DatabaseType::Disconnected => Err("No connection established".to_string()),
     }
@@ -737,6 +752,13 @@ pub async fn load_table_row_count_for_compare(
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::execute_query(pool, query).await
+        }
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard
+                .as_ref()
+                .ok_or("No ClickHouse connection established")?;
+            clickhouse::execute_query(config, query).await
         }
         DatabaseType::Disconnected => Err("No connection established".to_string()),
     }?;
@@ -788,6 +810,13 @@ pub async fn load_table_rows_for_compare(
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::execute_query(pool, query).await
+        }
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard
+                .as_ref()
+                .ok_or("No ClickHouse connection established")?;
+            clickhouse::execute_query(config, query).await
         }
         DatabaseType::Disconnected => Err("No connection established".to_string()),
     }?;

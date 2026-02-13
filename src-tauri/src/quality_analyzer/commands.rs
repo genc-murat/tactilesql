@@ -79,6 +79,9 @@ pub async fn run_quality_analysis(
             )
             .await?
         }
+        crate::db_types::DatabaseType::ClickHouse => {
+            return Err("Quality analysis not yet supported for ClickHouse".into());
+        }
         crate::db_types::DatabaseType::Disconnected => {
             return Err("No connection established".into())
         }
