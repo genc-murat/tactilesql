@@ -47,7 +47,6 @@ pub async fn analyze_table_mysql(
     let mut select_expressions = Vec::new();
     struct ColMeta {
         name: String,
-        data_type: String,
         is_numeric: bool,
     }
     let mut cols_meta = Vec::new();
@@ -68,7 +67,6 @@ pub async fn analyze_table_mysql(
         
         cols_meta.push(ColMeta {
             name: col_name.clone(),
-            data_type: data_type.clone(),
             is_numeric,
         });
 
@@ -350,7 +348,6 @@ pub async fn analyze_table_postgres(
     let mut select_expressions = Vec::new();
     struct ColMeta {
         name: String,
-        data_type: String,
         is_numeric: bool,
     }
     let mut cols_meta = Vec::new();
@@ -370,7 +367,6 @@ pub async fn analyze_table_postgres(
         
         cols_meta.push(ColMeta {
             name: col_name.clone(),
-            data_type: data_type.clone(),
             is_numeric,
         });
 
