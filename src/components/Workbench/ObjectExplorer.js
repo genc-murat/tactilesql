@@ -249,7 +249,7 @@ export function ObjectExplorer() {
                     // The previous search logic was global `searchContext` which filtered `databases`.
                     // `databases` was only for the ACTIVE connection.
                     // So non-active connections didn't really support proper searching inside them unless they were active?
-                    // The previous code only rendered tree for `renderingConnectionId || activeConnectionId`.
+                    // The previous code only rendered tree for the active connection.
                     // `connections.map` only rendered content if `isActive || isExpandedCached`.
                     // And `renderActiveConnectionData` used the globals.
                     // So effectively, we only need to traverse the Active Connection's data if it is expanded,
@@ -347,7 +347,13 @@ export function ObjectExplorer() {
         if (isExpanded) {
             const objs = ctx.dbObjects[db];
             if (!objs) {
-                nodes.push({ type: 'loading', id: `loading-db-${db}`, depth: 3, data: { text: renderingConnectionId === activeConnectionId ? 'Loading...' : 'Switch to load' } });
+                nodes.push({ 
+                    type: 'loading', 
+                    id: `loading-db-${db}`, 
+                    depth: 3, 
+                    data: { text: connId === activeConnectionId ? 'Loading...' : 'Connect to view' },
+                    connId 
+                });
             } else {
                 flattenDatabaseObjects(nodes, db, objs, ctx, connId);
             }
@@ -441,7 +447,13 @@ export function ObjectExplorer() {
                 // Actually `tableDetails` in `ctx` should have it if it was loaded.
             }
             const isActive = connId === activeConnectionId;
-            nodes.push({ type: 'loading', id: `loading-tbl-${db}-${table}`, depth: 5, data: { text: isActive ? 'Loading...' : 'Switch to load' } });
+            nodes.push({ 
+                type: 'loading', 
+                id: `loading-tbl-${db}-${table}`, 
+                depth: 5, 
+                data: { text: isActive ? 'Loading...' : 'Connect to view' },
+                connId 
+            });
             return;
         }
 
@@ -466,7 +478,6 @@ export function ObjectExplorer() {
     };
 
 
-    let renderingConnectionId = null;
     let currentBackendId = null;
     let cancelPreload = false;
     const withCacheConnection = (connId, fn) => {
@@ -819,8 +830,12 @@ export function ObjectExplorer() {
             }
             case 'loading': {
                 const text = data.text;
-                const loadingColor = isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]' : (isOceanic ? 'text-ocean-text/40' : (isNeon ? 'text-neon-text/40' : 'text-gray-700')));
-                return `<div class="virtual-row ${loadingColor} italic text-[9px] flex items-center" style="${style}">${text}</div>`;
+                const isConnect = text === 'Connect to view';
+                const loadingColor = isConnect ? 
+                    (isDawn ? 'text-[#ea9d34] hover:underline cursor-pointer' : (isNeon ? 'text-neon-accent hover:underline cursor-pointer' : (isOceanic ? 'text-ocean-frost hover:underline cursor-pointer' : 'text-mysql-teal hover:underline cursor-pointer'))) :
+                    (isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]' : (isOceanic ? 'text-ocean-text/40' : (isNeon ? 'text-neon-text/40' : 'text-gray-700'))));
+                
+                return `<div class="virtual-row loading-item ${loadingColor} italic text-[9px] flex items-center" style="${style}" data-conn-id="${connId || ''}">${text}</div>`;
             }
             case 'show-more-dbs':
             case 'show-more-objects':
@@ -1108,6 +1123,15 @@ export function ObjectExplorer() {
                 columnLimits[key] = (columnLimits[key] || 100) + 200;
                 didStateChangeSinceLastTreeRender = true;
                 render();
+                return;
+            }
+
+            const loadingItem = e.target.closest('.loading-item');
+            if (loadingItem && loadingItem.textContent === 'Connect to view') {
+                const connId = loadingItem.dataset.connId;
+                if (connId) {
+                    await switchConnection(connId);
+                }
                 return;
             }
 
