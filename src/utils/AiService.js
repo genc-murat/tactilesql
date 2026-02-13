@@ -168,6 +168,15 @@ Return concise markdown in this structure:
 - ...
 ### Remediation Plan
 - ...
+### Remediation Scripts
+Provide one or more SQL blocks (DELETE/UPDATE) to fix identified issues (e.g., duplicates, orphans). 
+Wrap each SQL snippet in a markdown code block labeled with the issue it fixes.
+Example:
+#### Fix Duplicates
+\`\`\`sql
+DELETE FROM table WHERE ...;
+\`\`\`
+
 ### Validation Queries
 - ...
 
@@ -189,6 +198,7 @@ Regenerate the full quality analysis with all sections:
 - Quality Risk Summary
 - Root Cause Analysis
 - Remediation Plan
+- Remediation Scripts
 - Validation Queries
 
 Do not end mid-sentence and keep recommendations tied to the provided columns/issues only.

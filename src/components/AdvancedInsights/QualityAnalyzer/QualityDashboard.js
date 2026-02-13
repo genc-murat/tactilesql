@@ -5,6 +5,7 @@ import { AiService } from '../../../utils/AiService.js';
 import { toastError, toastSuccess } from '../../../utils/Toast.js';
 import { CustomDropdown } from '../../UI/CustomDropdown.js';
 import { showQueryAnalyzerModal } from '../../UI/QueryAnalyzerModal.js';
+import { Dialog } from '../../UI/Dialog.js';
 import './QualityDashboard.css';
 
 export function QualityDashboard() {
@@ -435,6 +436,20 @@ export function QualityDashboard() {
         }
     };
 
+    const applyRemediationFix = async (sql, title) => {
+        const confirmed = await Dialog.confirm(`Apply this remediation fix?\n\nISSUE: ${title}\n\nSQL:\n${sql}`, 'Remediation Approval');
+        if (!confirmed) return;
+
+        try {
+            await invoke('execute_query', { query: sql });
+            toastSuccess('Remediation applied successfully.');
+            // Refresh report
+            runAnalysis();
+        } catch (error) {
+            Dialog.alert(`Failed to apply fix: ${error}`, 'Execution Error');
+        }
+    };
+
     // Render Logic
     const render = () => {
         container.innerHTML = '';
@@ -629,6 +644,28 @@ export function QualityDashboard() {
         const grid = document.createElement('div');
         grid.className = 'grid grid-cols-[300px_1fr] gap-6 max-w-7xl mx-auto';
 
+        // Freshness Badge Helper
+        const getFreshnessInfo = (lastUpdated) => {
+            if (!lastUpdated) return null;
+            const lu = new Date(lastUpdated);
+            const now = new Date();
+            const diffDays = Math.floor((now - lu) / (1000 * 60 * 60 * 24));
+            
+            let color = 'text-green-400';
+            let label = 'Fresh';
+            if (diffDays > 30) {
+                color = 'text-red-400';
+                label = 'Stale';
+            } else if (diffDays > 7) {
+                color = 'text-amber-400';
+                label = 'Old';
+            }
+
+            return { label, color, diffDays, dateStr: lu.toLocaleDateString() };
+        };
+
+        const freshness = getFreshnessInfo(report.last_updated);
+
         // Score Card
         const scoreCard = document.createElement('div');
         scoreCard.className = `${classes.card} flex flex-col items-center justify-center row-span-2`;
@@ -648,6 +685,16 @@ export function QualityDashboard() {
                     <span>ISSUES</span>
                 </div>
             </div>
+            ${freshness ? `
+            <div class="w-full flex flex-col items-center mt-4 pt-4 border-t ${theme === 'light' ? 'border-gray-100' : 'border-white/5'}">
+                <span class="text-[9px] font-bold opacity-50 uppercase mb-1">Data Freshness</span>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold ${freshness.color}">${freshness.label}</span>
+                    <span class="text-[10px] ${classes.text.secondary}">• ${freshness.diffDays}d ago</span>
+                </div>
+                <span class="text-[9px] font-mono opacity-40 mt-1">${freshness.dateStr}</span>
+            </div>
+            ` : ''}
              <div class="text-[10px] ${classes.text.secondary} mt-4 text-center">
                 Analyzed ${new Date(report.timestamp).toLocaleString()}
             </div>
@@ -787,6 +834,31 @@ export function QualityDashboard() {
             analysisWrap.appendChild(pre);
 
             aiCard.appendChild(analysisWrap);
+
+            // Remediation SQL parsing
+            const remediationSqls = parseRemediationSql(state.aiAnalysis);
+            if (remediationSqls.length > 0) {
+                const remediationTitle = document.createElement('div');
+                remediationTitle.className = `text-[10px] font-bold uppercase tracking-widest ${classes.text.accent} mt-4 mb-2`;
+                remediationTitle.textContent = 'Auto-Fix Recommendations';
+                aiCard.appendChild(remediationTitle);
+
+                remediationSqls.forEach(fix => {
+                    const fixBox = document.createElement('div');
+                    fixBox.className = `p-3 rounded-lg border ${theme === 'dawn' ? 'bg-[#ea9d34]/5 border-[#ea9d34]/20' : 'bg-mysql-teal/5 border-mysql-teal/20'} mb-2`;
+                    fixBox.innerHTML = `
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-[10px] font-bold ${classes.text.primary}">${fix.title}</span>
+                            <button class="apply-fix-btn px-2 py-1 rounded bg-red-500 text-white text-[9px] font-bold uppercase hover:bg-red-600 transition-all shadow-md">
+                                Apply Fix
+                            </button>
+                        </div>
+                        <pre class="text-[9px] font-mono opacity-70 whitespace-pre-wrap">${fix.sql}</pre>
+                    `;
+                    fixBox.querySelector('.apply-fix-btn').onclick = () => applyRemediationFix(fix.sql, fix.title);
+                    aiCard.appendChild(fixBox);
+                });
+            }
         } else {
             const placeholder = document.createElement('div');
             placeholder.className = `text-xs ${classes.text.secondary} py-4`;
@@ -864,6 +936,30 @@ export function QualityDashboard() {
         grid.appendChild(metricsCard);
 
         parent.appendChild(grid);
+    }
+
+    function parseRemediationSql(text) {
+        if (!text) return [];
+        const fixes = [];
+        
+        // Match sections under Remediation Scripts
+        const remediationSection = text.split(/### Remediation Scripts/i)[1];
+        if (!remediationSection) return [];
+
+        const nextHeaderIdx = remediationSection.search(/\n### /);
+        const sectionContent = nextHeaderIdx === -1 ? remediationSection : remediationSection.substring(0, nextHeaderIdx);
+
+        // Find individual fixes (#### Title + ```sql)
+        const fixRegex = /####\s*(.*?)\n\s*```sql\n([\s\S]*?)```/g;
+        let match;
+        while ((match = fixRegex.exec(sectionContent)) !== null) {
+            fixes.push({
+                title: match[1].trim(),
+                sql: match[2].trim()
+            });
+        }
+
+        return fixes;
     }
 
     function renderTrends(parent) {

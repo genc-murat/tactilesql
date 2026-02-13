@@ -1,5 +1,6 @@
 use crate::quality_analyzer::models::*;
 use sqlx::{MySql, Pool, Postgres, Row};
+use chrono::{Utc, DateTime};
 
 pub async fn analyze_table_mysql(
     pool: &Pool<MySql>,
@@ -20,9 +21,10 @@ pub async fn analyze_table_mysql(
             id: None,
             connection_id: connection_id.to_string(),
             table_name: table.to_string(),
-            timestamp: chrono::Utc::now(),
+            timestamp: Utc::now(),
             overall_score: 100.0,
             row_count: 0,
+            last_updated: None,
             column_metrics: Vec::new(),
             issues: Vec::new(),
             schema_snapshot_id: None,
@@ -42,6 +44,52 @@ pub async fn analyze_table_mysql(
 
     let mut column_metrics = Vec::new();
     let mut issues = Vec::new();
+
+    // 2.5 Freshness Detection
+    let mut last_updated: Option<DateTime<Utc>> = None;
+    let freshness_cols: Vec<String> = columns
+        .iter()
+        .filter(|(name, dt)| {
+            let n = name.to_lowercase();
+            let d = dt.to_lowercase();
+            (n.contains("created") || n.contains("updated") || n.contains("timestamp") || n.contains("date")) &&
+            (d.contains("timestamp") || d.contains("date") || d.contains("time"))
+        })
+        .map(|(name, _)| format!("MAX(`{}`)", name))
+        .collect();
+
+    if !freshness_cols.is_empty() {
+        let freshness_query = format!("SELECT {} FROM {}.{}", freshness_cols.join(", "), database, table);
+        if let Ok(row) = sqlx::query(&freshness_query).fetch_one(pool).await {
+            let mut latest: Option<DateTime<Utc>> = None;
+            for i in 0..freshness_cols.len() {
+                if let Ok(ts) = row.try_get::<Option<chrono::NaiveDateTime>, _>(i) {
+                    if let Some(ndt) = ts {
+                        let dt = DateTime::<Utc>::from_naive_utc_and_offset(ndt, Utc);
+                        if latest.is_none() || Some(dt) > latest {
+                            latest = Some(dt);
+                        }
+                    }
+                }
+            }
+            last_updated = latest;
+        }
+    }
+
+    if let Some(lu) = last_updated {
+        let now = Utc::now();
+        let diff = now.signed_duration_since(lu);
+        if diff.num_days() > 30 {
+            issues.push(DataQualityIssue {
+                issue_type: IssueType::StaleData,
+                severity: IssueSeverity::Warning,
+                description: format!("Table has not been updated in {} days (last update: {}).", diff.num_days(), lu.format("%Y-%m-%d")),
+                column_name: None,
+                affected_row_count: None,
+                drill_down_query: None,
+            });
+        }
+    }
 
     // 3. Optimized Metrics Gathering (Single Query for NULLs, Distincts, Stats)
     let mut select_expressions = Vec::new();
@@ -296,9 +344,10 @@ pub async fn analyze_table_mysql(
         id: None,
         connection_id: connection_id.to_string(),
         table_name: table.to_string(),
-        timestamp: chrono::Utc::now(),
+        timestamp: Utc::now(),
         overall_score: calculate_score(&issues),
         row_count: total_row_count as u64,
+        last_updated,
         column_metrics,
         issues,
         schema_snapshot_id: None,
@@ -336,9 +385,10 @@ pub async fn analyze_table_postgres(
             id: None,
             connection_id: connection_id.to_string(),
             table_name: table.to_string(),
-            timestamp: chrono::Utc::now(),
+            timestamp: Utc::now(),
             overall_score: 100.0,
             row_count: 0,
+            last_updated: None,
             column_metrics: Vec::new(),
             issues: Vec::new(),
             schema_snapshot_id: None,
@@ -357,6 +407,51 @@ pub async fn analyze_table_postgres(
 
     let mut column_metrics = Vec::new();
     let mut issues = Vec::new();
+
+    // 2.5 Freshness Detection (Postgres)
+    let mut last_updated: Option<DateTime<Utc>> = None;
+    let freshness_cols: Vec<String> = columns
+        .iter()
+        .filter(|(name, dt)| {
+            let n = name.to_lowercase();
+            let d = dt.to_lowercase();
+            (n.contains("created") || n.contains("updated") || n.contains("timestamp") || n.contains("date")) &&
+            (d.contains("timestamp") || d.contains("date") || d.contains("time"))
+        })
+        .map(|(name, _)| format!("MAX(\"{}\")", name))
+        .collect();
+
+    if !freshness_cols.is_empty() {
+        let freshness_query = format!("SELECT {} FROM {}.{}", freshness_cols.join(", "), schema, table);
+        if let Ok(row) = sqlx::query(&freshness_query).fetch_one(pool).await {
+            let mut latest: Option<DateTime<Utc>> = None;
+            for i in 0..freshness_cols.len() {
+                if let Ok(ts) = row.try_get::<Option<DateTime<Utc>>, _>(i) {
+                    if let Some(dt) = ts {
+                        if latest.is_none() || Some(dt) > latest {
+                            latest = Some(dt);
+                        }
+                    }
+                }
+            }
+            last_updated = latest;
+        }
+    }
+
+    if let Some(lu) = last_updated {
+        let now = Utc::now();
+        let diff = now.signed_duration_since(lu);
+        if diff.num_days() > 30 {
+            issues.push(DataQualityIssue {
+                issue_type: IssueType::StaleData,
+                severity: IssueSeverity::Warning,
+                description: format!("Table has not been updated in {} days (last update: {}).", diff.num_days(), lu.format("%Y-%m-%d")),
+                column_name: None,
+                affected_row_count: None,
+                drill_down_query: None,
+            });
+        }
+    }
 
     let mut select_expressions = Vec::new();
     struct ColMeta {
@@ -618,9 +713,10 @@ pub async fn analyze_table_postgres(
         id: None,
         connection_id: connection_id.to_string(),
         table_name: table.to_string(),
-        timestamp: chrono::Utc::now(),
+        timestamp: Utc::now(),
         overall_score: calculate_score(&issues),
         row_count: total_row_count as u64,
+        last_updated,
         column_metrics,
         issues,
         schema_snapshot_id: None,
