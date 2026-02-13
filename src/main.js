@@ -158,6 +158,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         '/data-tools': { component: lazyLoad(() => import('./pages/DataTools.js'), 'DataTools') },
         '/capacity': { component: lazyLoad(() => import('./pages/CapacityPlanner.js'), 'CapacityPlanner') },
         '/monitor': { component: lazyLoad(() => import('./pages/ServerMonitor.js'), 'ServerMonitor') },
+        '/config': { component: lazyLoad(() => import('./pages/DbConfig.js'), 'DbConfig') },
         '/schema-tracker': { component: lazyLoad(() => import('./components/AdvancedInsights/SchemaTracker/SchemaTracker.js'), 'SchemaTracker') },
         '/dependencies': { component: lazyLoad(() => import('./components/AdvancedInsights/DependencyGraph/DependencyExplorer.js'), 'DependencyExplorer') },
         '/er-diagram': { component: lazyLoad(() => import('./pages/ERDiagram.js'), 'ERDiagram') },

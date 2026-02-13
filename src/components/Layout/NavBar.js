@@ -35,6 +35,8 @@ export function NavBar() {
                 icon: 'settings_suggest',
                 id: 'menu-ops',
                 children: [
+                    { path: '/monitor', label: 'MONITOR', icon: 'speed' },
+                    { path: '/config', label: 'CONFIG', icon: 'tune' },
                     ...(taskCenterEnabled
                         ? [{ path: '/tasks', label: 'TASKS', icon: 'checklist' }]
                         : []),
