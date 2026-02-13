@@ -165,6 +165,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         '/lineage': { component: lazyLoad(() => import('./pages/DataLineage.js'), 'DataLineage') },
         '/quality-analyzer': { component: lazyLoad(() => import('./components/AdvancedInsights/QualityAnalyzer/QualityDashboard.js'), 'QualityDashboard') },
         '/index-lifecycle': { component: lazyLoad(() => import('./pages/IndexLifecycle.js'), 'IndexLifecycle') },
+        '/stories': { component: lazyLoad(() => import('./pages/QueryStories.js'), 'QueryStories') },
+        '/anomalies': { component: lazyLoad(() => import('./pages/Anomalies.js'), 'Anomalies') },
+        '/workload': { component: lazyLoad(() => import('./pages/WorkloadInsights.js'), 'WorkloadInsights') },
         '/audit': { component: lazyLoad(() => import('./pages/AuditTrail.js'), 'AuditTrail') },
         '/tasks': {
             component: taskCenterEnabled

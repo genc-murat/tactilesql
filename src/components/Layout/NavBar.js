@@ -21,6 +21,9 @@ export function NavBar() {
                 icon: 'analytics',
                 id: 'menu-insights',
                 children: [
+                    { path: '/workload', label: 'PERFORMANCE', icon: 'speed' },
+                    { path: '/stories', label: 'STORIES', icon: 'history_edu' },
+                    { path: '/anomalies', label: 'ANOMALIES', icon: 'warning' },
                     { path: '/schema-tracker', label: 'SCHEMA', icon: 'history' },
                     { path: '/diff', label: 'DIFF', icon: 'compare_arrows' },
                     { path: '/quality-analyzer', label: 'QUALITY', icon: 'fact_check' },
@@ -28,6 +31,7 @@ export function NavBar() {
                     { path: '/dependencies', label: 'GRAPH', icon: 'account_tree' },
                     { path: '/er-diagram', label: 'ERD', icon: 'schema' },
                     { path: '/lineage', label: 'LINEAGE', icon: 'device_hub' },
+                    { path: '/schema', label: 'DESIGN', icon: 'design_services' },
                 ]
             },
             {
