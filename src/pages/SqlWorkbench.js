@@ -301,6 +301,9 @@ export function SqlWorkbench() {
         window.removeEventListener('tactilesql:toggle-story-panel', onToggleStoryPanel);
         window.removeEventListener('tactilesql:query-changed', onQueryChanged);
         window.removeEventListener('tactilesql:query-executed', onQueryExecuted);
+
+        // Cleanup components
+        if (sidebar && typeof sidebar.onUnmount === 'function') sidebar.onUnmount();
         profiler.unmount();
     };
 

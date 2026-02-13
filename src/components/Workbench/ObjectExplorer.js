@@ -141,6 +141,76 @@ export function ObjectExplorer() {
     let highlightTimeout = null;
     let didStateChangeSinceLastTreeRender = true; // flag to force tree re-render
 
+    // --- Worker Setup ---
+    const searchWorker = new Worker(new URL('../../workers/searchWorker.js', import.meta.url));
+    const handleWorkerMessage = (e) => {
+        const { type, payload } = e.data;
+        if (type === 'SEARCH_COMPLETE') {
+            searchMatches = payload.matches;
+            // Reconstruct Sets/Maps from payload context
+            if (payload.context) {
+                const ctx = payload.context;
+                searchContext = {
+                    matchIds: new Set(ctx.matchIds),
+                    databases: new Set(ctx.databases),
+                    tables: new Map(),
+                    views: new Map(),
+                    triggers: new Map(),
+                    procedures: new Map(),
+                    functions: new Map(),
+                    events: new Map()
+                };
+                Object.entries(ctx.tables).forEach(([db, tables]) => searchContext.tables.set(db, new Set(tables)));
+                Object.entries(ctx.views).forEach(([db, views]) => searchContext.views.set(db, new Set(views)));
+                Object.entries(ctx.triggers).forEach(([db, triggers]) => searchContext.triggers.set(db, new Set(triggers)));
+                Object.entries(ctx.procedures).forEach(([db, procedures]) => searchContext.procedures.set(db, new Set(procedures)));
+                Object.entries(ctx.functions).forEach(([db, functions]) => searchContext.functions.set(db, new Set(functions)));
+                Object.entries(ctx.events).forEach(([db, events]) => searchContext.events.set(db, new Set(events)));
+            } else {
+                searchContext = null;
+            }
+
+            currentMatchIndex = searchMatches.length > 0 ? 0 : -1;
+
+            // Auto-expand logic (similar to previous synchronous logic)
+            if (searchContext) {
+                const expandSet = (set, targetSet) => set.forEach(item => targetSet.add(item));
+                expandSet(searchContext.databases, expandedDbs);
+                // Only auto-expand tables if results are reasonable count
+                if (searchMatches.length <= 50) {
+                    searchContext.tables.forEach((tables, db) => {
+                        expandedDbs.add(db);
+                        tables.forEach(t => expandedTables.add(`${db}.${t}`));
+                    });
+                }
+                // Ensure parents of other objects are expanded
+                [searchContext.views, searchContext.triggers, searchContext.procedures, searchContext.functions, searchContext.events].forEach(map => {
+                    map.forEach((_, db) => expandedDbs.add(db));
+                });
+            }
+
+            didStateChangeSinceLastTreeRender = true;
+            render();
+
+            // Scroll to first match if exists
+            if (searchMatches.length > 0) {
+                // Load details for first match if needed (async, ui updates later)
+                const first = searchMatches[0];
+                if (first.db && !dbObjects[first.db]) {
+                    const cachedSchema = DatabaseCache.get(CacheTypes.SCHEMAS, first.db);
+                    if (!cachedSchema) loadDatabaseObjects(first.db);
+                }
+                if (first.table && !tableDetails[`${first.db}.${first.table}`]) {
+                    const cachedCols = DatabaseCache.get(CacheTypes.COLUMNS, `${first.db}.${first.table}`);
+                    if (!cachedCols) loadTableDetails(first.db, first.table, true);
+                }
+                scrollToMatch(first.id);
+            }
+        }
+    };
+    searchWorker.onmessage = handleWorkerMessage;
+
+
     // --- Virtual Scrolling State ---
     const ROW_HEIGHT = 22; // px
     let scrollTop = 0;
@@ -347,12 +417,12 @@ export function ObjectExplorer() {
         if (isExpanded) {
             const objs = ctx.dbObjects[db];
             if (!objs) {
-                nodes.push({ 
-                    type: 'loading', 
-                    id: `loading-db-${db}`, 
-                    depth: 3, 
+                nodes.push({
+                    type: 'loading',
+                    id: `loading-db-${db}`,
+                    depth: 3,
                     data: { text: connId === activeConnectionId ? 'Loading...' : 'Connect to view' },
-                    connId 
+                    connId
                 });
             } else {
                 flattenDatabaseObjects(nodes, db, objs, ctx, connId);
@@ -447,12 +517,12 @@ export function ObjectExplorer() {
                 // Actually `tableDetails` in `ctx` should have it if it was loaded.
             }
             const isActive = connId === activeConnectionId;
-            nodes.push({ 
-                type: 'loading', 
-                id: `loading-tbl-${db}-${table}`, 
-                depth: 5, 
+            nodes.push({
+                type: 'loading',
+                id: `loading-tbl-${db}-${table}`,
+                depth: 5,
                 data: { text: isActive ? 'Loading...' : 'Connect to view' },
-                connId 
+                connId
             });
             return;
         }
@@ -700,7 +770,7 @@ export function ObjectExplorer() {
                 return `
                     <div class="${toggleClass} virtual-row flex items-center gap-2 w-full cursor-pointer px-2 py-1 text-[8px] font-bold tracking-[0.2em] ${headerText} hover:opacity-80 transition-colors" style="${style}" data-conn-id="${connId}">
                         <span class="material-symbols-outlined text-[10px] transition-transform ${expanded ? 'rotate-90' : ''}">arrow_right</span>
-                        <span class="material-symbols-outlined text-[11px] ${iconColor}">${icon}</span>
+                        <span class="material-symbols-outlined text-[11px] ${iconColor}"> ${icon}</span>
                         ${label}
                         <span class="${countTextColor}"> (${count})</span>
                     </div>
@@ -831,10 +901,10 @@ export function ObjectExplorer() {
             case 'loading': {
                 const text = data.text;
                 const isConnect = text === 'Connect to view';
-                const loadingColor = isConnect ? 
+                const loadingColor = isConnect ?
                     (isDawn ? 'text-[#ea9d34] hover:underline cursor-pointer' : (isNeon ? 'text-neon-accent hover:underline cursor-pointer' : (isOceanic ? 'text-ocean-frost hover:underline cursor-pointer' : 'text-mysql-teal hover:underline cursor-pointer'))) :
                     (isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]' : (isOceanic ? 'text-ocean-text/40' : (isNeon ? 'text-neon-text/40' : 'text-gray-700'))));
-                
+
                 return `<div class="virtual-row loading-item ${loadingColor} italic text-[9px] flex items-center" style="${style}" data-conn-id="${connId || ''}">${text}</div>`;
             }
             case 'show-more-dbs':
@@ -1031,7 +1101,7 @@ export function ObjectExplorer() {
             const selectionEnd = hasFocus ? existingInput.selectionEnd : 0;
 
             searchWrapper.innerHTML = `
-                <div class="relative group">
+                <div class="relative group" id="explorer-search-wrapper">
                     <input type="text" id="explorer-search" placeholder="Search objects..." 
                         class="w-full ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#fcf9f2] border-[#f2e9e1]' : (isNeon ? 'bg-neon-bg border-neon-border/30' : 'bg-white/5 border-white/10'))} border rounded px-7 py-1.5 text-[9px] focus:outline-none ${isDawn ? 'focus:border-[#ea9d34]/50' : (isNeon ? 'focus:border-neon-accent/50' : 'focus:border-mysql-teal/50')} transition-colors pr-24"
                         value="${escapeHtml(searchQuery)}">
@@ -1042,14 +1112,7 @@ export function ObjectExplorer() {
                             <button id="search-exact-toggle" class="px-1 py-0.5 rounded text-[9px] font-black transition-all ${isExactMatch ? (isNeon ? 'bg-neon-accent text-black' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-400 hover:text-gray-600' : 'text-gray-500 hover:text-gray-300')}" title="Exact Match (Abc)">Abc</button>
                             <button id="search-regex-toggle" class="px-1 py-0.5 rounded text-[9px] font-black transition-all ${isRegexMatch ? (isNeon ? 'bg-neon-accent text-black' : 'bg-mysql-teal text-black') : (isLight ? 'text-gray-400 hover:text-gray-600' : 'text-gray-500 hover:text-gray-300')}" title="Regex Match (.*)">.*</button>
                         </div>
-                        <div id="search-controls-container" class="flex items-center gap-1">
-                            ${searchQuery ? `
-                                <span class="text-[9px] ${headerText} mr-1 whitespace-nowrap">${searchMatches.length > 0 ? `${currentMatchIndex + 1}/${searchMatches.length}` : '0/0'}</span>
-                                <button id="search-prev" class="material-symbols-outlined text-[14px] ${iconColor} hover:text-white cursor-pointer" title="Previous match">keyboard_arrow_up</button>
-                                <button id="search-next" class="material-symbols-outlined text-[14px] ${iconColor} hover:text-white cursor-pointer" title="Next match">keyboard_arrow_down</button>
-                                <button id="search-clear" class="material-symbols-outlined text-[14px] ${iconColor} hover:text-white cursor-pointer" title="Clear search">close</button>
-                            ` : ''}
-                        </div>
+                        <div id="search-controls-container" class="flex items-center gap-1"></div>
                     </div>
                 </div>
              `;
@@ -1075,12 +1138,46 @@ export function ObjectExplorer() {
         if (overlay) { overlay.innerHTML = searchHtml; }
     };
 
+    const updateSearchUI = () => {
+        const searchWrapper = container.querySelector('#explorer-search-wrapper');
+        if (searchWrapper) {
+            // Only update counts and buttons, avoidance full input re-render
+            const controlsContainer = searchWrapper.querySelector('#search-controls-container');
+            if (controlsContainer) {
+                const headerText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500');
+                const iconColor = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500');
+
+                controlsContainer.innerHTML = searchQuery ? `
+                    <span class="text-[9px] ${headerText} mr-1 whitespace-nowrap">${searchMatches.length > 0 ? `${currentMatchIndex + 1}/${searchMatches.length}` : '0/0'}</span>
+                    <button id="search-prev" class="material-symbols-outlined text-[14px] ${iconColor} hover:text-white cursor-pointer" title="Previous match">keyboard_arrow_up</button>
+                    <button id="search-next" class="material-symbols-outlined text-[14px] ${iconColor} hover:text-white cursor-pointer" title="Next match">keyboard_arrow_down</button>
+                    <button id="search-clear" class="material-symbols-outlined text-[14px] ${iconColor} hover:text-white cursor-pointer" title="Clear search">close</button>
+                ` : '';
+            }
+
+            // Update toggles active state if needed
+            const updateToggle = (id, isActive) => {
+                const btn = searchWrapper.querySelector(`#${id}`);
+                if (btn) {
+                    const activeClass = isNeon ? 'bg-neon-accent text-black' : 'bg-mysql-teal text-black';
+                    const inactiveClass = isLight ? 'text-gray-400 hover:text-gray-600' : 'text-gray-500 hover:text-gray-300';
+                    btn.className = `px-1 py-0.5 rounded text-[9px] font-black font-mono transition-all ${isActive ? activeClass : inactiveClass}`;
+                }
+            };
+            updateToggle('search-case-toggle', isCaseSensitive);
+            updateToggle('search-exact-toggle', isExactMatch);
+            updateToggle('search-regex-toggle', isRegexMatch);
+        }
+    };
+
+
     const render = () => {
         if (didStateChangeSinceLastTreeRender) {
             visibleNodes = getVisibleNodes();
             didStateChangeSinceLastTreeRender = false;
         }
         updateVirtualScroll();
+        updateSearchUI();
     };
 
 
@@ -1101,7 +1198,8 @@ export function ObjectExplorer() {
                 e.stopPropagation();
                 userDbsLimit += 200;
                 didStateChangeSinceLastTreeRender = true;
-                render();
+                debouncedRender();
+
                 return;
             }
 
@@ -1110,7 +1208,8 @@ export function ObjectExplorer() {
                 e.stopPropagation();
                 objectsLimit += 200;
                 didStateChangeSinceLastTreeRender = true;
-                render();
+                debouncedRender();
+
                 return;
             }
 
@@ -1122,7 +1221,8 @@ export function ObjectExplorer() {
                 const key = `${db}.${table}`;
                 columnLimits[key] = (columnLimits[key] || 100) + 200;
                 didStateChangeSinceLastTreeRender = true;
-                render();
+                debouncedRender();
+
                 return;
             }
 
@@ -1159,7 +1259,8 @@ export function ObjectExplorer() {
                 if (isActiveConn) expandedDbs = state.expandedDbs;
                 persistStates();
                 didStateChangeSinceLastTreeRender = true;
-                render();
+                debouncedRender();
+
                 return;
             }
 
@@ -1193,7 +1294,8 @@ export function ObjectExplorer() {
                 if (isActiveConn) expandedTables = state.expandedTables;
                 persistStates();
                 didStateChangeSinceLastTreeRender = true;
-                render();
+                debouncedRender();
+
                 return;
             }
 
@@ -1205,7 +1307,8 @@ export function ObjectExplorer() {
                     getConnectionState(activeConnectionId).connectionExpanded = connectionExpanded;
                     persistStates();
                     didStateChangeSinceLastTreeRender = true;
-                    render();
+                    debouncedRender();
+
                 } else {
                     connectionExpanded = true;
                     await switchConnection(id);
@@ -1276,7 +1379,8 @@ export function ObjectExplorer() {
                 if (connId === activeConnectionId) userDbsExpanded = state.userDbsExpanded;
                 persistStates();
                 didStateChangeSinceLastTreeRender = true;
-                render();
+                debouncedRender();
+
                 return;
             }
 
@@ -1289,7 +1393,8 @@ export function ObjectExplorer() {
                 if (connId === activeConnectionId) systemDbsExpanded = state.systemDbsExpanded;
                 persistStates();
                 didStateChangeSinceLastTreeRender = true;
-                render();
+                debouncedRender();
+
                 return;
             }
         });
@@ -1366,17 +1471,12 @@ export function ObjectExplorer() {
         currentMatchIndex = -1;
         searchContext = null;
         didStateChangeSinceLastTreeRender = true;
+        searchWorker.postMessage({ type: 'CLEAR' });
         render();
     };
 
     // --- Search Helper Logic ---
-    const normalize = (value = '') => value.toString().toLowerCase().trim();
-    const tokenize = (query = '') => normalize(query).split(/[\s._-]+/).filter(Boolean);
-    const ensureMapSet = (map, key) => {
-        if (!map.has(key)) map.set(key, new Set());
-        return map.get(key);
-    };
-
+    // Moved to worker. Retaining helpers for UI highlighting if needed, but worker handles matching.
     const highlightClass = (id) => {
         if (id === highlightedId) {
             return isDawn ? 'bg-[#ea9d34]/30 ring-1 ring-[#ea9d34]/50 rounded px-1' : 'bg-mysql-teal/30 ring-1 ring-mysql-teal/50 rounded px-1';
@@ -1395,219 +1495,33 @@ export function ObjectExplorer() {
     };
 
     const performSearch = () => {
-        if (!searchQuery.trim()) {
-            searchMatches = [];
-            searchContext = null;
-            currentMatchIndex = -1;
-            render();
-            return;
-        }
-
-        const tokens = tokenize(searchQuery);
-        const queryNorm = normalize(searchQuery);
-        let regex = null;
-        if (isRegexMatch) {
-            try {
-                regex = new RegExp(searchQuery, isCaseSensitive ? '' : 'i');
-            } catch (e) {
-                // Invalid regex
-                searchMatches = [];
-                searchContext = null;
-                currentMatchIndex = -1;
-                render();
-                return;
+        // Send search request to worker
+        // We also need to ensure worker has latest data. 
+        // We sync data on load/update, so here just send query.
+        searchWorker.postMessage({
+            type: 'SEARCH',
+            payload: {
+                query: searchQuery,
+                isExact: isExactMatch,
+                isRegex: isRegexMatch,
+                isCaseSensitive: isCaseSensitive
             }
-        }
-
-        const matches = [];
-        const matchesTokens = (text) => {
-            if (isRegexMatch && regex) return regex.test(text);
-
-            const subject = isCaseSensitive ? text : text.toLowerCase();
-            const target = isCaseSensitive ? searchQuery : searchQuery.toLowerCase();
-
-            if (isExactMatch) return subject === target;
-
-            // For tokens, since tokenize() currently lowercases everything, 
-            // if isCaseSensitive is true, we should probably re-tokenize without lowercasing 
-            // BUT for now let's just check if the lowercased tokens exist in the subject.
-            // Wait, if it's case sensitive, tokens should be case sensitive too.
-            const queryTokens = isCaseSensitive
-                ? searchQuery.split(/[\s._-]+/).filter(Boolean)
-                : tokens;
-
-            return queryTokens.every(t => subject.includes(t));
-        };
-
-        // Search in databases and nested objects
-        databases.forEach(db => {
-            if (matchesTokens(db)) {
-                matches.push({ type: 'database', db, id: `db-${db}` });
-            }
-
-            const cachedSchema = DatabaseCache.get(CacheTypes.SCHEMAS, db);
-            const objs = dbObjects[db] || cachedSchema;
-            if (!objs) return;
-
-            objs.tables.forEach(t => {
-                const fullName = `${db}.${t}`;
-                if (matchesTokens(t) || matchesTokens(fullName)) {
-                    matches.push({ type: 'table', db, table: t, id: `table-${db}-${t}` });
-                }
-
-                const cachedCols = DatabaseCache.get(CacheTypes.COLUMNS, `${db}.${t}`);
-                const details = tableDetails[`${db}.${t}`] || (cachedCols ? { columns: cachedCols } : null);
-                if (details?.columns) {
-                    details.columns.forEach(col => {
-                        if (matchesTokens(col.name)) {
-                            matches.push({ type: 'column', db, table: t, column: col.name, id: `col-${db}-${t}-${col.name}` });
-                        }
-                    });
-                }
-            });
-
-            objs.views.forEach(v => {
-                if (matchesTokens(v) || matchesTokens(`${db}.${v}`)) {
-                    matches.push({ type: 'view', db, view: v, id: `view-${db}-${v}` });
-                }
-            });
-
-            objs.triggers?.forEach(t => {
-                if (matchesTokens(t.name)) {
-                    matches.push({ type: 'trigger', db, trigger: t.name, id: `trigger-${db}-${t.name}` });
-                }
-            });
-
-            objs.procedures?.forEach(p => {
-                if (matchesTokens(p.name)) {
-                    matches.push({ type: 'procedure', db, procedure: p.name, id: `procedure-${db}-${p.name}` });
-                }
-            });
-
-            objs.functions?.forEach(f => {
-                if (matchesTokens(f.name)) {
-                    matches.push({ type: 'function', db, function: f.name, id: `function-${db}-${f.name}` });
-                }
-            });
-
-            objs.events?.forEach(e => {
-                if (matchesTokens(e.name)) {
-                    matches.push({ type: 'event', db, event: e.name, id: `event-${db}-${e.name}` });
-                }
-            });
         });
+        // Rendering happens in onmessage
+    };
 
-        const buildSearchContext = (list) => {
-            const ctx = {
-                matchIds: new Set(),
-                databases: new Set(),
-                tables: new Map(),
-                views: new Map(),
-                triggers: new Map(),
-                procedures: new Map(),
-                functions: new Map(),
-                events: new Map()
-            };
 
-            list.forEach(m => {
-                ctx.matchIds.add(m.id);
-                switch (m.type) {
-                    case 'database':
-                        ctx.databases.add(m.db);
-                        break;
-                    case 'table':
-                    case 'column':
-                        ensureMapSet(ctx.tables, m.db).add(m.table);
-                        break;
-                    case 'view':
-                        ensureMapSet(ctx.views, m.db).add(m.view || m.name);
-                        break;
-                    case 'trigger':
-                        ensureMapSet(ctx.triggers, m.db).add(m.trigger || m.name);
-                        break;
-                    case 'procedure':
-                        ensureMapSet(ctx.procedures, m.db).add(m.procedure || m.name);
-                        break;
-                    case 'function':
-                        ensureMapSet(ctx.functions, m.db).add(m.function || m.name);
-                        break;
-                    case 'event':
-                        ensureMapSet(ctx.events, m.db).add(m.event || m.name);
-                        break;
-                    default:
-                        break;
-                }
-            });
-            return ctx;
-        };
+    const scrollToMatch = (matchId) => {
+        const indexInList = visibleNodes.findIndex(node => node.id === matchId);
+        if (indexInList !== -1) {
+            const containerHeight = explorer.offsetHeight || 600;
+            let targetScrollTop = (indexInList * ROW_HEIGHT) - (containerHeight / 2) + (ROW_HEIGHT / 2);
+            targetScrollTop = Math.max(0, targetScrollTop);
 
-        searchMatches = matches;
-        searchContext = matches.length > 0 ? buildSearchContext(matches) : null;
-        currentMatchIndex = matches.length > 0 ? 0 : -1;
-
-        // Immediately load first match details (prevents "Loading..." stuck on auto-expand)
-        if (searchMatches.length > 0) {
-            const first = searchMatches[0];
-            // We intentionally don't await here to keep input snappy; rendering will update when fetch finishes.
-            if (first.db && !dbObjects[first.db]) {
-                const cachedSchema = DatabaseCache.get(CacheTypes.SCHEMAS, first.db);
-                if (!cachedSchema) loadDatabaseObjects(first.db);
+            const tree = container.querySelector('#explorer-tree');
+            if (tree) {
+                tree.scrollTo({ top: targetScrollTop, behavior: 'auto' });
             }
-            if (first.table && !tableDetails[`${first.db}.${first.table}`]) {
-                const cachedCols = DatabaseCache.get(CacheTypes.COLUMNS, `${first.db}.${first.table}`);
-                if (!cachedCols) loadTableDetails(first.db, first.table, true);
-            }
-        }
-
-        // Expand all parents containing matches so results are visible
-        // PERFORMANCE: If too many matches, do not auto-expand tables to prevent UI freeze
-        let expansionChanged = false;
-        if (searchContext) {
-            searchContext.databases.forEach(db => {
-                if (!expandedDbs.has(db)) {
-                    expandedDbs.add(db);
-                    expansionChanged = true;
-                }
-            });
-
-            const AUTO_EXPAND_LIMIT = 50;
-            const totalMatches = matches.length;
-
-            if (totalMatches <= AUTO_EXPAND_LIMIT) {
-                searchContext.tables.forEach((tables, db) => {
-                    if (!expandedDbs.has(db)) {
-                        expandedDbs.add(db);
-                        expansionChanged = true;
-                    }
-                    tables.forEach(t => {
-                        const key = `${db}.${t}`;
-                        if (!expandedTables.has(key)) {
-                            expandedTables.add(key);
-                            expansionChanged = true;
-                        }
-                    });
-                });
-            } else {
-                // If we skip table expansion, at least ensure databases are expanded (already done above)
-                // We might want to clear expandedTables if user starts a new broad search to avoid clutter?
-                // For now, let's keep existing expansions but not add new ones aggressively.
-            }
-
-            [searchContext.views, searchContext.triggers, searchContext.procedures, searchContext.functions, searchContext.events].forEach(map => {
-                map.forEach((_, db) => {
-                    if (!expandedDbs.has(db)) {
-                        expandedDbs.add(db);
-                        expansionChanged = true;
-                    }
-                });
-            });
-        }
-
-        didStateChangeSinceLastTreeRender = expansionChanged;
-        render();
-
-        if (searchMatches.length > 0) {
-            scrollToMatch(searchMatches[currentMatchIndex].id);
         }
     };
 
@@ -1648,18 +1562,11 @@ export function ObjectExplorer() {
         didStateChangeSinceLastTreeRender = true;
         render();
 
-        // Calculate scroll position based on index in visibleNodes
-        const indexInList = visibleNodes.findIndex(node => node.id === match.id);
-        if (indexInList !== -1) {
-            const containerHeight = explorer.offsetHeight || 600;
-            let targetScrollTop = (indexInList * ROW_HEIGHT) - (containerHeight / 2) + (ROW_HEIGHT / 2);
-            targetScrollTop = Math.max(0, targetScrollTop);
+        // Also update search UI to show current index
+        updateSearchUI();
 
-            const tree = container.querySelector('#explorer-tree');
-            if (tree) {
-                tree.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
-            }
-        }
+
+        scrollToMatch(match.id);
     };
 
     // --- Switch Connection ---
@@ -2281,24 +2188,32 @@ export function ObjectExplorer() {
             persistStates();
             render();
 
+            // Sync with worker
+            searchWorker.postMessage({
+                type: 'SET_DATA',
+                payload: {
+                    databases,
+                    dbObjects,
+                    tableDetails
+                }
+            });
+
+
             // Trigger background pre-fetching for all databases
             if (databases.length > 0) {
                 const sysDbs = getSystemDatabases().map(d => d.toLowerCase());
-                const userDbs = databases.filter(db => !sysDbs.includes(db.toLowerCase()));
+                const userDbs = databases.filter(d => !sysDbs.includes(d.toLowerCase()));
+                const connConfig = connections.find(c => c.id === activeConnectionId);
 
-                // Fetch user databases sequentially in background to avoid overwhelming the connection
+                // Prioritize user databases
                 (async () => {
-                    const prefetchLimit = 50;
-                    const toPrefetch = userDbs.slice(0, prefetchLimit);
-                    for (const db of toPrefetch) {
-                        try {
-                            if (cancelPreload) break;
-                            await loadDatabaseObjects(db, true);
-                            // Add a small delay between fetches to keep UI responsive
-                            await new Promise(r => setTimeout(r, 50));
-                        } catch (err) {
-                            console.warn(`Background fetch failed for ${db}:`, err);
-                        }
+                    for (const db of userDbs) {
+                        if (activeConnectionId !== connConfig.id) break; // Stop if switched away
+                        if (!dbObjects[db]) await loadDatabaseObjects(db, true);
+                    }
+                    for (const db of sysDbs) {
+                        if (activeConnectionId !== connConfig.id) break;
+                        if (!dbObjects[db]) await loadDatabaseObjects(db, true);
                     }
                 })();
             }
@@ -2343,30 +2258,51 @@ export function ObjectExplorer() {
                                     DatabaseCache.set(CacheTypes.SCHEMAS, db, schema, 24 * 60 * 60 * 1000);
                                     state.dbObjects[db] = schema;
                                     const tableDetails = await fetchTableDetailsAll(db, schema.tables || []);
+                                    const detailsMap = {};
                                     Object.entries(tableDetails).forEach(([table, details]) => {
                                         const key = `${db}.${table}`;
                                         state.tableDetails[key] = details;
+                                        detailsMap[key] = details;
                                     });
+                                    // Sync with worker if this is the active connection
+                                    if (conn.id === currentActiveId) {
+                                        searchWorker.postMessage({
+                                            type: 'UPDATE_TABLE_DETAILS_BATCH',
+                                            payload: { detailsMap }
+                                        });
+                                    }
+
                                 } catch (err) {
                                     console.warn(`Background fetch failed for ${conn.name || conn.id} / ${db}:`, err);
                                 }
                             } else {
                                 state.dbObjects[db] = DatabaseCache.get(CacheTypes.SCHEMAS, db);
                                 const tables = state.dbObjects[db]?.tables || [];
+                                const batchDetails = {};
                                 tables.forEach(table => {
                                     const key = `${db}.${table}`;
                                     const cols = DatabaseCache.get(CacheTypes.COLUMNS, key);
                                     const idx = DatabaseCache.get(CacheTypes.INDEXES, key);
                                     const fks = DatabaseCache.get(CacheTypes.FOREIGN_KEYS, key);
                                     if (cols || idx || fks) {
-                                        state.tableDetails[key] = {
+                                        const details = {
                                             columns: cols || [],
                                             indexes: idx || [],
                                             fks: fks || [],
                                             constraints: []
                                         };
+                                        state.tableDetails[key] = details;
+                                        batchDetails[key] = details;
                                     }
                                 });
+                                // Sync with worker if this is the active connection
+                                if (conn.id === currentActiveId && Object.keys(batchDetails).length > 0) {
+                                    searchWorker.postMessage({
+                                        type: 'UPDATE_TABLE_DETAILS_BATCH',
+                                        payload: { detailsMap: batchDetails }
+                                    });
+                                }
+
                             }
                         }
                     }
@@ -2464,6 +2400,13 @@ export function ObjectExplorer() {
             dbObjects[dbName] = results;
             DatabaseCache.set(CacheTypes.SCHEMAS, cacheKey, results, 24 * 60 * 60 * 1000);
 
+            // Sync with worker
+            searchWorker.postMessage({
+                type: 'UPDATE_DB_OBJECTS',
+                payload: { db: dbName, objects: results }
+            });
+
+
             if (!isBackground) {
                 didStateChangeSinceLastTreeRender = true;
                 render();
@@ -2540,6 +2483,13 @@ export function ObjectExplorer() {
             DatabaseCache.set(CacheTypes.INDEXES, key, indexes);
             DatabaseCache.set(CacheTypes.FOREIGN_KEYS, key, fks);
 
+            // Sync with worker
+            searchWorker.postMessage({
+                type: 'UPDATE_TABLE_DETAILS',
+                payload: { key, details: results }
+            });
+
+
             if (!isBackground || expandedTables.has(key)) {
                 didStateChangeSinceLastTreeRender = true;
                 render();
@@ -2584,12 +2534,40 @@ export function ObjectExplorer() {
     };
     window.addEventListener('tactilesql:settings-changed', onSettingsChanged);
 
+    // Debounce for frequent updates
+    const debounce = (fn, delay) => {
+        let timeoutId;
+        return (...args) => {
+            if (timeoutId) clearTimeout(timeoutId);
+            timeoutId = setTimeout(() => {
+                fn(...args);
+                timeoutId = null;
+            }, delay);
+        };
+    };
+
+    // Replace standard render with debounced version for high-frequency events
+    // But keep synchronous render for immediate interactions where lag is acceptable/expected
+    // or when we need immediate feedback.
+    // Actually, user requested debouncing getVisibleNodes on structure change.
+    // The render function calls getVisibleNodes if didStateChangeSinceLastTreeRender is true.
+
+    // We can create a debouncedRender for drag/resize/state-heavy updates
+    const debouncedRender = debounce(render, 50);
+
     // Patch for cleanup
     explorer.onUnmount = () => {
         window.removeEventListener('themechange', onThemeChange);
         window.removeEventListener('tactilesql:connection-changed', onConnectionChanged);
         window.removeEventListener('tactilesql:settings-changed', onSettingsChanged);
+
+        // Terminate worker
+        searchWorker.terminate();
+
+        // Remove tooltip listener if active (though it usually cleans itself up on next click)
+        if (typeof removeTooltip === 'function') removeTooltip();
     };
+
 
     setupListeners();
     render();
