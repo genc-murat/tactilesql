@@ -21,17 +21,22 @@ export function NavBar() {
                 icon: 'analytics',
                 id: 'menu-insights',
                 children: [
-                    { path: '/workload', label: 'PERFORMANCE', icon: 'speed' },
-                    { path: '/stories', label: 'STORIES', icon: 'history_edu' },
+                    { type: 'header', label: 'Performance' },
+                    { path: '/workload', label: 'WORKLOAD HUB', icon: 'speed' },
                     { path: '/anomalies', label: 'ANOMALIES', icon: 'warning' },
-                    { path: '/schema-tracker', label: 'SCHEMA', icon: 'history' },
-                    { path: '/diff', label: 'DIFF', icon: 'compare_arrows' },
-                    { path: '/quality-analyzer', label: 'QUALITY', icon: 'fact_check' },
-                    { path: '/index-lifecycle', label: 'INDEXES', icon: 'timeline' },
-                    { path: '/dependencies', label: 'GRAPH', icon: 'account_tree' },
-                    { path: '/er-diagram', label: 'ERD', icon: 'schema' },
-                    { path: '/lineage', label: 'LINEAGE', icon: 'device_hub' },
-                    { path: '/schema', label: 'DESIGN', icon: 'design_services' },
+                    { path: '/index-lifecycle', label: 'INDEX LIFECYCLE', icon: 'timeline' },
+
+                    { type: 'header', label: 'Schema & Design' },
+                    { path: '/schema-tracker', label: 'SCHEMA TRACKER', icon: 'history' },
+                    { path: '/er-diagram', label: 'ER DIAGRAM', icon: 'schema' },
+                    { path: '/schema', label: 'UI DESIGNER', icon: 'design_services' },
+                    { path: '/diff', label: 'SCHEMA DIFF', icon: 'compare_arrows' },
+
+                    { type: 'header', label: 'Deep Analysis' },
+                    { path: '/quality-analyzer', label: 'QUALITY VUE', icon: 'fact_check' },
+                    { path: '/stories', label: 'QUERY STORIES', icon: 'history_edu' },
+                    { path: '/dependencies', label: 'DEP GRAPH', icon: 'account_tree' },
+                    { path: '/lineage', label: 'DATA LINEAGE', icon: 'device_hub' },
                 ]
             },
             {
@@ -103,13 +108,21 @@ export function NavBar() {
                         </button>
                         
                         <!-- Dropdown Menu -->
-                        <div class="absolute left-0 top-full mt-1 w-40 p-1 rounded-lg border shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 transform origin-top-left scale-95 group-hover:scale-100
+                        <div class="absolute left-0 top-full mt-1 w-52 p-1.5 rounded-lg border shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 transform origin-top-left scale-95 group-hover:scale-100
                             ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : 'bg-[#1e232b] border-white/10')}">
-                            ${item.children.map(child => {
+                            <div class="flex flex-col gap-0.5">
+                                ${item.children.map((child, idx) => {
+                        if (child.type === 'header') {
+                            return `
+                                            <div class="px-3 ${idx === 0 ? 'pt-1' : 'pt-3'} pb-1.5 text-[9px] font-black uppercase tracking-[0.15em] opacity-40 ${isLight ? 'text-gray-900' : 'text-white'}">
+                                                ${child.label}
+                                            </div>
+                                        `;
+                        }
                         const isChildActive = currentPath === child.path;
                         return `
-                                    <a href="#${child.path}" class="flex items-center gap-2 px-3 py-2 text-[10px] font-bold tracking-wider rounded-md transition-colors
-                                        ${isChildActive
+                                        <a href="#${child.path}" class="flex items-center gap-2 px-3 py-1.5 text-[10px] font-bold tracking-wider rounded-md transition-colors
+                                            ${isChildActive
                                 ? 'text-mysql-cyan bg-mysql-teal/10'
                                 : (isLight || isDawn)
                                     ? 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
@@ -119,11 +132,12 @@ export function NavBar() {
                                             ? 'text-neon-text/70 hover:bg-neon-accent/10 hover:text-neon-text'
                                             : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'
                             }">
-                                        <span class="material-symbols-outlined text-sm opacity-70">${child.icon}</span>
-                                        ${child.label}
-                                    </a>
-                                `;
+                                            <span class="material-symbols-outlined text-sm opacity-70">${child.icon}</span>
+                                            ${child.label}
+                                        </a>
+                                    `;
                     }).join('')}
+                            </div>
                         </div>
                     </div>
                 `;
