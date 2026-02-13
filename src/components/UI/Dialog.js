@@ -183,6 +183,91 @@ export class Dialog {
         });
     }
 
+    static async promptForm(fields, title = 'Input Required', description = '') {
+        return new Promise((resolve) => {
+            this.init();
+
+            const theme = ThemeManager.getCurrentTheme();
+            const isLight = theme === 'light';
+            const isDawn = theme === 'dawn';
+            const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+            const isNeon = theme === 'neon';
+
+            this.title.textContent = title;
+            this.message.textContent = description;
+
+            const formContainer = document.createElement('div');
+            formContainer.className = "mt-4 space-y-3 text-left";
+
+            fields.forEach(field => {
+                const fieldGroup = document.createElement('div');
+                fieldGroup.className = "space-y-1";
+
+                const label = document.createElement('label');
+                label.className = `text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}`;
+                label.textContent = field.label || field.name;
+
+                const input = document.createElement('input');
+                input.id = `field-${field.name}`;
+                input.type = "text";
+                input.className = `w-full ${isLight ? 'bg-white border-gray-200 text-gray-800 focus:border-mysql-teal' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279] focus:border-[#ea9d34]' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text focus:border-ocean-frost' : (isNeon ? 'bg-neon-bg border-neon-border/30 text-neon-text focus:border-neon-accent' : 'bg-[#0b0d11] border border-white/10 text-gray-300 focus:border-mysql-teal/50')))} rounded p-2 text-xs outline-none transition-colors`;
+                input.value = field.value || '';
+                if (field.placeholder) input.placeholder = field.placeholder;
+
+                fieldGroup.appendChild(label);
+                fieldGroup.appendChild(input);
+                formContainer.appendChild(fieldGroup);
+            });
+
+            this.message.innerHTML = '';
+            this.message.textContent = description;
+            this.message.appendChild(formContainer);
+
+            // Icon
+            this.iconContainer.className = `mx-auto size-12 rounded-full flex items-center justify-center mb-4 border ${isLight ? 'border-gray-200' : 'border-white/10'} bg-cyan-500/10 text-neon-cyan`;
+            this.icon.textContent = 'list_alt';
+
+            // Buttons
+            this.actions.innerHTML = '';
+            const cancelBtn = document.createElement('button');
+            cancelBtn.className = "px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider text-gray-400 hover:text-white hover:bg-white/10 transition-colors";
+            cancelBtn.textContent = "Cancel";
+
+            const okBtn = document.createElement('button');
+            okBtn.className = "px-4 py-2 rounded-lg bg-mysql-teal text-black text-[10px] font-bold uppercase tracking-wider hover:brightness-110 transition-colors shadow-lg shadow-mysql-teal/20";
+            okBtn.textContent = "Apply";
+
+            cancelBtn.onclick = () => {
+                this.close();
+                resolve(null);
+            };
+
+            okBtn.onclick = () => {
+                const values = {};
+                fields.forEach(field => {
+                    values[field.name] = formContainer.querySelector(`#field-${field.name}`).value;
+                });
+                this.close();
+                resolve(values);
+            };
+
+            this.actions.appendChild(cancelBtn);
+            this.actions.appendChild(okBtn);
+
+            // Animation
+            this.overlay.classList.remove('hidden');
+            void this.overlay.offsetWidth;
+            this.overlay.classList.remove('opacity-0');
+            this.dialog.classList.remove('scale-95');
+
+            // Focus first input
+            setTimeout(() => {
+                const firstInput = formContainer.querySelector('input');
+                if (firstInput) firstInput.focus();
+            }, 50);
+        });
+    }
+
     static async prompt(message, title = 'Input Required', defaultValue = '') {
         return new Promise((resolve) => {
             // Initialize functionality first

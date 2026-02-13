@@ -29,6 +29,7 @@ export function SnippetLibrary() {
     // --- State ---
     let snippets = JSON.parse(localStorage.getItem('tactile_snippets') || '[]');
     let history = JSON.parse(localStorage.getItem('tactile_history') || '[]');
+    let favorites = JSON.parse(localStorage.getItem('tactile_favorite_snippets') || '[]');
     let activeCategory = 'all';
     let searchTerm = '';
 
@@ -41,6 +42,22 @@ export function SnippetLibrary() {
     // --- Logic (defined early for use below) ---
     const saveSnippets = () => localStorage.setItem('tactile_snippets', JSON.stringify(snippets));
     const saveHistory = () => localStorage.setItem('tactile_history', JSON.stringify(history));
+    const saveFavorites = () => localStorage.setItem('tactile_favorite_snippets', JSON.stringify(favorites));
+
+    const toggleFavorite = (id) => {
+        if (favorites.includes(id)) {
+            favorites = favorites.filter(f => f !== id);
+        } else {
+            favorites.push(id);
+        }
+        saveFavorites();
+        render();
+    };
+
+    const copyToClipboard = (text) => {
+        navigator.clipboard.writeText(text);
+        Dialog.show({ title: 'Copied', message: 'Snippet code copied to clipboard', type: 'success', duration: 1500 });
+    };
 
     // Resize Handlers
     const onMouseDown = (e) => {
@@ -166,7 +183,14 @@ export function SnippetLibrary() {
             );
         }
 
-        return filtered;
+        // Sort: favorited first, then by title
+        return filtered.sort((a, b) => {
+            const aFav = favorites.includes(a.id);
+            const bFav = favorites.includes(b.id);
+            if (aFav && !bFav) return -1;
+            if (!aFav && bFav) return 1;
+            return a.title.localeCompare(b.title);
+        });
     };
 
     const getFilteredHistory = () => {
@@ -303,19 +327,48 @@ export function SnippetLibrary() {
                 
                 <!-- Snippets List -->
                 <div class="${snippetListClass}">
-                    ${filteredSnippets.map(snippet => `
-                        <div class="neu-card ${isLight ? 'bg-gray-50 border-gray-100 hover:border-mysql-teal/30' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] hover:border-mysql-teal/30' : (isOceanic ? 'bg-ocean-bg border-ocean-border hover:border-ocean-frost' : (isNeon ? 'bg-neon-bg border-neon-border/40 hover:border-neon-accent/60' : 'hover:border-mysql-teal/40 border-transparent')))} rounded-lg p-2.5 cursor-pointer transition-all border group snippet-item" data-id="${snippet.id}">
-                            <div class="flex justify-between items-center mb-1">
-                                <span class="text-[10px] font-bold ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text/80' : (isNeon ? 'text-neon-text' : 'text-gray-300')))} truncate flex-1">${snippet.title}</span>
-                                <div class="flex items-center gap-1.5">
-                                    <span class="text-[8px] font-bold uppercase px-1.5 py-0.5 rounded ${getCategoryColor(snippet.category)}">${snippet.category}</span>
-                                    <span class="material-symbols-outlined text-[10px] text-gray-500 hover:text-red-400 opacity-0 group-hover:opacity-100 delete-snippet-btn transition-opacity" title="Delete">delete</span>
+                    ${filteredSnippets.map(snippet => {
+                const isFav = favorites.includes(snippet.id);
+                return `
+                        <div class="neu-card ${isLight ? 'bg-gray-50 border-gray-100 hover:border-mysql-teal/30' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] hover:border-mysql-teal/30' : (isOceanic ? 'bg-ocean-bg border-ocean-border hover:border-ocean-frost' : (isNeon ? 'bg-neon-bg border-neon-border/40 hover:border-neon-accent/60' : 'hover:border-mysql-teal/40 border-transparent')))} rounded-xl p-3 cursor-pointer transition-all border group snippet-item relative overflow-hidden" 
+                             data-id="${snippet.id}" 
+                             draggable="true">
+                            
+                            <!-- Header -->
+                            <div class="flex justify-between items-start mb-2">
+                                <div class="flex flex-col gap-0.5 min-w-0">
+                                    <div class="flex items-center gap-1.5 min-w-0">
+                                        <span class="text-[11px] font-black ${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text' : (isNeon ? 'text-neon-text' : 'text-gray-200')))} truncate" title="${snippet.title}">${snippet.title}</span>
+                                        ${isFav ? `<span class="material-symbols-outlined text-[10px] text-amber-500 fill-current">star</span>` : ''}
+                                    </div>
+                                    <span class="text-[8px] font-bold uppercase tracking-wider ${getCategoryColor(snippet.category)} w-fit">${snippet.category}</span>
+                                </div>
+                                
+                                <div class="flex items-center gap-1 bg-black/5 dark:bg-white/5 p-1 rounded-lg opacity-0 group-hover:opacity-100 transition-all">
+                                    <span class="material-symbols-outlined text-[12px] ${isFav ? 'text-amber-500' : 'text-gray-500'} hover:text-amber-500 fav-snippet-btn" title="${isFav ? 'Unpin' : 'Pin to top'}">${isFav ? 'star' : 'star_outline'}</span>
+                                    <span class="material-symbols-outlined text-[12px] text-gray-500 hover:text-mysql-teal copy-snippet-btn" title="Copy SQL">content_copy</span>
+                                    <span class="material-symbols-outlined text-[12px] text-gray-500 hover:text-red-400 delete-snippet-btn" title="Delete">delete</span>
                                 </div>
                             </div>
-                            <p class="text-[10px] ${(isLight || isDawn) ? 'text-gray-500' : (isOceanic ? 'text-ocean-text/60' : (isNeon ? 'text-neon-text/60' : 'text-gray-500'))} font-mono truncate" title="${escapeHtml(snippet.code)}">${escapeHtml(snippet.code.substring(0, 50))}${snippet.code.length > 50 ? '...' : ''}</p>
-                            ${snippet.code.includes('${') ? `<div class="mt-1 text-[8px] text-yellow-500 flex items-center gap-1"><span class="material-symbols-outlined text-[10px]">data_object</span>Has variables</div>` : ''}
-                        </div>
-                    `).join('')}
+                            
+                            <!-- Code Preview -->
+                            <div class="code-preview-container relative rounded-lg overflow-hidden bg-black/5 dark:bg-black/20 p-2 group-hover:bg-black/10 dark:group-hover:bg-black/40 transition-colors">
+                                <p class="text-[9.5px] font-mono leading-relaxed ${(isLight || isDawn) ? 'text-gray-600' : 'text-gray-400'} break-all line-clamp-2 ${snippet.code.includes('${') ? 'pr-14' : ''}">
+                                    ${escapeHtml(snippet.code)}
+                                </p>
+                                ${snippet.code.includes('${') ? `
+                                    <div class="absolute bottom-1 right-1 flex items-center px-1 rounded bg-mysql-teal/20 text-mysql-teal text-[7px] font-bold uppercase tracking-widest border border-mysql-teal/30 select-none">
+                                        Variable
+                                    </div>
+                                ` : ''}
+                            </div>
+                            
+                            <!-- Drag Handle indicator (dots) -->
+                            <div class="absolute left-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-30 transition-opacity">
+                                <span class="material-symbols-outlined text-[12px]">drag_indicator</span>
+                            </div>
+                        </div>`;
+            }).join('')}
                     ${filteredSnippets.length === 0 ? `<div class="text-[11px] ${(isLight || isDawn) ? 'text-gray-400' : (isOceanic ? 'text-ocean-text/50' : (isNeon ? 'text-neon-text/40' : 'text-gray-600'))} italic text-center py-4">No snippets found</div>` : ''}
                 </div>
             </div>` : ''}
@@ -355,11 +408,11 @@ export function SnippetLibrary() {
 
     const getCategoryColor = (category) => {
         const colors = {
-            'select': 'bg-blue-500/10 text-blue-400',
-            'insert': 'bg-green-500/10 text-green-400',
-            'update': 'bg-yellow-500/10 text-yellow-400',
-            'ddl': 'bg-purple-500/10 text-purple-400',
-            'custom': 'bg-gray-500/10 text-gray-400'
+            'select': 'bg-blue-500/20 text-blue-400 border border-blue-500/30',
+            'insert': 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30',
+            'update': 'bg-amber-500/20 text-amber-400 border border-amber-500/30',
+            'ddl': 'bg-purple-500/20 text-purple-400 border border-purple-500/30',
+            'custom': 'bg-gray-500/20 text-gray-400 border border-gray-500/30'
         };
         return colors[category] || colors.custom;
     };
@@ -384,43 +437,85 @@ export function SnippetLibrary() {
 
         // Snippet Click (Use with variable replacement)
         aside.querySelectorAll('.snippet-item').forEach(item => {
-            item.addEventListener('click', async (e) => {
-                if (e.target.closest('.delete-snippet-btn')) return;
+            // Drag Start
+            item.addEventListener('dragstart', (e) => {
                 const id = item.dataset.id;
                 const snippet = snippets.find(s => s.id === id);
                 if (snippet) {
-                    let code = snippet.code;
+                    // We don't replace variables during drag-drop as it's meant to be quick
+                    // But we could prompt if we wanted to. Standard behavior: drop placeholders.
+                    e.dataTransfer.setData('text/plain', snippet.code);
+                    e.dataTransfer.effectAllowed = 'copy';
 
-                    // Replace variables
-                    const variables = code.match(/\$\{([^}]+)\}/g);
-                    if (variables) {
-                        for (const variable of [...new Set(variables)]) {
-                            const varName = variable.slice(2, -1);
-                            const value = await Dialog.prompt(`Enter value for "${varName}":`, `Variable: ${varName}`);
-                            if (value === null) return; // Cancelled
-                            code = code.replaceAll(variable, value);
-                        }
-                    }
-
-                    // Dispatch to query editor
-                    window.dispatchEvent(new CustomEvent('tactilesql:set-query', { detail: { query: code } }));
-                    Dialog.show({ title: 'Snippet Applied', message: 'Snippet added to query editor', type: 'info' });
+                    // Add a visual preview of what's being dragged
+                    const preview = document.createElement('div');
+                    preview.className = 'p-2 bg-mysql-teal text-black rounded text-[10px] font-mono shadow-xl';
+                    preview.textContent = snippet.title;
+                    document.body.appendChild(preview);
+                    e.dataTransfer.setDragImage(preview, 0, 0);
+                    setTimeout(() => document.body.removeChild(preview), 0);
                 }
             });
-        });
 
-        // Delete Snippet
-        aside.querySelectorAll('.delete-snippet-btn').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                e.stopPropagation();
-                const item = btn.closest('.snippet-item');
+            item.addEventListener('click', async (e) => {
                 const id = item.dataset.id;
-                const confirmed = await Dialog.confirm('Delete this snippet?', 'Delete Snippet');
-                if (confirmed) {
-                    snippets = snippets.filter(s => s.id !== id);
-                    saveSnippets();
-                    render();
+                const snippet = snippets.find(s => s.id === id);
+                if (!snippet) return;
+
+                // Favorite Button
+                if (e.target.closest('.fav-snippet-btn')) {
+                    e.stopPropagation();
+                    toggleFavorite(id);
+                    return;
                 }
+
+                // Copy Button
+                if (e.target.closest('.copy-snippet-btn')) {
+                    e.stopPropagation();
+                    copyToClipboard(snippet.code);
+                    return;
+                }
+
+                // Delete Button
+                if (e.target.closest('.delete-snippet-btn')) {
+                    e.stopPropagation();
+                    const confirmed = await Dialog.confirm(`Delete snippet "${snippet.title}"?`, 'Delete Snippet');
+                    if (confirmed) {
+                        snippets = snippets.filter(s => s.id !== id);
+                        saveSnippets();
+                        render();
+                    }
+                    return;
+                }
+
+                // Main Click -> Apply to Editor
+                let code = snippet.code;
+
+                // Replace variables using promptForm for better UX
+                const variables = code.match(/\$\{([^}]+)\}/g);
+                if (variables) {
+                    const uniqueVars = [...new Set(variables)];
+                    const fields = uniqueVars.map(v => ({
+                        name: v,
+                        label: v.slice(2, -1),
+                        placeholder: `Value for ${v.slice(2, -1)}`
+                    }));
+
+                    const values = await Dialog.promptForm(
+                        fields,
+                        'Fill Variables',
+                        `Set values for the placeholders in "${snippet.title}":`
+                    );
+
+                    if (values === null) return; // Cancelled
+
+                    for (const variable of uniqueVars) {
+                        code = code.replaceAll(variable, values[variable] || '');
+                    }
+                }
+
+                // Dispatch to query editor
+                window.dispatchEvent(new CustomEvent('tactilesql:set-query', { detail: { query: code } }));
             });
         });
 
