@@ -742,6 +742,7 @@ export function QualityDashboard() {
                     <th class="${thClass}">Column</th>
                     <th class="${thClass}">NULLs (%)</th>
                     <th class="${thClass}">Distinct (%)</th>
+                    <th class="${thClass}">Top Values / Patterns</th>
                     <th class="${thClass}">Stats</th>
                 </tr>
             </thead>
@@ -764,6 +765,9 @@ export function QualityDashboard() {
                                 </div>
                                 <span class="text-xs tabular-nums">${m.distinct_percentage.toFixed(1)}%</span>
                             </div>
+                        </td>
+                        <td class="${tdClass}">
+                            ${renderTopValuesAndPatterns(m)}
                         </td>
                         <td class="${tdClass} text-xs ${classes.text.secondary}">
                            ${renderStats(m)}
@@ -856,6 +860,42 @@ export function QualityDashboard() {
             return `<div class="leading-tight">Min: <span class="font-mono">${metric.min_value}</span><br>Max: <span class="font-mono">${metric.max_value}</span></div>`;
         }
         return '<span class="opacity-50">-</span>';
+    }
+
+    function renderTopValuesAndPatterns(metric) {
+        let html = '';
+
+        if (metric.top_values && metric.top_values.length > 0) {
+            html += `
+                <div class="mb-2">
+                    <span class="text-[9px] font-bold opacity-50 uppercase mb-1 block">Top Values</span>
+                    <div class="flex flex-wrap gap-1">
+                        ${metric.top_values.slice(0, 3).map(v => `
+                            <span class="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 text-[10px] border border-blue-500/20" title="Count: ${v.count}">
+                                ${v.value.length > 15 ? v.value.substring(0, 15) + '...' : v.value}
+                            </span>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        if (metric.pattern_metrics && metric.pattern_metrics.length > 0) {
+            html += `
+                <div>
+                    <span class="text-[9px] font-bold opacity-50 uppercase mb-1 block">Detected Patterns</span>
+                    <div class="flex flex-wrap gap-1">
+                        ${metric.pattern_metrics.map(p => `
+                            <span class="px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 text-[10px] border border-purple-500/20" title="${p.count} matches (${p.percentage.toFixed(1)}%)">
+                                ${p.pattern_name} (${p.percentage.toFixed(0)}%)
+                            </span>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        return html || '<span class="opacity-30 text-xs">-</span>';
     }
 
     function getScoreColor(score) {

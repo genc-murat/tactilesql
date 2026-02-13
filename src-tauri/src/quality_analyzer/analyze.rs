@@ -148,6 +148,47 @@ pub async fn analyze_table_mysql(
             // Maybe not an issue, just a finding
         }
 
+        // 3.5 Top Values (Value Distribution)
+        let top_values_query = format!(
+            "SELECT CAST({} AS CHAR) as val, COUNT(*) as cnt FROM {}.{} WHERE {} IS NOT NULL GROUP BY {} ORDER BY cnt DESC LIMIT 5",
+            col_name, database, table, col_name, col_name
+        );
+        let mut top_values = Vec::new();
+        if let Ok(rows) = sqlx::query(&top_values_query).fetch_all(pool).await {
+            for row in rows {
+                let value: Option<String> = row.try_get(0).unwrap_or(None);
+                let count: i64 = row.try_get(1).unwrap_or(0);
+                if let Some(v) = value {
+                    top_values.push(ValueCount { value: v, count: count as u64 });
+                }
+            }
+        }
+
+        // 3.6 Pattern Analysis
+        let mut pattern_metrics = Vec::new();
+        let patterns = [
+            ("Email", r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"),
+            ("Phone", r"^\+?[0-9]{10,15}$"),
+            ("UUID", r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+            ("IP Address", r"^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"),
+        ];
+
+        for (name, regex) in patterns {
+            let pattern_query = format!(
+                "SELECT COUNT(*) FROM {}.{} WHERE {} REGEXP '{}'",
+                database, table, col_name, regex
+            );
+            if let Ok(count) = sqlx::query_scalar::<_, i64>(&pattern_query).fetch_one(pool).await {
+                if count > 0 {
+                    pattern_metrics.push(PatternMetric {
+                        pattern_name: name.to_string(),
+                        count: count as u64,
+                        percentage: (count as f32 / row_count as f32) * 100.0,
+                    });
+                }
+            }
+        }
+
         column_metrics.push(ColumnQualityMetrics {
             column_name: col_name,
             null_count: null_count as u64,
@@ -157,6 +198,8 @@ pub async fn analyze_table_mysql(
             min_value: min_val,
             max_value: max_val,
             mean_value: mean_val,
+            top_values: if top_values.is_empty() { None } else { Some(top_values) },
+            pattern_metrics: if pattern_metrics.is_empty() { None } else { Some(pattern_metrics) },
         });
     }
 
@@ -365,6 +408,47 @@ pub async fn analyze_table_postgres(
             });
         }
 
+        // 3.5 Top Values (Value Distribution)
+        let top_values_query = format!(
+            "SELECT val, COUNT(*) as cnt FROM (SELECT {}::text as val FROM {}.{} WHERE {} IS NOT NULL) t GROUP BY val ORDER BY cnt DESC LIMIT 5",
+            col_name, schema, table, col_name
+        );
+        let mut top_values = Vec::new();
+        if let Ok(rows) = sqlx::query(&top_values_query).fetch_all(pool).await {
+            for row in rows {
+                let value: Option<String> = row.try_get(0).ok();
+                let count: i64 = row.try_get(1).unwrap_or(0);
+                if let Some(v) = value {
+                    top_values.push(ValueCount { value: v, count: count as u64 });
+                }
+            }
+        }
+
+        // 3.6 Pattern Analysis
+        let mut pattern_metrics = Vec::new();
+        let patterns = [
+            ("Email", r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"),
+            ("Phone", r"^\+?[0-9]{10,15}$"),
+            ("UUID", r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+            ("IP Address", r"^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"),
+        ];
+
+        for (name, regex) in patterns {
+            let pattern_query = format!(
+                "SELECT COUNT(*) FROM {}.{} WHERE {}::text ~ '{}'",
+                schema, table, col_name, regex
+            );
+            if let Ok(count) = sqlx::query_scalar::<_, i64>(&pattern_query).fetch_one(pool).await {
+                if count > 0 {
+                    pattern_metrics.push(PatternMetric {
+                        pattern_name: name.to_string(),
+                        count: count as u64,
+                        percentage: (count as f32 / row_count as f32) * 100.0,
+                    });
+                }
+            }
+        }
+
         column_metrics.push(ColumnQualityMetrics {
             column_name: col_name,
             null_count: null_count as u64,
@@ -374,6 +458,8 @@ pub async fn analyze_table_postgres(
             min_value: min_val,
             max_value: max_val,
             mean_value: mean_val,
+            top_values: if top_values.is_empty() { None } else { Some(top_values) },
+            pattern_metrics: if pattern_metrics.is_empty() { None } else { Some(pattern_metrics) },
         });
     }
 

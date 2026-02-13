@@ -40,6 +40,21 @@ pub struct ColumnQualityMetrics {
     pub min_value: Option<String>,
     pub max_value: Option<String>,
     pub mean_value: Option<f64>,
+    pub top_values: Option<Vec<ValueCount>>,
+    pub pattern_metrics: Option<Vec<PatternMetric>>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ValueCount {
+    pub value: String,
+    pub count: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PatternMetric {
+    pub pattern_name: String,
+    pub count: u64,
+    pub percentage: f32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
