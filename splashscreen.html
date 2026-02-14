@@ -13,51 +13,97 @@
 </head>
 
 <body>
-    <div class="splash-container">
-        <div class="logo-wrapper">
-            <img src="/logo-tr.png" alt="TactileSQL Logo" class="logo">
-            <div class="logo-glow"></div>
-        </div>
-        <h1 class="app-name">TactileSQL</h1>
-        <p class="tagline">Modern SQL Workbench</p>
+    <div class="background-grid">
+        <div class="grid-overlay"></div>
+    </div>
 
-        <div class="loading-area">
-            <div class="progress-bar">
-                <div class="progress-fill"></div>
+    <div class="splash-content">
+        <div class="brand-section">
+            <div class="logo-wrapper">
+                <img src="/logo-tr.png" alt="TactileSQL Logo" class="logo">
+                <div class="logo-glow"></div>
             </div>
-            <p class="loading-text" id="status-text">Initializing Secure Engine...</p>
+            <div class="title-wrapper">
+                <h1 class="app-name">TactileSQL</h1>
+                <div class="version-badge">v0.1.0</div>
+            </div>
         </div>
 
-        <button id="close-btn"
-            style="margin-top: 20px; padding: 8px 16px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; border-radius: 8px; cursor: pointer; display: none; -webkit-app-region: no-drag;">Continue
-            to App</button>
+        <p class="tagline">Initializing Secure Environment</p>
+
+        <div class="loader-container">
+            <div class="scan-line"></div>
+            <div class="progress-track">
+                <div class="progress-bar"></div>
+            </div>
+            <div class="loading-status">
+                <span id="status-text">Loading modules...</span>
+                <span class="percentage">0%</span>
+            </div>
+        </div>
+
+        <button id="close-btn" class="fallback-close">
+            <span>Force Start</span>
+        </button>
     </div>
 
     <script>
         const { invoke } = window.__TAURI__.core;
 
+        // Simulated loading progress
+        function simulateProgress() {
+            const bar = document.querySelector('.progress-bar');
+            const pct = document.querySelector('.percentage');
+            const status = document.getElementById('status-text');
+            const steps = [
+                { width: '20%', text: 'Loading core modules...' },
+                { width: '45%', text: 'Initializing database drivers...' },
+                { width: '70%', text: 'Verifying secure connections...' },
+                { width: '90%', text: 'Starting workbench...' },
+                { width: '100%', text: 'Ready' }
+            ];
+
+            let step = 0;
+            const interval = setInterval(() => {
+                if (step >= steps.length) {
+                    clearInterval(interval);
+                    return;
+                }
+
+                const s = steps[step];
+                bar.style.width = s.width;
+                if (pct) pct.innerText = s.width; // Just show percentage text
+                if (status) status.innerText = s.text;
+
+                step++;
+            }, 300);
+        }
+
         async function initTransition() {
+            simulateProgress();
+
             try {
                 // Wait for animation
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                await new Promise(resolve => setTimeout(resolve, 2500));
                 // Call Rust command to handle windows
                 await invoke('close_splashscreen');
             } catch (e) {
                 console.error("Invoke failed", e);
                 // Last ditch effort
-                const { getCurrentWindow } = window.__TAURI__.window;
-                getCurrentWindow().close();
+                try {
+                    const { getCurrentWindow } = window.__TAURI__.window;
+                    await getCurrentWindow().close();
+                } catch (err) {
+                    console.error("Failed to close window", err);
+                }
             }
         }
 
-        // Show status update if taking too long
+        // Show fallback close button if taking too long
         setTimeout(() => {
-            const statusText = document.getElementById('status-text');
-            if (statusText) statusText.innerText = "Taking longer than expected...";
-
             const btn = document.getElementById('close-btn');
-            if (btn) btn.style.display = 'block';
-        }, 5000);
+            if (btn) btn.style.display = 'flex';
+        }, 6000);
 
         // Start logic
         initTransition();
