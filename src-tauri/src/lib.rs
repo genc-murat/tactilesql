@@ -292,6 +292,12 @@ pub fn run() {
             // Query Execution
             db::execute_query,
             db::execute_query_profiled,
+            // ClickHouse specific
+            clickhouse::get_clickhouse_server_status,
+            clickhouse::get_clickhouse_table_info,
+            clickhouse::get_clickhouse_partitions,
+            clickhouse::manage_partition,
+            clickhouse::get_clickhouse_query_log,
             // Database/Table Operations
             db::get_databases,
             db::get_schemas,

@@ -3,7 +3,9 @@
 // =====================================================
 
 use crate::db_types::*;
+use crate::db_types::*;
 use clickhouse::Client;
+use serde::{Serialize, Deserialize};
 use serde_json::Value;
 
 // --- Connection ---
@@ -529,3 +531,249 @@ pub async fn get_server_status(app_state: &AppState) -> Result<ServerStatus, Str
     })
 }
 
+
+// --- Extended Table Info ---
+#[derive(Serialize, Debug)]
+pub struct ExtendedTableInfo {
+    pub engine: String,
+    pub engine_full: String,
+    pub data_paths: Vec<String>,
+    pub metadata_path: String,
+    pub storage_policy: String,
+    pub total_rows: Option<u64>,
+    pub total_bytes: Option<u64>,
+    pub lifetime_rows: Option<u64>,
+    pub lifetime_bytes: Option<u64>,
+    pub metadata_modification_time: String,
+    pub comment: String,
+}
+
+pub async fn get_extended_table_info(config: &ConnectionConfig, database: &str, table: &str) -> Result<ExtendedTableInfo, String> {
+    let query = format!(
+        "SELECT engine, engine_full, data_paths, metadata_path, storage_policy, total_rows, total_bytes, lifetime_rows, lifetime_bytes, metadata_modification_time, comment FROM system.tables WHERE database = '{}' AND name = '{}'",
+        database.replace('\'', "\\'"),
+        table.replace('\'', "\\'")
+    );
+
+    let results = execute_query_generic(config, query).await?;
+    
+    if let Some(first) = results.first() {
+        if let Some(row) = first.rows.first() {
+            let get_str = |idx: usize| row.get(idx).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+            let get_u64 = |idx: usize| row.get(idx).and_then(|v| {
+                if v.is_u64() { v.as_u64() }
+                else if v.is_string() { v.as_str().and_then(|s| s.parse::<u64>().ok()) }
+                else { None }
+            });
+            let get_vec = |idx: usize| row.get(idx).and_then(|v| v.as_array()).map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect()).unwrap_or_default();
+
+            // Mapping based on column index since we select specific columns
+            // 0: engine, 1: engine_full, 2: data_paths, 3: metadata_path, 4: storage_policy
+            // 5: total_rows, 6: total_bytes, 7: lifetime_rows, 8: lifetime_bytes
+            // 9: metadata_modification_time, 10: comment
+            
+            return Ok(ExtendedTableInfo {
+                engine: get_str(0),
+                engine_full: get_str(1),
+                data_paths: get_vec(2),
+                metadata_path: get_str(3),
+                storage_policy: get_str(4),
+                total_rows: get_u64(5),
+                total_bytes: get_u64(6),
+                lifetime_rows: get_u64(7),
+                lifetime_bytes: get_u64(8),
+                metadata_modification_time: get_str(9),
+                comment: get_str(10),
+            });
+        }
+    }
+
+    Err("Table not found or info unavailable".to_string())
+}
+
+pub async fn get_table_info(config: &ConnectionConfig, database: &str, table: &str) -> Result<ExtendedTableInfo, String> {
+    get_extended_table_info(config, database, table).await
+}
+
+// --- Partition Info ---
+#[derive(Serialize, Debug)]
+pub struct PartInfo {
+    pub partition: String,
+    pub name: String,
+    pub part_type: String,
+    pub active: bool,
+    pub rows: u64,
+    pub bytes_on_disk: u64,
+    pub modification_time: String,
+}
+
+pub async fn get_partition_info(config: &ConnectionConfig, database: &str, table: &str) -> Result<Vec<PartInfo>, String> {
+    let query = format!(
+        "SELECT partition, name, part_type, active, rows, bytes_on_disk, modification_time FROM system.parts WHERE database = '{}' AND table = '{}' ORDER BY modification_time DESC",
+        database.replace('\'', "\\'"),
+        table.replace('\'', "\\'")
+    );
+
+    let results = execute_query_generic(config, query).await?;
+    let mut parts = Vec::new();
+
+    if let Some(first) = results.first() {
+        for row in &first.rows {
+            let get_str = |idx: usize| row.get(idx).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+            let get_bool = |idx: usize| row.get(idx).and_then(|v| v.as_bool()).unwrap_or(false) || row.get(idx).and_then(|v| v.as_u64()).map(|i| i == 1).unwrap_or(false);
+            let get_u64 = |idx: usize| row.get(idx).and_then(|v| {
+                if v.is_u64() { v.as_u64() }
+                else if v.is_f64() { v.as_f64().map(|f| f as u64) } // JSON output might result in float
+                else if v.is_string() { v.as_str().and_then(|s| s.parse::<u64>().ok()) }
+                else { None }
+            }).unwrap_or(0);
+            
+            parts.push(PartInfo {
+                partition: get_str(0),
+                name: get_str(1),
+                part_type: get_str(2),
+                active: get_bool(3),
+                rows: get_u64(4),
+                bytes_on_disk: get_u64(5),
+                modification_time: get_str(6),
+            });
+        }
+    }
+    
+    Ok(parts)
+}
+
+pub async fn manage_partition_impl(config: &ConnectionConfig, action: &str, database: &str, table: &str, partition_id: &str) -> Result<String, String> {
+    let action_sql = match action.to_uppercase().as_str() {
+        "DROP" => "DROP PARTITION",
+        "DETACH" => "DETACH PARTITION",
+        "ATTACH" => "ATTACH PARTITION",
+        _ => return Err(format!("Invalid action: {}", action))
+    };
+
+    // Partition ID handling: if it's a string ID, might need quotes, but usually passed as is if ID.
+    // However, user might pass value '202301', so we need '202301' in SQL? 
+    // Or ID '202301'. Let's assume ID is passed safely or needs quotes. 
+    // Usually in CH: ALTER TABLE t DROP PARTITION '2023-01' or ID '...'
+    
+    let query = format!(
+        "ALTER TABLE `{}`.`{}` {} ID '{}'",
+        database, table, action_sql, partition_id
+    );
+
+    execute_query_generic(config, query).await?;
+    Ok(format!("Successfully executed {} on partition {}", action, partition_id))
+}
+
+
+// --- Query Log Stats ---
+#[derive(Serialize, Debug)]
+pub struct QueryLogStats {
+    pub query_kind: String,
+    pub count: u64,
+    pub avg_duration_ms: f64,
+    pub avg_memory_usage_mb: f64,
+    pub avg_read_rows: f64,
+    pub avg_read_bytes_mb: f64,
+}
+
+pub async fn get_query_log_stats(config: &ConnectionConfig) -> Result<Vec<QueryLogStats>, String> {
+    // Check if system.query_log exists first effectively by running query.
+    // We group by type of query (Select, Insert, etc) roughly extracted or just type column?
+    // 'type' column in query_log: 1=QueryStart, 2=QueryFinish, 3=Exception...
+    // We want finished queries.
+    
+    let query = "
+        SELECT 
+            multiIf(ws_count > 0, 'Insert', 'Select') as kind,
+            count(),
+            avg(query_duration_ms),
+            avg(memory_usage) / 1048576,
+            avg(read_rows),
+            avg(read_bytes) / 1048576
+        FROM system.query_log 
+        WHERE type = 2 AND event_date >= today() - 1
+        GROUP BY kind
+    ".to_string();
+
+    // Note: clickhouse 'type' enum: 1=QueryStart, 2=QueryFinish, 3=Exception, 4=QueryBeforeRetry
+    // ws_count > 0 usually implies write? Or we can check query string start. 
+    // Let's rely on a simpler heuristic or just return generic stats.
+    // Improved heuristic: 
+    // SELECT 
+    //    case when query ilike 'INSERT%' then 'INSERT' when query ilike 'SELECT%' then 'SELECT' else 'OTHER' end as kind, ...
+    
+    let query = "
+        SELECT 
+            case 
+                when query ilike 'INSERT %' then 'INSERT' 
+                when query ilike 'SELECT %' then 'SELECT' 
+                when query ilike 'ALTER %' then 'ALTER'
+                else 'OTHER' 
+            end as kind,
+            count(),
+            avg(query_duration_ms),
+            avg(memory_usage) / 1048576,
+            avg(read_rows),
+            avg(read_bytes) / 1048576
+        FROM system.query_log 
+        WHERE type = 2 AND event_date >= today() - 1
+        GROUP BY kind
+    ".to_string();
+
+    let results = execute_query_generic(config, query).await?;
+    let mut stats = Vec::new();
+
+    if let Some(first) = results.first() {
+        for row in &first.rows {
+            let get_str = |idx: usize| row.get(idx).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+            let get_u64 = |idx: usize| row.get(idx).and_then(|v| {
+                if v.is_u64() { v.as_u64() }
+                else if v.is_string() { v.as_str().and_then(|s| s.parse::<u64>().ok()) }
+                else { None }
+            }).unwrap_or(0);
+            let get_f64 = |idx: usize| row.get(idx).and_then(|v| {
+                if v.is_f64() { v.as_f64() }
+                else if v.is_u64() { v.as_u64().map(|i| i as f64) } // JSON output might result in float
+                else if v.is_string() { v.as_str().and_then(|s| s.parse::<f64>().ok()) }
+                else { None }
+            }).unwrap_or(0.0);
+
+             stats.push(QueryLogStats {
+                query_kind: get_str(0),
+                count: get_u64(1),
+                avg_duration_ms: get_f64(2),
+                avg_memory_usage_mb: get_f64(3),
+                avg_read_rows: get_f64(4),
+                avg_read_bytes_mb: get_f64(5),
+            });
+        }
+    }
+    
+    Ok(stats)
+}
+
+#[tauri::command]
+pub async fn get_clickhouse_server_status(app_state: tauri::State<'_, AppState>) -> Result<ServerStatus, String> {
+    get_server_status(&app_state).await
+}
+
+#[tauri::command]
+pub async fn get_clickhouse_table_info(config: ConnectionConfig, database: String, table: String) -> Result<ExtendedTableInfo, String> {
+    get_table_info(&config, &database, &table).await
+}
+
+#[tauri::command]
+pub async fn get_clickhouse_partitions(config: ConnectionConfig, database: String, table: String) -> Result<Vec<PartInfo>, String> {
+    get_partition_info(&config, &database, &table).await
+}
+
+#[tauri::command]
+pub async fn manage_partition(config: ConnectionConfig, action: String, database: String, table: String, partition_id: String) -> Result<String, String> {
+    manage_partition_impl(&config, &action, &database, &table, &partition_id).await
+}
+
+#[tauri::command]
+pub async fn get_clickhouse_query_log(config: ConnectionConfig) -> Result<Vec<QueryLogStats>, String> {
+    get_query_log_stats(&config).await
+}

@@ -8,6 +8,9 @@ import { toastSuccess, toastError } from '../../utils/Toast.js';
 import { SettingsManager } from '../../utils/SettingsManager.js';
 import { SETTINGS_PATHS } from '../../constants/settingsKeys.js';
 import { createContextMenu, removeContextMenu } from '../../utils/ContextMenu.js';
+import { showClickHouseTableDetails } from './ClickHouseTableDetails.js';
+import { showClickHouseQueryDashboard } from './ClickHouseQueryDashboard.js';
+
 
 export function ObjectExplorer() {
     let theme = ThemeManager.getCurrentTheme();
@@ -1779,7 +1782,24 @@ export function ObjectExplorer() {
                 icon: 'content_copy',
                 iconColor: isDawn ? 'text-[#9893a5]' : 'text-gray-500',
                 onClick: () => navigator.clipboard.writeText(dbName)
-            }
+            },
+            ...(dbType === 'clickhouse' ? [
+                { type: 'separator' },
+                {
+                    label: 'Query Performance',
+                    icon: 'monitoring',
+                    iconColor: isDawn ? 'text-[#c4a7e7]' : 'text-purple-500',
+                    onClick: () => {
+                        // Find connection config
+                        const config = connections.find(c => c.id === activeConnectionId);
+                        if (config) {
+                            showClickHouseQueryDashboard(config);
+                        } else {
+                            Dialog.alert('Active connection not found', 'Error');
+                        }
+                    }
+                }
+            ] : [])
         ];
 
         createContextMenu(x, y, items, { header: dbName });
@@ -1901,44 +1921,18 @@ export function ObjectExplorer() {
                     }
                 }
             },
+
             ...(dbType === 'clickhouse' ? [
                 {
-                    label: 'View Parts',
-                    icon: 'segment',
-                    iconColor: isDawn ? 'text-[#f6c177]' : 'text-orange-400',
-                    onClick: async () => {
-                        const query = `SELECT * FROM system.parts WHERE database = '${dbName}' AND table = '${tableName}' ORDER BY modification_time DESC`;
-                        try {
-                            const result = await invoke('get_table_parts', { database: dbName, table: tableName });
-                            window.dispatchEvent(new CustomEvent('tactilesql:open-result-tab', {
-                                detail: {
-                                    query,
-                                    data: result,
-                                    title: `Parts: ${tableName}`
-                                }
-                            }));
-                        } catch (error) {
-                            Dialog.alert(`Failed to fetch parts: ${String(error).replace(/\n/g, '<br>')}`, 'Error');
-                        }
-                    }
-                },
-                {
-                    label: 'View Mutations',
-                    icon: 'change_history',
-                    iconColor: isDawn ? 'text-[#eb6f92]' : 'text-red-400',
-                    onClick: async () => {
-                        const query = `SELECT * FROM system.mutations WHERE database = '${dbName}' AND table = '${tableName}' ORDER BY create_time DESC`;
-                        try {
-                            const result = await invoke('get_table_mutations', { database: dbName, table: tableName });
-                            window.dispatchEvent(new CustomEvent('tactilesql:open-result-tab', {
-                                detail: {
-                                    query,
-                                    data: result,
-                                    title: `Mutations: ${tableName}`
-                                }
-                            }));
-                        } catch (error) {
-                            Dialog.alert(`Failed to fetch mutations: ${String(error).replace(/\n/g, '<br>')}`, 'Error');
+                    label: 'Advanced Inspector',
+                    icon: 'analytics',
+                    iconColor: isDawn ? 'text-[#ebbcba]' : 'text-pink-400',
+                    onClick: () => {
+                        const config = connections.find(c => c.id === activeConnectionId);
+                        if (config) {
+                            showClickHouseTableDetails(config, dbName, tableName);
+                        } else {
+                            Dialog.alert('Active connection not found', 'Error');
                         }
                     }
                 }
