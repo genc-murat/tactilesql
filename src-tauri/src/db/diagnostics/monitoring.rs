@@ -1,11 +1,69 @@
 use crate::db::lock_analysis::build_lock_analysis;
-use crate::db_types::{AppState, DatabaseType, MonitorSnapshot, BloatInfo};
+use crate::db_types::{AppState, DatabaseType, MonitorSnapshot, BloatInfo, ActivityRecord, PgLockRecord};
 use crate::mysql;
 use crate::postgres;
 use crate::clickhouse;
 use tauri::State;
 use chrono::{DateTime, Utc};
 use super::monitor_store::{HistoricalMetric, MonitorAlert};
+
+// ... (rest of imports if any)
+
+// ... (previous functions)
+
+#[tauri::command]
+pub async fn kill_process(
+    app_state: State<'_, AppState>,
+    process_id: i64,
+) -> Result<String, String> {
+    let db_type = {
+        let guard = app_state.active_db_type.lock().await;
+        guard.clone()
+    };
+
+    match db_type {
+        DatabaseType::PostgreSQL => {
+            let guard = app_state.postgres_pool.lock().await;
+            let pool = guard
+                .as_ref()
+                .ok_or("No PostgreSQL connection established")?;
+            postgres::kill_process(pool, process_id).await
+        }
+        DatabaseType::MySQL => {
+            let guard = app_state.mysql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
+            mysql::kill_process(pool, process_id).await
+        }
+        DatabaseType::ClickHouse => {
+            Err("Kill process not supported for ClickHouse yet".to_string())
+        }
+        DatabaseType::Disconnected => Err("No connection established".into()),
+    }
+}
+
+// --- PostgreSQL Specific Monitoring ---
+
+#[tauri::command]
+pub async fn get_pg_activity(app_state: State<'_, AppState>) -> Result<Vec<ActivityRecord>, String> {
+    let guard = app_state.postgres_pool.lock().await;
+    let pool = guard.as_ref().ok_or("No PostgreSQL connection established")?;
+    postgres::get_pg_activity(pool).await
+}
+
+#[tauri::command]
+pub async fn kill_pg_session(app_state: State<'_, AppState>, pid: i32) -> Result<String, String> {
+    let guard = app_state.postgres_pool.lock().await;
+    let pool = guard.as_ref().ok_or("No PostgreSQL connection established")?;
+    postgres::kill_pg_session(pool, pid).await
+}
+
+#[tauri::command]
+pub async fn get_pg_locks(app_state: State<'_, AppState>) -> Result<Vec<PgLockRecord>, String> {
+    let guard = app_state.postgres_pool.lock().await;
+    let pool = guard.as_ref().ok_or("No PostgreSQL connection established")?;
+    postgres::get_pg_locks(pool).await
+}
+
 
 // =====================================================
 // SERVER MONITORING
@@ -186,32 +244,4 @@ pub async fn delete_monitor_alert(app_state: State<'_, AppState>, id: i64) -> Re
     store.delete_alert(id).await
 }
 
-#[tauri::command]
-pub async fn kill_process(
-    app_state: State<'_, AppState>,
-    process_id: i64,
-) -> Result<String, String> {
-    let db_type = {
-        let guard = app_state.active_db_type.lock().await;
-        guard.clone()
-    };
 
-    match db_type {
-        DatabaseType::PostgreSQL => {
-            let guard = app_state.postgres_pool.lock().await;
-            let pool = guard
-                .as_ref()
-                .ok_or("No PostgreSQL connection established")?;
-            postgres::kill_process(pool, process_id).await
-        }
-        DatabaseType::MySQL => {
-            let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
-            mysql::kill_process(pool, process_id).await
-        }
-        DatabaseType::ClickHouse => {
-            Err("Kill process not supported for ClickHouse yet".to_string())
-        }
-        DatabaseType::Disconnected => Err("No connection established".into()),
-    }
-}

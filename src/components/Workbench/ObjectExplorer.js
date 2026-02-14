@@ -17,6 +17,9 @@ import { showTableMaintenanceModal } from '../UI/TableMaintenanceModal.js';
 import { showTableMaintenanceWizard } from '../UI/TableMaintenanceWizard.js';
 import { showServerVariablesModal } from '../UI/ServerVariablesModal.js';
 import { showPartitionManagementModal } from '../UI/PartitionManagementModal.js';
+import { showPostgresActivityMonitor } from './PostgresActivityMonitor.js';
+import { showPostgresLockMonitor } from './PostgresLockMonitor.js';
+import { showPostgresExtensionsModal } from '../UI/PostgresExtensionsModal.js';
 
 
 export function ObjectExplorer() {
@@ -1665,6 +1668,20 @@ export function ObjectExplorer() {
                     iconColor: isDawn ? 'text-[#eb6f92]' : 'text-rose-400',
                     onClick: () => window.location.hash = `/monitor?conn=${id}`
                 },
+                ...(dbType === 'postgresql' ? [
+                    {
+                        label: 'Activity Monitor',
+                        icon: 'monitor_heart',
+                        iconColor: isDawn ? 'text-[#eb6f92]' : 'text-rose-500',
+                        onClick: () => showPostgresActivityMonitor()
+                    },
+                    {
+                        label: 'Lock Monitor',
+                        icon: 'lock',
+                        iconColor: isDawn ? 'text-[#ea9d34]' : 'text-orange-500',
+                        onClick: () => showPostgresLockMonitor()
+                    }
+                ] : []),
                 {
                     label: 'Server Variables',
                     icon: 'settings_suggest',
@@ -1797,6 +1814,15 @@ export function ObjectExplorer() {
                 iconColor: isDawn ? 'text-[#9893a5]' : 'text-gray-500',
                 onClick: () => navigator.clipboard.writeText(dbName)
             },
+            ...(isPg ? [
+                { type: 'separator' },
+                {
+                    label: 'Manage Extensions',
+                    icon: 'extension',
+                    iconColor: isDawn ? 'text-[#c4a7e7]' : 'text-purple-500',
+                    onClick: () => showPostgresExtensionsModal()
+                }
+            ] : []),
             ...(dbType === 'clickhouse' ? [
                 { type: 'separator' },
                 {

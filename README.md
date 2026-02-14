@@ -10,6 +10,7 @@ TactileSQL is a modern, desktop-first SQL workbench for MySQL and PostgreSQL, bu
 
 - **SQL Workbench** with multi-tab editor, syntax highlighting, auto-format, autocomplete, and **code folding**.
 - **First-Class ClickHouse Support**: Rich SVG **Visual Explain Pipeline** (parallelism & bottlenecks), Visual Explain AST, Advanced Table Inspector, Partition Explorer, Query Log Dashboard, Kafka Engine Monitoring, Materialized View Data Lineage, and **Merge & Mutation Monitor**.
+- **Advanced PostgreSQL Support**: Deep-dive monitoring with the **Server Activity Monitor** (session termination), **Lock Monitor** (visualize blocking chains), and **Extension Management** (install/uninstall available extensions).
 - **Code Folding**: Collapse and expand code blocks (subqueries, CASE/END, BEGIN/END, block comments) for improved readability.
 - **Configurable SQL Execution Defaults**: Set default run mode (`current statement` / `selection first` / `run all`) and query timeout (`0 = unlimited`).
 - **Smart Autocomplete++** with context-aware suggestions, abbreviation matching (e.g. `tc` → `test_customers`), FK-based JOIN hints, database/schema qualification control (Never/Always/On collisions), and frequency learning.
@@ -374,6 +375,7 @@ The Rust backend exposes the following commands (used by the UI):
 - `get_procedures`, `get_functions`, `get_events`
 - `save_ai_impact_report`, `get_ai_impact_report`
 - `save_quality_ai_report`, `get_quality_ai_report`
+- `get_pg_extensions`, `manage_extension` — Manage PostgreSQL extensions
 
 ### ER Diagram
 - `build_er_graph` — Build ER graph payload from live schema metadata
@@ -413,7 +415,10 @@ The Rust backend exposes the following commands (used by the UI):
 - `get_process_list` — Active backend/session list
 - `kill_process` — Terminate blocking or runaway sessions
 - `get_locks` — Raw lock inventory (engine lock metadata)
+- `get_pg_locks` — Detailed PostgreSQL lock monitoring with blocking chains
 - `get_lock_analysis` — Blocking graph, chain/deadlock analysis, and automatic recommendations
+- `get_pg_activity` — PostgreSQL active session monitoring
+- `kill_pg_session` — Terminate specific PostgreSQL sessions
 - `get_slow_queries` — Slow query samples with timing stats
 - `get_innodb_status` — InnoDB storage engine status
 - `get_replication_status` — Replication health/status snapshot
@@ -441,6 +446,11 @@ The Rust backend exposes the following commands (used by the UI):
 - **Kafka Engine Monitoring**: Real-time dashboard for Kafka consumer groups, displaying offset lag, current offsets, and consumption errors.
 - **Materialized View Data Lineage**: Interactive graph visualization of data flow between source tables and target tables through Materialized Views.
 - **Merge & Mutation Monitor**: Live tracking of background merges and mutation history (ALTER UPDATE/DELETE) with progress bars and status badges.
+
+### PostgreSQL Advanced Features
+- **Server Activity Monitor**: Real-time view of active sessions, queries, and wait events with the ability to terminate runaway processes.
+- **Lock Monitor**: Inspect database locks and visualize wait chains to identify root causes of performance bottlenecks.
+- **Extension Management**: Interactive interface to browse installed and available PostgreSQL extensions, with one-click installation and removal.
 
 ## Keyboard Shortcuts
 

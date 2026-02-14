@@ -1,9 +1,84 @@
 use tauri::State;
 
-use crate::db_types::{AppState, DatabaseType, EventInfo, RoutineInfo, TriggerInfo, ViewDefinition};
+use crate::db_types::{
+    AppState, DatabaseType, EventInfo, RoutineInfo, TriggerInfo, ViewDefinition, ExtensionRecord
+};
 use crate::mysql;
 use crate::postgres;
 use crate::clickhouse;
+
+// ... (previous functions)
+
+#[tauri::command]
+pub async fn get_events(
+    app_state: State<'_, AppState>,
+    database: String,
+) -> Result<Vec<EventInfo>, String> {
+    let db_type = {
+        let guard = app_state.active_db_type.lock().await;
+        guard.clone()
+    };
+
+    match db_type {
+        DatabaseType::PostgreSQL => {
+            // PostgreSQL doesn't have events like MySQL
+            Ok(Vec::new())
+        }
+        DatabaseType::MySQL => {
+            let guard = app_state.mysql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
+            mysql::get_events(pool, &database).await
+        }
+        DatabaseType::ClickHouse => Ok(Vec::new()),
+        DatabaseType::Disconnected => Err("No connection established".into()),
+    }
+}
+
+// --- Extensions (PostgreSQL) ---
+
+#[tauri::command]
+pub async fn get_extensions(
+    app_state: State<'_, AppState>,
+) -> Result<Vec<ExtensionRecord>, String> {
+    let db_type = {
+        let guard = app_state.active_db_type.lock().await;
+        guard.clone()
+    };
+
+    match db_type {
+        DatabaseType::PostgreSQL => {
+            let guard = app_state.postgres_pool.lock().await;
+            let pool = guard
+                .as_ref()
+                .ok_or("No PostgreSQL connection established")?;
+            postgres::get_pg_extensions(pool).await
+        }
+        _ => Err("Extensions are only supported for PostgreSQL".to_string()),
+    }
+}
+
+#[tauri::command]
+pub async fn manage_extension(
+    app_state: State<'_, AppState>,
+    name: String,
+    action: String,
+) -> Result<String, String> {
+    let db_type = {
+        let guard = app_state.active_db_type.lock().await;
+        guard.clone()
+    };
+
+    match db_type {
+        DatabaseType::PostgreSQL => {
+            let guard = app_state.postgres_pool.lock().await;
+            let pool = guard
+                .as_ref()
+                .ok_or("No PostgreSQL connection established")?;
+            postgres::manage_pg_extension(pool, &name, &action).await
+        }
+        _ => Err("Extensions are only supported for PostgreSQL".to_string()),
+    }
+}
 
 #[tauri::command]
 pub async fn get_views(
@@ -218,27 +293,4 @@ pub async fn get_functions(
     }
 }
 
-#[tauri::command]
-pub async fn get_events(
-    app_state: State<'_, AppState>,
-    database: String,
-) -> Result<Vec<EventInfo>, String> {
-    let db_type = {
-        let guard = app_state.active_db_type.lock().await;
-        guard.clone()
-    };
 
-    match db_type {
-        DatabaseType::PostgreSQL => {
-            // PostgreSQL doesn't have events like MySQL
-            Ok(Vec::new())
-        }
-        DatabaseType::MySQL => {
-            let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
-            mysql::get_events(pool, &database).await
-        }
-        DatabaseType::ClickHouse => Ok(Vec::new()),
-        DatabaseType::Disconnected => Err("No connection established".into()),
-    }
-}

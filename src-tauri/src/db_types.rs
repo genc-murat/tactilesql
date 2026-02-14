@@ -579,3 +579,39 @@ pub struct MonitorSnapshot {
     pub health_metrics: Vec<HealthMetric>,
     pub deadlock_history: Vec<DeadlockInfo>,
 }
+
+// --- PostgreSQL Activity Record ---
+#[derive(Serialize, Debug, Clone)]
+pub struct ActivityRecord {
+    pub pid: i32,
+    pub user: String,
+    pub db: String,
+    pub state: String,
+    pub query: String,
+    pub duration: String,
+    pub wait_event: Option<String>,
+    pub application_name: Option<String>,
+    pub client_addr: Option<String>,
+}
+
+// --- PostgreSQL Lock Record ---
+#[derive(Serialize, Debug, Clone)]
+pub struct PgLockRecord {
+    pub pid: i32,
+    pub lock_type: String,
+    pub mode: String,
+    pub granted: bool,
+    pub relation: Option<String>,
+    pub query: Option<String>,
+    pub age: Option<String>,
+}
+
+// --- PostgreSQL Extension Record ---
+#[derive(Serialize, Debug, Clone)]
+pub struct ExtensionRecord {
+    pub name: String,
+    pub version: String,
+    pub installed: bool,
+    pub description: String,
+}
+

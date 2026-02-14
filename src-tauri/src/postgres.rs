@@ -1779,19 +1779,7 @@ mod tests {
 
 // --- Extensions (PostgreSQL specific) ---
 
-pub async fn get_extensions(pool: &Pool<Postgres>) -> Result<Vec<String>, String> {
-    let rows = sqlx::query("SELECT extname FROM pg_extension ORDER BY extname")
-        .fetch_all(pool)
-        .await
-        .map_err(|e| format!("Failed to fetch extensions: {}", e))?;
 
-    let extensions: Vec<String> = rows
-        .iter()
-        .map(|row| row.try_get::<String, _>("extname").unwrap_or_default())
-        .collect();
-
-    Ok(extensions)
-}
 
 // --- Tablespaces (PostgreSQL specific) ---
 
@@ -2512,3 +2500,144 @@ pub async fn get_bloat_analysis(pool: &Pool<Postgres>) -> Result<Vec<BloatInfo>,
 
     Ok(results)
 }
+
+// --- Activity Window ---
+
+pub async fn get_pg_activity(pool: &Pool<Postgres>) -> Result<Vec<ActivityRecord>, String> {
+    let query = r#"
+        SELECT
+            pid,
+            usename as user,
+            datname as db,
+            state,
+            query,
+            (extract(epoch from (now() - query_start))::numeric(10, 2))::text as duration,
+            wait_event,
+            application_name,
+            client_addr::text
+        FROM pg_stat_activity
+        WHERE pid <> pg_backend_pid()
+        ORDER BY query_start ASC
+    "#;
+
+    let rows = sqlx::query(query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch activity: {}", e))?;
+
+    let mut activity = Vec::new();
+    for row in rows {
+        activity.push(ActivityRecord {
+            pid: row.try_get::<i32, _>("pid").unwrap_or(0),
+            user: row.try_get("user").unwrap_or_default(),
+            db: row.try_get("db").unwrap_or_default(),
+            state: row.try_get("state").unwrap_or_default(),
+            query: row.try_get("query").unwrap_or_default(),
+            duration: row.try_get("duration").unwrap_or_default(),
+            wait_event: row.try_get("wait_event").ok(),
+            application_name: row.try_get("application_name").ok(),
+            client_addr: row.try_get("client_addr").ok(),
+        });
+    }
+
+    Ok(activity)
+}
+
+pub async fn kill_pg_session(pool: &Pool<Postgres>, pid: i32) -> Result<String, String> {
+    let query = "SELECT pg_terminate_backend($1)";
+    let _ = sqlx::query(query)
+        .bind(pid)
+        .execute(pool)
+        .await
+        .map_err(|e| format!("Failed to kill session: {}", e))?;
+
+    Ok(format!("Session {} terminated", pid))
+}
+
+// --- Locks ---
+
+pub async fn get_pg_locks(pool: &Pool<Postgres>) -> Result<Vec<PgLockRecord>, String> {
+    let query = r#"
+        SELECT
+            l.pid,
+            l.locktype as lock_type,
+            l.mode,
+            l.granted,
+            COALESCE(c.relname, '') as relation,
+            a.query,
+            (extract(epoch from (now() - a.query_start))::numeric(10, 2))::text as age
+        FROM pg_locks l
+        LEFT JOIN pg_class c ON l.relation = c.oid
+        LEFT JOIN pg_stat_activity a ON l.pid = a.pid
+        WHERE l.pid <> pg_backend_pid()
+        ORDER BY a.query_start ASC
+    "#;
+
+    let rows = sqlx::query(query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch locks: {}", e))?;
+
+    let mut locks = Vec::new();
+    for row in rows {
+        locks.push(PgLockRecord {
+            pid: row.try_get::<i32, _>("pid").unwrap_or(0),
+            lock_type: row.try_get("lock_type").unwrap_or_default(),
+            mode: row.try_get("mode").unwrap_or_default(),
+            granted: row.try_get::<bool, _>("granted").unwrap_or(false),
+            relation: row.try_get("relation").ok(),
+            query: row.try_get("query").ok(),
+            age: row.try_get("age").ok(),
+        });
+    }
+
+    Ok(locks)
+}
+
+// --- Extensions ---
+
+pub async fn get_pg_extensions(pool: &Pool<Postgres>) -> Result<Vec<ExtensionRecord>, String> {
+    let query = r#"
+        SELECT
+            e.name,
+            e.default_version as version,
+            e.comment as description,
+            (SELECT count(*) FROM pg_extension WHERE extname = e.name) > 0 as installed
+        FROM pg_available_extensions e
+        ORDER BY e.name
+    "#;
+
+    let rows = sqlx::query(query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch extensions: {}", e))?;
+
+    let mut extensions = Vec::new();
+    for row in rows {
+        extensions.push(ExtensionRecord {
+            name: row.try_get("name").unwrap_or_default(),
+            version: row.try_get("version").unwrap_or_default(),
+            description: row.try_get("description").unwrap_or_default(),
+            installed: row.try_get::<bool, _>("installed").unwrap_or(false),
+        });
+    }
+
+    Ok(extensions)
+}
+
+pub async fn manage_pg_extension(pool: &Pool<Postgres>, name: &str, action: &str) -> Result<String, String> {
+    // Validate action to prevent injection
+    let query = match action {
+        "install" => format!("CREATE EXTENSION IF NOT EXISTS \"{}\"", name.replace("\"", "")),
+        "uninstall" => format!("DROP EXTENSION IF EXISTS \"{}\"", name.replace("\"", "")),
+        _ => return Err("Invalid action".to_string()),
+    };
+
+    sqlx::query(&query)
+        .execute(pool)
+        .await
+        .map_err(|e| format!("Failed to {} extension: {}", action, e))?;
+
+    Ok(format!("Extension {} {}ed successfully", name, action))
+}
+

@@ -361,7 +361,11 @@ pub fn run() {
             db::get_sequences,
             db::get_custom_types,
             db::get_extensions,
+            db::manage_extension,
             db::get_tablespaces,
+            db::get_pg_activity,
+            db::kill_pg_session,
+            db::get_pg_locks,
             // Schema Tracker
             schema_tracker::commands::capture_schema_snapshot,
             schema_tracker::commands::compare_schema_snapshots,
