@@ -7,6 +7,7 @@ import { escapeHtml, DatabaseCache, CacheTypes } from '../../utils/helpers.js';
 import { toastSuccess, toastError } from '../../utils/Toast.js';
 import { SettingsManager } from '../../utils/SettingsManager.js';
 import { SETTINGS_PATHS } from '../../constants/settingsKeys.js';
+import { createContextMenu, removeContextMenu } from '../../utils/ContextMenu.js';
 
 export function ObjectExplorer() {
     let theme = ThemeManager.getCurrentTheme();
@@ -341,7 +342,8 @@ export function ObjectExplorer() {
                         // Search context is global, so it applies to the active connection mostly?
                         // `searchContext` was built from `databases` (active).
                         // So search results only show for active connection.
-                        searchContext: isActive ? searchContext : null
+                        searchContext: isActive ? searchContext : null,
+                        dbType: conn.dbType || 'mysql'
                     };
 
                     flattenConnection(nodes, conn.id, ctx, showSys, sysDbs);
@@ -408,7 +410,7 @@ export function ObjectExplorer() {
         nodes.push({
             type: 'database',
             id: `db-${db}`,
-            data: { name: db },
+            data: { name: db, dbType: ctx.dbType },
             depth: 2,
             expanded: isExpanded,
             connId
@@ -458,7 +460,7 @@ export function ObjectExplorer() {
             type: 'category',
             id: `cat-${db}-${type}`,
             depth: 3,
-            data: { label, icon, count: items.length, type },
+            data: { label, icon, count: items.length, type, dbType: ctx.dbType },
             connId
         });
 
@@ -474,7 +476,7 @@ export function ObjectExplorer() {
                     type: 'table',
                     id: `table-${db}-${tableName}`,
                     depth: 4,
-                    data: { name: tableName, db },
+                    data: { name: tableName, db, dbType: ctx.dbType },
                     expanded: isExpanded,
                     connId
                 });
@@ -492,7 +494,7 @@ export function ObjectExplorer() {
                     type: 'object',
                     id: `${type.slice(0, -1)}-${db}-${name}`,
                     depth: 4,
-                    data: { name, type: type.slice(0, -1), db, extra },
+                    data: { name, type: type.slice(0, -1), db, extra, dbType: ctx.dbType },
                     connId
                 });
             }
@@ -747,11 +749,11 @@ export function ObjectExplorer() {
         switch (type) {
             case 'connection': {
                 // Connection Header
-                const { name, id: cid } = data;
+                const { name, id: cid, dbType } = data;
                 const borderClass = isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isNeon ? 'border-white/5' : 'border-white/5'));
                 const bgClass = active ? (isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#f2e9e1]' : (isOceanic ? 'bg-ocean-surface' : (isNeon ? 'bg-white/5' : 'bg-gray-800')))) : '';
                 return `
-                    <div class="connection-item virtual-row flex items-center gap-2 w-full cursor-pointer ${bgClass} hover:bg-opacity-80 transition-colors border-b ${borderClass}" style="${style}" data-conn-id="${cid}" draggable="true">
+                    <div class="connection-item virtual-row flex items-center gap-2 w-full cursor-pointer ${bgClass} hover:bg-opacity-80 transition-colors border-b ${borderClass}" style="${style}" data-conn-id="${cid}" data-db-type="${dbType || 'mysql'}" draggable="true">
                          <div class="w-1.5 h-1.5 rounded-full ${active ? 'bg-green-500' : 'bg-gray-400'}"></div>
                          <span class="font-bold text-[10px] truncate flex-1 min-w-0 ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">${escapeHtml(name)}</span>
                          ${active ? `<span class="material-symbols-outlined text-[12px] ${expanded ? 'rotate-180' : ''}">expand_more</span>` : ''} 
@@ -777,14 +779,14 @@ export function ObjectExplorer() {
                  `;
             }
             case 'database': {
-                const { name } = data;
+                const { name, dbType } = data;
                 const baseColor = isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text/70' : (isNeon ? 'text-neon-text/70' : 'text-gray-400')));
                 const hoverColor = isLight ? 'hover:text-mysql-teal' : (isDawn ? 'hover:text-[#ea9d34]' : (isOceanic ? 'hover:text-ocean-frost' : (isNeon ? 'hover:text-neon-accent' : 'hover:text-white')));
                 const dotColor = expanded ? (isDawn ? 'bg-[#ea9d34] shadow-[0_0_8px_rgba(234,157,52,0.6)]' : (isNeon ? 'bg-neon-accent shadow-[0_0_8px_rgba(0,243,255,0.6)]' : 'bg-mysql-teal glow-node')) : (isLight ? 'bg-gray-300' : (isDawn ? 'bg-[#cecacd]' : (isOceanic ? 'bg-[#4C566A]' : (isNeon ? 'bg-white/10' : 'bg-gray-700'))));
                 const activeText = expanded ? (isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-mysql-teal')) : '';
 
                 return `
-                    <div class="db-item virtual-row flex items-center gap-2 w-full ${baseColor} ${hoverColor} group cursor-pointer" style="${style}" data-db="${name}" data-conn-id="${connId}">
+                    <div class="db-item virtual-row flex items-center gap-2 w-full ${baseColor} ${hoverColor} group cursor-pointer" style="${style}" data-db="${name}" data-conn-id="${connId}" data-db-type="${dbType || 'mysql'}">
                          <span class="material-symbols-outlined text-xs shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}">arrow_right</span>
                          <div class="w-1.5 h-1.5 shrink-0 rounded-full ${dotColor}"></div>
                          <span class="font-bold tracking-tight ${activeText} ${highlightClass(`db-${name}`)} flex-1 min-w-0 truncate" title="${escapeHtml(name)}" ${searchId(`db-${name}`)}>${escapeHtml(name)}</span>
@@ -811,7 +813,7 @@ export function ObjectExplorer() {
                 `;
             }
             case 'table': {
-                const { name: table, db } = data;
+                const { name: table, db, dbType } = data;
                 const iconColor = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-700'));
                 const iconHover = isLight ? 'group-hover:text-mysql-teal' : (isDawn ? 'group-hover:text-[#ea9d34]' : 'group-hover:text-mysql-teal');
 
@@ -819,7 +821,7 @@ export function ObjectExplorer() {
                 const tablePadding = Math.max(0, paddingLeft - 8);
 
                 return `
-                    <div class="table-item virtual-row flex items-center gap-2 w-full ${mainText} ${hoverText} cursor-pointer group" style="padding-left: ${tablePadding}px; height: ${ROW_HEIGHT}px;" data-table="${table}" data-db="${db}" data-conn-id="${connId}" draggable="true">
+                    <div class="table-item virtual-row flex items-center gap-2 w-full ${mainText} ${hoverText} cursor-pointer group" style="padding-left: ${tablePadding}px; height: ${ROW_HEIGHT}px;" data-table="${table}" data-db="${db}" data-conn-id="${connId}" data-db-type="${dbType || 'mysql'}" draggable="true">
                         <span class="material-symbols-outlined text-[10px] shrink-0 transition-transform ${expanded ? 'rotate-90' : ''} ${isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : iconColor)}">arrow_right</span>
                         <span class="material-symbols-outlined text-[14px] shrink-0 ${iconColor} ${iconHover}">table_rows</span>
                         <span class="${highlightClass(`table-${db}-${table}`)} flex-1 min-w-0 truncate" title="${escapeHtml(table)}" ${searchId(`table-${db}-${table}`)}>${escapeHtml(table)}</span>
@@ -828,7 +830,7 @@ export function ObjectExplorer() {
             }
             case 'object': {
                 // Generic Object (View, Trigger, Proc, Func, Event)
-                const { name, type: objType, db, extra } = data;
+                const { name, type: objType, db, extra, dbType } = data;
                 let icon = 'circle';
                 let iconColorClass = '';
 
@@ -847,7 +849,7 @@ export function ObjectExplorer() {
                 // Let's add a generic `virtual-object` class and data attributes
 
                 return `
-                    <div class="${itemClass} virtual-row grid items-center gap-2 w-full text-[9px] ${mainText} cursor-pointer hover:bg-black/5" style="${style} padding-left: 0; grid-template-columns: ${paddingLeft}px 12px minmax(0,1fr) minmax(0,45%); display: grid;" data-${objType}="${name}" data-db="${db}">
+                    <div class="${itemClass} virtual-row grid items-center gap-2 w-full text-[9px] ${mainText} cursor-pointer hover:bg-black/5" style="${style} padding-left: 0; grid-template-columns: ${paddingLeft}px 12px minmax(0,1fr) minmax(0,45%); display: grid;" data-${objType}="${name}" data-db="${db}" data-db-type="${dbType || 'mysql'}">
                          <span class="col-start-2 material-symbols-outlined text-[11px] shrink-0 ${iconColorClass}">${icon}</span>
                          <span class="${highlightClass(`${objType}-${db}-${name}`)} min-w-0 truncate" title="${escapeHtml(name)}" ${searchId(`${objType}-${db}-${name}`)}>${escapeHtml(name)}</span>
                          ${extra ? `<span class="${subText} text-[8px] min-w-0 truncate text-right" title="${escapeHtml(extra)}">${escapeHtml(extra)}</span>` : ''}
@@ -1423,22 +1425,16 @@ export function ObjectExplorer() {
 
         explorer.addEventListener('contextmenu', (e) => {
             const dbItem = e.target.closest('.db-item');
-            if (dbItem) { e.preventDefault(); e.stopPropagation(); showDatabaseContextMenu(e.clientX, e.clientY, dbItem.dataset.db); return; }
+            if (dbItem) { e.preventDefault(); e.stopPropagation(); showDatabaseContextMenu(e.clientX, e.clientY, dbItem.dataset.db, dbItem.dataset.dbType); return; }
             const tableItem = e.target.closest('.table-item');
-            if (tableItem) { e.preventDefault(); e.stopPropagation(); showContextMenu(e.clientX, e.clientY, tableItem.dataset.table, tableItem.dataset.db); return; }
+            if (tableItem) { e.preventDefault(); e.stopPropagation(); showContextMenu(e.clientX, e.clientY, tableItem.dataset.table, tableItem.dataset.db, tableItem.dataset.dbType); return; }
             const viewItem = e.target.closest('.view-item');
             if (viewItem) {
-                const connNode = viewItem.closest('.connection-node'); // Virtual nodes don't nest elements like this anymore!
-                // We need to check active connection or data-conn-id
-                // But view-item doesn't have data-conn-id yet?
-                // Actually `renderNode` adds `connId` to `node` but not to markup of `view-item`?
-                // Let's rely on global activeConnectionId or add data attribute.
-                // Assuming views only exist inside DBs which are part of Connections.
-                // A safer bet is just checking if we're connected.
-                e.preventDefault(); e.stopPropagation(); showViewContextMenu(e.clientX, e.clientY, viewItem.dataset.view, viewItem.dataset.db); return;
+                // ... (existing comments)
+                e.preventDefault(); e.stopPropagation(); showViewContextMenu(e.clientX, e.clientY, viewItem.dataset.view, viewItem.dataset.db, viewItem.dataset.dbType); return;
             }
             const connItem = e.target.closest('.connection-item') || e.target.closest('.conn-item');
-            if (connItem) { e.preventDefault(); showConnectionContextMenu(e.clientX, e.clientY, connItem.dataset.connId || connItem.dataset.id); return; }
+            if (connItem) { e.preventDefault(); showConnectionContextMenu(e.clientX, e.clientY, connItem.dataset.connId || connItem.dataset.id, connItem.dataset.dbType); return; }
 
             const colItem = e.target.closest('.column-item');
             if (colItem) { showColumnDetailsTooltip(e); return; }
@@ -1623,242 +1619,163 @@ export function ObjectExplorer() {
     };
 
     // --- Context Menus ---
-    const showConnectionContextMenu = (x, y, id) => {
-        const existing = document.getElementById('explorer-context-menu');
-        if (existing) existing.remove();
-
-        const menu = document.createElement('div');
-        menu.id = 'explorer-context-menu';
-        menu.className = `fixed z-[9999] ${(isLight ? 'bg-white border-gray-200 shadow-lg' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279] shadow-lg shadow-[#ea9d34]/10' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50 shadow-xl' : 'bg-[#1a1d23] border border-white/10 shadow-xl')))} rounded-lg py-1 w-48`;
-        menu.style.left = `${x}px`;
-        menu.style.top = `${y}px`;
-
+    const showConnectionContextMenu = (x, y, id, dbType) => {
         const isCurrent = id === activeConnectionId;
-        const dividerColor = isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5');
-        const headerText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500');
-        const hoverClass = isLight ? 'hover:bg-gray-50 text-gray-700' : (isDawn ? 'hover:bg-[#faf4ed] text-[#575279]' : 'hover:bg-white/5 text-gray-300 hover:text-white');
+        const isDawn = theme === 'dawn';
 
-        menu.innerHTML = `
-            <div class="px-3 py-1.5 text-[10px] font-mono ${headerText} ${dividerColor} border-b tracking-widest mb-1">
-                Connection Options
-            </div>
-            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-conn-connect">
-                <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#56949f]' : 'text-green-400'}">bolt</span> ${isCurrent ? 'Reconnect' : 'Connect'}
-            </button>
-            ${isCurrent ? `
-                <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-conn-refresh">
-                    <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#3e8fb0]' : 'text-blue-400'}">sync</span> Refresh Databases
-                </button>
-                <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-conn-dashboard">
-                    <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#eb6f92]' : 'text-rose-400'}">monitor_heart</span> Open Dashboard
-                </button>
-            ` : ''}
-            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-conn-edit">
-                <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal'}">edit</span> Edit Connection
-            </button>
-        `;
+        const items = [
+            {
+                label: isCurrent ? 'Reconnect' : 'Connect',
+                icon: 'bolt',
+                iconColor: isDawn ? 'text-[#56949f]' : 'text-green-400',
+                onClick: async () => await switchConnection(id)
+            },
+            ...(isCurrent ? [
+                {
+                    label: 'Refresh Databases',
+                    icon: 'sync',
+                    iconColor: isDawn ? 'text-[#3e8fb0]' : 'text-blue-400',
+                    onClick: () => {
+                        DatabaseCache.invalidateAll();
+                        loadDatabases();
+                        toastSuccess('Schema cache refreshed');
+                    }
+                },
+                {
+                    label: 'Open Dashboard',
+                    icon: 'monitor_heart',
+                    iconColor: isDawn ? 'text-[#eb6f92]' : 'text-rose-400',
+                    onClick: () => window.location.hash = `/monitor?conn=${id}`
+                }
+            ] : []),
+            {
+                label: 'Edit Connection',
+                icon: 'edit',
+                iconColor: isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal',
+                onClick: () => window.location.hash = '/connections'
+            }
+        ];
 
-        document.body.appendChild(menu);
-
-        const btnConnect = menu.querySelector('#ctx-conn-connect');
-        if (btnConnect) {
-            btnConnect.onclick = async () => {
-                menu.remove();
-                await switchConnection(id);
-            };
-        }
-
-        const btnRefresh = menu.querySelector('#ctx-conn-refresh');
-        if (btnRefresh) {
-            btnRefresh.onclick = () => {
-                // Invalidate all caches when refreshing connection
-                DatabaseCache.invalidateAll();
-                loadDatabases();
-                toastSuccess('Schema cache refreshed');
-                menu.remove();
-            };
-        }
-
-        const btnDashboard = menu.querySelector('#ctx-conn-dashboard');
-        if (btnDashboard) {
-            btnDashboard.onclick = () => {
-                menu.remove();
-                window.location.hash = `/monitor?conn=${id}`;
-            };
-        }
-
-        menu.querySelector('#ctx-conn-edit').onclick = () => {
-            // Navigate to connection manager with this ID
-            // We can do this by setting hash and filtering, but for now simple nav
-            window.location.hash = '/connections';
-            menu.remove();
-        };
-
-        const closeMenu = () => {
-            menu.remove();
-            document.removeEventListener('click', closeMenu);
-        };
-        setTimeout(() => document.addEventListener('click', closeMenu), 0);
+        createContextMenu(x, y, items, { header: 'Connection Options' });
     };
 
     // --- View Context Menu ---
-    const showViewContextMenu = (x, y, viewName, dbName) => {
-        const existing = document.getElementById('explorer-context-menu');
-        if (existing) existing.remove();
+    const showViewContextMenu = (x, y, viewName, dbName, dbType) => {
+        const isDawn = theme === 'dawn';
+        const items = [
+            {
+                label: 'View Source',
+                icon: 'code',
+                iconColor: isDawn ? 'text-[#c6a0f6]' : 'text-purple-400',
+                onClick: () => showViewSourceModal(dbName, viewName)
+            },
+            {
+                label: 'Select *',
+                icon: 'table_view',
+                iconColor: isDawn ? 'text-[#9ccfd8]' : 'text-cyan-400',
+                onClick: () => {
+                    const q = getQuote(); // This might need dbType specific quote if we support mixed connections in future
+                    // For now, getQuote() uses active connection logic usually, or fallback.
+                    // Ideally we should move getQuoteChar to accept dbType. 
+                    // But `getQuoteChar` in `database/index.js` checks `isPostgreSQL()`.
+                    // We can check `dbType` passed here.
+                    const qChar = (dbType === 'postgresql') ? '"' : '`';
 
-        const menu = document.createElement('div');
-        menu.id = 'explorer-context-menu';
-        menu.className = `fixed z-[9999] ${(isLight ? 'bg-white border-gray-200 shadow-lg' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279] shadow-lg shadow-[#ea9d34]/10' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50 shadow-xl' : 'bg-[#1a1d23] border border-white/10 shadow-xl')))} rounded-lg py-1 w-48`;
-        menu.style.left = `${x}px`;
-        menu.style.top = `${y}px`;
+                    window.dispatchEvent(new CustomEvent('tactilesql:run-query', {
+                        detail: { query: `SELECT * FROM ${qChar}${dbName}${qChar}.${qChar}${viewName}${qChar} LIMIT 1000;` }
+                    }));
+                }
+            },
+            {
+                label: 'Copy Name',
+                icon: 'content_copy',
+                iconColor: isDawn ? 'text-[#9893a5]' : 'text-gray-500',
+                onClick: () => navigator.clipboard.writeText(viewName)
+            }
+        ];
 
-        const dividerColor = isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5');
-        const headerText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500');
-        const hoverClass = isLight ? 'hover:bg-gray-50 text-gray-700' : (isDawn ? 'hover:bg-[#faf4ed] text-[#575279]' : 'hover:bg-white/5 text-gray-300 hover:text-white');
-
-        menu.innerHTML = `
-            <div class="px-3 py-1.5 text-[10px] font-mono ${headerText} ${dividerColor} border-b tracking-widest mb-1">
-                <span class="${isDawn ? 'text-[#3e8fb0]' : 'text-blue-400'}">VIEW</span> ${dbName}.${viewName}
-            </div>
-            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-view-source">
-                <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#c6a0f6]' : 'text-purple-400'}">code</span> View Source
-            </button>
-            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-select-view">
-                <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#9ccfd8]' : 'text-cyan-400'}">table_view</span> Select *
-            </button>
-            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-copy-view">
-                <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#9893a5]' : 'text-gray-500'}">content_copy</span> Copy Name
-            </button>
-        `;
-
-        document.body.appendChild(menu);
-
-        menu.querySelector('#ctx-view-source').onclick = () => {
-            showViewSourceModal(dbName, viewName);
-            menu.remove();
-        };
-        menu.querySelector('#ctx-select-view').onclick = () => {
-            // Dispatch event to query editor
-            const q = getQuote();
-            window.dispatchEvent(new CustomEvent('tactilesql:run-query', {
-                detail: { query: `SELECT * FROM ${q}${dbName}${q}.${q}${viewName}${q} LIMIT 1000;` }
-            }));
-            menu.remove();
-        };
-        menu.querySelector('#ctx-copy-view').onclick = () => {
-            navigator.clipboard.writeText(viewName);
-            menu.remove();
-        };
-
-        const closeMenu = () => {
-            menu.remove();
-            document.removeEventListener('click', closeMenu);
-        };
-        setTimeout(() => document.addEventListener('click', closeMenu), 0);
+        createContextMenu(x, y, items, { header: `VIEW ${dbName}.${viewName}` });
     };
 
     // --- Database Context Menu ---
-    const showDatabaseContextMenu = (x, y, dbName) => {
-        const existing = document.getElementById('explorer-context-menu');
-        if (existing) existing.remove();
+    const showDatabaseContextMenu = (x, y, dbName, dbType) => {
+        const isPg = dbType === 'postgresql';
+        const isDawn = theme === 'dawn';
 
-        const menu = document.createElement('div');
-        menu.id = 'explorer-context-menu';
-        menu.className = `fixed z-[9999] ${(isLight ? 'bg-white border-gray-200 shadow-lg' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279] shadow-lg shadow-[#ea9d34]/10' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50 shadow-xl' : 'bg-[#1a1d23] border border-white/10 shadow-xl')))} rounded-lg py-1 w-48`;
-        menu.style.left = `${x}px`;
-        menu.style.top = `${y}px`;
-
-        const dividerColor = isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5');
-        const headerText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500');
-        const hoverClass = isLight ? 'hover:bg-gray-50 text-gray-700' : (isDawn ? 'hover:bg-[#faf4ed] text-[#575279]' : 'hover:bg-white/5 text-gray-300 hover:text-white');
-
-        const isPg = activeDbType === 'postgresql';
-
-        menu.innerHTML = `
-            <div class="px-3 py-1.5 text-[10px] font-mono ${headerText} ${dividerColor} border-b tracking-widest mb-1">
-                ${dbName}
-            </div>
-            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-db-open-script">
-                <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#286983]' : 'text-blue-400'}">description</span> Open SQL Script
-            </button>
-            <div class="my-1 border-t ${dividerColor}"></div>
-            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-db-properties">
-                <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal'}">info</span> Properties
-            </button>
-            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-db-refresh">
-                <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#56949f]' : 'text-green-400'}">sync</span> Refresh
-            </button>
-            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-db-copy">
-                <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#9893a5]' : 'text-gray-500'}">content_copy</span> Copy Name
-            </button>
-        `;
-
-        document.body.appendChild(menu);
-
-        menu.querySelector('#ctx-db-open-script').onclick = async () => {
-            menu.remove();
-            try {
-                const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
-                if (!activeConfig.username) {
-                    Dialog.alert("Session lost. Please reconnect.", "Session Error");
-                    return;
-                }
-
-                if (isPg) {
-                    // For PostgreSQL, set search_path to the schema (don't reconnect)
+        const items = [
+            {
+                label: 'Open SQL Script',
+                icon: 'description',
+                iconColor: isDawn ? 'text-[#286983]' : 'text-blue-400',
+                onClick: async () => {
                     try {
-                        await invoke('execute_query', { query: `SET search_path TO "${dbName}"` });
-                    } catch (e) {
-                        console.warn('Could not set search_path:', e);
+                        // TODO: Refactor this to be more robust for non-active connections?
+                        // For now we assume we are opening script for the connection this DB belongs to.
+                        // But `activeConfig` below comes from localStorage.
+                        // If we right click a DB in a NON-active connection, `activeConfig` would be wrong!
+                        // This logic inherently assumes we can only act on the active connection or we need to switch.
+                        // Ideally we should switch connection if needed.
+                        // For now keeping existing behavior but noting the limitation/risk.
+
+                        const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+                        if (!activeConfig.username) {
+                            Dialog.alert("Session lost. Please reconnect.", "Session Error");
+                            return;
+                        }
+
+                        if (isPg) {
+                            try {
+                                await invoke('execute_query', { query: `SET search_path TO "${dbName}"` });
+                            } catch (e) {
+                                console.warn('Could not set search_path:', e);
+                            }
+                            activeConfig.activeSchema = dbName;
+                            localStorage.setItem('activeConnection', JSON.stringify(activeConfig));
+                        } else {
+                            activeConfig.database = dbName;
+                            await invoke('establish_connection', {
+                                config: { ...activeConfig, id: activeConfig.id || null, name: activeConfig.name || null }
+                            });
+                            localStorage.setItem('activeConnection', JSON.stringify(activeConfig));
+                        }
+
+                        window.dispatchEvent(new CustomEvent('tactilesql:open-sql-script', {
+                            detail: { database: dbName, isSchema: isPg }
+                        }));
+                    } catch (error) {
+                        Dialog.alert(`Failed to open SQL script: ${String(error).replace(/\n/g, '<br>')}`, 'Error');
                     }
-                    activeConfig.activeSchema = dbName;
-                    localStorage.setItem('activeConnection', JSON.stringify(activeConfig));
-                } else {
-                    // For MySQL, switch to the selected database
-                    activeConfig.database = dbName;
-                    await invoke('establish_connection', {
-                        config: { ...activeConfig, id: activeConfig.id || null, name: activeConfig.name || null }
-                    });
-                    localStorage.setItem('activeConnection', JSON.stringify(activeConfig));
                 }
-
-                // Dispatch event to notify QueryEditor to create new tab
-                window.dispatchEvent(new CustomEvent('tactilesql:open-sql-script', {
-                    detail: { database: dbName, isSchema: isPg }
-                }));
-            } catch (error) {
-                Dialog.alert(`Failed to open SQL script: ${String(error).replace(/\n/g, '<br>')}`, 'Error');
+            },
+            { type: 'separator' },
+            {
+                label: 'Properties',
+                icon: 'info',
+                iconColor: isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal',
+                onClick: () => showDatabaseProperties(dbName) // This func currently uses global activeDbType, might need update
+            },
+            {
+                label: 'Refresh',
+                icon: 'sync',
+                iconColor: isDawn ? 'text-[#56949f]' : 'text-green-400',
+                onClick: async () => {
+                    DatabaseCache.invalidateByDatabase(dbName);
+                    delete dbObjects[dbName];
+                    window.dispatchEvent(new CustomEvent('schema:changed', { detail: { database: dbName } }));
+                    if (expandedDbs.has(dbName)) await loadDatabaseObjects(dbName);
+                    else await loadDatabaseObjects(dbName, true);
+                    toastSuccess(`Cache refreshed for ${dbName}`);
+                }
+            },
+            {
+                label: 'Copy Name',
+                icon: 'content_copy',
+                iconColor: isDawn ? 'text-[#9893a5]' : 'text-gray-500',
+                onClick: () => navigator.clipboard.writeText(dbName)
             }
-        };
+        ];
 
-        menu.querySelector('#ctx-db-properties').onclick = () => {
-            showDatabaseProperties(dbName);
-            menu.remove();
-        };
-
-        menu.querySelector('#ctx-db-refresh').onclick = async () => {
-            // Invalidate centralized cache for this database
-            DatabaseCache.invalidateByDatabase(dbName);
-            delete dbObjects[dbName];
-
-            window.dispatchEvent(new CustomEvent('schema:changed', { detail: { database: dbName } }));
-            if (expandedDbs.has(dbName)) await loadDatabaseObjects(dbName);
-            else await loadDatabaseObjects(dbName, true); // Still refresh in background even if closed
-
-            toastSuccess(`Cache refreshed for ${dbName}`);
-            menu.remove();
-        };
-
-        menu.querySelector('#ctx-db-copy').onclick = () => {
-            navigator.clipboard.writeText(dbName);
-            menu.remove();
-        };
-
-        const closeMenu = () => {
-            menu.remove();
-            document.removeEventListener('click', closeMenu);
-        };
-        setTimeout(() => document.addEventListener('click', closeMenu), 0);
+        createContextMenu(x, y, items, { header: dbName });
     };
 
     const showDatabaseProperties = async (dbName) => {
@@ -1890,6 +1807,25 @@ export function ObjectExplorer() {
 
                 const message = `Schema: ${dbName}\nOwner: ${owner}\nTables: ${tableCount}\nSize: ${size}`;
                 Dialog.alert(message, 'Schema Properties');
+            } else if (activeDbType === 'clickhouse') {
+                // ClickHouse logic
+                const tableCountResult = await invoke('execute_query', {
+                    query: `SELECT count() FROM system.tables WHERE database = '${dbName}'`
+                });
+
+                const sizeResult = await invoke('execute_query', {
+                    query: `
+                        SELECT formatReadableSize(sum(bytes)) 
+                        FROM system.parts 
+                        WHERE database = '${dbName}' AND active = 1
+                    `
+                });
+
+                const tableCount = tableCountResult.rows?.[0]?.[0] || '0';
+                const size = sizeResult.rows?.[0]?.[0] || '0 B';
+
+                const message = `Database: ${dbName}\nTables: ${tableCount}\nSize: ${size}`;
+                Dialog.alert(message, 'Database Properties');
             } else {
                 // MySQL: dbName is a database name
                 const results = await invoke('execute_query', {
@@ -1933,211 +1869,127 @@ export function ObjectExplorer() {
     };
 
     // --- Table Context Menu ---
-    const showContextMenu = (x, y, tableName, dbName) => {
-        const existing = document.getElementById('explorer-context-menu');
-        if (existing) existing.remove();
+    const showContextMenu = (x, y, tableName, dbName, dbType) => {
+        const isDawn = theme === 'dawn';
 
-        const menu = document.createElement('div');
-        menu.id = 'explorer-context-menu';
+        const items = [
+            {
+                label: 'Select Top 200',
+                icon: 'table_view',
+                iconColor: isDawn ? 'text-[#9ccfd8]' : 'text-cyan-400',
+                onClick: async () => {
+                    const qChar = (dbType === 'postgresql') ? '"' : '`';
+                    const query = `SELECT * FROM ${qChar}${dbName}${qChar}.${qChar}${tableName}${qChar} LIMIT 200`;
 
-        // Define menu styles based on theme
-        const menuBg = isLight ? 'bg-white border-gray-200 shadow-lg' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279] shadow-lg shadow-[#ea9d34]/10' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50 shadow-xl' : 'bg-[#1a1d23] border border-white/10 shadow-xl'));
-        menu.className = `fixed z-[9999] ${menuBg} rounded-lg py-1 w-48`;
-        menu.style.left = `${x}px`;
-        menu.style.top = `${y}px`;
+                    // Update query editor content
+                    window.dispatchEvent(new CustomEvent('tactilesql:set-query', { detail: { query } }));
 
-        const dividerColor = isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5');
-        const headerText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500');
-        const hoverClass = isLight ? 'hover:bg-gray-50 text-gray-700' : (isDawn ? 'hover:bg-[#faf4ed] text-[#575279]' : 'hover:bg-white/5 text-gray-300 hover:text-white');
-
-        menu.innerHTML = `
-            <div class="px-3 py-1.5 text-[10px] font-mono ${headerText} ${dividerColor} border-b tracking-widest mb-1">
-                ${dbName}.${tableName}
-            </div>
-            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-select">
-                <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#9ccfd8]' : 'text-cyan-400'}">table_view</span> Select Top 200
-            </button>
-            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-design">
-                <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal'}">schema</span> Schema Design
-            </button>
-            
-            <!-- Generate SQL Submenu -->
-            <div class="relative group" id="ctx-gen-wrapper">
-                <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center justify-between">
-                    <div class="flex items-center gap-2">
-                         <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#c6a0f6]' : 'text-purple-400'}">code</span> Generate SQL
-                    </div>
-                    <span class="material-symbols-outlined text-[10px]">chevron_right</span>
-                </button>
-                <div id="ctx-gen-submenu" class="hidden absolute left-full top-0 ml-1 w-40 rounded-lg py-1 ${menuBg} shadow-xl border ${dividerColor}">
-                     <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" data-type="select">
-                        <span class="material-symbols-outlined text-sm text-gray-400">abc</span> Select
-                    </button>
-                    <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" data-type="insert">
-                        <span class="material-symbols-outlined text-sm text-green-400">add_circle</span> Insert
-                    </button>
-                    <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" data-type="update">
-                        <span class="material-symbols-outlined text-sm text-blue-400">edit</span> Update
-                    </button>
-                    <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" data-type="delete">
-                        <span class="material-symbols-outlined text-sm text-red-400">delete</span> Delete
-                    </button>
-                    <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" data-type="merge">
-                        <span class="material-symbols-outlined text-sm text-orange-400">merge</span> Merge
-                    </button>
-                    <div class="h-px bg-white/5 my-1 mx-2"></div>
-                    <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" data-type="ddl">
-                        <span class="material-symbols-outlined text-sm text-yellow-400">description</span> DDL Script
-                    </button>
-                </div>
-            </div>
-
-            <div class="h-px ${dividerColor} my-1 mx-2"></div>
-
-             <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-refresh">
-                <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#56949f]' : 'text-green-400'}">sync</span> Refresh
-            </button>
-            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-dependencies">
-                <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#eb6f92]' : 'text-rose-400'}">account_tree</span> Dependency Graph
-            </button>
-            <button class="w-full text-left px-3 py-2 text-[11px] font-bold ${hoverClass} flex items-center gap-2" id="ctx-copy">
-                <span class="material-symbols-outlined text-sm ${isDawn ? 'text-[#9893a5]' : 'text-gray-500'}">content_copy</span> Copy Name
-            </button>
-        `;
-
-        document.body.appendChild(menu);
-
-        // --- Submenu Logic ---
-        const wrapper = menu.querySelector('#ctx-gen-wrapper');
-        const submenu = menu.querySelector('#ctx-gen-submenu');
-
-        wrapper.onmouseenter = () => submenu.classList.remove('hidden');
-        wrapper.onmouseleave = () => submenu.classList.add('hidden');
-
-        submenu.querySelectorAll('button').forEach(btn => {
-            btn.onclick = async (e) => {
-                e.stopPropagation();
-                menu.remove();
-
-                const type = btn.dataset.type;
-                try {
-                    let sql = '';
-                    if (type === 'ddl') {
-                        // Use get_table_ddl command which handles both MySQL and PostgreSQL
-                        sql = await invoke('get_table_ddl', { database: dbName, table: tableName });
-                    } else if (type === 'select') {
-                        const q = getQuote();
-                        sql = `SELECT * FROM ${q}${dbName}${q}.${q}${tableName}${q}\nLIMIT 100;`;
-                    } else if (['insert', 'update', 'merge', 'delete'].includes(type)) {
-                        // For Delete we don't strictly need columns but it helps to see PKs if possible, 
-                        // but for simplicity we'll just do DELETE FROM ... WHERE ... 
-                        // However, let's fetch columns for Insert/Update/Merge
-
-                        let cols = [];
-                        if (type !== 'delete') {
-                            const key = `${dbName}.${tableName}`;
-                            // Try cache first
-                            if (tableDetails[key] && tableDetails[key].columns) {
-                                cols = tableDetails[key].columns;
-                            } else {
-                                cols = await invoke('get_table_schema', { database: dbName, table: tableName });
-                            }
-                        }
-
-                        if (type === 'insert') {
-                            const params = cols.map(() => '?').join(', ');
-                            const colList = cols.map(c => `\`${c.name}\``).join(', ');
-                            sql = `INSERT INTO \`${dbName}\`.\`${tableName}\`\n(${colList})\nVALUES\n(${params});`;
-                        } else if (type === 'update') {
-                            const setList = cols.map(c => `    \`${c.name}\` = ?`).join(',\n');
-                            sql = `UPDATE \`${dbName}\`.\`${tableName}\`\nSET\n${setList}\nWHERE <condition>;`;
-                        } else if (type === 'merge') {
-                            // INSERT ... ON DUPLICATE KEY UPDATE
-                            const params = cols.map(() => '?').join(', ');
-                            const colList = cols.map(c => `\`${c.name}\``).join(', ');
-                            const updateList = cols.map(c => `    \`${c.name}\` = VALUES(\`${c.name}\`)`).join(',\n');
-                            sql = `INSERT INTO \`${dbName}\`.\`${tableName}\`\n(${colList})\nVALUES\n(${params})\nON DUPLICATE KEY UPDATE\n${updateList};`;
-                        } else if (type === 'delete') {
-                            sql = `DELETE FROM \`${dbName}\`.\`${tableName}\`\nWHERE <condition>;`;
-                        }
+                    try {
+                        const result = await invoke('execute_query', { query });
+                        // Dispatch result directly to results table
+                        result.query = query;
+                        window.dispatchEvent(new CustomEvent('tactilesql:query-result', { detail: result }));
+                    } catch (error) {
+                        Dialog.alert(`Query failed: ${String(error).replace(/\n/g, '<br>')}`, 'Query Error');
                     }
-
-                    if (sql) {
-                        const titles = {
-                            select: 'Select Statement',
-                            insert: 'Insert Statement',
-                            update: 'Update Statement',
-                            delete: 'Delete Statement',
-                            merge: 'Merge / Upsert Statement',
-                            ddl: 'DDL Script'
-                        };
-                        Dialog.showSQL(sql, titles[type] || 'Generated SQL');
-                    }
-                } catch (err) {
-                    Dialog.alert(`Failed to generate SQL: ${err}`, 'Error');
                 }
-            };
-        });
-
-
-        // --- Standard Actions ---
-        menu.querySelector('#ctx-refresh').onclick = async () => {
-            const key = `${dbName}.${tableName}`;
-            DatabaseCache.invalidate(CacheTypes.COLUMNS, key);
-            DatabaseCache.invalidate(CacheTypes.INDEXES, key);
-            DatabaseCache.invalidate(CacheTypes.FOREIGN_KEYS, key);
-
-            delete tableDetails[key];
-            if (expandedTables.has(key)) await loadTableDetails(dbName, tableName);
-            menu.remove();
-        };
-        menu.querySelector('#ctx-design').onclick = () => {
-            window.location.hash = `/schema?db=${encodeURIComponent(dbName)}&table=${encodeURIComponent(tableName)}`;
-            menu.remove();
-        };
-        menu.querySelector('#ctx-select').onclick = async () => {
-            menu.remove();
-            const q = getQuote();
-            const query = `SELECT * FROM ${q}${dbName}${q}.${q}${tableName}${q} LIMIT 200`;
-
-            // Update query editor content
-            window.dispatchEvent(new CustomEvent('tactilesql:set-query', { detail: { query } }));
-
-            try {
-                const result = await invoke('execute_query', { query });
-                // Dispatch result directly to results table
-                result.query = query;
-                window.dispatchEvent(new CustomEvent('tactilesql:query-result', { detail: result }));
-            } catch (error) {
-                Dialog.alert(`Query failed: ${String(error).replace(/\n/g, '<br>')}`, 'Query Error');
+            },
+            {
+                label: 'Schema Design',
+                icon: 'schema',
+                iconColor: isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal',
+                onClick: () => window.location.hash = `/schema?db=${encodeURIComponent(dbName)}&table=${encodeURIComponent(tableName)}`
+            },
+            {
+                type: 'submenu',
+                label: 'Generate SQL',
+                icon: 'code',
+                iconColor: isDawn ? 'text-[#c6a0f6]' : 'text-purple-400',
+                items: [
+                    { label: 'Select', icon: 'abc', iconColor: 'text-gray-400', onClick: () => generateSQL('select', tableName, dbName) },
+                    { label: 'Insert', icon: 'add_circle', iconColor: 'text-green-400', onClick: () => generateSQL('insert', tableName, dbName) },
+                    { label: 'Update', icon: 'edit', iconColor: 'text-blue-400', onClick: () => generateSQL('update', tableName, dbName) },
+                    { label: 'Delete', icon: 'delete', iconColor: 'text-red-400', onClick: () => generateSQL('delete', tableName, dbName) },
+                    { label: 'Merge', icon: 'merge', iconColor: 'text-orange-400', onClick: () => generateSQL('merge', tableName, dbName) },
+                    { type: 'separator' },
+                    { label: 'DDL Script', icon: 'description', iconColor: 'text-yellow-400', onClick: () => generateSQL('ddl', tableName, dbName) }
+                ]
+            },
+            { type: 'separator' },
+            {
+                label: 'Refresh',
+                icon: 'sync',
+                iconColor: isDawn ? 'text-[#56949f]' : 'text-green-400',
+                onClick: async () => {
+                    const key = `${dbName}.${tableName}`;
+                    DatabaseCache.invalidate(CacheTypes.COLUMNS, key);
+                    delete tableDetails[key];
+                    await loadTableDetails(dbName, tableName);
+                    toastSuccess(`Table ${tableName} refreshed`);
+                }
             }
-        };
-        menu.querySelector('#ctx-dependencies').onclick = () => {
-            menu.remove();
-            const conn = JSON.parse(localStorage.getItem('activeConnection') || '{}');
-            const connId = conn?.id !== undefined && conn?.id !== null ? String(conn.id) : '';
-            window.location.hash = `#/dependencies?conn=${encodeURIComponent(connId)}&db=${encodeURIComponent(dbName)}&table=${encodeURIComponent(tableName)}`;
-        };
-        menu.querySelector('#ctx-copy').onclick = () => {
-            navigator.clipboard.writeText(tableName);
-            menu.remove();
-        };
+        ];
 
-        const closeMenu = () => {
-            // Delay slightly to avoid closing if moving to submenu (handled by mouseleave but click outside should close)
-            // The submenu click propagation stop handles internal clicks.
-            // But we need to make sure we don't close if clicking inside submenu? 
-            // Actually, clicking outside ANYWHERE should close.
-            menu.remove();
-            document.removeEventListener('click', closeMenu);
-        };
-        // Use a slight delay to avoid immediate trigger
-        setTimeout(() => document.addEventListener('click', closeMenu), 0);
-
-        // Prevent click inside menu from closing it (except buttons which handle it)
-        // especially to allowing hovering/clicking empty space
-        menu.onclick = (e) => e.stopPropagation();
+        createContextMenu(x, y, items, { header: `${dbName}.${tableName}` });
     };
+
+    // Helper for generating SQL (was inline in old menu, assuming existence or need to restore logic)
+    // The previous implementation used data attributes on buttons and a generic event handler.
+    // We need to implement the action logic here.
+    const generateSQL = async (type, table, db) => {
+        try {
+            let sql = '';
+            if (type === 'ddl') {
+                sql = await invoke('get_table_ddl', { database: db, table });
+            } else if (type === 'select') {
+                const q = getQuote();
+                sql = `SELECT * FROM ${q}${db}${q}.${q}${table}${q} \nLIMIT 100;`;
+            } else if (['insert', 'update', 'merge', 'delete'].includes(type)) {
+                let cols = [];
+                // Only delete doesn't mandatory need columns for simple case, but good for WHERE 
+                // The logic below assumes we want columns for all these templates
+                if (type !== 'delete') {
+                    const key = `${db}.${table}`;
+                    if (tableDetails[key] && tableDetails[key].columns) {
+                        cols = tableDetails[key].columns;
+                    } else {
+                        cols = await invoke('get_table_schema', { database: db, table });
+                    }
+                }
+
+                if (type === 'insert') {
+                    const params = cols.map(() => '?').join(', ');
+                    const colList = cols.map(c => `\`${c.name}\``).join(', ');
+                    sql = `INSERT INTO \`${db}\`.\`${table}\`\n(${colList})\nVALUES\n(${params});`;
+                } else if (type === 'update') {
+                    const setList = cols.map(c => `    \`${c.name}\` = ?`).join(',\n');
+                    sql = `UPDATE \`${db}\`.\`${table}\`\nSET\n${setList}\nWHERE <condition>;`;
+                } else if (type === 'merge') {
+                    const params = cols.map(() => '?').join(', ');
+                    const colList = cols.map(c => `\`${c.name}\``).join(', ');
+                    const updateList = cols.map(c => `    \`${c.name}\` = VALUES(\`${c.name}\`)`).join(',\n');
+                    sql = `INSERT INTO \`${db}\`.\`${table}\`\n(${colList})\nVALUES\n(${params})\nON DUPLICATE KEY UPDATE\n${updateList};`;
+                } else if (type === 'delete') {
+                    sql = `DELETE FROM \`${db}\`.\`${table}\`\nWHERE <condition>;`;
+                }
+            }
+
+            if (sql) {
+                const titles = {
+                    select: 'Select Statement',
+                    insert: 'Insert Statement',
+                    update: 'Update Statement',
+                    delete: 'Delete Statement',
+                    merge: 'Merge / Upsert Statement',
+                    ddl: 'DDL Script'
+                };
+                Dialog.showSQL(sql, titles[type] || 'Generated SQL');
+            }
+        } catch (err) {
+            Dialog.alert(`Failed to generate SQL: ${err}`, 'Error');
+        }
+    };
+
 
     // --- Data Loading ---
     const loadConnections = async () => {
