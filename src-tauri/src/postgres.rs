@@ -388,6 +388,7 @@ pub async fn get_table_schema(
             column_key,
             column_default,
             extra,
+            collation: None,
         });
     }
 
@@ -677,6 +678,8 @@ pub async fn get_table_stats(
         data_size: row.try_get::<i64, _>("data_size").unwrap_or(0),
         index_size: row.try_get::<i64, _>("index_size").unwrap_or(0),
         auto_increment: None,
+        collation: None,
+        charset: None,
     })
 }
 

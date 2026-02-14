@@ -165,6 +165,7 @@ pub struct ColumnSchema {
     pub column_key: String,
     pub column_default: Option<String>,
     pub extra: String,
+    pub collation: Option<String>,
 }
 
 // --- Table Index ---
@@ -208,6 +209,8 @@ pub struct TableStats {
     pub data_size: i64,
     pub index_size: i64,
     pub auto_increment: Option<i64>,
+    pub collation: Option<String>,
+    pub charset: Option<String>,
 }
 
 // --- Trigger Info ---

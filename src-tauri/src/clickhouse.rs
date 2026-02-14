@@ -307,6 +307,7 @@ pub async fn get_table_schema(
                 column_key: String::new(),
                 column_default: default_expr,
                 extra: comment,
+                collation: None,
             });
         }
     }

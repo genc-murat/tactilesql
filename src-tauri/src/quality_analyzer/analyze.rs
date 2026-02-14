@@ -394,6 +394,65 @@ pub async fn analyze_table_mysql(
     })
 }
 
+pub async fn check_charset_mismatches_mysql(
+    pool: &Pool<MySql>,
+    database: &str,
+) -> Result<Vec<DataQualityIssue>, String> {
+    let query = format!(
+        r#"
+        SELECT 
+            TABLE_NAME, 
+            TABLE_COLLATION,
+            (SELECT CHARACTER_SET_NAME FROM information_schema.COLLATIONS WHERE COLLATION_NAME = TABLE_COLLATION) as CHARACTER_SET
+        FROM information_schema.TABLES 
+        WHERE TABLE_SCHEMA = '{}'
+          AND TABLE_TYPE = 'BASE TABLE'
+        "#,
+        database
+    );
+
+    let rows = sqlx::query(&query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch table charsets: {}", e))?;
+
+    let mut charsets: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+    for row in &rows {
+        let table: String = row.try_get("TABLE_NAME").unwrap_or_default();
+        let charset: String = row.try_get("CHARACTER_SET").unwrap_or_else(|_| "unknown".to_string());
+        charsets.entry(charset).or_default().push(table);
+    }
+
+    let mut issues = Vec::new();
+    if charsets.len() > 1 {
+        // Find the most common charset to suggest others convert to it
+        let mut counts: Vec<_> = charsets.iter().map(|(k, v)| (k.clone(), v.len())).collect();
+        counts.sort_by(|a, b| b.1.cmp(&a.1));
+        
+        let dominant_charset = counts[0].0.clone();
+
+        for (charset, tables) in charsets {
+            if charset != dominant_charset {
+                for table in tables {
+                    issues.push(DataQualityIssue {
+                        issue_type: IssueType::CharsetMismatch,
+                        severity: IssueSeverity::Warning,
+                        description: format!(
+                            "Table '{}' uses character set '{}', which differs from the dominant character set '{}' in this database.",
+                            table, charset, dominant_charset
+                        ),
+                        column_name: None,
+                        affected_row_count: None,
+                        drill_down_query: Some(format!("ALTER TABLE `{}`.`{}` CONVERT TO CHARACTER SET {};", database, table, dominant_charset)),
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(issues)
+}
+
 fn calculate_score(issues: &[DataQualityIssue]) -> f32 {
     let mut score: f32 = 100.0;
     for issue in issues {

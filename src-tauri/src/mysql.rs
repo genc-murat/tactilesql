@@ -442,7 +442,7 @@ pub async fn get_table_schema(
     database: &str,
     table: &str,
 ) -> Result<Vec<ColumnSchema>, String> {
-    let query = format!("SHOW COLUMNS FROM `{}`.`{}`", database, table);
+    let query = format!("SHOW FULL COLUMNS FROM `{}`.`{}`", database, table);
 
     let rows = sqlx::query(&query)
         .fetch_all(pool)
@@ -468,6 +468,7 @@ pub async fn get_table_schema(
         let column_key: String = row.try_get("Key").unwrap_or_default();
         let column_default: Option<String> = row.try_get("Default").ok();
         let extra: String = row.try_get("Extra").unwrap_or_default();
+        let collation: Option<String> = row.try_get("Collation").ok();
 
         let data_type = full_type
             .split('(')
@@ -483,6 +484,7 @@ pub async fn get_table_schema(
             column_key,
             column_default,
             extra,
+            collation,
         });
     }
 
@@ -679,7 +681,8 @@ pub async fn get_table_stats(
             TABLE_ROWS as row_count,
             DATA_LENGTH as data_size,
             INDEX_LENGTH as index_size,
-            AUTO_INCREMENT
+            AUTO_INCREMENT,
+            TABLE_COLLATION as collation
         FROM information_schema.TABLES
         WHERE TABLE_SCHEMA = '{}'
             AND TABLE_NAME = '{}'
@@ -692,11 +695,18 @@ pub async fn get_table_stats(
         .await
         .map_err(|e| format!("Failed to fetch table stats: {}", e))?;
 
+    let collation: Option<String> = row.try_get("collation").ok();
+    let charset = collation.as_ref().map(|c| {
+        c.split('_').next().unwrap_or(c).to_string()
+    });
+
     Ok(TableStats {
         row_count: row.try_get::<i64, _>("row_count").unwrap_or(0),
         data_size: row.try_get::<i64, _>("data_size").unwrap_or(0),
         index_size: row.try_get::<i64, _>("index_size").unwrap_or(0),
         auto_increment: row.try_get::<i64, _>("AUTO_INCREMENT").ok(),
+        collation,
+        charset,
     })
 }
 

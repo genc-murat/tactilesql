@@ -391,6 +391,7 @@ pub fn run() {
             quality_analyzer::commands::save_quality_rule,
             quality_analyzer::commands::get_quality_rules,
             quality_analyzer::commands::delete_quality_rule,
+            quality_analyzer::commands::check_charset_mismatches,
             // Dependency Engine
             dependency_engine::commands::get_dependency_graph,
             dependency_engine::commands::get_clickhouse_data_lineage,

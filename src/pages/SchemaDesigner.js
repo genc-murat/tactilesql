@@ -1975,6 +1975,7 @@ END"></textarea>
                 nullable: col.is_nullable === 'YES',
                 autoIncrement: col.extra && col.extra.includes('auto_increment'),
                 unique: col.column_key === 'UNI',
+                collation: col.collation || '',
                 originalName: col.name // Track original name for renames
             }));
             state.originalColumns = JSON.parse(JSON.stringify(state.columns));

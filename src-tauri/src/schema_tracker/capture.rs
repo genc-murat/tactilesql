@@ -126,6 +126,7 @@ pub async fn capture_snapshot_mysql<E: SchemaCaptureExecutor>(
             column_key,
             column_default,
             extra,
+            collation: None,
         };
 
         columns_by_table.entry(table_name).or_insert_with(Vec::new).push(col);
@@ -384,6 +385,7 @@ pub async fn capture_snapshot_postgres(
             column_key: String::new(), // Populated later via PKs
             column_default,
             extra,
+            collation: None,
         };
 
         columns_by_table
@@ -735,6 +737,7 @@ pub async fn capture_snapshot_clickhouse(
                     },
                     column_default: default_expr,
                     extra: comment,
+                    collation: None,
                 };
 
                 table_def.columns.push(col);

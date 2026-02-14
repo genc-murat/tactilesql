@@ -23,6 +23,16 @@ export const QualityAnalyzerApi = {
     },
 
     /**
+     * Checks for charset mismatches in a database (MySQL specific).
+     * @param {string} connectionId
+     * @param {string} schema
+     * @returns {Promise<DataQualityIssue[]>}
+     */
+    async checkCharsetMismatches(connectionId, schema) {
+        return await invoke('check_charset_mismatches', { connectionId, schema });
+    },
+
+    /**
      * Save AI quality analysis for a specific quality report.
      * @param {Object} payload
      * @returns {Promise<QualityAiReport>}

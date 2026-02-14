@@ -901,7 +901,8 @@ export function ObjectExplorer() {
                          data-col-nullable="${col.is_nullable ? 'YES' : 'NO'}"
                          data-col-key="${escapeHtml(col.column_key || '')}"
                          data-col-default="${escapeHtml(col.column_default || 'NULL')}"
-                         data-col-extra="${escapeHtml(col.extra || '')}">
+                         data-col-extra="${escapeHtml(col.extra || '')}"
+                         data-col-collation="${escapeHtml(col.collation || '')}">
                          
                          <span class="col-start-2 flex items-center justify-center">
                             ${col.column_key === 'PRI' ? `<span class="material-symbols-outlined text-[10px] shrink-0 ${isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-yellow-500')}">key</span>` :
@@ -910,7 +911,7 @@ export function ObjectExplorer() {
                                 '<span class="w-[10px] shrink-0"></span>'}
                          </span>
 
-                         <span class="${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279] font-medium' : (isOceanic ? 'text-ocean-text' : (isNeon ? 'text-neon-text' : 'text-gray-400')))} ${highlightClass(`col-${db}-${table}-${col.name}`)} min-w-0 truncate" title="${escapeHtml(col.name || '')}" ${searchId(`col-${db}-${table}-${col.name}`)}>${escapeHtml(col.name || '')}</span>
+                         <span class="${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279] font-medium' : (isOceanic ? 'text-ocean-text' : (isNeon ? 'text-neon-text' : 'text-gray-400')))} ${highlightClass(`col-${db}-${table}-${col.name}`)} min-w-0 truncate" title="${escapeHtml(col.name || '')}${col.collation ? ` • Collation: ${col.collation}` : ''}" ${searchId(`col-${db}-${table}-${col.name}`)}>${escapeHtml(col.name || '')}</span>
                          <span class="${typeText} text-[9px] min-w-0 truncate text-right" title="${escapeHtml(col.data_type || '')}">${escapeHtml(col.data_type || '')}</span>
                     </div>
                `;

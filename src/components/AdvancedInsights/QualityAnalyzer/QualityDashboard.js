@@ -320,6 +320,48 @@ export function QualityDashboard() {
         }
     };
 
+    const runCharsetAudit = async () => {
+        if (!state.selectedConnectionId || !state.selectedDatabase) return;
+
+        state.isLoading = true;
+        render();
+
+        try {
+            const issues = await QualityAnalyzerApi.checkCharsetMismatches(state.selectedConnectionId, state.selectedDatabase);
+            if (issues.length === 0) {
+                Dialog.alert('No charset mismatches detected in this database.', 'Charset Audit Clean');
+            } else {
+                // Show results in a dialog
+                const listHtml = issues.map(issue => `
+                    <div class="mb-4 p-3 rounded border border-amber-500/20 bg-amber-500/5">
+                        <div class="font-bold text-amber-500 text-xs mb-1">MISMATCH DETECTED</div>
+                        <div class="text-sm mb-3">${issue.description}</div>
+                        <div class="flex items-center justify-between">
+                            <code class="text-[10px] opacity-70 font-mono">${issue.drill_down_query}</code>
+                            <button class="px-2 py-1 rounded bg-amber-500 text-white text-[9px] font-bold uppercase hover:bg-amber-600 transition-all shadow-sm" 
+                                onclick="window.dispatchEvent(new CustomEvent('tactilesql:run-query', { detail: { query: '${issue.drill_down_query.replace(/'/g, "\\'")}' } }))">
+                                Fix Now
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+
+                Dialog.alert(`
+                    <div class="max-h-[400px] overflow-y-auto custom-scrollbar pr-2 text-left">
+                        <p class="text-xs mb-4 opacity-70">The following tables use a character set different from the dominant one in this database. This can cause collation errors or data corruption during JOINs.</p>
+                        ${listHtml}
+                    </div>
+                `, 'Database Charset Audit');
+            }
+        } catch (err) {
+            console.error(err);
+            toastError('Charset audit failed: ' + err);
+        } finally {
+            state.isLoading = false;
+            render();
+        }
+    };
+
     const runAnalysis = async () => {
         if (!state.selectedConnectionId || !state.selectedTable || !state.selectedDatabase) return;
 
@@ -569,6 +611,16 @@ export function QualityDashboard() {
 
         const btnContainer = document.createElement('div');
         btnContainer.className = 'pb-[1px] flex gap-2';
+
+        // Charset Audit Button (MySQL specific)
+        if (state.activeDbType === 'mysql' && state.selectedDatabase) {
+            const auditBtn = document.createElement('button');
+            auditBtn.className = `px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wide transition-all border ${theme === 'light' ? 'border-gray-200 text-gray-600 hover:bg-gray-50' : 'border-white/10 text-gray-400 hover:bg-white/5'}`;
+            auditBtn.innerHTML = '<span class="material-symbols-outlined text-sm align-bottom mr-1">translate</span> Charset Audit';
+            auditBtn.onclick = runCharsetAudit;
+            btnContainer.appendChild(auditBtn);
+        }
+
         const runBtn = document.createElement('button');
         runBtn.id = 'run-btn';
         runBtn.className = `px-5 py-2.5 rounded-lg text-sm font-bold uppercase tracking-wide transition-all ${(!state.selectedTable || state.isLoading)
@@ -594,7 +646,7 @@ export function QualityDashboard() {
                     <button class="w-full px-4 py-2 text-left text-xs font-bold hover:bg-blue-500/10 hover:text-blue-400 transition-all border-b border-white/5 flex items-center gap-2" id="export-json">
                         <span class="material-symbols-outlined text-sm">data_object</span> JSON
                     </button>
-                    <button class="w-full px-4 py-2 text-left text-xs font-bold hover:bg-blue-500/10 hover:text-blue-400 transition-all flex items-center gap-2" id="export-pdf">
+                    <button class="w-full px-4 py-2 text-left text-xs font-bold hover:bg-blue-500/10 hover:text-blue-400 transition-all border-b border-white/5 flex items-center gap-2" id="export-pdf">
                         <span class="material-symbols-outlined text-sm">picture_as_pdf</span> PDF / Print
                     </button>
                 </div>

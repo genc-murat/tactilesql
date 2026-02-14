@@ -98,6 +98,7 @@ pub enum IssueType {
     ReferentialIntegrityFailure,
     StaleData,
     CustomRuleFailure,
+    CharsetMismatch,
     Other(String),
 }
 

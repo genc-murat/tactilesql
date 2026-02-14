@@ -344,6 +344,8 @@ pub async fn get_table_stats(
                 data_size: 0,
                 index_size: 0,
                 auto_increment: None,
+                collation: None,
+                charset: None,
             })
         }
         DatabaseType::Disconnected => Err("No connection established".into()),

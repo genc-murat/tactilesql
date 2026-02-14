@@ -206,6 +206,38 @@ pub async fn get_quality_rules(
 }
 
 #[command]
+pub async fn check_charset_mismatches(
+    app_state: State<'_, AppState>,
+    connection_id: String,
+    schema: Option<String>,
+) -> Result<Vec<crate::quality_analyzer::models::DataQualityIssue>, String> {
+    let db_type = {
+        let guard = app_state.active_db_type.lock().await;
+        guard.clone()
+    };
+
+    match db_type {
+        crate::db_types::DatabaseType::MySQL => {
+            let pool_guard = app_state.mysql_pool.lock().await;
+            let pool = pool_guard.as_ref().ok_or("MySQL pool not initialized")?;
+
+            let db_name = if let Some(s) = schema {
+                s
+            } else {
+                let row: (Option<String>,) = sqlx::query_as("SELECT DATABASE()")
+                    .fetch_one(pool)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                row.0.ok_or("No database selected")?
+            };
+
+            crate::quality_analyzer::analyze::check_charset_mismatches_mysql(pool, &db_name).await
+        }
+        _ => Ok(Vec::new()), // Only supported for MySQL for now
+    }
+}
+
+#[command]
 pub async fn delete_quality_rule(
     app_state: State<'_, AppState>,
     id: i64,
