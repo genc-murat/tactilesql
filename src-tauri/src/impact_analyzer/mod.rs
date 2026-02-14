@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use sqlx::{MySql, Postgres, Pool};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImpactGraph {
@@ -22,32 +21,5 @@ pub struct ImpactEdge {
     pub edge_type: String,
 }
 
-pub mod mysql {
-    use super::*;
-
-    pub async fn analyze_impact_mysql(
-        _pool: &Pool<MySql>,
-        _database: &str,
-        _table: &str,
-    ) -> Result<ImpactGraph, String> {
-        Ok(ImpactGraph {
-            nodes: Vec::new(),
-            edges: Vec::new(),
-        })
-    }
-}
-
-pub mod postgres {
-    use super::*;
-
-    pub async fn analyze_impact_postgres(
-        _pool: &Pool<Postgres>,
-        _database: &str,
-        _table: &str,
-    ) -> Result<ImpactGraph, String> {
-        Ok(ImpactGraph {
-            nodes: Vec::new(),
-            edges: Vec::new(),
-        })
-    }
-}
+pub mod mysql;
+pub mod postgres;

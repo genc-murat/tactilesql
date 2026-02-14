@@ -4,11 +4,11 @@
 // =====================================================
 
 mod crypto;
-mod data_compare;
-mod data_transfer;
+pub mod data_compare;
+pub mod data_transfer;
 mod helpers;
-mod lock_analysis;
-mod mock_jobs;
+pub mod lock_analysis;
+pub mod mock_jobs;
 pub mod sql_utils;
 
 // Re-export submodule functions

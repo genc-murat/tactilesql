@@ -1,6 +1,9 @@
 pub mod capture;
 pub mod commands;
 pub mod diff;
+pub use diff::*;
 pub mod migration;
 pub mod models;
+pub use models::*;
 pub mod storage;
+pub use storage::*;

@@ -581,3 +581,6 @@ fn truncate_to(mut value: String, max_len: usize) -> String {
     value.truncate(max_len);
     value
 }
+
+#[cfg(test)]
+mod tests;
