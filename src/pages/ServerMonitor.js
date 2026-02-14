@@ -58,7 +58,7 @@ export function ServerMonitor() {
         try {
             const end = new Date();
             const start = new Date(end.getTime() - 3600000); // 1 hour ago
-            
+
             const historicalData = await invoke('get_monitor_history', {
                 startTime: start.toISOString(),
                 endTime: end.toISOString()
@@ -128,10 +128,10 @@ export function ServerMonitor() {
 
         const modal = document.createElement('div');
         modal.className = 'fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm';
-        
+
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        
+
         modal.innerHTML = `
             <div class="${isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : 'bg-[#13161b]')} w-full max-w-md rounded-2xl shadow-2xl border ${isLight ? 'border-gray-200' : 'border-white/10'} overflow-hidden animate-in fade-in zoom-in duration-200">
                 <div class="px-6 py-4 border-b ${isLight ? 'border-gray-100' : 'border-white/5'} flex items-center justify-between">
@@ -250,14 +250,14 @@ export function ServerMonitor() {
     const isExplainable = (sql) => {
         if (!sql || typeof sql !== 'string') return false;
         const normalized = sql.trim().toUpperCase();
-        return normalized.startsWith('SELECT') || 
-               normalized.startsWith('INSERT') || 
-               normalized.startsWith('UPDATE') || 
-               normalized.startsWith('DELETE') || 
-               normalized.startsWith('REPLACE') ||
-               normalized.startsWith('VALUES') ||
-               normalized.startsWith('WITH') ||
-               normalized.startsWith('EXECUTE');
+        return normalized.startsWith('SELECT') ||
+            normalized.startsWith('INSERT') ||
+            normalized.startsWith('UPDATE') ||
+            normalized.startsWith('DELETE') ||
+            normalized.startsWith('REPLACE') ||
+            normalized.startsWith('VALUES') ||
+            normalized.startsWith('WITH') ||
+            normalized.startsWith('EXECUTE');
     };
 
     const parseInnoDBStatus = (raw) => {
@@ -331,11 +331,11 @@ ${JSON.stringify(metricsSummary, null, 2)}
 
 Please identify any potential bottlenecks, resource issues, or suspicious patterns.`;
 
-        window.dispatchEvent(new CustomEvent('openaichat', { 
-            detail: { 
+        window.dispatchEvent(new CustomEvent('openaichat', {
+            detail: {
                 prompt,
                 context: "Server Monitor Analysis"
-            } 
+            }
         }));
     };
 
@@ -383,7 +383,7 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
                 waitEvents = snapshot.wait_events || [];
                 tableUsage = snapshot.table_usage || [];
                 healthMetrics = snapshot.health_metrics || [];
-                
+
                 isLoading = false;
                 render();
             } catch (error) {
@@ -461,7 +461,7 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
                         <span class="material-symbols-outlined text-base mr-1 align-middle">list</span>
                         Processes
                     </button>
-                    ${(localStorage.getItem('activeDbType') || 'mysql') !== 'postgresql' ? `
+                    ${(localStorage.getItem('activeDbType') || 'mysql') === 'mysql' ? `
                     <button class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'innodb' ? 'bg-mysql-teal text-white shadow-lg' : ((isLight || isDawn) ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white')}" data-tab="innodb">
                         <span class="material-symbols-outlined text-base mr-1 align-middle">storage</span>
                         InnoDB
@@ -481,10 +481,12 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
                         Deadlocks
                     </button>
                     ` : ''}
+                    ${['mysql', 'postgresql'].includes(localStorage.getItem('activeDbType') || 'mysql') ? `
                     <button class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'replication' ? 'bg-mysql-teal text-white shadow-lg' : ((isLight || isDawn) ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white')}" data-tab="replication">
                         <span class="material-symbols-outlined text-base mr-1 align-middle">sync_alt</span>
                         Replication
                     </button>
+                    ` : ''}
                     <button class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'usage' ? 'bg-mysql-teal text-white shadow-lg' : ((isLight || isDawn) ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white')}" data-tab="usage">
                         <span class="material-symbols-outlined text-base mr-1 align-middle">database</span>
                         Top Tables
@@ -598,12 +600,12 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
                             </thead>
                             <tbody class="divide-y ${isLight ? 'divide-gray-100' : 'divide-white/5'}">
                                 ${bloatData.map(b => {
-                                    let fragColor = 'bg-emerald-500';
-                                    if (b.bloat_pct > 30) fragColor = 'bg-red-500';
-                                    else if (b.bloat_pct > 15) fragColor = 'bg-orange-500';
-                                    else if (b.bloat_pct > 5) fragColor = 'bg-yellow-500';
+            let fragColor = 'bg-emerald-500';
+            if (b.bloat_pct > 30) fragColor = 'bg-red-500';
+            else if (b.bloat_pct > 15) fragColor = 'bg-orange-500';
+            else if (b.bloat_pct > 5) fragColor = 'bg-yellow-500';
 
-                                    return `
+            return `
                                     <tr class="${isLight ? 'hover:bg-gray-50' : 'hover:bg-white/5'} transition-colors">
                                         <td class="px-4 py-3 ${isLight ? 'text-gray-500' : 'text-gray-400'}">${b.schema}</td>
                                         <td class="px-4 py-3 ${isLight ? 'text-gray-900' : 'text-white'} font-medium">${b.table}</td>
@@ -624,7 +626,8 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
                                             </button>
                                         </td>
                                     </tr>
-                                `;}).join('')}
+                                `;
+        }).join('')}
                             </tbody>
                         </table>
                     </div>
@@ -1531,15 +1534,15 @@ SET GLOBAL long_query_time = 1;</pre>
         if (!healthMetrics || healthMetrics.length === 0) return '';
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        
+
         return `
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 ${healthMetrics.map(m => {
-                    const statusColor = m.status === 'healthy' ? 'text-green-500' : (m.status === 'warning' ? 'text-yellow-500' : 'text-red-500');
-                    const bgColor = m.status === 'healthy' ? 'bg-green-500/10' : (m.status === 'warning' ? 'bg-yellow-500/10' : 'bg-red-500/10');
-                    const borderColor = m.status === 'healthy' ? 'border-green-500/20' : (m.status === 'warning' ? 'border-yellow-500/20' : 'border-red-500/20');
-                    
-                    return `
+            const statusColor = m.status === 'healthy' ? 'text-green-500' : (m.status === 'warning' ? 'text-yellow-500' : 'text-red-500');
+            const bgColor = m.status === 'healthy' ? 'bg-green-500/10' : (m.status === 'warning' ? 'bg-yellow-500/10' : 'bg-red-500/10');
+            const borderColor = m.status === 'healthy' ? 'border-green-500/20' : (m.status === 'warning' ? 'border-yellow-500/20' : 'border-red-500/20');
+
+            return `
                         <div class="rounded-xl p-4 border ${bgColor} ${borderColor}">
                             <div class="flex items-center justify-between mb-1">
                                 <span class="text-xs font-semibold uppercase tracking-wider ${isLight ? 'text-gray-600' : 'text-gray-400'}">${m.label}</span>
@@ -1551,7 +1554,7 @@ SET GLOBAL long_query_time = 1;</pre>
                             ${m.description ? `<p class="text-[10px] mt-1 ${isLight ? 'text-gray-500' : 'text-gray-400'}">${m.description}</p>` : ''}
                         </div>
                     `;
-                }).join('')}
+        }).join('')}
             </div>
         `;
     };
@@ -1559,7 +1562,7 @@ SET GLOBAL long_query_time = 1;</pre>
     const renderWaitEvents = () => {
         if (!waitEvents || waitEvents.length === 0) return '';
         const isLight = theme === 'light';
-        
+
         return `
             <div class="rounded-xl p-6 mb-6 ${isLight ? 'bg-white border border-gray-200' : 'bg-[#13161b] border border-white/10'}">
                 <h3 class="text-sm font-semibold ${isLight ? 'text-gray-900' : 'text-white'} mb-4 flex items-center gap-2">
@@ -1586,7 +1589,7 @@ SET GLOBAL long_query_time = 1;</pre>
     const renderUsage = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        
+
         if (!tableUsage || tableUsage.length === 0) {
             return `
                 <div class="rounded-xl p-12 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : 'bg-[#13161b] border border-white/10')} text-center">
@@ -1622,10 +1625,10 @@ SET GLOBAL long_query_time = 1;</pre>
                         </thead>
                         <tbody class="divide-y ${isLight ? 'divide-gray-100' : 'divide-white/5'}">
                             ${tableUsage.map(u => {
-                                const readWidth = (u.read_ops / maxOps) * 100;
-                                const writeWidth = (u.write_ops / maxOps) * 100;
-                                
-                                return `
+            const readWidth = (u.read_ops / maxOps) * 100;
+            const writeWidth = (u.write_ops / maxOps) * 100;
+
+            return `
                                 <tr class="${isLight ? 'hover:bg-gray-50' : 'hover:bg-white/5'} transition-colors">
                                     <td class="px-4 py-3 ${isLight ? 'text-gray-500' : 'text-gray-400'}">${u.schema}</td>
                                     <td class="px-4 py-3 ${isLight ? 'text-gray-900' : 'text-white'} font-medium">${u.table}</td>
@@ -1642,7 +1645,8 @@ SET GLOBAL long_query_time = 1;</pre>
                                         ${(u.insert_latency_ms + u.update_latency_ms + u.delete_latency_ms) > 0 ? (u.insert_latency_ms + u.update_latency_ms + u.delete_latency_ms).toFixed(2) + 'ms' : '-'}
                                     </td>
                                 </tr>
-                            `;}).join('')}
+                            `;
+        }).join('')}
                         </tbody>
                     </table>
                 </div>

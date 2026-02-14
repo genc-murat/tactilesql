@@ -1671,7 +1671,7 @@ export function ObjectExplorer() {
                     }
                 },
                 {
-                    label: 'Open Dashboard',
+                    label: 'Server Monitor',
                     icon: 'monitor_heart',
                     iconColor: isDawn ? 'text-[#eb6f92]' : 'text-rose-400',
                     onClick: () => window.location.hash = `/monitor?conn=${id}`
