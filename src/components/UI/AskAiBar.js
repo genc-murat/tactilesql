@@ -51,7 +51,7 @@ export class AskAiBar {
         const accentText = isLight ? 'text-rose-500' : (isDawn ? 'text-[#d7827e]' : (isOceanic ? 'text-ocean-frost' : (isEmber ? 'text-amber-500' : (isAurora ? 'text-cyan-400' : 'text-rose-500'))));
         const accentBg = isLight ? 'bg-rose-100' : (isDawn ? 'bg-[#f2e9e1]' : (isOceanic ? 'bg-ocean-frost/10' : (isEmber ? 'bg-amber-500/10' : (isAurora ? 'bg-cyan-400/10' : 'bg-rose-500/10'))));
 
-        inner.className = `w-full max-w-2xl ${bgClass} backdrop-blur-xl border ${borderClass} rounded-2xl flex flex-col overflow-hidden pointer-events-auto ring-1 ring-white/5`;
+        inner.className = `w-full max-w-2xl ${bgClass} backdrop-blur-xl border ${borderClass} rounded-2xl flex flex-col pointer-events-auto ring-1 ring-white/5`;
 
         inner.innerHTML = `
             <div class="px-5 py-4 flex items-center gap-4">
@@ -71,7 +71,7 @@ export class AskAiBar {
                     </div>
                 </div>
             </div>
-            <div id="ai-bar-status" class="hidden px-5 py-2.5 border-t ${isLightVariant ? 'border-gray-100 bg-gray-50/50' : 'border-white/5 bg-black/20'} flex items-center justify-between">
+            <div id="ai-bar-status" class="hidden px-5 py-2.5 border-t ${isLightVariant ? 'border-gray-100 bg-gray-50/50' : 'border-white/5 bg-black/20'} rounded-b-2xl flex items-center justify-between">
                 <div class="flex items-center gap-2">
                     <span class="material-symbols-outlined text-base animate-spin ${isOceanic ? 'text-ocean-frost' : (isEmber ? 'text-amber-500' : (isAurora ? 'text-cyan-400' : 'text-mysql-teal'))}">progress_activity</span>
                     <span id="ai-bar-status-text" class="text-[11px] font-semibold ${isOceanic ? 'text-ocean-frost' : (isEmber ? 'text-amber-500' : (isAurora ? 'text-cyan-400' : 'text-mysql-teal'))}">Processing...</span>

@@ -45,10 +45,10 @@ export class AskAiModal {
         const savedModel = getSavedModel(provider);
 
         const modal = document.createElement('div');
-        modal.className = `${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#16191e] border border-white/10'))} rounded-xl shadow-2xl w-full max-w-lg overflow-hidden transform scale-95 transition-transform duration-200 flex flex-col`;
+        modal.className = `${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : 'bg-[#16191e] border border-white/10'))} rounded-xl shadow-2xl w-full max-w-lg transform scale-95 transition-transform duration-200 flex flex-col`;
 
         modal.innerHTML = `
-            <div class="px-6 py-4 border-b ${isLight ? 'border-gray-100 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border/30 bg-ocean-panel' : 'border-white/5 bg-[#13161b]'))} flex items-center justify-between">
+            <div class="px-6 py-4 border-b ${isLight ? 'border-gray-100 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border/30 bg-ocean-panel' : 'border-white/5 bg-[#13161b]'))} rounded-t-xl flex items-center justify-between">
                 <div class="flex items-center gap-3">
                     <div class="w-8 h-8 rounded-lg ${isLight ? 'bg-rose-100 text-rose-500' : (isDawn ? 'bg-[#f2e9e1] text-[#d7827e]' : 'bg-rose-500/10 text-rose-500')} flex items-center justify-center">
                         <span class="material-symbols-outlined text-lg">auto_awesome</span>
@@ -80,7 +80,7 @@ export class AskAiModal {
                 </div>
             </div>
 
-            <div class="px-6 py-4 border-t ${isLight ? 'border-gray-100 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border/30 bg-ocean-panel' : 'border-white/5 bg-[#13161b]'))} flex justify-end gap-3">
+            <div class="px-6 py-4 border-t ${isLight ? 'border-gray-100 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border/30 bg-ocean-panel' : 'border-white/5 bg-[#13161b]'))} rounded-b-xl flex justify-end gap-3">
                 <button id="cancel-btn" class="px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider ${isLight ? 'text-gray-500 hover:bg-gray-200' : 'text-gray-400 hover:bg-white/10'} transition-colors">Cancel</button>
                 <button id="generate-btn" class="px-6 py-2 rounded-lg bg-mysql-teal text-black text-xs font-bold uppercase tracking-wider hover:brightness-110 transition-all flex items-center gap-2 shadow-[0_0_10px_rgba(0,200,255,0.2)]">
                     <span class="material-symbols-outlined text-sm">auto_awesome</span> Generate
