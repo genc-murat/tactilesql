@@ -242,12 +242,24 @@ pub struct ViewDefinition {
 }
 
 // --- MySQL User ---
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone)]
 pub struct MySqlUser {
     pub user: String,
     pub host: String,
     pub account_locked: bool,
     pub password_expired: bool,
+    pub password_last_changed: Option<String>,
+    pub password_lifetime: Option<i32>,
+    pub is_role: bool,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct MySqlRoleEdge {
+    pub from_user: String,
+    pub from_host: String,
+    pub to_user: String,
+    pub to_host: String,
+    pub with_admin_option: bool,
 }
 
 // --- User Privilege ---

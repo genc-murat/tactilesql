@@ -1839,6 +1839,9 @@ pub async fn get_users(pool: &Pool<Postgres>) -> Result<Vec<MySqlUser>, String> 
             host: "localhost".to_string(), // PostgreSQL doesn't have host concept like MySQL
             account_locked,
             password_expired,
+            password_last_changed: None,
+            password_lifetime: None,
+            is_role: false,
         });
     }
 

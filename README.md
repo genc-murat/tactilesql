@@ -64,6 +64,7 @@ TactileSQL is a modern, desktop-first SQL workbench for MySQL and PostgreSQL, bu
 - **Lineage Exports**: Export lineage as JSON, Mermaid, or PNG; selected-node lineage supports focused Mermaid export.
 - **Lineage Performance**: Graph construction runs in a Web Worker with main-thread fallback and timeout protection.
 - **Connection Manager** with encrypted credential storage, connection testing, and SSH tunnel configuration.
+- **MySQL User & Role Management**: Create/drop roles, grant/revoke roles to users, manage global privileges, and monitor account status (lock state, password expiry, last changed).
 - **Access Control** viewer for MySQL users and privileges.
 - **MySQL Version Intelligence**: Automatically detects MySQL version (5.7+ vs 8.0+) to provide compatible monitoring queries and feature fallbacks.
 - **Table Maintenance**: Right-click any table to run **ANALYZE**, **CHECK**, **OPTIMIZE**, or **REPAIR** operations with a dedicated results modal.
@@ -423,7 +424,10 @@ The Rust backend exposes the following commands (used by the UI):
 - `get_clickhouse_data_lineage` — Materialized view dependency extraction
 
 ### User Management
-- `get_users`, `get_user_privileges`
+- `get_users`, `get_user_privileges` — Basic user and privilege inspection
+- `manage_privilege` — GRANT and REVOKE global/database privileges
+- `manage_user_status` — Lock or unlock user accounts
+- `manage_role`, `get_role_edges` — MySQL 8.0+ role lifecycle and assignment management
 
 ### ClickHouse Advanced Features
 - **Visual Explain Plan**: Interactive SVG flow diagrams for `EXPLAIN PIPELINE` featuring processor classification, parallelism (×N) extraction, and bottleneck detection; plus visual tree plans for `EXPLAIN AST`.

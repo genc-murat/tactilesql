@@ -17,6 +17,7 @@ export function AccessControl() {
 
     // State
     let users = [];
+    let roleEdges = [];
     let selectedUser = null;
     let userPrivileges = null;
     let isLoading = true;
@@ -29,13 +30,16 @@ export function AccessControl() {
         await LoadingManager.wrap('access-control-users', container, async () => {
             try {
                 users = await invoke('get_users');
-                console.log('Loaded users:', users);
-                console.log('User count:', users.length);
+                try {
+                    roleEdges = await invoke('get_role_edges');
+                } catch (e) {
+                    console.warn('Role edges not supported or failed to load');
+                    roleEdges = [];
+                }
+
                 if (users.length > 0) {
-                    console.log('Selecting first user:', users[0]);
-                    await selectUser(users[0]);
-                } else {
-                    console.warn('No users returned from backend');
+                    const firstUser = selectedUser ? users.find(u => u.user === selectedUser.user && u.host === selectedUser.host) : users[0];
+                    await selectUser(firstUser || users[0]);
                 }
             } catch (error) {
                 console.error('Failed to load users:', error);
@@ -52,9 +56,7 @@ export function AccessControl() {
         selectedUser = user;
         render();
 
-        // Validate user data before making the request
         if (!user || !user.user || !user.host) {
-            console.error('Invalid user data:', user);
             userPrivileges = { global: [], databases: [] };
             render();
             return;
@@ -73,6 +75,116 @@ export function AccessControl() {
         render();
     }
 
+    async function togglePrivilege(priv, isGranted) {
+        if (!selectedUser) return;
+        const action = isGranted ? 'REVOKE' : 'GRANT';
+        
+        try {
+            await invoke('manage_privilege', {
+                action,
+                privilege: priv,
+                database: '*',
+                table: '',
+                user: selectedUser.user,
+                host: selectedUser.host
+            });
+            await selectUser(selectedUser); // Refresh privileges
+        } catch (error) {
+            Dialog.alert(`Failed to ${action} privilege: ${error}`, 'Privilege Error');
+        }
+    }
+
+    async function toggleLock() {
+        if (!selectedUser) return;
+        const isLocked = selectedUser.account_locked;
+        
+        try {
+            await invoke('manage_user_status', {
+                user: selectedUser.user,
+                host: selectedUser.host,
+                lock: !isLocked
+            });
+            await loadUsers(); // Refresh users
+        } catch (error) {
+            Dialog.alert(`Failed to ${isLocked ? 'unlock' : 'lock'} user: ${error}`, 'Status Error');
+        }
+    }
+
+    async function handleAddRole() {
+        Dialog.prompt('Enter new role name:', 'Create Role', async (roleName) => {
+            if (!roleName) return;
+            try {
+                await invoke('manage_role', {
+                    action: 'CREATE',
+                    role_name: roleName
+                });
+                await loadUsers();
+            } catch (error) {
+                Dialog.alert(`Failed to create role: ${error}`, 'Role Error');
+            }
+        });
+    }
+
+    async function handleGrantRole() {
+        if (!selectedUser) return;
+        const availableRoles = users.filter(u => u.is_role).map(u => u.user);
+        if (availableRoles.length === 0) {
+            Dialog.alert('No roles defined. Create a role first.', 'Grant Role');
+            return;
+        }
+
+        Dialog.show({
+            title: 'Grant Role',
+            body: `
+                <div class="space-y-4">
+                    <p class="text-xs opacity-60">Select a role to grant to <b>${selectedUser.user}</b>:</p>
+                    <select id="role-select" class="tactile-input w-full">
+                        ${availableRoles.map(r => `<option value="${r}">${r}</option>`).join('')}
+                    </select>
+                </div>
+            `,
+            actions: [
+                {
+                    label: 'Grant',
+                    primary: true,
+                    onClick: async (dialog) => {
+                        const roleName = dialog.querySelector('#role-select').value;
+                        try {
+                            await invoke('manage_role', {
+                                action: 'GRANT',
+                                role_name: roleName,
+                                user: selectedUser.user,
+                                host: selectedUser.host
+                            });
+                            dialog.close();
+                            await loadUsers();
+                        } catch (error) {
+                            Dialog.alert(`Failed to grant role: ${error}`, 'Role Error');
+                        }
+                    }
+                },
+                { label: 'Cancel', onClick: (dialog) => dialog.close() }
+            ]
+        });
+    }
+
+    async function handleRevokeRole(roleName) {
+        if (!selectedUser) return;
+        Dialog.confirm(`Are you sure you want to revoke role <b>${roleName}</b> from <b>${selectedUser.user}</b>?`, 'Revoke Role', async () => {
+            try {
+                await invoke('manage_role', {
+                    action: 'REVOKE',
+                    role_name: roleName,
+                    user: selectedUser.user,
+                    host: selectedUser.host
+                });
+                await loadUsers();
+            } catch (error) {
+                Dialog.alert(`Failed to revoke role: ${error}`, 'Role Error');
+            }
+        });
+    }
+
     // Render user list
     function renderUserList() {
         const isLight = theme === 'light';
@@ -81,11 +193,7 @@ export function AccessControl() {
         const isNeon = theme === 'neon';
 
         if (isLoading) {
-            return `
-                <div class="flex-1 flex items-center justify-center">
-                    <div class="text-gray-500 text-xs">Loading users...</div>
-                </div>
-            `;
+            return '<div class="flex-1 flex items-center justify-center"><div class="text-gray-500 text-xs">Loading users...</div></div>';
         }
 
         if (users.length === 0) {
@@ -112,7 +220,7 @@ export function AccessControl() {
                 }"
                     data-user="${user.user}" data-host="${user.host}">
                     <div class="size-8 rounded-md ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1]' : (isNeon ? 'bg-neon-panel border-neon-border/40' : (isOceanic ? 'bg-ocean-bg-dark border-ocean-border' : 'bg-[#1a1d23] border-white/10')))} border flex items-center justify-center ${isSelected ? (isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-text' : (isOceanic ? 'text-ocean-accent' : 'text-mysql-cyan'))) : 'text-gray-500'}">
-                        <span class="material-symbols-outlined text-lg">${isRoot ? 'admin_panel_settings' : 'account_circle'}</span>
+                        <span class="material-symbols-outlined text-lg">${user.is_role ? 'group' : (isRoot ? 'admin_panel_settings' : 'account_circle')}</span>
                     </div>
                     <div class="flex-1 min-w-0">
                         <div class="text-[11px] font-bold ${isSelected ? (isLight ? 'text-gray-900' : (isNeon ? 'text-neon-text shadow-[0_0_8px_rgba(34,211,238,0.3)]' : (isOceanic ? 'text-white' : 'text-white'))) : (isLight ? 'text-gray-500 group-hover:text-gray-900' : (isNeon ? 'text-neon-text/60 group-hover:text-neon-text' : (isOceanic ? 'text-ocean-text-light group-hover:text-white' : 'text-gray-400 group-hover:text-white')))} tracking-wide truncate uppercase">${user.user}</div>
@@ -149,10 +257,10 @@ export function AccessControl() {
                         <span class="text-xs font-black ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text uppercase tracking-wider' : (isOceanic ? 'text-white' : 'text-white')))} uppercase">${priv.replace(' ', '_')}</span>
                         <span class="text-[10px] ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isNeon ? 'text-neon-text/40' : (isOceanic ? 'text-ocean-text-light' : 'text-gray-600')))} font-mono mt-0.5 uppercase tracking-tighter">${getPrivDescription(priv)}</span>
                     </div>
-                    <div class="w-12 h-6 rounded-full ${isLight ? (isGranted ? 'bg-mysql-cyan/10' : 'bg-gray-100') : (isDawn ? (isGranted ? 'bg-[#ea9d34]/10' : 'bg-[#f2e9e1]') : (isNeon ? (isGranted ? 'bg-cyan-400/20' : 'bg-neon-panel/40') : (isOceanic ? (isGranted ? 'bg-ocean-accent/10' : 'bg-ocean-bg-hover') : (isGranted ? 'bg-[#0b0d11]' : 'bg-[#1a1d23]'))))} p-1 relative cursor-pointer border ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isNeon ? 'border-neon-border/40' : (isOceanic ? 'border-ocean-border' : 'border-white/5')))}">
+                    <button class="priv-toggle w-12 h-6 rounded-full ${isLight ? (isGranted ? 'bg-mysql-cyan/10' : 'bg-gray-100') : (isDawn ? (isGranted ? 'bg-[#ea9d34]/10' : 'bg-[#f2e9e1]') : (isNeon ? (isGranted ? 'bg-cyan-400/20' : 'bg-neon-panel/40') : (isOceanic ? (isGranted ? 'bg-ocean-accent/10' : 'bg-ocean-bg-hover') : (isGranted ? 'bg-[#0b0d11]' : 'bg-[#1a1d23]'))))} p-1 relative border ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isNeon ? 'border-neon-border/40' : (isOceanic ? 'border-ocean-border' : 'border-white/5')))}" data-priv="${priv}" data-granted="${isGranted}">
                         ${isGranted ? `<div class="absolute inset-0 rounded-full ${isLight ? '' : (isDawn ? 'bg-[#ea9d34]/20' : (isNeon ? 'bg-cyan-400/20 shadow-[0_0_10px_rgba(34,211,238,0.2)]' : (isOceanic ? 'tactile-switch-oceanic-on' : 'tactile-switch-on')))}"></div>` : ''}
                         <div class="size-4 ${isGranted ? (isLight ? 'bg-mysql-cyan' : (isDawn ? 'bg-[#ea9d34]' : (isNeon ? 'bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.5)]' : (isOceanic ? 'bg-ocean-accent' : 'bg-white')))) : 'bg-gray-400'} rounded-sm shadow-xl absolute ${isGranted ? 'right-1' : 'left-1'} top-1 transition-all"></div>
-                    </div>
+                    </button>
                 </div>
             `;
         };
@@ -178,7 +286,7 @@ export function AccessControl() {
             </div>
             <div class="space-y-4 mt-8">
                 <div class="flex items-center gap-3 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : (isNeon ? 'border-neon-border/20' : 'border-white/5'))} pb-2">
-                    <span class="material-symbols-outlined ${isDawn ? 'text-[#eb6f92]' : (isNeon ? 'text-neon-pink' : 'text-yellow-500')} text-lg">terminal</span>
+                    <span class="material-symbols-outlined ${isDawn ? 'text-[#eb6f92]' : (isNeon ? 'text-neon-purple' : 'text-yellow-500')} text-lg">terminal</span>
                     <h3 class="text-[10px] font-black ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text' : 'text-white'))} uppercase tracking-[0.3em]">Admin Privileges</h3>
                 </div>
                 <div class="grid grid-cols-2 gap-4">
@@ -216,16 +324,25 @@ export function AccessControl() {
         const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
         const isNeon = theme === 'neon';
+        
+        const userRoles = roleEdges.filter(e => e.to_user === selectedUser?.user && e.to_host === selectedUser?.host).map(e => e.from_user);
+        const rolesGrantedBy = roleEdges.filter(e => e.from_user === selectedUser?.user && e.from_host === selectedUser?.host).map(e => e.to_user);
+
         container.innerHTML = `
             <div class="flex-1 flex overflow-hidden p-5 gap-5">
                 <!-- User List Sidebar -->
                 <aside class="w-72 flex flex-col gap-3">
                     <div class="px-2 flex items-center justify-between">
                         <h2 class="text-[10px] font-black uppercase tracking-[0.2em] ${isDawn ? 'text-[#797593]' : (isNeon ? 'text-neon-pink' : 'text-gray-500')}">Identity Directory</h2>
-                        <button id="btn-refresh" class="px-2 py-1 flex items-center gap-1 rounded ${isDawn ? 'bg-[#ea9d34]/10 border border-[#ea9d34]/20 text-[#ea9d34] hover:bg-[#ea9d34]/20' : (isNeon ? 'bg-cyan-400/10 border border-neon-border/40 text-cyan-400 hover:bg-cyan-400/20' : 'bg-mysql-cyan/5 border border-mysql-cyan/20 text-mysql-cyan hover:bg-mysql-cyan/10')} transition-colors">
-                            <span class="material-symbols-outlined text-sm">refresh</span>
-                            <span class="text-[9px] font-bold uppercase">Refresh</span>
-                        </button>
+                        <div class="flex gap-1">
+                            <button id="btn-add-role" title="Create Role" class="p-1 flex items-center rounded ${isDawn ? 'text-[#ea9d34] hover:bg-[#ea9d34]/10' : (isNeon ? 'text-cyan-400 hover:bg-cyan-400/10' : 'text-mysql-cyan hover:bg-mysql-cyan/10')} transition-colors">
+                                <span class="material-symbols-outlined text-sm">group_add</span>
+                            </button>
+                            <button id="btn-refresh" class="px-2 py-1 flex items-center gap-1 rounded ${isDawn ? 'bg-[#ea9d34]/10 border border-[#ea9d34]/20 text-[#ea9d34] hover:bg-[#ea9d34]/20' : (isNeon ? 'bg-cyan-400/10 border border-neon-border/40 text-cyan-400 hover:bg-cyan-400/20' : 'bg-mysql-cyan/5 border border-mysql-cyan/20 text-mysql-cyan hover:bg-mysql-cyan/10')} transition-colors">
+                                <span class="material-symbols-outlined text-sm">refresh</span>
+                                <span class="text-[9px] font-bold uppercase">Refresh</span>
+                            </button>
+                        </div>
                     </div>
                     <div class="neu-inset ${isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : (isNeon ? 'bg-neon-bg shadow-[inset_0_0_20px_rgba(0,0,0,0.2)]' : (isOceanic ? 'bg-[#21252B]' : 'bg-[#090b0e]')))} rounded-xl flex-1 overflow-hidden flex flex-col border ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isNeon ? 'border-neon-border/40' : (isOceanic ? 'border-ocean-border/50' : 'border-white/5')))}">
                         <div class="p-3 ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#faf4ed]' : (isNeon ? 'bg-neon-panel/20' : (isOceanic ? 'bg-[#2E3440]' : 'bg-[#111418]')))}">
@@ -255,7 +372,7 @@ export function AccessControl() {
                                         <h2 class="text-xl font-black ${isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : (isNeon ? 'text-neon-text shadow-[0_0_10px_rgba(34,211,238,0.2)]' : 'text-white'))} tracking-tight uppercase">Permissions Inspector</h2>
                                         ${selectedUser ? `
                                             <span class="px-3 py-1 rounded ${isDawn ? 'bg-[#c4a7e7]/10 text-[#c4a7e7] border-[#c4a7e7]/30' : (isNeon ? 'bg-neon-purple/20 text-neon-text border-neon-border/40' : 'bg-mysql-purple/10 text-mysql-purple border-mysql-purple/30')} text-[9px] font-black border tracking-widest">
-                                                ${selectedUser.user === 'root' ? 'SYSTEM_ADMIN' : 'USER'}
+                                                ${selectedUser.is_role ? 'ROLE' : (selectedUser.user === 'root' ? 'SYSTEM_ADMIN' : 'USER')}
                                             </span>
                                         ` : ''}
                                     </div>
@@ -267,12 +384,78 @@ export function AccessControl() {
                                     </div>
                                 </div>
                             </div>
+                            <div class="flex gap-2">
+                                ${selectedUser ? `
+                                    <button id="btn-toggle-lock" class="px-4 py-2 rounded-md font-bold text-[10px] uppercase tracking-wider flex items-center gap-2 border transition-all ${selectedUser.account_locked ? 'bg-red-500/10 border-red-500/30 text-red-500 hover:bg-red-500/20' : 'bg-mysql-cyan/10 border-mysql-cyan/30 text-mysql-cyan hover:bg-mysql-cyan/20'}">
+                                        <span class="material-symbols-outlined text-sm">${selectedUser.account_locked ? 'lock_open' : 'lock'}</span>
+                                        ${selectedUser.account_locked ? 'Unlock Account' : 'Lock Account'}
+                                    </button>
+                                ` : ''}
+                            </div>
                         </div>
 
-                        <!-- Privileges Grid -->
+                        <!-- Main Scrollable Area -->
                         <div class="flex-1 overflow-y-auto custom-scrollbar p-8 ${isLight ? 'bg-gray-50/50' : (isDawn ? 'bg-[#fffaf3]/50' : (isNeon ? 'bg-neon-bg/50' : (isOceanic ? 'bg-[#2E3440]/50' : 'bg-[#0d0f14]')))}">
-                            <div class="max-w-4xl">
-                                ${renderPrivileges()}
+                            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                                <!-- Privileges (2/3 width on large) -->
+                                <div class="lg:col-span-2 space-y-8">
+                                    ${renderPrivileges()}
+                                </div>
+
+                                <!-- User/Role Details Sidebar -->
+                                <div class="space-y-6">
+                                    <!-- Meta Info -->
+                                    <div class="p-5 ${isLight ? 'bg-white border-gray-200' : 'bg-white/5 border-white/10'} rounded-lg border">
+                                        <h3 class="text-[10px] font-black uppercase tracking-widest mb-4 opacity-60">Account Security</h3>
+                                        <div class="space-y-3">
+                                            <div class="flex justify-between items-center text-[10px]">
+                                                <span class="opacity-60 uppercase font-mono">Password Expired</span>
+                                                <span class="${selectedUser?.password_expired ? 'text-red-500' : 'text-green-500'} font-black">${selectedUser?.password_expired ? 'YES' : 'NO'}</span>
+                                            </div>
+                                            <div class="flex justify-between items-center text-[10px]">
+                                                <span class="opacity-60 uppercase font-mono">Last Changed</span>
+                                                <span class="font-mono">${selectedUser?.password_last_changed || 'N/A'}</span>
+                                            </div>
+                                            <div class="flex justify-between items-center text-[10px]">
+                                                <span class="opacity-60 uppercase font-mono">Account Status</span>
+                                                <span class="${selectedUser?.account_locked ? 'text-red-500' : 'text-green-500'} font-black uppercase">${selectedUser?.account_locked ? 'Locked' : 'Active'}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Role Graph -->
+                                    <div class="p-5 ${isLight ? 'bg-white border-gray-200' : 'bg-white/5 border-white/10'} rounded-lg border">
+                                        <div class="flex items-center justify-between mb-4">
+                                            <h3 class="text-[10px] font-black uppercase tracking-widest opacity-60">Role Assignments</h3>
+                                            ${selectedUser && !selectedUser.is_role ? `
+                                                <button id="btn-grant-role" class="size-6 flex items-center justify-center rounded bg-mysql-cyan/10 text-mysql-cyan hover:bg-mysql-cyan/20 transition-all">
+                                                    <span class="material-symbols-outlined text-sm">add</span>
+                                                </button>
+                                            ` : ''}
+                                        </div>
+                                        <div class="space-y-4">
+                                            <div>
+                                                <div class="text-[9px] uppercase font-mono opacity-40 mb-2">Granted Roles (Inherits from)</div>
+                                                <div class="flex flex-wrap gap-1.5" id="user-roles-list">
+                                                    ${userRoles.length > 0 ? userRoles.map(r => `
+                                                        <div class="group/role px-2 py-1 bg-mysql-purple/10 border border-mysql-purple/20 text-mysql-purple rounded text-[9px] font-bold flex items-center gap-1">
+                                                            ${r}
+                                                            <button class="revoke-role-btn opacity-0 group-hover/role:opacity-100 transition-opacity hover:text-red-500" data-role="${r}">
+                                                                <span class="material-symbols-outlined text-[10px]">close</span>
+                                                            </button>
+                                                        </div>
+                                                    `).join('') : '<span class="text-[9px] opacity-30">None</span>'}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div class="text-[9px] uppercase font-mono opacity-40 mb-2">Member Users (Granted to)</div>
+                                                <div class="flex flex-wrap gap-1.5">
+                                                    ${rolesGrantedBy.length > 0 ? rolesGrantedBy.map(u => `<span class="px-2 py-1 bg-mysql-cyan/10 border border-mysql-cyan/20 text-mysql-cyan rounded text-[9px] font-bold">${u}</span>`).join('') : '<span class="text-[9px] opacity-30">None</span>'}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                             
                             ${userPrivileges && userPrivileges.databases && userPrivileges.databases.length > 0 ? `
@@ -317,9 +500,27 @@ export function AccessControl() {
     function attachEventListeners() {
         // Refresh button
         const refreshBtn = container.querySelector('#btn-refresh');
-        if (refreshBtn) {
-            refreshBtn.addEventListener('click', loadUsers);
-        }
+        if (refreshBtn) refreshBtn.addEventListener('click', loadUsers);
+
+        // Add Role button
+        const addRoleBtn = container.querySelector('#btn-add-role');
+        if (addRoleBtn) addRoleBtn.addEventListener('click', handleAddRole);
+
+        // Grant Role button
+        const grantRoleBtn = container.querySelector('#btn-grant-role');
+        if (grantRoleBtn) grantRoleBtn.addEventListener('click', handleGrantRole);
+
+        // Revoke Role buttons
+        const revokeBtns = container.querySelectorAll('.revoke-role-btn');
+        revokeBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                handleRevokeRole(btn.dataset.role);
+            });
+        });
+
+        // Toggle Lock button
+        const toggleLockBtn = container.querySelector('#btn-toggle-lock');
+        if (toggleLockBtn) toggleLockBtn.addEventListener('click', toggleLock);
 
         // User list items
         const userItems = container.querySelectorAll('.user-item');
@@ -328,9 +529,17 @@ export function AccessControl() {
                 const userName = item.dataset.user;
                 const host = item.dataset.host;
                 const user = users.find(u => u.user === userName && u.host === host);
-                if (user) {
-                    selectUser(user);
-                }
+                if (user) selectUser(user);
+            });
+        });
+
+        // Privilege toggles
+        const privToggles = container.querySelectorAll('.priv-toggle');
+        privToggles.forEach(toggle => {
+            toggle.addEventListener('click', () => {
+                const priv = toggle.dataset.priv;
+                const isGranted = toggle.dataset.granted === 'true';
+                togglePrivilege(priv, isGranted);
             });
         });
 

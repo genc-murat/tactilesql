@@ -334,6 +334,10 @@ pub fn run() {
             // User Management
             db::get_users,
             db::get_user_privileges,
+            db::manage_privilege,
+            db::manage_user_status,
+            db::manage_role,
+            db::get_role_edges,
             // Server Monitoring
             db::get_server_status,
             db::get_monitor_snapshot,

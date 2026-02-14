@@ -3,7 +3,6 @@
 // =====================================================
 
 use crate::db_types::*;
-use crate::db_types::*;
 use clickhouse::Client;
 use serde::{Serialize, Deserialize};
 use serde_json::Value;
@@ -458,6 +457,9 @@ pub async fn get_users(app_state: &AppState) -> Result<Vec<MySqlUser>, String> {
                 host: host_idx.and_then(|i| row.get(i)).and_then(|v| v.as_str()).unwrap_or_default().to_string(),
                 account_locked: false,
                 password_expired: false,
+                password_last_changed: None,
+                password_lifetime: None,
+                is_role: false,
             });
         }
     }

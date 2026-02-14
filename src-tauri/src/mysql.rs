@@ -886,12 +886,15 @@ pub async fn get_events(pool: &Pool<MySql>, database: &str) -> Result<Vec<EventI
 // --- User Management ---
 
 pub async fn get_users(pool: &Pool<MySql>, version: &MySqlVersion) -> Result<Vec<MySqlUser>, String> {
-    let query = if version.has_account_locked {
+    let query = if version.major >= 8 {
+        // MySQL 8.0+
+        "SELECT User, Host, account_locked, password_expired, password_last_changed, password_lifetime FROM mysql.user ORDER BY User, Host"
+    } else if version.has_account_locked {
         // MySQL 5.7.6+
-        "SELECT User, Host, account_locked, password_expired FROM mysql.user ORDER BY User, Host"
+        "SELECT User, Host, account_locked, password_expired, NULL as password_last_changed, NULL as password_lifetime FROM mysql.user ORDER BY User, Host"
     } else {
         // MySQL 5.5/5.6: no account_locked column
-        "SELECT User, Host, 'N' as account_locked, password_expired FROM mysql.user ORDER BY User, Host"
+        "SELECT User, Host, 'N' as account_locked, password_expired, NULL as password_last_changed, NULL as password_lifetime FROM mysql.user ORDER BY User, Host"
     };
 
     let rows = sqlx::query(query)
@@ -903,18 +906,132 @@ pub async fn get_users(pool: &Pool<MySql>, version: &MySqlVersion) -> Result<Vec
     for row in rows {
         let user: String = row.try_get("User").unwrap_or_default();
         let host: String = row.try_get("Host").unwrap_or_default();
-        let account_locked_str: String = row.try_get("account_locked").unwrap_or_default();
-        let password_expired_str: String = row.try_get("password_expired").unwrap_or_default();
+        let account_locked_str: String = row.try_get("account_locked").unwrap_or_else(|_| "N".to_string());
+        let password_expired_str: String = row.try_get("password_expired").unwrap_or_else(|_| "N".to_string());
+        
+        let password_last_changed = row.try_get::<Option<chrono::NaiveDateTime>, _>("password_last_changed")
+            .ok()
+            .flatten()
+            .map(|dt| dt.to_string());
+        
+        let password_lifetime = row.try_get::<Option<i32>, _>("password_lifetime").ok().flatten();
+
+        // Heuristic for role detection in MySQL 8.0: 
+        // roles usually have account_locked='Y' and password_expired='Y' and no auth plugin (but auth plugin is in another column)
+        // For now, let's keep it simple.
+        let is_role = version.major >= 8 && account_locked_str == "Y" && password_expired_str == "Y";
 
         users.push(MySqlUser {
             user,
             host,
             account_locked: account_locked_str == "Y",
             password_expired: password_expired_str == "Y",
+            password_last_changed,
+            password_lifetime,
+            is_role,
         });
     }
 
     Ok(users)
+}
+
+pub async fn get_role_edges(pool: &Pool<MySql>) -> Result<Vec<MySqlRoleEdge>, String> {
+    let query = "SELECT FROM_USER, FROM_HOST, TO_USER, TO_HOST, WITH_ADMIN_OPTION FROM mysql.role_edges";
+    
+    let rows = match sqlx::query(query).fetch_all(pool).await {
+        Ok(r) => r,
+        Err(_) => return Ok(vec![]), // Table might not exist in older versions
+    };
+
+    let mut edges = Vec::new();
+    for row in rows {
+        edges.push(MySqlRoleEdge {
+            from_user: row.try_get("FROM_USER").unwrap_or_default(),
+            from_host: row.try_get("FROM_HOST").unwrap_or_default(),
+            to_user: row.try_get("TO_USER").unwrap_or_default(),
+            to_host: row.try_get("TO_HOST").unwrap_or_default(),
+            with_admin_option: row.try_get::<String, _>("WITH_ADMIN_OPTION").map(|s| s == "Y").unwrap_or(false),
+        });
+    }
+
+    Ok(edges)
+}
+
+pub async fn manage_privilege(
+    pool: &Pool<MySql>,
+    action: &str, // "GRANT" or "REVOKE"
+    privilege: &str,
+    database: &str,
+    table: &str,
+    user: &str,
+    host: &str,
+) -> Result<String, String> {
+    let target = if database == "*" {
+        "*.*".to_string()
+    } else {
+        format!("`{}`.`{}`", database, if table.is_empty() { "*" } else { table })
+    };
+
+    let query = if action.to_uppercase() == "GRANT" {
+        format!("GRANT {} ON {} TO '{}'@'{}'", privilege, target, user, host)
+    } else {
+        format!("REVOKE {} ON {} FROM '{}'@'{}'", privilege, target, user, host)
+    };
+
+    sqlx::query(&query)
+        .execute(pool)
+        .await
+        .map_err(|e| format!("Failed to {} privilege: {}", action, e))?;
+
+    Ok(format!("Privilege {} successfully", if action.to_uppercase() == "GRANT" { "granted" } else { "revoked" }))
+}
+
+pub async fn manage_user_status(
+    pool: &Pool<MySql>,
+    user: &str,
+    host: &str,
+    lock: bool,
+) -> Result<String, String> {
+    let action = if lock { "ACCOUNT LOCK" } else { "ACCOUNT UNLOCK" };
+    let query = format!("ALTER USER '{}'@'{}' {}", user, host, action);
+
+    sqlx::query(&query)
+        .execute(pool)
+        .await
+        .map_err(|e| format!("Failed to {} user: {}", if lock { "lock" } else { "unlock" }, e))?;
+
+    Ok(format!("User {} successfully", if lock { "locked" } else { "unlocked" }))
+}
+
+pub async fn manage_role(
+    pool: &Pool<MySql>,
+    action: &str, // "CREATE", "DROP", "GRANT", "REVOKE"
+    role_name: &str,
+    user: Option<&str>,
+    host: Option<&str>,
+) -> Result<String, String> {
+    let query = match action.to_uppercase().as_str() {
+        "CREATE" => format!("CREATE ROLE '{}'", role_name),
+        "DROP" => format!("DROP ROLE '{}'", role_name),
+        "GRANT" => {
+            let u = user.ok_or("User required for GRANT ROLE")?;
+            let h = host.unwrap_or("%");
+            format!("GRANT '{}' TO '{}'@'{}'", role_name, u, h)
+        },
+        "REVOKE" => {
+            let u = user.ok_or("User required for REVOKE ROLE")?;
+            let h = host.unwrap_or("%");
+            format!("REVOKE '{}' FROM '{}'@'{}'", role_name, u, h)
+        },
+        _ => return Err(format!("Unsupported role action: {}", action)),
+    };
+
+    sqlx::query(&query)
+        .execute(pool)
+        .await
+        .map_err(|e| format!("Failed to {} role: {}", action, e))?;
+
+    Ok(format!("Role action {} successful", action))
 }
 
 pub async fn get_user_privileges(
@@ -2284,3 +2401,4 @@ pub async fn get_execution_plan(pool: &Pool<MySql>, query: &str) -> Result<Strin
         None => Err("No execution plan returned".to_string()),
     }
 }
+

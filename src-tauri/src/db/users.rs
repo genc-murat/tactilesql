@@ -1,6 +1,6 @@
 use tauri::State;
 
-use crate::db_types::{AppState, DatabaseType, MySqlUser, UserPrivileges};
+use crate::db_types::{AppState, DatabaseType, MySqlUser, UserPrivileges, MySqlRoleEdge};
 use crate::mysql;
 use crate::postgres;
 use crate::clickhouse;
@@ -66,4 +66,51 @@ pub async fn get_user_privileges(
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
+}
+
+#[tauri::command]
+pub async fn manage_privilege(
+    app_state: State<'_, AppState>,
+    action: String,
+    privilege: String,
+    database: String,
+    table: String,
+    user: String,
+    host: String,
+) -> Result<String, String> {
+    let guard = app_state.mysql_pool.lock().await;
+    let pool = guard.as_ref().ok_or("No MySQL connection established")?;
+    mysql::manage_privilege(pool, &action, &privilege, &database, &table, &user, &host).await
+}
+
+#[tauri::command]
+pub async fn manage_user_status(
+    app_state: State<'_, AppState>,
+    user: String,
+    host: String,
+    lock: bool,
+) -> Result<String, String> {
+    let guard = app_state.mysql_pool.lock().await;
+    let pool = guard.as_ref().ok_or("No MySQL connection established")?;
+    mysql::manage_user_status(pool, &user, &host, lock).await
+}
+
+#[tauri::command]
+pub async fn manage_role(
+    app_state: State<'_, AppState>,
+    action: String,
+    role_name: String,
+    user: Option<String>,
+    host: Option<String>,
+) -> Result<String, String> {
+    let guard = app_state.mysql_pool.lock().await;
+    let pool = guard.as_ref().ok_or("No MySQL connection established")?;
+    mysql::manage_role(pool, &action, &role_name, user.as_deref(), host.as_deref()).await
+}
+
+#[tauri::command]
+pub async fn get_role_edges(app_state: State<'_, AppState>) -> Result<Vec<MySqlRoleEdge>, String> {
+    let guard = app_state.mysql_pool.lock().await;
+    let pool = guard.as_ref().ok_or("No MySQL connection established")?;
+    mysql::get_role_edges(pool).await
 }
