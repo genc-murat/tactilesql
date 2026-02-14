@@ -683,18 +683,7 @@ pub async fn get_query_log_stats(config: &ConnectionConfig) -> Result<Vec<QueryL
     // 'type' column in query_log: 1=QueryStart, 2=QueryFinish, 3=Exception...
     // We want finished queries.
     
-    let query = "
-        SELECT 
-            multiIf(ws_count > 0, 'Insert', 'Select') as kind,
-            count(),
-            avg(query_duration_ms),
-            avg(memory_usage) / 1048576,
-            avg(read_rows),
-            avg(read_bytes) / 1048576
-        FROM system.query_log 
-        WHERE type = 2 AND event_date >= today() - 1
-        GROUP BY kind
-    ".to_string();
+
 
     // Note: clickhouse 'type' enum: 1=QueryStart, 2=QueryFinish, 3=Exception, 4=QueryBeforeRetry
     // ws_count > 0 usually implies write? Or we can check query string start. 
