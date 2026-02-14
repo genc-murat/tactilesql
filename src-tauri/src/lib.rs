@@ -352,6 +352,7 @@ pub fn run() {
             db::get_replication_status,
             db::get_locks,
             db::get_lock_analysis,
+            db::get_deadlock_history,
             db::get_slow_queries,
             // Query Analysis
             db::analyze_query,

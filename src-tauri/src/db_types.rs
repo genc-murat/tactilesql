@@ -540,6 +540,29 @@ pub struct HealthMetric {
     pub description: Option<String>,
 }
 
+// --- Deadlock Info ---
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DeadlockTransaction {
+    pub index: i32,
+    pub transaction_id: String,
+    pub active_seconds: i64,
+    pub mysql_thread_id: i64,
+    pub user: String,
+    pub host: String,
+    pub query: String,
+    pub lock_wait_info: Option<String>,
+    pub holds_locks: Vec<String>,
+    pub waiting_for_lock: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DeadlockInfo {
+    pub timestamp: String,
+    pub transactions: Vec<DeadlockTransaction>,
+    pub victim_transaction_index: Option<i32>,
+    pub raw_content: String,
+}
+
 // --- Monitor Snapshot ---
 #[derive(Serialize, Debug)]
 pub struct MonitorSnapshot {
@@ -553,4 +576,5 @@ pub struct MonitorSnapshot {
     pub wait_events: Vec<WaitEventSummary>,
     pub table_usage: Vec<TableResourceUsage>,
     pub health_metrics: Vec<HealthMetric>,
+    pub deadlock_history: Vec<DeadlockInfo>,
 }

@@ -10,6 +10,7 @@ use sqlx::ConnectOptions;
 use sqlx::{Column, Executor, MySql, MySqlConnection, Pool, Row};
 use std::collections::{HashMap, HashSet};
 use tokio::time::{timeout, Duration};
+use chrono::{DateTime, Utc};
 
 const SIM_EXPLAIN_TIMEOUT_MS: u64 = 2500;
 const DEFAULT_QUERY_TIMEOUT_SECS: u64 = 30;
@@ -1302,6 +1303,183 @@ pub async fn get_innodb_status(pool: &Pool<MySql>) -> Result<String, String> {
 
     let status: String = row.try_get(2).unwrap_or_default();
     Ok(status)
+}
+
+pub fn parse_deadlock_from_innodb_status(raw: &str) -> Option<DeadlockInfo> {
+    let deadlock_header = "LATEST DETECTED DEADLOCK";
+    let start_idx = raw.find(deadlock_header)?;
+    
+    // Find end of section (next separator or end)
+    let section_body = &raw[start_idx..];
+    let end_idx = section_body[deadlock_header.len()..]
+        .find("------------------------")
+        .unwrap_or(section_body.len());
+    let section = &section_body[..end_idx + deadlock_header.len()];
+
+    let mut lines = section.lines().skip(1); // Skip "LATEST DETECTED DEADLOCK"
+    let mut timestamp = String::new();
+    
+    // Try to find timestamp (usually the first line after header)
+    if let Some(line) = lines.next() {
+        timestamp = line.trim().to_string();
+    }
+
+    let mut transactions = Vec::new();
+    let mut victim_transaction_index = None;
+
+    // Split by transactions
+    let trx_marker = "*** (";
+    let parts: Vec<&str> = section.split(trx_marker).collect();
+    
+    for part in parts.iter().skip(1) {
+        if let Some(idx_end) = part.find(')') {
+            let trx_idx_str = &part[..idx_end];
+            if let Ok(trx_idx) = trx_idx_str.parse::<i32>() {
+                let mut trx = DeadlockTransaction {
+                    index: trx_idx,
+                    transaction_id: String::new(),
+                    active_seconds: 0,
+                    mysql_thread_id: 0,
+                    user: String::new(),
+                    host: String::new(),
+                    query: String::new(),
+                    lock_wait_info: None,
+                    holds_locks: Vec::new(),
+                    waiting_for_lock: None,
+                };
+
+                let body = &part[idx_end + 1..];
+                
+                // Parse transaction header
+                if let Some(trx_id_idx) = body.find("TRANSACTION ") {
+                    let trx_id_line = body[trx_id_idx..].split('\n').next().unwrap_or("");
+                    trx.transaction_id = trx_id_line
+                        .split(',')
+                        .next()
+                        .unwrap_or("")
+                        .replace("TRANSACTION ", "")
+                        .trim()
+                        .to_string();
+                    
+                    if let Some(active_idx) = trx_id_line.find("ACTIVE ") {
+                        let active_part = &trx_id_line[active_idx + 7..];
+                        if let Some(sec_idx) = active_part.find(" sec") {
+                            trx.active_seconds = active_part[..sec_idx].parse().unwrap_or(0);
+                        }
+                    }
+                }
+
+                // MySQL thread id
+                if let Some(thread_idx) = body.find("MySQL thread id ") {
+                    let thread_line = body[thread_idx..].split('\n').next().unwrap_or("");
+                    let thread_parts: Vec<&str> = thread_line.split(',').collect();
+                    trx.mysql_thread_id = thread_parts[0]
+                        .replace("MySQL thread id ", "")
+                        .trim()
+                        .parse()
+                        .unwrap_or(0);
+                    
+                    if thread_parts.len() > 2 {
+                        let user_host_part = thread_parts[2].trim();
+                        let uh_parts: Vec<&str> = user_host_part.split_whitespace().collect();
+                        if uh_parts.len() >= 2 {
+                            trx.host = uh_parts[0].to_string();
+                            trx.user = uh_parts[1].to_string();
+                        }
+                    }
+                }
+
+                // Query - usually the last line before "WAITING FOR" or next section
+                let wait_marker = "WAITING FOR THIS LOCK TO BE GRANTED:";
+                let holds_marker = "HOLDS THE LOCK(S):";
+                
+                let query_end_idx = body.find(wait_marker)
+                    .or_else(|| body.find(holds_marker))
+                    .unwrap_or(body.len());
+                
+                let before_locks = &body[..query_end_idx];
+                let query_lines: Vec<&str> = before_locks.lines().collect();
+                if query_lines.len() > 1 {
+                    // Query is usually at the end of the transaction info block
+                    trx.query = query_lines.last().unwrap_or(&"").trim().to_string();
+                }
+
+                // Lock Info
+                if let Some(wait_idx) = body.find(wait_marker) {
+                    let wait_body = &body[wait_idx + wait_marker.len()..];
+                    let lock_line = wait_body.lines().next().unwrap_or("").trim();
+                    trx.waiting_for_lock = Some(lock_line.to_string());
+                }
+
+                if let Some(holds_idx) = body.find(holds_marker) {
+                    let holds_body = &body[holds_idx + holds_marker.len()..];
+                    let lock_line = holds_body.lines().next().unwrap_or("").trim();
+                    trx.holds_locks.push(lock_line.to_string());
+                }
+
+                transactions.push(trx);
+            }
+        }
+    }
+
+    // Victim
+    if let Some(victim_idx) = section.find("*** WE ROLL BACK TRANSACTION (") {
+        let victim_part = &section[victim_idx + 30..];
+        if let Some(end_idx) = victim_part.find(')') {
+            victim_transaction_index = victim_part[..end_idx].parse().ok();
+        }
+    }
+
+    Some(DeadlockInfo {
+        timestamp,
+        transactions,
+        victim_transaction_index,
+        raw_content: section.to_string(),
+    })
+}
+
+pub async fn get_deadlock_history(pool: &Pool<MySql>, version: &MySqlVersion) -> Result<Vec<DeadlockInfo>, String> {
+    let mut history = Vec::new();
+
+    // 1. Get latest from InnoDB status
+    let status = get_innodb_status(pool).await?;
+    if let Some(deadlock) = parse_deadlock_from_innodb_status(&status) {
+        history.push(deadlock);
+    }
+
+    // 2. If MySQL 8.0.22+, try reading performance_schema.error_log
+    // Note: This requires specific configuration (log_error_verbosity >= 3 and maybe others)
+    // and might not contain the full graph, but we check anyway.
+    if version.major >= 8 && version.minor >= 0 && version.patch >= 22 {
+        let query = r#"
+            SELECT logged, data 
+            FROM performance_schema.error_log 
+            WHERE data LIKE '%deadlock%' 
+            ORDER BY logged DESC 
+            LIMIT 10
+        "#;
+        
+        if let Ok(rows) = sqlx::query(query).fetch_all(pool).await {
+            for row in rows {
+                let timestamp: DateTime<Utc> = row.try_get(0).unwrap_or_else(|_| Utc::now());
+                let data: String = row.try_get(1).unwrap_or_default();
+                
+                // If it's already the same as the latest one, skip (heuristic)
+                if history.iter().any(|h| data.contains(&h.timestamp)) {
+                    continue;
+                }
+
+                history.push(DeadlockInfo {
+                    timestamp: timestamp.to_rfc3339(),
+                    transactions: Vec::new(), // Error log usually doesn't have the full graph structure
+                    victim_transaction_index: None,
+                    raw_content: data,
+                });
+            }
+        }
+    }
+
+    Ok(history)
 }
 
 pub async fn get_replication_status(pool: &Pool<MySql>) -> Result<serde_json::Value, String> {

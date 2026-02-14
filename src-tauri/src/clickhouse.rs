@@ -472,8 +472,19 @@ pub async fn get_process_list(app_state: &AppState) -> Result<Vec<ProcessInfo>, 
     let config_guard = app_state.clickhouse_config.lock().await;
     let config = config_guard.as_ref().ok_or("No ClickHouse connection config found")?;
 
-    let query = "SELECT query_id, user, address, current_database, query, elapsed, state FROM system.processes";
-    let results = execute_query_generic(config, query.to_string()).await?;
+    // Check columns first to be safe, or use a query that doesn't include 'state' if it fails.
+    // 'state' was added in relatively recent versions.
+    // We can use a more compatible query and try to detect columns from results.
+    let query = "SELECT query_id, user, address, current_database, query, elapsed, is_cancelled FROM system.processes";
+    let results = match execute_query_generic(config, query.to_string()).await {
+        Ok(r) => r,
+        Err(_) => {
+            // Fallback for even older versions where is_cancelled might be missing? 
+            // Unlikely for 26.x, but let's be safe.
+            let fallback_query = "SELECT query_id, user, address, current_database, query, elapsed FROM system.processes";
+            execute_query_generic(config, fallback_query.to_string()).await?
+        }
+    };
 
     let mut processes = Vec::new();
     if let Some(first) = results.first() {
@@ -483,9 +494,14 @@ pub async fn get_process_list(app_state: &AppState) -> Result<Vec<ProcessInfo>, 
         let db_idx = first.columns.iter().position(|c| c == "current_database");
         let query_idx = first.columns.iter().position(|c| c == "query");
         let elapsed_idx = first.columns.iter().position(|c| c == "elapsed");
-        let state_idx = first.columns.iter().position(|c| c == "state");
+        let cancelled_idx = first.columns.iter().position(|c| c == "is_cancelled");
 
         for row in &first.rows {
+            let is_cancelled = cancelled_idx.and_then(|i| row.get(i)).and_then(|v| {
+                if v.is_boolean() { v.as_bool() }
+                else { v.as_u64().map(|u| u == 1) }
+            }).unwrap_or(false);
+
             processes.push(ProcessInfo {
                 id: 0,
                 user: user_idx.and_then(|i| row.get(i)).and_then(|v| v.as_str()).unwrap_or_default().to_string(),
@@ -496,7 +512,7 @@ pub async fn get_process_list(app_state: &AppState) -> Result<Vec<ProcessInfo>, 
                     if v.is_f64() { v.as_f64().map(|f| f as i64) }
                     else { v.as_i64() }
                 }).unwrap_or(0),
-                state: state_idx.and_then(|i| row.get(i)).and_then(|v| v.as_str()).map(|s| s.to_string()),
+                state: Some(if is_cancelled { "Cancelled".to_string() } else { "Running".to_string() }),
                 info: qid_idx.and_then(|i| row.get(i)).and_then(|v| v.as_str()).map(|s| s.to_string()),
             });
         }

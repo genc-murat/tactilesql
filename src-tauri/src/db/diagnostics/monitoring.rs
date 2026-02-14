@@ -1,5 +1,5 @@
 use crate::db::lock_analysis::build_lock_analysis;
-use crate::db_types::{AppState, DatabaseType, MonitorSnapshot, ProcessInfo, ServerStatus, BloatInfo};
+use crate::db_types::{AppState, DatabaseType, MonitorSnapshot, ProcessInfo, ServerStatus, BloatInfo, DeadlockInfo};
 use crate::mysql;
 use crate::postgres;
 use crate::clickhouse;
@@ -90,6 +90,7 @@ pub async fn get_monitor_snapshot(app_state: State<'_, AppState>) -> Result<Moni
                 wait_events,
                 table_usage,
                 health_metrics,
+                deadlock_history: Vec::new(),
             })
         }
         DatabaseType::MySQL => {
@@ -117,6 +118,7 @@ pub async fn get_monitor_snapshot(app_state: State<'_, AppState>) -> Result<Moni
             let wait_events = mysql::get_wait_events(pool, &version).await.unwrap_or_default();
             let table_usage = mysql::get_table_resource_usage(pool, &version).await.unwrap_or_default();
             let health_metrics = mysql::get_health_metrics(pool).await.unwrap_or_default();
+            let deadlock_history = mysql::get_deadlock_history(pool, &version).await.unwrap_or_default();
 
             Ok(MonitorSnapshot {
                 server_status,
@@ -129,6 +131,7 @@ pub async fn get_monitor_snapshot(app_state: State<'_, AppState>) -> Result<Moni
                 wait_events,
                 table_usage,
                 health_metrics,
+                deadlock_history,
             })
         }
         DatabaseType::ClickHouse => {
@@ -146,9 +149,29 @@ pub async fn get_monitor_snapshot(app_state: State<'_, AppState>) -> Result<Moni
                 wait_events: Vec::new(),
                 table_usage: Vec::new(),
                 health_metrics: Vec::new(),
+                deadlock_history: Vec::new(),
             })
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
+    }
+}
+
+#[tauri::command]
+pub async fn get_deadlock_history(app_state: State<'_, AppState>) -> Result<Vec<DeadlockInfo>, String> {
+    let db_type = {
+        let guard = app_state.active_db_type.lock().await;
+        guard.clone()
+    };
+
+    match db_type {
+        DatabaseType::MySQL => {
+            let guard = app_state.mysql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
+            let version_guard = app_state.mysql_version.lock().await;
+            let version = version_guard.as_ref().cloned().unwrap_or_default();
+            mysql::get_deadlock_history(pool, &version).await
+        }
+        _ => Ok(Vec::new()),
     }
 }
 

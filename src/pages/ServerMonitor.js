@@ -5,6 +5,7 @@ import { escapeHtml, formatBytes, formatNumber } from '../utils/helpers.js';
 import { LoadingManager } from '../components/UI/LoadingStates.js';
 import { Charting } from '../utils/Charting.js';
 import { showMySQLSlowQueryConfigModal } from '../components/UI/MySQLSlowQueryConfigModal.js';
+import { showDeadlockAnalyzerModal } from '../components/UI/DeadlockAnalyzerModal.js';
 
 export function ServerMonitor() {
     let theme = ThemeManager.getCurrentTheme();
@@ -25,6 +26,7 @@ export function ServerMonitor() {
     let slowQueries = [];
     let locks = [];
     let lockAnalysis = null;
+    let deadlockHistory = [];
     let waitEvents = [];
     let tableUsage = [];
     let healthMetrics = [];
@@ -35,7 +37,7 @@ export function ServerMonitor() {
     let autoRefresh = true;
     let refreshInterval = null;
     let historyLoaded = false;
-    let activeTab = 'overview'; // 'overview' | 'processes' | 'innodb' | 'slow' | 'locks' | 'replication' | 'usage' | 'alerts' | 'maintenance'
+    let activeTab = 'overview'; // 'overview' | 'processes' | 'innodb' | 'slow' | 'locks' | 'deadlocks' | 'replication' | 'usage' | 'alerts' | 'maintenance'
     const lockFeatureAvailability = { locks: true, analysis: true };
     const lockFeatureWarningShown = { locks: false, analysis: false };
 
@@ -263,6 +265,7 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
                 slowQueries = snapshot.slow_queries;
                 locks = snapshot.locks;
                 lockAnalysis = snapshot.lock_analysis;
+                deadlockHistory = snapshot.deadlock_history || [];
                 waitEvents = snapshot.wait_events || [];
                 tableUsage = snapshot.table_usage || [];
                 healthMetrics = snapshot.health_metrics || [];
@@ -358,6 +361,12 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
                         <span class="material-symbols-outlined text-base mr-1 align-middle">lock</span>
                         Locks
                     </button>
+                    ${(localStorage.getItem('activeDbType') || 'mysql') === 'mysql' ? `
+                    <button class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'deadlocks' ? 'bg-mysql-teal text-white shadow-lg' : ((isLight || isDawn) ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white')}" data-tab="deadlocks">
+                        <span class="material-symbols-outlined text-base mr-1 align-middle">grid_off</span>
+                        Deadlocks
+                    </button>
+                    ` : ''}
                     <button class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'replication' ? 'bg-mysql-teal text-white shadow-lg' : ((isLight || isDawn) ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white')}" data-tab="replication">
                         <span class="material-symbols-outlined text-base mr-1 align-middle">sync_alt</span>
                         Replication
@@ -401,6 +410,7 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
             case 'innodb': return renderInnoDB();
             case 'slow': return renderSlowQueries();
             case 'locks': return renderLocks();
+            case 'deadlocks': return renderDeadlocks();
             case 'replication': return replicationStatus && replicationStatus.replicas ? renderPostgresReplication() : renderReplication();
             case 'usage': return renderUsage();
             default: return renderOverview();
@@ -1111,6 +1121,64 @@ SET GLOBAL long_query_time = 1;</pre>
         `;
     };
 
+    const renderDeadlocks = () => {
+        const isLight = theme === 'light';
+        const isDawn = theme === 'dawn';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+
+        if (deadlockHistory.length === 0) {
+            return `
+                <div class="rounded-xl p-12 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))} text-center">
+                    <span class="material-symbols-outlined text-5xl text-green-500 mb-4">check_circle</span>
+                    <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} mb-2">No Deadlocks Detected</h3>
+                    <p class="${isLight ? 'text-gray-500' : 'text-gray-400'}">No deadlock events have been recorded in the recent history.</p>
+                </div>
+            `;
+        }
+
+        return `
+            <div class="space-y-6">
+                <div class="rounded-xl p-6 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))} flex items-center justify-between">
+                    <div>
+                        <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} flex items-center gap-2">
+                            <span class="material-symbols-outlined text-red-500">grid_off</span>
+                            Deadlock History
+                        </h3>
+                        <p class="text-sm ${isLight ? 'text-gray-500' : 'text-gray-400'}">Showing ${deadlockHistory.length} recorded deadlock events</p>
+                    </div>
+                    <button id="open-deadlock-analyzer" class="px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-all shadow-lg flex items-center gap-2">
+                        <span class="material-symbols-outlined text-sm">analytics</span>
+                        Open Deadlock Analyzer
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    ${deadlockHistory.map((d, i) => `
+                        <div class="p-4 rounded-xl border ${isLight ? 'bg-white border-gray-200' : 'bg-white/5 border-white/10'} hover:border-red-500/50 transition-all cursor-pointer open-deadlock-item" data-index="${i}">
+                            <div class="flex justify-between items-start mb-3">
+                                <div class="flex items-center gap-2">
+                                    <span class="w-8 h-8 rounded-lg bg-red-500/10 text-red-500 flex items-center justify-center">
+                                        <span class="material-symbols-outlined text-sm">warning</span>
+                                    </span>
+                                    <span class="text-sm font-mono ${isLight ? 'text-gray-900' : 'text-white'}">${d.timestamp || 'Latest'}</span>
+                                </div>
+                                ${i === 0 ? '<span class="px-2 py-0.5 rounded-full bg-red-500 text-white text-[10px] font-bold uppercase">Latest</span>' : ''}
+                            </div>
+                            <p class="text-xs ${isLight ? 'text-gray-600' : 'text-gray-400'} mb-2">
+                                <span class="font-bold text-red-500">${d.transactions.length}</span> transactions involved. 
+                                Transaction <span class="font-bold text-red-500">${d.victim_transaction_index || '?'}</span> was rolled back.
+                            </p>
+                            <div class="flex items-center gap-2 text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-wider">
+                                <span>Click to view visual graph</span>
+                                <span class="material-symbols-outlined text-xs">arrow_forward</span>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    };
+
     const renderReplication = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
@@ -1432,6 +1500,18 @@ SET GLOBAL long_query_time = 1;</pre>
         // Slow Query Configuration
         container.querySelector('#config-slow-query-btn')?.addEventListener('click', () => {
             showMySQLSlowQueryConfigModal();
+        });
+
+        // Deadlock Analyzer
+        container.querySelector('#open-deadlock-analyzer')?.addEventListener('click', () => {
+            showDeadlockAnalyzerModal(deadlockHistory);
+        });
+
+        container.querySelectorAll('.open-deadlock-item').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const index = parseInt(btn.dataset.index);
+                showDeadlockAnalyzerModal(deadlockHistory); // Modal handles selection internally or we can enhance it
+            });
         });
 
         // Back button
