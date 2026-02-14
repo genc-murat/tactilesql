@@ -2641,9 +2641,6 @@ export function QueryEditor() {
                 }
 
                 const activeDbType = localStorage.getItem('activeDbType') || 'mysql';
-                const explainQuery = activeDbType === 'postgresql'
-                    ? `EXPLAIN(FORMAT TEXT) ${queryToRun} `
-                    : `EXPLAIN FORMAT = TRADITIONAL ${queryToRun} `;
                 const originalHTML = explainBtn.innerHTML;
 
                 try {
@@ -2651,9 +2648,21 @@ export function QueryEditor() {
                     explainBtn.classList.add('opacity-70');
                     window.dispatchEvent(new CustomEvent('tactilesql:query-executing'));
 
-                    const result = await invoke('execute_query', { query: explainQuery });
-                    showVisualExplainModal(result);
-                    window.dispatchEvent(new CustomEvent('tactilesql:query-result', { detail: result }));
+                    if (activeDbType === 'mssql') {
+                        const result = await invoke('get_execution_plan', { query: queryToRun });
+                        showVisualExplainModal(result);
+                        // MSSQL Explain plan is just metadata, no results table update needed usually
+                        // But to be consistent we can clear results or show a message
+                        window.dispatchEvent(new CustomEvent('tactilesql:query-result', { detail: [] }));
+                    } else {
+                        const explainQuery = activeDbType === 'postgresql'
+                            ? `EXPLAIN(FORMAT TEXT) ${queryToRun} `
+                            : `EXPLAIN FORMAT = TRADITIONAL ${queryToRun} `;
+
+                        const result = await invoke('execute_query', { query: explainQuery });
+                        showVisualExplainModal(result);
+                        window.dispatchEvent(new CustomEvent('tactilesql:query-result', { detail: result }));
+                    }
 
                 } catch (error) {
                     // Notify results table to hide loading skeleton

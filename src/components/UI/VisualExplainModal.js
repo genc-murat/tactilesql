@@ -15,10 +15,15 @@ export function showVisualExplainModal(queryResult) {
     let explainData = null;
     let isTree = false;
 
-    // Detect ClickHouse raw text input (AST/Pipeline)
+    // Detect ClickHouse raw text input (AST/Pipeline) or MSSQL XML
     if (typeof queryResult === 'string') {
-        explainData = parseClickHouseExplain(queryResult);
-        isTree = true;
+        if (queryResult.trim().startsWith('<ShowPlanXML')) {
+            explainData = parseMssqlXmlExplain(queryResult);
+            isTree = true;
+        } else {
+            explainData = parseClickHouseExplain(queryResult);
+            isTree = true;
+        }
     }
     // Handle standard tabular output (MySQL/Postgres)
     else {
@@ -173,6 +178,7 @@ export function showVisualExplainModal(queryResult) {
         gradient.setAttribute('y1', '0%');
         gradient.setAttribute('x2', '100%');
         gradient.setAttribute('y2', '100%');
+        gradient.setAttribute('id', grad.id);
         gradient.appendChild(createStop('0%', grad.color1));
         gradient.appendChild(createStop('100%', grad.color2));
         defs.appendChild(gradient);
@@ -239,6 +245,68 @@ function parseClickHouseExplain(text) {
     });
 
     return root;
+}
+
+// --- MSSQL XML Parser ---
+function parseMssqlXmlExplain(xml) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xml, "text/xml");
+
+    // Find Root RelOp
+    const stmts = doc.getElementsByTagName("StmtSimple");
+    let rootRelOp = null;
+
+    for (let i = 0; i < stmts.length; i++) {
+        const stmt = stmts[i];
+        const plan = stmt.getElementsByTagName("QueryPlan")[0];
+        if (plan) {
+            // Check direct children for RelOp
+            let relOp = null;
+            for (let j = 0; j < plan.children.length; j++) {
+                if (plan.children[j].tagName === 'RelOp') {
+                    relOp = plan.children[j];
+                    break;
+                }
+            }
+
+            if (relOp) {
+                rootRelOp = relOp;
+                break;
+            }
+        }
+    }
+
+    if (!rootRelOp) {
+        return { id: 'error', label: 'No Execution Plan Found (Check if Query is Valid)', children: [] };
+    }
+
+    const parseRelOp = (el) => {
+        const physicalOp = el.getAttribute("PhysicalOp");
+        const logicalOp = el.getAttribute("LogicalOp");
+        const estimateRows = el.getAttribute("EstimateRows");
+        const parallel = el.getAttribute("Parallel") === "1";
+        const nodeId = el.getAttribute("NodeId");
+
+        const label = physicalOp || logicalOp || "Operator";
+
+        const children = [];
+        for (let i = 0; i < el.children.length; i++) {
+            const childKey = el.children[i];
+            if (childKey.tagName === 'RelOp') {
+                children.push(parseRelOp(childKey));
+            }
+        }
+
+        return {
+            id: `node-${nodeId}`,
+            label: label,
+            rows: parseFloat(estimateRows || 0),
+            parallel,
+            children
+        };
+    };
+
+    return parseRelOp(rootRelOp);
 }
 
 // --- Tree Layout Renderer (Recursive) ---
@@ -314,11 +382,6 @@ function renderTreeLayout(svg, root, isLight, isDawn) {
         const header = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         header.setAttribute('x', node.x - nodeWidth / 2);
         header.setAttribute('y', node.y - nodeHeight / 2);
-        header.setAttribute('width', '6'); // Side bar instead of top? Or top. Let's do side for tree.
-        header.setAttribute('height', nodeHeight);
-        header.setAttribute('rx', '4'); // rounded left
-        // header.setAttribute('fill', 'url(#grad-blue)');
-        // Actually let's do a top highlight
         header.setAttribute('width', nodeWidth);
         header.setAttribute('height', '4');
         header.setAttribute('rx', '2');
@@ -337,10 +400,23 @@ function renderTreeLayout(svg, root, isLight, isDawn) {
 
         // Tooltip title
         const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-        title.textContent = node.label;
+        title.textContent = node.label + (node.rows ? `\nRows: ${node.rows}` : '');
         group.appendChild(title);
 
         group.appendChild(label);
+
+        // Rows label
+        if (node.rows) {
+            const rowsLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            rowsLabel.setAttribute('x', node.x);
+            rowsLabel.setAttribute('y', node.y + 20);
+            rowsLabel.setAttribute('text-anchor', 'middle');
+            rowsLabel.setAttribute('fill', isLight ? '#059669' : '#10b981');
+            rowsLabel.setAttribute('font-size', '10');
+            rowsLabel.textContent = `Rows: ${new Intl.NumberFormat('en-US', { notation: "compact" }).format(node.rows)}`;
+            group.appendChild(rowsLabel);
+        }
+
         svg.appendChild(group);
     };
 
@@ -467,11 +543,11 @@ function renderLinearLayout(svg, explainData, totalRows, isLight, isDawn) {
             partText.setAttribute('font-size', '10');
             partText.setAttribute('font-style', 'italic');
             partText.textContent = `Partitions: ${partitions.length > 20 ? partitions.substring(0, 17) + '...' : partitions}`;
-            
+
             const partTitle = document.createElementNS('http://www.w3.org/2000/svg', 'title');
             partTitle.textContent = `Used Partitions: ${partitions}`;
             partText.appendChild(partTitle);
-            
+
             group.appendChild(partText);
         }
 
@@ -499,7 +575,6 @@ function drawArrow(svg, x1, y1, x2, y2, color) {
 }
 
 function drawStartNode(svg, x, y, isLight, isDawn) {
-    // ... Simplified start node ...
     const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
     circle.setAttribute('cx', x);
     circle.setAttribute('cy', y);
@@ -509,7 +584,6 @@ function drawStartNode(svg, x, y, isLight, isDawn) {
 }
 
 function drawEndNode(svg, x, y, isLight, isDawn) {
-    // ... Simplified end node ...
     const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
     rect.setAttribute('x', x - 40);
     rect.setAttribute('y', y - 15);

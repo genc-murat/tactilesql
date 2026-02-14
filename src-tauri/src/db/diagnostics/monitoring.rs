@@ -260,3 +260,93 @@ pub async fn delete_monitor_alert(app_state: State<'_, AppState>, id: i64) -> Re
     let store = store_guard.as_ref().ok_or("Monitor store not initialized")?;
     store.delete_alert(id).await
 }
+#[tauri::command]
+pub async fn get_index_fragmentation(
+    app_state: State<'_, AppState>,
+    database: String,
+    table: String,
+) -> Result<Vec<crate::db_types::IndexFragmentationInfo>, String> {
+    let db_type = {
+        let guard = app_state.active_db_type.lock().await;
+        guard.clone()
+    };
+
+    match db_type {
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            mssql::get_index_fragmentation(pool, &database, &table).await
+        }
+        _ => Err("Index fragmentation analysis is only supported for MSSQL".to_string()),
+    }
+}
+
+#[tauri::command]
+pub async fn get_agent_jobs(app_state: State<'_, AppState>) -> Result<Vec<crate::db_types::AgentJob>, String> {
+    let db_type = {
+        let guard = app_state.active_db_type.lock().await;
+        guard.clone()
+    };
+
+    match db_type {
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            mssql::get_agent_jobs(pool).await
+        }
+        _ => Ok(Vec::new()), 
+    }
+}
+
+#[tauri::command]
+pub async fn start_agent_job(app_state: State<'_, AppState>, job_name: String) -> Result<String, String> {
+    let db_type = {
+        let guard = app_state.active_db_type.lock().await;
+        guard.clone()
+    };
+
+    match db_type {
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            mssql::start_agent_job(pool, &job_name).await
+        }
+        _ => Err("Agent Jobs are only supported for MSSQL".to_string()),
+    }
+}
+
+#[tauri::command]
+pub async fn stop_agent_job(app_state: State<'_, AppState>, job_name: String) -> Result<String, String> {
+    let db_type = {
+        let guard = app_state.active_db_type.lock().await;
+        guard.clone()
+    };
+
+    match db_type {
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            mssql::stop_agent_job(pool, &job_name).await
+        }
+        _ => Err("Agent Jobs are only supported for MSSQL".to_string()),
+    }
+}
+
+#[tauri::command]
+pub async fn get_storage_stats(app_state: State<'_, AppState>, database: String) -> Result<Vec<crate::db_types::StorageStats>, String> {
+    let db_type = {
+        let guard = app_state.active_db_type.lock().await;
+        guard.clone()
+    };
+
+    match db_type {
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            mssql::get_storage_stats(pool, &database).await
+        }
+        _ => Err("Storage stats are only supported for MSSQL".to_string()),
+    }
+}
+
+

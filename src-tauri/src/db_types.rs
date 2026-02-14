@@ -619,3 +619,39 @@ pub struct ExtensionRecord {
     pub description: String,
 }
 
+// --- Index Fragmentation Info ---
+#[derive(Serialize, Debug, Clone)]
+pub struct IndexFragmentationInfo {
+    pub schema: String,
+    pub table: String,
+    pub index: String,
+    pub index_type: String,
+    pub fragmentation_percent: f64,
+    pub page_count: i64,
+    pub partition_number: i32,
+    pub recommendation: String, // "REBUILD", "REORGANIZE", "OK"
+}
+
+// --- SQL Server Agent Job ---
+#[derive(Serialize, Debug, Clone)]
+pub struct AgentJob {
+    pub job_id: String,
+    pub name: String,
+    pub enabled: bool,
+    pub description: String,
+    pub last_run_date: String,
+    pub last_run_status: String,
+    pub next_run_date: String,
+    pub current_status: String,
+}
+
+// --- Storage Stats ---
+#[derive(Serialize, Debug, Clone)]
+pub struct StorageStats {
+    pub file_name: String,
+    pub file_type: String,
+    pub size_mb: f64,
+    pub used_mb: f64,
+    pub free_mb: f64,
+    pub physical_name: String,
+}

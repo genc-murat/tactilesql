@@ -349,6 +349,8 @@ pub fn run() {
             db::get_index_suggestions,
             db::get_index_usage,
             db::get_index_sizes,
+            db::get_index_fragmentation,
+            db::maintain_index,
             db::simulate_index_drop,
             db::get_capacity_metrics,
             db::get_execution_plan,
@@ -359,6 +361,11 @@ pub fn run() {
             db::get_query_history_range,
             // AI Index Recommendations
             db::get_ai_index_recommendations,
+            db::start_agent_job,
+            db::stop_agent_job,
+            db::get_agent_jobs,
+            db::get_storage_stats,
+
             // PostgreSQL Specific
             db::get_sequences,
             db::get_custom_types,

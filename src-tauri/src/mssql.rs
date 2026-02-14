@@ -716,3 +716,257 @@ pub async fn get_health_metrics(_pool: &Pool) -> Result<Vec<HealthMetric>, Strin
 pub async fn get_lock_graph_edges(_pool: &Pool) -> Result<Vec<LockGraphEdge>, String> {
     Ok(Vec::new())
 }
+pub async fn get_index_fragmentation(pool: &Pool, database: &str, table: &str) -> Result<Vec<IndexFragmentationInfo>, String> {
+    let db_prefix = if !database.is_empty() && database != "default" {
+        format!("[{}].", database)
+    } else {
+        "".to_string()
+    };
+    
+    // We need object_id for the DMV
+
+    // Note: this query needs to run in the context of the specific database, or we use 3-part name if supported by object_id(). 
+    // object_id() usually takes 3 part name: database.schema.table
+    // But if we are connected to master, we might need to use USE or full path.
+    // However, Tiberius executes queries. If we are in the wrong DB context, object_id might return NULL.
+    // A safer way is to query sys.tables joined with schemas in the target DB.
+    
+    // Let's assume we are in the correct database or we construct a query that works cross-db if possible.
+    // Actually, sys.dm_db_index_physical_stats takes database_id, object_id.
+    
+    let query = format!(
+        "
+        SELECT 
+            s.name as schema_name,
+            t.name as table_name,
+            i.name as index_name,
+            i.type_desc as index_type,
+            ps.avg_fragmentation_in_percent,
+            ps.page_count,
+            ps.partition_number
+        FROM {}sys.dm_db_index_physical_stats(DB_ID('{}'), OBJECT_ID('{}'), NULL, NULL, 'LIMITED') ps
+        INNER JOIN {}sys.indexes i ON ps.object_id = i.object_id AND ps.index_id = i.index_id
+        INNER JOIN {}sys.tables t ON t.object_id = i.object_id
+        INNER JOIN {}sys.schemas s ON t.schema_id = s.schema_id
+        WHERE ps.index_id > 0 -- ignore heaps for now if we want, or keep them. Heap fragmentation is different.
+        ORDER BY ps.avg_fragmentation_in_percent DESC
+        ", 
+        db_prefix, database, table, db_prefix, db_prefix, db_prefix
+    );
+
+    let res = execute_query(pool, query).await?;
+    let mut fragmentations = Vec::new();
+
+    if let Some(result_set) = res.first() {
+        for row in &result_set.rows {
+            let frag_pct = row.get(4).and_then(|v| v.as_f64()).unwrap_or(0.0);
+            let recommendation = if frag_pct > 30.0 {
+                "REBUILD".to_string()
+            } else if frag_pct > 5.0 {
+                "REORGANIZE".to_string()
+            } else {
+                "OK".to_string()
+            };
+
+            fragmentations.push(IndexFragmentationInfo {
+                schema: row.get(0).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                table: row.get(1).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                index: row.get(2).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                index_type: row.get(3).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                fragmentation_percent: frag_pct,
+                page_count: row.get(5).and_then(|v| v.as_i64()).unwrap_or(0),
+                partition_number: row.get(6).and_then(|v| v.as_i64()).unwrap_or(1) as i32,
+                recommendation,
+            });
+        }
+    }
+
+    Ok(fragmentations)
+}
+pub async fn maintain_index(pool: &Pool, database: &str, schema: &str, table: &str, index: &str, action: &str) -> Result<String, String> {
+    let db_prefix = if !database.is_empty() && database != "default" {
+        format!("[{}].", database)
+    } else {
+        "".to_string()
+    };
+    
+    let valid_actions = ["REBUILD", "REORGANIZE"];
+    let action_upper = action.to_uppercase();
+    if !valid_actions.contains(&action_upper.as_str()) {
+        return Err("Invalid maintenance action. Use REBUILD or REORGANIZE".to_string());
+    }
+
+    let query = format!(
+        "ALTER INDEX [{}] ON {}[{}].[{}] {}",
+        index, db_prefix, schema, table, action_upper
+    );
+
+    // We might need to run this command with a higher timeout as rebuilds can take time.
+    execute_query_with_timeout(pool, query, Some(300)).await?; // 5 mins timeout
+    
+    Ok(format!("Index {} successfully {}d", index, action_upper.to_lowercase()))
+}
+
+// --- SQL Server Agent ---
+
+pub async fn get_agent_jobs(pool: &Pool) -> Result<Vec<AgentJob>, String> {
+    let query = "
+        SELECT 
+            CAST(j.job_id AS CHAR(36)) as job_id_str,
+            j.name,
+            j.enabled,
+            ISNULL(j.description, '') as description,
+            h.run_status,
+            h.run_date,
+            h.run_time,
+            CASE 
+                WHEN aj.start_execution_date IS NOT NULL AND aj.stop_execution_date IS NULL THEN 'Running'
+                ELSE 'Idle'
+            END as current_status,
+            s.next_run_date,
+            s.next_run_time
+        FROM msdb.dbo.sysjobs j
+        LEFT JOIN msdb.dbo.sysjobactivity aj ON j.job_id = aj.job_id AND aj.session_id = (SELECT MAX(session_id) FROM msdb.dbo.syssessions)
+        LEFT JOIN (
+            SELECT job_id, run_status, run_date, run_time,
+                   ROW_NUMBER() OVER (PARTITION BY job_id ORDER BY run_date DESC, run_time DESC) as rn
+            FROM msdb.dbo.sysjobhistory
+            WHERE step_id = 0
+        ) h ON j.job_id = h.job_id AND h.rn = 1
+        LEFT JOIN msdb.dbo.sysjobschedules js ON j.job_id = js.job_id
+        LEFT JOIN msdb.dbo.sysschedules s ON js.schedule_id = s.schedule_id
+        ORDER BY j.name
+    ";
+
+    let res = execute_query(pool, query.to_string()).await;
+    
+    // If msdb is not accessible, return empty list or error
+    if let Err(_e) = res {
+        return Ok(Vec::new()); 
+    }
+    
+    let result_set = res.unwrap();
+    let mut jobs = Vec::new();
+
+    if let Some(first) = result_set.first() {
+        for row in &first.rows {
+            let run_status_code = row.get(4).and_then(|v| v.as_i64()).unwrap_or(-1);
+            let last_run_status = match run_status_code {
+                0 => "Failed",
+                1 => "Succeeded",
+                2 => "Retry",
+                3 => "Canceled",
+                -1 => "Never Run",
+                _ => "Unknown",
+            }.to_string();
+
+            let run_date = row.get(5).and_then(|v| v.as_i64()).unwrap_or(0);
+            let run_time = row.get(6).and_then(|v| v.as_i64()).unwrap_or(0);
+            let last_run_date = if run_date > 0 {
+                format!("{}-{}", run_date, run_time) 
+            } else {
+                "Never".to_string()
+            };
+
+            let next_run_date_int = row.get(8).and_then(|v| v.as_i64()).unwrap_or(0);
+            let next_run_time_int = row.get(9).and_then(|v| v.as_i64()).unwrap_or(0);
+             let next_run_date = if next_run_date_int > 0 {
+                format!("{}-{}", next_run_date_int, next_run_time_int)
+            } else {
+                "Not Scheduled".to_string()
+            };
+
+            // enabled is tinyint (u8), mapped to number in JSON.
+            let enabled_val = row.get(2).and_then(|v| v.as_u64()).unwrap_or(0);
+
+            jobs.push(AgentJob {
+                job_id: row.get(0).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                name: row.get(1).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                enabled: enabled_val == 1,
+                description: row.get(3).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                last_run_date,
+                last_run_status,
+                next_run_date,
+                current_status: row.get(7).and_then(|v| v.as_str()).unwrap_or("Idle").to_string(),
+            });
+        }
+    }
+
+    Ok(jobs)
+}
+
+pub async fn start_agent_job(pool: &Pool, job_name: &str) -> Result<String, String> {
+    let query = format!("EXEC msdb.dbo.sp_start_job @job_name = '{}'", job_name);
+    execute_query_with_timeout(pool, query, Some(10)).await?;
+    Ok(format!("Job {} started", job_name))
+}
+
+pub async fn stop_agent_job(pool: &Pool, job_name: &str) -> Result<String, String> {
+    let query = format!("EXEC msdb.dbo.sp_stop_job @job_name = '{}'", job_name);
+    execute_query_with_timeout(pool, query, Some(10)).await?;
+    Ok(format!("Job {} stopped", job_name))
+}
+
+// --- Storage Stats ---
+
+pub async fn get_storage_stats(pool: &Pool, database: &str) -> Result<Vec<StorageStats>, String> {
+    let mut conn = pool.get().await.map_err(|e| e.to_string())?;
+    
+    // Switch to target stats context
+    conn.simple_query(format!("USE [{}]", database)).await.map_err(|e| e.to_string())?;
+    
+    let query = "
+        SELECT 
+            f.name,
+            f.type_desc,
+            CAST(f.size AS FLOAT) * 8.0 / 1024.0 as size_mb,
+            CAST(FILEPROPERTY(f.name, 'SpaceUsed') AS FLOAT) * 8.0 / 1024.0 as used_mb,
+            (CAST(f.size AS FLOAT) - CAST(FILEPROPERTY(f.name, 'SpaceUsed') AS FLOAT)) * 8.0 / 1024.0 as free_mb,
+            f.physical_name
+        FROM sys.database_files f
+    ";
+    
+    let stream = conn.query(query, &[]).await.map_err(|e| e.to_string())?;
+    let rows = stream.into_first_result().await.map_err(|e| e.to_string())?;
+    
+    let mut stats = Vec::new();
+    
+    for row in rows {
+        stats.push(StorageStats {
+            file_name: row.get::<&str, _>(0).unwrap_or("").to_string(),
+            file_type: row.get::<&str, _>(1).unwrap_or("").to_string(),
+            size_mb: row.get::<f64, _>(2).unwrap_or(0.0),
+            used_mb: row.get::<f64, _>(3).unwrap_or(0.0),
+            free_mb: row.get::<f64, _>(4).unwrap_or(0.0),
+            physical_name: row.get::<&str, _>(5).unwrap_or("").to_string(),
+        });
+    }
+
+    Ok(stats)
+}
+
+// --- Execution Plan ---
+
+pub async fn get_execution_plan(pool: &Pool, query: &str) -> Result<String, String> {
+    let mut conn = pool.get().await.map_err(|e| e.to_string())?;
+    
+    // Enable XML plan
+    conn.simple_query("SET SHOWPLAN_XML ON").await.map_err(|e| e.to_string())?;
+    
+    // Execute user query - The result will be the plan XML in a single column
+    let stream = conn.query(query, &[]).await.map_err(|e| e.to_string())?;
+    let results = stream.into_first_result().await.map_err(|e| e.to_string())?;
+    
+    let mut xml_plan = String::new();
+    if let Some(row) = results.first() {
+        // XML plan is typically returned as a string in the first column
+        if let Some(val) = row.get::<&str, _>(0) {
+             xml_plan = val.to_string();
+        }
+    }
+    
+    // Disable XML plan - crucial to reset session state
+    conn.simple_query("SET SHOWPLAN_XML OFF").await.map_err(|e| e.to_string())?;
+    
+    Ok(xml_plan)
+}

@@ -20,6 +20,9 @@ import { showPartitionManagementModal } from '../UI/PartitionManagementModal.js'
 import { showPostgresActivityMonitor } from './PostgresActivityMonitor.js';
 import { showPostgresLockMonitor } from './PostgresLockMonitor.js';
 import { showPostgresExtensionsModal } from '../UI/PostgresExtensionsModal.js';
+import { showMssqlIndexManagerModal } from '../UI/MssqlIndexManagerModal.js';
+import { showMssqlAgentManagerModal } from '../UI/MssqlAgentManagerModal.js';
+import { showMssqlStorageModal } from '../UI/MssqlStorageModal.js';
 
 
 export function ObjectExplorer() {
@@ -1676,6 +1679,14 @@ export function ObjectExplorer() {
                     iconColor: isDawn ? 'text-[#eb6f92]' : 'text-rose-400',
                     onClick: () => window.location.hash = `/monitor?conn=${id}`
                 },
+                ...(dbType === 'mssql' ? [
+                    {
+                        label: 'SQL Agent Jobs',
+                        icon: 'assignment',
+                        iconColor: 'text-orange-400',
+                        onClick: () => showMssqlAgentManagerModal(id) // connection ID (currently unused by modal, uses active state)
+                    }
+                ] : []),
                 ...(dbType === 'postgresql' ? [
                     {
                         label: 'Activity Monitor',
@@ -1825,6 +1836,15 @@ export function ObjectExplorer() {
                 iconColor: isDawn ? 'text-[#9893a5]' : 'text-gray-500',
                 onClick: () => navigator.clipboard.writeText(dbName)
             },
+            ...(dbType === 'mssql' ? [
+                { type: 'separator' },
+                {
+                    label: 'Storage Visualization',
+                    icon: 'hard_drive',
+                    iconColor: 'text-purple-400',
+                    onClick: () => showMssqlStorageModal(dbName)
+                }
+            ] : []),
             ...(isPg ? [
                 { type: 'separator' },
                 {
@@ -2063,12 +2083,21 @@ export function ObjectExplorer() {
                     icon: 'build_circle',
                     iconColor: isDawn ? 'text-[#ea9d34]' : 'text-amber-400',
                     items: [
-                        ...(dbType !== 'postgresql' ? [
+                        ...(dbType === 'mysql' ? [
                             {
                                 label: 'Maintenance Wizard',
                                 icon: 'magic_button',
                                 iconColor: 'text-indigo-400',
                                 onClick: () => showTableMaintenanceWizard(dbName, tableName)
+                            },
+                            { type: 'separator' }
+                        ] : []),
+                        ...(dbType === 'mssql' ? [
+                            {
+                                label: 'Index Manager',
+                                icon: 'handyman',
+                                iconColor: 'text-orange-400',
+                                onClick: () => showMssqlIndexManagerModal(dbName, tableName)
                             },
                             { type: 'separator' }
                         ] : []),

@@ -9,7 +9,7 @@ TactileSQL is a modern, desktop-first SQL workbench for MySQL, PostgreSQL, Click
 ## Highlights
 
 - **SQL Workbench** with multi-tab editor, syntax highlighting, auto-format, autocomplete, and **code folding**.
-- **First-Class MSSQL Support**: Deep integration with SQL Server featuring schema-qualified object browsing (e.g., `[dbo].[Table]`), automatic square bracket quoting, and MSSQL-optimized pagination (`SELECT TOP N`). Supports comprehensive DDL generation and metadata inspection.
+- **First-Class MSSQL Support**: Deep integration with SQL Server featuring schema-qualified object browsing, automatic square bracket quoting, and MSSQL-optimized pagination. Includes the **Visual Execution Plan** (rendered from XML), **Index Fragmentation & Maintenance** (Rebuild/Reorganize), **SQL Server Agent Job Manager**, and **Storage Visualization** for database files.
 - **Native ClickHouse Integration**: High-performance connectivity via native HTTP protocol (port 8123). Features rich SVG **Visual Explain Pipeline**, Table Inspector, Partition Explorer, Query Log Dashboard, Kafka Monitoring, and **Merge & Mutation Monitor**.
 - **Advanced PostgreSQL Support**: Deep-dive monitoring with the **Server Activity Monitor** (session termination), **Lock Monitor** (visualize blocking chains), and **Extension Management** (install/uninstall extensions).
 - **Code Folding**: Collapse and expand code blocks (subqueries, CASE/END, BEGIN/END, block comments) for improved readability.
@@ -112,9 +112,11 @@ The Rust backend exposes a comprehensive set of commands for cross-database oper
 - `get_bloat_analysis` — Server-wide fragmentation/waste scanning
 
 ### ClickHouse & MSSQL Specifics
-- `get_clickhouse_partitions`, `manage_partition` — Detailed MergeTree management
-- `get_clickhouse_merges`, `get_clickhouse_mutations` — Live background operation tracking
-- `get_clickhouse_query_log` — Aggregated execution statistics
+- `get_clickhouse_partitions`, `manage_partition`, `get_clickhouse_merges`, `get_clickhouse_mutations`
+- `get_index_fragmentation`, `maintain_index` — Analyze and optimize MSSQL index performance
+- `get_agent_jobs`, `start_agent_job`, `stop_agent_job` — Full SQL Server Agent lifecycle management
+- `get_storage_stats` — Detailed file-level storage and space usage analysis
+- `get_execution_plan` — Capture and parse XML execution plans for visual analysis
 - MSSQL commands utilize the `tiberius` driver for async TDS protocol communication, ensuring robust support for Windows and Linux hosted SQL Servers.
 
 ## Keyboard Shortcuts

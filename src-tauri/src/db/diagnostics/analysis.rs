@@ -43,13 +43,7 @@ pub async fn get_execution_plan(
         DatabaseType::MSSQL => {
             let guard = app_state.mssql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
-            let explain_query = format!("SET SHOWPLAN_TEXT ON; {}; SET SHOWPLAN_TEXT OFF;", query);
-            let results = mssql::execute_query(pool, explain_query).await?;
-            Ok(results.into_iter().next().map(|r| {
-                r.rows.into_iter().map(|row| {
-                    row.into_iter().map(|v| v.as_str().unwrap_or_default().to_string()).collect::<Vec<_>>().join(" | ")
-                }).collect::<Vec<_>>().join("\n")
-            }).unwrap_or_default())
+            mssql::get_execution_plan(pool, &query).await
         }
         DatabaseType::ClickHouse => {
             let guard = app_state.clickhouse_config.lock().await;

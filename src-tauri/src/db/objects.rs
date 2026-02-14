@@ -376,3 +376,26 @@ pub async fn get_functions(
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
+#[tauri::command]
+pub async fn maintain_index(
+    app_state: State<'_, AppState>,
+    database: String,
+    schema: String,
+    table: String,
+    index: String,
+    action: String,
+) -> Result<String, String> {
+    let db_type = {
+        let guard = app_state.active_db_type.lock().await;
+        guard.clone()
+    };
+
+    match db_type {
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            mssql::maintain_index(pool, &database, &schema, &table, &index, &action).await
+        }
+        _ => Err("Index maintenance is only supported for MSSQL".to_string()),
+    }
+}
