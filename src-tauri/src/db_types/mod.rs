@@ -287,7 +287,7 @@ pub struct UserPrivileges {
 }
 
 // --- Server Status ---
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, Default)]
 pub struct ServerStatus {
     pub uptime: i64,
     pub threads_connected: i64,

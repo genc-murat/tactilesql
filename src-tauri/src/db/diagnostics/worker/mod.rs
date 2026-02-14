@@ -96,19 +96,7 @@ async fn monitor_tick(app: &AppHandle, state: &AppState) -> Result<(), String> {
             // Check Alerts
             if let Ok(alerts) = store.get_alerts(connection_id).await {
                 for alert in alerts.into_iter().filter(|a| a.is_enabled) {
-                    let current_val = match alert.metric_name.as_str() {
-                        "threads_running" => s.threads_running as f64,
-                        "threads_connected" => s.threads_connected as f64,
-                        "slow_queries" => s.slow_queries as f64,
-                        "qps" => {
-                            if let Some(prev) = &prev_status {
-                                if elapsed > 0 {
-                                    (s.queries - prev.queries) as f64 / elapsed as f64
-                                } else { 0.0 }
-                            } else { 0.0 }
-                        },
-                        _ => 0.0,
-                    };
+                    let current_val = calculate_current_metric(&alert.metric_name, &s, prev_status.as_ref(), elapsed);
 
                     if alert.evaluate(current_val) {
                         if let Some(id) = alert.id {
@@ -130,3 +118,31 @@ async fn monitor_tick(app: &AppHandle, state: &AppState) -> Result<(), String> {
 
     Ok(())
 }
+
+pub(crate) fn calculate_current_metric(
+    metric_name: &str,
+    current: &ServerStatus,
+    prev: Option<&ServerStatus>,
+    elapsed_seconds: i64,
+) -> f64 {
+    match metric_name {
+        "threads_running" => current.threads_running as f64,
+        "threads_connected" => current.threads_connected as f64,
+        "slow_queries" => current.slow_queries as f64,
+        "qps" => {
+            if let Some(p) = prev {
+                if elapsed_seconds > 0 {
+                    (current.queries - p.queries) as f64 / elapsed_seconds as f64
+                } else {
+                    0.0
+                }
+            } else {
+                0.0
+            }
+        }
+        _ => 0.0,
+    }
+}
+
+#[cfg(test)]
+mod tests;

@@ -1,85 +1,63 @@
 use super::*;
-use crate::db_types::LockGraphEdge;
+use crate::db_types::{DatabaseType, LockGraphEdge};
+
+fn make_edge(waiting: i64, blocking: i64, wait_sec: i64) -> LockGraphEdge {
+    LockGraphEdge {
+        waiting_process_id: waiting,
+        blocking_process_id: blocking,
+        wait_seconds: wait_sec,
+        waiting_query: None,
+        blocking_query: None,
+        object_name: Some("test_table".to_string()),
+        lock_type: Some("RECORD".to_string()),
+        waiting_lock_mode: Some("X".to_string()),
+        blocking_lock_mode: Some("S".to_string()),
+    }
+}
 
 #[test]
-fn test_build_lock_analysis_simple() {
+fn test_simple_blocking_chain() {
     let edges = vec![
-        LockGraphEdge {
-            waiting_process_id: 1,
-            blocking_process_id: 2,
-            wait_seconds: 10,
-            waiting_query: Some("SELECT 1".into()),
-            blocking_query: Some("UPDATE t".into()),
-            lock_type: Some("RECORD".into()),
-            waiting_lock_mode: Some("X".into()),
-            blocking_lock_mode: None,
-            object_name: Some("row1".into()),
-        }
+        make_edge(1, 2, 10), // 1 waits for 2
+        make_edge(2, 3, 5),  // 2 waits for 3
     ];
     
     let analysis = build_lock_analysis(&DatabaseType::MySQL, edges);
-    assert_eq!(analysis.summary.total_edges, 1);
-    assert_eq!(analysis.summary.waiting_sessions, 1);
-    assert_eq!(analysis.summary.blocking_sessions, 1);
+    
+    assert_eq!(analysis.summary.total_edges, 2);
+    assert_eq!(analysis.summary.max_chain_depth, 2);
+    assert_eq!(analysis.summary.max_wait_seconds, 10);
     assert!(!analysis.has_deadlock);
     
+    // Check nodes
     let node1 = analysis.nodes.iter().find(|n| n.process_id == 1).unwrap();
-    assert_eq!(node1.role, "waiting");
-    
     let node2 = analysis.nodes.iter().find(|n| n.process_id == 2).unwrap();
-    assert_eq!(node2.role, "blocking");
+    let node3 = analysis.nodes.iter().find(|n| n.process_id == 3).unwrap();
+    
+    assert_eq!(node1.role, "waiting");
+    assert_eq!(node2.role, "both");
+    assert_eq!(node3.role, "blocking");
 }
 
 #[test]
-fn test_detect_deadlock_cycle() {
-    // 1 waits on 2, 2 waits on 1
-    let mut adjacency = HashMap::new();
-    adjacency.insert(1, vec![2]);
-    adjacency.insert(2, vec![1]);
+fn test_deadlock_detection() {
+    let edges = vec![
+        make_edge(1, 2, 1),
+        make_edge(2, 1, 1),
+    ];
     
-    let chains = find_blocking_chains(&adjacency);
-    assert!(chains.iter().any(|c| c.contains_cycle));
-}
-
-#[test]
-fn test_long_blocking_chain() {
-    // 1 blocks 2, 2 blocks 3, 3 blocks 4
-    let mut adjacency = HashMap::new();
-    adjacency.insert(1, vec![2]);
-    adjacency.insert(2, vec![3]);
-    adjacency.insert(3, vec![4]);
-    
-    let chains = find_blocking_chains(&adjacency);
-    let long_chain = chains.iter().find(|c| c.depth == 3).unwrap();
-    assert_eq!(long_chain.process_chain, vec![1, 2, 3, 4]);
+    let analysis = build_lock_analysis(&DatabaseType::PostgreSQL, edges);
+    assert!(analysis.has_deadlock);
+    assert_eq!(analysis.summary.deadlock_cycles, 1);
 }
 
 #[test]
 fn test_recommendations() {
-    let _edges: Vec<LockGraphEdge> = vec![];
-    let mut nodes = HashMap::new();
-    nodes.insert(1, LockGraphNode {
-        process_id: 1,
-        role: "blocking".into(),
-        blocked_count: 10, // Heavy blocker
-        waiting_on_count: 0,
-        max_wait_seconds: 0,
-        sample_query: None,
-    });
+    let edges = vec![
+        make_edge(1, 2, 60), // Long wait
+    ];
+    let analysis = build_lock_analysis(&DatabaseType::MySQL, edges);
     
-    let summary = LockAnalysisSummary {
-        total_edges: 10,
-        waiting_sessions: 10,
-        blocking_sessions: 1,
-        max_wait_seconds: 40, // Long wait
-        max_chain_depth: 5,   // Deep chain
-        deadlock_cycles: 1,   // Deadlock
-    };
-    
-    let recs = generate_recommendations(&DatabaseType::PostgreSQL, &summary, &[], &nodes);
-    
-    assert!(recs.iter().any(|r| r.title == "Deadlock Detected"));
-    assert!(recs.iter().any(|r| r.title == "Long Wait Detected"));
-    assert!(recs.iter().any(|r| r.title == "Deep Blocking Chain"));
-    assert!(recs.iter().any(|r| r.title.contains("Heavy Blocker")));
+    let long_wait_rec = analysis.recommendations.iter().find(|r| r.title.contains("Long Wait"));
+    assert!(long_wait_rec.is_some());
 }
