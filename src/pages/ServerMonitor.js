@@ -98,9 +98,122 @@ export function ServerMonitor() {
     const loadAlerts = async () => {
         try {
             alerts = await invoke('get_monitor_alerts');
+            if (activeTab === 'alerts') render();
         } catch (error) {
             console.error('Failed to load monitor alerts:', error);
         }
+    };
+
+    const deleteAlert = async (id) => {
+        const confirmed = await Dialog.confirm('Are you sure you want to delete this alert?', 'Delete Alert');
+        if (!confirmed) return;
+
+        try {
+            await invoke('delete_monitor_alert', { id });
+            await loadAlerts();
+        } catch (error) {
+            Dialog.alert(`Failed to delete alert: ${error}`, 'Error');
+        }
+    };
+
+    const openAlertModal = (alert = null) => {
+        const isEdit = !!alert;
+        const metrics = [
+            { value: 'threads_running', label: 'Running Threads' },
+            { value: 'threads_connected', label: 'Connected Threads' },
+            { value: 'slow_queries', label: 'Slow Query Count' },
+            { value: 'connections', label: 'Total Connections' },
+            { value: 'queries', label: 'Total Queries' }
+        ];
+
+        const modal = document.createElement('div');
+        modal.className = 'fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm';
+        
+        const isLight = theme === 'light';
+        const isDawn = theme === 'dawn';
+        
+        modal.innerHTML = `
+            <div class="${isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : 'bg-[#13161b]')} w-full max-w-md rounded-2xl shadow-2xl border ${isLight ? 'border-gray-200' : 'border-white/10'} overflow-hidden animate-in fade-in zoom-in duration-200">
+                <div class="px-6 py-4 border-b ${isLight ? 'border-gray-100' : 'border-white/5'} flex items-center justify-between">
+                    <h3 class="text-lg font-bold ${isLight ? 'text-gray-900' : 'text-white'}">${isEdit ? 'Edit Alert' : 'Create New Alert'}</h3>
+                    <button class="close-modal-btn p-2 rounded-full hover:bg-gray-100 dark:hover:bg-white/5 transition-colors">
+                        <span class="material-symbols-outlined text-gray-500">close</span>
+                    </button>
+                </div>
+                
+                <form id="alert-form" class="p-6 space-y-4">
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">Metric</label>
+                        <select name="metric_name" required class="w-full px-4 py-2 rounded-lg border ${isLight ? 'bg-gray-50 border-gray-200' : 'bg-white/5 border-white/10'} focus:ring-2 focus:ring-mysql-teal outline-none transition-all">
+                            ${metrics.map(m => `<option value="${m.value}" ${alert?.metric_name === m.value ? 'selected' : ''}>${m.label}</option>`).join('')}
+                        </select>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="space-y-1.5">
+                            <label class="text-xs font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">Operator</label>
+                            <select name="operator" required class="w-full px-4 py-2 rounded-lg border ${isLight ? 'bg-gray-50 border-gray-200' : 'bg-white/5 border-white/10'} focus:ring-2 focus:ring-mysql-teal outline-none transition-all">
+                                <option value=">" ${alert?.operator === '>' ? 'selected' : ''}>Greater Than</option>
+                                <option value="<" ${alert?.operator === '<' ? 'selected' : ''}>Less Than</option>
+                                <option value=">=" ${alert?.operator === '>=' ? 'selected' : ''}>Greater or Equal</option>
+                                <option value="<=" ${alert?.operator === '<=' ? 'selected' : ''}>Less or Equal</option>
+                            </select>
+                        </div>
+                        <div class="space-y-1.5">
+                            <label class="text-xs font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">Threshold</label>
+                            <input type="number" step="any" name="threshold" required value="${alert?.threshold ?? 100}" class="w-full px-4 py-2 rounded-lg border ${isLight ? 'bg-gray-50 border-gray-200' : 'bg-white/5 border-white/10'} focus:ring-2 focus:ring-mysql-teal outline-none transition-all">
+                        </div>
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">Cooldown (seconds)</label>
+                        <input type="number" name="cooldown_secs" required value="${alert?.cooldown_secs ?? 300}" class="w-full px-4 py-2 rounded-lg border ${isLight ? 'bg-gray-50 border-gray-200' : 'bg-white/5 border-white/10'} focus:ring-2 focus:ring-mysql-teal outline-none transition-all">
+                    </div>
+
+                    <div class="flex items-center gap-2 pt-2">
+                        <input type="checkbox" id="is_enabled" name="is_enabled" ${alert?.is_enabled !== false ? 'checked' : ''} class="w-4 h-4 rounded border-gray-300 text-mysql-teal focus:ring-mysql-teal">
+                        <label for="is_enabled" class="text-sm font-medium ${isLight ? 'text-gray-700' : 'text-gray-300'}">Enable this alert</label>
+                    </div>
+
+                    <div class="flex gap-3 pt-4">
+                        <button type="button" class="close-modal-btn flex-1 px-4 py-2 rounded-lg border ${isLight ? 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50' : 'bg-white/5 border-white/10 text-gray-300 hover:bg-white/10'} transition-all">
+                            Cancel
+                        </button>
+                        <button type="submit" class="flex-1 px-4 py-2 rounded-lg bg-mysql-teal text-white hover:bg-mysql-teal/90 transition-all shadow-lg font-bold">
+                            ${isEdit ? 'Update Alert' : 'Create Alert'}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        const closeModal = () => modal.remove();
+        modal.querySelectorAll('.close-modal-btn').forEach(b => b.onclick = closeModal);
+
+        modal.querySelector('#alert-form').onsubmit = async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const payload = {
+                id: alert?.id ?? null,
+                connection_id: "default_active",
+                metric_name: formData.get('metric_name'),
+                operator: formData.get('operator'),
+                threshold: parseFloat(formData.get('threshold')),
+                cooldown_secs: parseInt(formData.get('cooldown_secs')),
+                is_enabled: formData.get('is_enabled') === 'on',
+                last_triggered: alert?.last_triggered ?? null
+            };
+
+            try {
+                await invoke('save_monitor_alert', { alert: payload });
+                closeModal();
+                await loadAlerts();
+            } catch (err) {
+                Dialog.alert(`Failed to save alert: ${err}`, 'Error');
+            }
+        };
     };
 
     const formatUptime = (seconds) => {
@@ -376,6 +489,10 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
                         <span class="material-symbols-outlined text-base mr-1 align-middle">database</span>
                         Top Tables
                     </button>
+                    <button class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'alerts' ? 'bg-mysql-teal text-white shadow-lg' : ((isLight || isDawn) ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white')}" data-tab="alerts">
+                        <span class="material-symbols-outlined text-base mr-1 align-middle">notifications_active</span>
+                        Alerts
+                    </button>
                     <button class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'maintenance' ? 'bg-mysql-teal text-white shadow-lg' : ((isLight || isDawn) ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white')}" data-tab="maintenance">
                         <span class="material-symbols-outlined text-base mr-1 align-middle">build</span>
                         Maintenance
@@ -383,7 +500,7 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
                 </div>
 
                 <!-- Content -->
-                <div class="flex-1 ${activeTab === 'overview' || activeTab === 'usage' || activeTab === 'maintenance' ? 'overflow-y-auto pr-2' : 'overflow-hidden'} flex flex-col custom-scrollbar">
+                <div class="flex-1 ${activeTab === 'overview' || activeTab === 'usage' || activeTab === 'maintenance' || activeTab === 'alerts' ? 'overflow-y-auto pr-2' : 'overflow-hidden'} flex flex-col custom-scrollbar">
                     ${isLoading ? renderLoading() : renderTabContent()}
                 </div>
             </div>
@@ -526,6 +643,7 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
             case 'deadlocks': return renderDeadlocks();
             case 'replication': return replicationStatus && replicationStatus.replicas ? renderPostgresReplication() : renderReplication();
             case 'usage': return renderUsage();
+            case 'alerts': return renderAlerts();
             case 'maintenance': return renderMaintenance();
             default: return renderOverview();
         }

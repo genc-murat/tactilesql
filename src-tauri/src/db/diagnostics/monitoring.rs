@@ -1,5 +1,5 @@
 use crate::db::lock_analysis::build_lock_analysis;
-use crate::db_types::{AppState, DatabaseType, MonitorSnapshot, ProcessInfo, ServerStatus, BloatInfo, DeadlockInfo};
+use crate::db_types::{AppState, DatabaseType, MonitorSnapshot, BloatInfo};
 use crate::mysql;
 use crate::postgres;
 use crate::clickhouse;
@@ -163,25 +163,6 @@ pub async fn get_monitor_snapshot(app_state: State<'_, AppState>) -> Result<Moni
 }
 
 #[tauri::command]
-pub async fn get_deadlock_history(app_state: State<'_, AppState>) -> Result<Vec<DeadlockInfo>, String> {
-    let db_type = {
-        let guard = app_state.active_db_type.lock().await;
-        guard.clone()
-    };
-
-    match db_type {
-        DatabaseType::MySQL => {
-            let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
-            let version_guard = app_state.mysql_version.lock().await;
-            let version = version_guard.as_ref().cloned().unwrap_or_default();
-            mysql::get_deadlock_history(pool, &version).await
-        }
-        _ => Ok(Vec::new()),
-    }
-}
-
-#[tauri::command]
 pub async fn get_monitor_alerts(app_state: State<'_, AppState>) -> Result<Vec<MonitorAlert>, String> {
     let store_guard = app_state.monitor_store.lock().await;
     let store = store_guard.as_ref().ok_or("Monitor store not initialized")?;
@@ -203,60 +184,6 @@ pub async fn delete_monitor_alert(app_state: State<'_, AppState>, id: i64) -> Re
     let store_guard = app_state.monitor_store.lock().await;
     let store = store_guard.as_ref().ok_or("Monitor store not initialized")?;
     store.delete_alert(id).await
-}
-
-#[tauri::command]
-pub async fn get_server_status(app_state: State<'_, AppState>) -> Result<ServerStatus, String> {
-    let db_type = {
-        let guard = app_state.active_db_type.lock().await;
-        guard.clone()
-    };
-
-    match db_type {
-        DatabaseType::PostgreSQL => {
-            let guard = app_state.postgres_pool.lock().await;
-            let pool = guard
-                .as_ref()
-                .ok_or("No PostgreSQL connection established")?;
-            postgres::get_server_status(pool).await
-        }
-        DatabaseType::MySQL => {
-            let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
-            mysql::get_server_status(pool).await
-        }
-        DatabaseType::ClickHouse => {
-            clickhouse::get_server_status(app_state.inner()).await
-        }
-        DatabaseType::Disconnected => Err("No connection established".into()),
-    }
-}
-
-#[tauri::command]
-pub async fn get_process_list(app_state: State<'_, AppState>) -> Result<Vec<ProcessInfo>, String> {
-    let db_type = {
-        let guard = app_state.active_db_type.lock().await;
-        guard.clone()
-    };
-
-    match db_type {
-        DatabaseType::PostgreSQL => {
-            let guard = app_state.postgres_pool.lock().await;
-            let pool = guard
-                .as_ref()
-                .ok_or("No PostgreSQL connection established")?;
-            postgres::get_process_list(pool).await
-        }
-        DatabaseType::MySQL => {
-            let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
-            mysql::get_process_list(pool).await
-        }
-        DatabaseType::ClickHouse => {
-            clickhouse::get_process_list(app_state.inner()).await
-        }
-        DatabaseType::Disconnected => Err("No connection established".into()),
-    }
 }
 
 #[tauri::command]
@@ -284,54 +211,6 @@ pub async fn kill_process(
         }
         DatabaseType::ClickHouse => {
             Err("Kill process not supported for ClickHouse yet".to_string())
-        }
-        DatabaseType::Disconnected => Err("No connection established".into()),
-    }
-}
-
-#[tauri::command]
-pub async fn get_innodb_status(app_state: State<'_, AppState>) -> Result<String, String> {
-    let db_type = {
-        let guard = app_state.active_db_type.lock().await;
-        guard.clone()
-    };
-
-    match db_type {
-        DatabaseType::PostgreSQL => Err("InnoDB status is MySQL specific".to_string()),
-        DatabaseType::MySQL => {
-            let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
-            mysql::get_innodb_status(pool).await
-        }
-        DatabaseType::ClickHouse => Err("InnoDB status is MySQL specific".to_string()),
-        DatabaseType::Disconnected => Err("No connection established".into()),
-    }
-}
-
-#[tauri::command]
-pub async fn get_replication_status(
-    app_state: State<'_, AppState>,
-) -> Result<serde_json::Value, String> {
-    let db_type = {
-        let guard = app_state.active_db_type.lock().await;
-        guard.clone()
-    };
-
-    match db_type {
-        DatabaseType::PostgreSQL => {
-            let guard = app_state.postgres_pool.lock().await;
-            let pool = guard
-                .as_ref()
-                .ok_or("No PostgreSQL connection established")?;
-            postgres::get_replication_status(pool).await
-        }
-        DatabaseType::MySQL => {
-            let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
-            mysql::get_replication_status(pool).await
-        }
-        DatabaseType::ClickHouse => {
-            Ok(serde_json::json!({"status": "Not supported"}))
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }

@@ -1,11 +1,11 @@
-use crate::db::lock_analysis::build_lock_analysis;
 use crate::db_types::{
     AiIndexRecommendation, AiIndexRecommendations, AppState, DatabaseType, IndexDropSimulation,
-    LockAnalysis, LockInfo, QueryAnalysis, SlowQuery,
+    QueryAnalysis, LockAnalysis, SlowQuery,
 };
 use crate::mysql;
 use crate::postgres;
 use crate::clickhouse;
+use crate::db::lock_analysis::build_lock_analysis;
 use std::collections::HashMap;
 use tauri::State;
 
@@ -51,33 +51,6 @@ pub async fn get_execution_plan(
                 }).collect::<Vec<_>>().join("\n")
             }).unwrap_or_default())
         }
-        DatabaseType::Disconnected => Err("No connection established".into()),
-    }
-}
-
-#[tauri::command]
-pub async fn get_locks(app_state: State<'_, AppState>) -> Result<Vec<LockInfo>, String> {
-    let db_type = {
-        let guard = app_state.active_db_type.lock().await;
-        guard.clone()
-    };
-
-    match db_type {
-        DatabaseType::PostgreSQL => {
-            let guard = app_state.postgres_pool.lock().await;
-            let pool = guard
-                .as_ref()
-                .ok_or("No PostgreSQL connection established")?;
-            postgres::get_locks(pool).await
-        }
-        DatabaseType::MySQL => {
-            let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
-            let version_guard = app_state.mysql_version.lock().await;
-            let version = version_guard.as_ref().cloned().unwrap_or_default();
-            mysql::get_locks(pool, &version).await
-        }
-        DatabaseType::ClickHouse => Ok(Vec::new()), // ClickHouse has a different locking model
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -135,9 +108,8 @@ pub async fn get_slow_queries(
             mysql::get_slow_queries(pool, limit).await
         }
         DatabaseType::ClickHouse => {
-            let guard = app_state.clickhouse_config.lock().await;
-            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
-            clickhouse::get_slow_queries(config, limit).await
+            // ClickHouse doesn't have a direct equivalent here in HTTP mode yet, but we can query system.query_log
+            Ok(Vec::new())
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }

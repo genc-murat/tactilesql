@@ -306,32 +306,6 @@ pub fn save_connection(
     Ok(())
 }
 
-#[tauri::command]
-pub fn save_connections(
-    app_handle: AppHandle,
-    app_state: State<'_, AppState>,
-    mut connections: Vec<ConnectionConfig>,
-) -> Result<(), String> {
-    let file_path = get_connections_file_path(&app_handle);
-
-    for conn in &mut connections {
-        if conn.id.is_none() {
-            conn.id = Some(uuid::Uuid::new_v4().to_string());
-        }
-
-        if let Some(ref pwd) = conn.password {
-            if !pwd.is_empty() {
-                conn.password = Some(encrypt_password(pwd, &app_state)?);
-            }
-        }
-    }
-
-    let json = serde_json::to_string_pretty(&connections)
-        .map_err(|e| format!("Failed to serialize connections: {}", e))?;
-    fs::write(file_path, json).map_err(|e| format!("Failed to write connections file: {}", e))?;
-    Ok(())
-}
-
 pub fn load_connections_with_decrypted_passwords(
     app_handle: &AppHandle,
     app_state: &AppState,

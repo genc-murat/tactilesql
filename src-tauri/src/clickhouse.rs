@@ -251,27 +251,6 @@ pub async fn get_views(config: &ConnectionConfig, database: &str) -> Result<Vec<
     Ok(views)
 }
 
-pub async fn get_table_parts(config: &ConnectionConfig, database: &str, table: &str) -> Result<QueryResult, String> {
-    let query = format!(
-        "SELECT * FROM system.parts WHERE database = '{}' AND table = '{}' ORDER BY modification_time DESC",
-        database.replace('\'', "\\'"),
-        table.replace('\'', "\\'")
-    );
-    let results = execute_query_generic(config, query).await?;
-    // Flatten result: execute_query_generic returns Vec<QueryResult>, we take the first one or empty
-    Ok(results.into_iter().next().unwrap_or(QueryResult { columns: vec![], rows: vec![] }))
-}
-
-pub async fn get_table_mutations(config: &ConnectionConfig, database: &str, table: &str) -> Result<QueryResult, String> {
-    let query = format!(
-        "SELECT * FROM system.mutations WHERE database = '{}' AND table = '{}' ORDER BY create_time DESC",
-        database.replace('\'', "\\'"),
-        table.replace('\'', "\\'")
-    );
-    let results = execute_query_generic(config, query).await?;
-    Ok(results.into_iter().next().unwrap_or(QueryResult { columns: vec![], rows: vec![] }))
-}
-
 pub async fn get_table_schema(
     config: &ConnectionConfig,
     database: &str,
@@ -407,10 +386,6 @@ pub async fn get_table_indexes(
     }
 
     Ok(indexes)
-}
-
-pub async fn get_slow_queries(_config: &ConnectionConfig, _limit: i32) -> Result<Vec<SlowQuery>, String> {
-    Ok(Vec::new())
 }
 
 pub async fn analyze_query(_config: &ConnectionConfig, _query: &str) -> Result<QueryAnalysis, String> {
@@ -762,11 +737,6 @@ pub async fn get_query_log_stats(config: &ConnectionConfig) -> Result<Vec<QueryL
 }
 
 #[tauri::command]
-pub async fn get_clickhouse_server_status(app_state: tauri::State<'_, AppState>) -> Result<ServerStatus, String> {
-    get_server_status(&app_state).await
-}
-
-#[tauri::command]
 pub async fn get_clickhouse_table_info(config: ConnectionConfig, database: String, table: String) -> Result<ExtendedTableInfo, String> {
     get_table_info(&config, &database, &table).await
 }
@@ -789,12 +759,6 @@ pub async fn get_clickhouse_query_log(config: ConnectionConfig) -> Result<Vec<Qu
 
 
 // --- Kafka Engine Monitoring ---
-#[derive(Serialize, Debug)]
-pub struct KafkaTableInfo {
-    pub database: String,
-    pub table: String,
-    pub engine_full: String,
-}
 
 #[derive(Serialize, Debug)]
 pub struct KafkaConsumerInfo {
@@ -811,38 +775,7 @@ pub struct KafkaConsumerInfo {
     pub lag: Option<u64>, 
 }
 
-pub async fn get_kafka_tables_impl(config: &ConnectionConfig) -> Result<Vec<KafkaTableInfo>, String> {
-    let query = "SELECT database, name, engine_full FROM system.tables WHERE engine = 'Kafka'";
-    let results = execute_query_generic(config, query.to_string()).await?;
-
-    let mut tables = Vec::new();
-    if let Some(first) = results.first() {
-        if first.rows.is_empty() { return Ok(tables); }
-
-        let db_idx = first.columns.iter().position(|c| c == "database");
-        let name_idx = first.columns.iter().position(|c| c == "name");
-        let engine_idx = first.columns.iter().position(|c| c == "engine_full");
-
-        for row in &first.rows {
-            tables.push(KafkaTableInfo {
-                database: db_idx.and_then(|i| row.get(i)).and_then(|v| v.as_str()).unwrap_or_default().to_string(),
-                table: name_idx.and_then(|i| row.get(i)).and_then(|v| v.as_str()).unwrap_or_default().to_string(),
-                engine_full: engine_idx.and_then(|i| row.get(i)).and_then(|v| v.as_str()).unwrap_or_default().to_string(),
-            });
-        }
-    }
-    Ok(tables)
-}
-
 pub async fn get_kafka_consumers_impl(config: &ConnectionConfig) -> Result<Vec<KafkaConsumerInfo>, String> {
-    // Try to query system.kafka_consumers. 
-    // We check if table exists first? Or just try and catch error.
-    // Query assumes standard columns. 'assignments.topic' usually returned as map or flattened?
-    // In system.kafka_consumers, fields like assignments are often nested or we need to query distinct rows.
-    // Actually system.kafka_consumers usually returns one row per consumer assignment?
-    // Let's use * to be safe and parse by name to avoid issues if column order changes.
-    // Wait, Generic parser maps by column name? Yes `execute_query_generic` returns columns list.
-    
     // NOTE: system.kafka_consumers might not exist if Kafka is not enabled/used.
     let query = "SELECT * FROM system.kafka_consumers";
     let results = execute_query_generic(config, query.to_string()).await.map_err(|e| format!("Failed to query system.kafka_consumers (Kafka might not be enabled): {}", e))?;
@@ -857,40 +790,6 @@ pub async fn get_kafka_consumers_impl(config: &ConnectionConfig) -> Result<Vec<K
          let db_idx = get_idx("database");
          let table_idx = get_idx("table");
          let cid_idx = get_idx("consumer_id");
-         // assignments is a Nested or Tuple? 
-         // Actually in recent CH versions it might be separate columns?
-         // Let's check typical schema:
-         // database, table, consumer_id, cluster, topics, partitions, offsets...
-         // Or typically, creating a view over it is safer.
-         // Let's try to find common columns.
-         // If we can't find specific columns, we return defaults.
-         
-         // Assuming we want row per partition if possible, but system.kafka_consumers might be 1 row per consumer.
-         // If it is 1 row per consumer, 'partitions' and 'offsets' are Arrays.
-         // That complicates parsing in Rust without flattening.
-         // Let's query with ARRAY JOIN to flatten if they are arrays!
-         
-         // Let's check if 'assignments' is a thing.
-         // Actually, let's try a safer query that unrolls arrays if they exist, or just selects standard columns.
-         // "SELECT database, table, consumer_id, last_exception, last_exception_time FROM system.kafka_consumers"
-         // And for metrics, maybe "SELECT * FROM system.kafka_log" is better for lag?
-         // But user wants `system.kafka_consumers`.
-         
-         // Let's try to detect if we have specific columns.
-         // Easier: use `SELECT *` and dynamic parsing.
-         
-         // If it's Array(UInt64) for offsets, we can't easily display it in flat table without unrolling.
-         // Let's try to unroll using `ARRAY JOIN` in query if we suspect array.
-         // But we don't know if they are arrays.
-         
-         // STRATEGY: Select vital info that is usually scalar. `database`, `table`, `consumer_id`, `last_exception`, `last_exception_time`.
-         // For offsets/lag, if they are arrays, we might just show "Compounded" or stringified.
-         // But useful monitor needs per-partition lag.
-         
-         // Let's try:
-         // SELECT database, table, consumer_id, topic, partition, current_offset, last_committed_offset FROM system.kafka_consumers
-         // If 'topic' is not found, fallback?
-         // Let's rely on the result columns.
          
          let topic_idx = get_idx("topic").or(get_idx("assignments.topic")); // Flattened?
          let partition_idx = get_idx("partition").or(get_idx("assignments.partition"));
@@ -932,11 +831,6 @@ pub async fn get_kafka_consumers_impl(config: &ConnectionConfig) -> Result<Vec<K
     }
     
     Ok(consumers)
-}
-
-#[tauri::command]
-pub async fn get_clickhouse_kafka_tables(config: ConnectionConfig) -> Result<Vec<KafkaTableInfo>, String> {
-    get_kafka_tables_impl(&config).await
 }
 
 #[tauri::command]
