@@ -15,12 +15,21 @@ pub fn quote_identifier_postgres(name: &str) -> String {
     format!("\"{}\"", name.replace('"', "\"\""))
 }
 
+pub fn quote_identifier_mssql(name: &str) -> String {
+    format!("[{}]", name.replace(']', "]]"))
+}
+
 pub fn qualified_table_name(db_type: &DatabaseType, database: &str, table: &str) -> String {
     match db_type {
         DatabaseType::PostgreSQL => format!(
             "{}.{}",
             quote_identifier_postgres(database),
             quote_identifier_postgres(table)
+        ),
+        DatabaseType::MSSQL => format!(
+            "{}.{}",
+            quote_identifier_mssql(database),
+            quote_identifier_mssql(table)
         ),
         _ => format!(
             "{}.{}",
@@ -33,6 +42,7 @@ pub fn qualified_table_name(db_type: &DatabaseType, database: &str, table: &str)
 pub fn quote_column_name(db_type: &DatabaseType, column: &str) -> String {
     match db_type {
         DatabaseType::PostgreSQL => quote_identifier_postgres(column),
+        DatabaseType::MSSQL => quote_identifier_mssql(column),
         _ => quote_identifier_mysql(column),
     }
 }

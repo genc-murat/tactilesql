@@ -5,19 +5,19 @@ export const ErDiagramApi = {
         return await invoke('build_er_graph', { connectionId, database, includeViews });
     },
 
-    async saveLayout(connectionId, database, payload, diagramName = 'default') {
-        return await invoke('save_er_layout', { connectionId, database, diagramName, payload });
+    async saveLayout(connectionId, databaseName, payload, diagramName = 'default') {
+        return await invoke('save_er_layout', { connectionId, databaseName, diagramName, payload });
     },
 
-    async getLayout(connectionId, database, diagramName = 'default') {
-        return await invoke('get_er_layout', { connectionId, database, diagramName });
+    async getLayout(connectionId, databaseName, diagramName = 'default') {
+        return await invoke('get_er_layout', { connectionId, databaseName, diagramName });
     },
 
-    async listLayouts(connectionId, database) {
-        return await invoke('list_er_layouts', { connectionId, database });
+    async listLayouts(connectionId, databaseName) {
+        return await invoke('list_er_layouts', { connectionId, databaseName });
     },
 
-    async deleteLayout(connectionId, database, diagramName = 'default') {
-        return await invoke('delete_er_layout', { connectionId, database, diagramName });
+    async deleteLayout(connectionId, databaseName, diagramName = 'default') {
+        return await invoke('delete_er_layout', { connectionId, databaseName, diagramName });
     }
 };

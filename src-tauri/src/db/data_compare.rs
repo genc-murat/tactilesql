@@ -7,6 +7,7 @@ use crate::db_types::{ColumnSchema, DatabaseType, PrimaryKey, QueryResult};
 use crate::mysql;
 use crate::postgres;
 use crate::clickhouse;
+use crate::mssql;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -687,6 +688,11 @@ pub async fn load_table_schema_for_compare(
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_table_schema(pool, database, table).await
         }
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            mssql::get_table_schema(pool, database, "dbo", table).await
+        }
         DatabaseType::ClickHouse => {
             let guard = app_state.clickhouse_config.lock().await;
             let config = guard
@@ -694,7 +700,7 @@ pub async fn load_table_schema_for_compare(
                 .ok_or("No ClickHouse connection established")?;
             clickhouse::get_table_schema(config, database, table).await
         }
-        DatabaseType::Disconnected => Err("No connection established".to_string()),
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -717,6 +723,11 @@ pub async fn load_table_primary_keys_for_compare(
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_table_primary_keys(pool, database, table).await
         }
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            mssql::get_table_primary_keys(pool, database, "dbo", table).await
+        }
         DatabaseType::ClickHouse => {
             let guard = app_state.clickhouse_config.lock().await;
             let config = guard
@@ -724,7 +735,7 @@ pub async fn load_table_primary_keys_for_compare(
                 .ok_or("No ClickHouse connection established")?;
             clickhouse::get_table_primary_keys(config, database, table).await
         }
-        DatabaseType::Disconnected => Err("No connection established".to_string()),
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
@@ -753,6 +764,11 @@ pub async fn load_table_row_count_for_compare(
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::execute_query(pool, query).await
         }
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            mssql::execute_query(pool, query).await
+        }
         DatabaseType::ClickHouse => {
             let guard = app_state.clickhouse_config.lock().await;
             let config = guard
@@ -760,7 +776,7 @@ pub async fn load_table_row_count_for_compare(
                 .ok_or("No ClickHouse connection established")?;
             clickhouse::execute_query(config, query).await
         }
-        DatabaseType::Disconnected => Err("No connection established".to_string()),
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }?;
 
     parse_count_from_results(results, label)
@@ -811,6 +827,11 @@ pub async fn load_table_rows_for_compare(
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::execute_query(pool, query).await
         }
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            mssql::execute_query(pool, query).await
+        }
         DatabaseType::ClickHouse => {
             let guard = app_state.clickhouse_config.lock().await;
             let config = guard
@@ -818,7 +839,7 @@ pub async fn load_table_rows_for_compare(
                 .ok_or("No ClickHouse connection established")?;
             clickhouse::execute_query(config, query).await
         }
-        DatabaseType::Disconnected => Err("No connection established".to_string()),
+        DatabaseType::Disconnected => Err("No connection established".into()),
     }?;
 
     let first_result = results.into_iter().next().unwrap_or(QueryResult {

@@ -2,6 +2,7 @@ use crate::db::AppState;
 use crate::db_types::DatabaseType;
 use crate::data_transfer::models::{DataTransferPlanRequest, DataTransferRunStatus, StartDataTransferRequest};
 use crate::task_manager::models::{TaskDefinition, TaskType};
+use crate::mssql;
 use chrono::Utc;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -97,6 +98,18 @@ async fn execute_sql_task(app: &AppHandle, task: &TaskDefinition) -> Result<Valu
             let results =
                 crate::postgres::execute_query_with_timeout(&pool, sql.clone(), timeout_seconds)
                     .await?;
+            summarize_result_sets(&results)
+        }
+        DatabaseType::MSSQL => {
+            let pool = {
+                let guard = state.mssql_pool.lock().await;
+                guard
+                    .as_ref()
+                    .cloned()
+                    .ok_or("No MSSQL connection established".to_string())?
+            };
+            let results =
+                mssql::execute_query_with_timeout(&pool, sql.clone(), timeout_seconds).await?;
             summarize_result_sets(&results)
         }
         DatabaseType::ClickHouse => {
@@ -207,6 +220,41 @@ async fn execute_backup_task(app: &AppHandle, task: &TaskDefinition) -> Result<V
                         qualified_table_name(&db_type, &database, &table)
                     );
                     let results = crate::mysql::execute_query(&pool, query).await?;
+                    if let Some(first) = results.first() {
+                        for stmt in build_insert_statements(&db_type, &database, &table, first) {
+                            output.push_str(&stmt);
+                            output.push('\n');
+                        }
+                    }
+                }
+                output.push('\n');
+            }
+        }
+        DatabaseType::MSSQL => {
+            let pool = {
+                let guard = state.mssql_pool.lock().await;
+                guard
+                    .as_ref()
+                    .cloned()
+                    .ok_or("No MSSQL connection established".to_string())?
+            };
+
+            let tables = mssql::get_tables(&pool, &database, "dbo").await?; // Assuming dbo for backup
+            table_count = tables.len();
+
+            for table in tables {
+                output.push_str(&format!("-- Table: {}\n", table));
+                // DDL implementation for MSSQL is pending in mssql.rs
+                let ddl = mssql::get_table_ddl(&pool, &database, "dbo", &table).await.unwrap_or_else(|_| format!("-- DDL not implemented for MSSQL: {}", table));
+                output.push_str(&ensure_sql_terminated(&ddl));
+                output.push('\n');
+
+                if include_data {
+                    let query = format!(
+                        "SELECT * FROM {}",
+                        qualified_table_name(&db_type, &database, &table)
+                    );
+                    let results = mssql::execute_query(&pool, query).await?;
                     if let Some(first) = results.first() {
                         for stmt in build_insert_statements(&db_type, &database, &table, first) {
                             output.push_str(&stmt);
@@ -336,6 +384,9 @@ async fn execute_schema_snapshot_task(app: &AppHandle, task: &TaskDefinition) ->
                 &connection_id,
             )
             .await?
+        }
+        DatabaseType::MSSQL => {
+            return Err("Schema snapshot not yet supported for MSSQL".to_string());
         }
         DatabaseType::ClickHouse => {
             let config = {
@@ -1261,6 +1312,18 @@ async fn apply_raw_sql_script(app: &AppHandle, script: &str) -> Result<(), Strin
                 .await
                 .map_err(|e| format!("Failed to apply sync script on MySQL: {}", e))?;
         }
+        DatabaseType::MSSQL => {
+            let pool = {
+                let guard = state.mssql_pool.lock().await;
+                guard
+                    .as_ref()
+                    .cloned()
+                    .ok_or("No MSSQL connection established".to_string())?
+            };
+            // deadpool-tiberius doesn't have raw_sql bridge like sqlx
+            mssql::execute_query(&pool, sql.to_string()).await
+                .map_err(|e| format!("Failed to apply sync script on MSSQL: {}", e))?;
+        }
         DatabaseType::ClickHouse => {
             let config = {
                 let guard = state.clickhouse_config.lock().await;
@@ -1269,8 +1332,6 @@ async fn apply_raw_sql_script(app: &AppHandle, script: &str) -> Result<(), Strin
                     .cloned()
                     .ok_or("No ClickHouse connection established".to_string())?
             };
-            // ClickHouse HTTP doesn't have a direct equivalent to raw_sql execute in sqlx for full scripts.
-            // We just execute it as a query.
             crate::clickhouse::execute_query(&config, sql.to_string()).await
                 .map_err(|e| format!("Failed to apply sync script on ClickHouse: {}", e))?;
         }
@@ -1389,6 +1450,7 @@ fn db_type_label(db_type: &DatabaseType) -> &'static str {
         DatabaseType::MySQL => "mysql",
         DatabaseType::PostgreSQL => "postgresql",
         DatabaseType::ClickHouse => "clickhouse",
+        DatabaseType::MSSQL => "mssql",
         DatabaseType::Disconnected => "disconnected",
     }
 }
@@ -1401,9 +1463,14 @@ fn quote_identifier_postgres(name: &str) -> String {
     format!("\"{}\"", name.replace('"', "\"\""))
 }
 
+fn quote_identifier_mssql(name: &str) -> String {
+    format!("[{}]", name.replace(']', "]]"))
+}
+
 fn quote_column_name(db_type: &DatabaseType, column: &str) -> String {
     match db_type {
         DatabaseType::PostgreSQL => quote_identifier_postgres(column),
+        DatabaseType::MSSQL => quote_identifier_mssql(column),
         _ => quote_identifier_mysql(column),
     }
 }
@@ -1414,6 +1481,11 @@ fn qualified_table_name(db_type: &DatabaseType, database: &str, table: &str) -> 
             "{}.{}",
             quote_identifier_postgres(database),
             quote_identifier_postgres(table)
+        ),
+        DatabaseType::MSSQL => format!(
+            "{}.{}",
+            quote_identifier_mssql(database),
+            quote_identifier_mssql(table)
         ),
         _ => format!(
             "{}.{}",

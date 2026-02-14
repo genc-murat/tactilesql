@@ -2,14 +2,10 @@ use crate::db::lock_analysis::build_lock_analysis;
 use crate::db_types::{AppState, DatabaseType, MonitorSnapshot, BloatInfo, ActivityRecord, PgLockRecord};
 use crate::mysql;
 use crate::postgres;
-use crate::clickhouse;
+use crate::mssql;
 use tauri::State;
 use chrono::{DateTime, Utc};
-use super::monitor_store::{HistoricalMetric, MonitorAlert};
-
-// ... (rest of imports if any)
-
-// ... (previous functions)
+use super::monitor_store::{HistoricalMetric};
 
 #[tauri::command]
 pub async fn kill_process(
@@ -33,6 +29,11 @@ pub async fn kill_process(
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::kill_process(pool, process_id).await
+        }
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            mssql::kill_process(pool, process_id).await
         }
         DatabaseType::ClickHouse => {
             Err("Kill process not supported for ClickHouse yet".to_string())
@@ -107,7 +108,6 @@ pub async fn get_monitor_history(
     let store_guard = app_state.monitor_store.lock().await;
     let store = store_guard.as_ref().ok_or("Monitor store not initialized")?;
 
-    // Using the same placeholder for connection_id
     let connection_id = "default_active";
     store.get_history(connection_id, start, end).await
 }
@@ -198,30 +198,47 @@ pub async fn get_monitor_snapshot(app_state: State<'_, AppState>) -> Result<Moni
                 deadlock_history,
             })
         }
-        DatabaseType::ClickHouse => {
-            let server_status = clickhouse::get_server_status(app_state.inner()).await?;
-            let processes = clickhouse::get_process_list(app_state.inner()).await?;
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+
+            let server_status = mssql::get_server_status(pool).await?;
+            let processes = mssql::get_process_list(pool).await?;
+            let slow_queries = mssql::get_slow_queries(pool, 50).await?;
+            let locks = mssql::get_locks(pool).await?;
+
+            let lock_edges = mssql::get_lock_graph_edges(pool).await.unwrap_or_default();
+            let lock_analysis = if !lock_edges.is_empty() {
+                Some(build_lock_analysis(&db_type, lock_edges))
+            } else {
+                None
+            };
+
+            let wait_events = mssql::get_wait_events(pool).await.unwrap_or_default();
+            let table_usage = mssql::get_table_resource_usage(pool).await.unwrap_or_default();
+            let health_metrics = mssql::get_health_metrics(pool).await.unwrap_or_default();
 
             Ok(MonitorSnapshot {
                 server_status,
                 processes,
-                replication: serde_json::json!({"status": "Not supported"}),
-                slow_queries: Vec::new(),
-                locks: Vec::new(),
-                lock_analysis: None,
+                replication: serde_json::Value::Null,
+                slow_queries,
+                locks,
+                lock_analysis,
                 innodb_status: None,
-                wait_events: Vec::new(),
-                table_usage: Vec::new(),
-                health_metrics: Vec::new(),
+                wait_events,
+                table_usage,
+                health_metrics,
                 deadlock_history: Vec::new(),
             })
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
+        _ => Err("Monitoring is not supported for this database type".to_string()),
     }
 }
 
 #[tauri::command]
-pub async fn get_monitor_alerts(app_state: State<'_, AppState>) -> Result<Vec<MonitorAlert>, String> {
+pub async fn get_monitor_alerts(app_state: State<'_, AppState>) -> Result<Vec<super::monitor_store::MonitorAlert>, String> {
     let store_guard = app_state.monitor_store.lock().await;
     let store = store_guard.as_ref().ok_or("Monitor store not initialized")?;
     store.get_alerts("default_active").await
@@ -230,7 +247,7 @@ pub async fn get_monitor_alerts(app_state: State<'_, AppState>) -> Result<Vec<Mo
 #[tauri::command]
 pub async fn save_monitor_alert(
     app_state: State<'_, AppState>,
-    alert: MonitorAlert,
+    alert: super::monitor_store::MonitorAlert,
 ) -> Result<i64, String> {
     let store_guard = app_state.monitor_store.lock().await;
     let store = store_guard.as_ref().ok_or("Monitor store not initialized")?;
@@ -243,5 +260,3 @@ pub async fn delete_monitor_alert(app_state: State<'_, AppState>, id: i64) -> Re
     let store = store_guard.as_ref().ok_or("Monitor store not initialized")?;
     store.delete_alert(id).await
 }
-
-

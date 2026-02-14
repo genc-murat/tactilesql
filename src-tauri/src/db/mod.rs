@@ -9,7 +9,7 @@ mod data_transfer;
 mod helpers;
 mod lock_analysis;
 mod mock_jobs;
-mod sql_utils;
+pub mod sql_utils;
 
 // Re-export submodule functions
 

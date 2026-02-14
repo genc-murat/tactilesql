@@ -3,6 +3,7 @@ use tauri::{AppHandle, Manager};
 use crate::db_types::{AppState, DatabaseType, ServerStatus};
 use crate::mysql;
 use crate::postgres;
+use crate::mssql;
 use chrono::Utc;
 use tauri_plugin_notification::NotificationExt;
 
@@ -46,6 +47,14 @@ async fn monitor_tick(app: &AppHandle, state: &AppState) -> Result<(), String> {
             let guard = state.postgres_pool.lock().await;
             if let Some(pool) = guard.as_ref() {
                 postgres::get_server_status(pool).await.ok()
+            } else {
+                None
+            }
+        }
+        DatabaseType::MSSQL => {
+            let guard = state.mssql_pool.lock().await;
+            if let Some(pool) = guard.as_ref() {
+                mssql::get_server_status(pool).await.ok()
             } else {
                 None
             }

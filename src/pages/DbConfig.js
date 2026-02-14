@@ -61,6 +61,8 @@ export function DbConfig() {
                 query = 'SELECT name, setting as value, category, short_desc as description FROM pg_settings';
             } else if (dbType.includes('clickhouse')) {
                 query = 'SELECT name, value, description, type as category FROM system.settings';
+            } else if (dbType.includes('mssql')) {
+                query = 'SELECT name, CAST(value as varchar) as value, IIF(is_dynamic = 1, \'Dynamic\', \'Static\') as category, description FROM sys.configurations';
             } else {
                 query = 'SHOW VARIABLES';
             }
@@ -88,6 +90,13 @@ export function DbConfig() {
                             description: rowObj.description
                         };
                     } else if (dbType.includes('clickhouse')) {
+                        return {
+                            name: rowObj.name,
+                            value: rowObj.value,
+                            category: rowObj.category,
+                            description: rowObj.description
+                        };
+                    } else if (dbType.includes('mssql')) {
                         return {
                             name: rowObj.name,
                             value: rowObj.value,

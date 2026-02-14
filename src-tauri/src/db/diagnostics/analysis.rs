@@ -5,6 +5,7 @@ use crate::db_types::{
 use crate::mysql;
 use crate::postgres;
 use crate::clickhouse;
+use crate::mssql;
 use crate::db::lock_analysis::build_lock_analysis;
 use std::collections::HashMap;
 use tauri::State;
@@ -39,10 +40,20 @@ pub async fn get_execution_plan(
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_execution_plan(pool, &query).await
         }
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            let explain_query = format!("SET SHOWPLAN_TEXT ON; {}; SET SHOWPLAN_TEXT OFF;", query);
+            let results = mssql::execute_query(pool, explain_query).await?;
+            Ok(results.into_iter().next().map(|r| {
+                r.rows.into_iter().map(|row| {
+                    row.into_iter().map(|v| v.as_str().unwrap_or_default().to_string()).collect::<Vec<_>>().join(" | ")
+                }).collect::<Vec<_>>().join("\n")
+            }).unwrap_or_default())
+        }
         DatabaseType::ClickHouse => {
             let guard = app_state.clickhouse_config.lock().await;
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
-            // ClickHouse EXPLAIN is slightly different but we can try to use its SQL directly
             let explain_query = format!("EXPLAIN {}", query);
             let results = clickhouse::execute_query(config, explain_query).await?;
             Ok(results.into_iter().next().map(|r| {
@@ -77,6 +88,11 @@ pub async fn get_lock_analysis(app_state: State<'_, AppState>) -> Result<LockAna
             let version = version_guard.as_ref().cloned().unwrap_or_default();
             mysql::get_lock_graph_edges(pool, &version).await?
         }
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            mssql::get_lock_graph_edges(pool).await?
+        }
         DatabaseType::ClickHouse => Vec::new(),
         DatabaseType::Disconnected => return Err("No connection established".into()),
     };
@@ -107,8 +123,12 @@ pub async fn get_slow_queries(
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_slow_queries(pool, limit).await
         }
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            mssql::get_slow_queries(pool, limit).await
+        }
         DatabaseType::ClickHouse => {
-            // ClickHouse doesn't have a direct equivalent here in HTTP mode yet, but we can query system.query_log
             Ok(Vec::new())
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
@@ -137,6 +157,9 @@ pub async fn analyze_query(
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::analyze_query(pool, &query).await
+        }
+        DatabaseType::MSSQL => {
+            Err("Query analysis not yet supported for MSSQL".to_string())
         }
         DatabaseType::ClickHouse => {
             let guard = app_state.clickhouse_config.lock().await;
@@ -392,6 +415,15 @@ pub async fn simulate_index_drop(
                     engine_notes,
                 )
             }
+            DatabaseType::MSSQL => {
+                (
+                    "manual".to_string(),
+                    String::new(),
+                    String::new(),
+                    Vec::new(),
+                    vec!["Index simulation not yet supported for MSSQL".to_string()],
+                )
+            }
             DatabaseType::ClickHouse => {
                 // ClickHouse doesn't support easy 'what-if' index drop simulations
                 (
@@ -530,6 +562,13 @@ pub async fn get_ai_index_recommendations(
                 .await
                 .unwrap_or_default()
         }
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            mssql::get_table_indexes(pool, &database, "dbo", &table)
+                .await
+                .unwrap_or_default()
+        }
         DatabaseType::ClickHouse => {
             let guard = app_state.clickhouse_config.lock().await;
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
@@ -555,6 +594,13 @@ pub async fn get_ai_index_recommendations(
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_table_schema(pool, &database, &table)
+                .await
+                .unwrap_or_default()
+        }
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            mssql::get_table_schema(pool, &database, "dbo", &table)
                 .await
                 .unwrap_or_default()
         }
@@ -675,6 +721,12 @@ pub async fn get_ai_index_recommendations(
                     table, col_name, database, table, col_name
                 )
             }
+            DatabaseType::MSSQL => {
+                format!(
+                    "CREATE INDEX idx_{}_{} ON {}.{} ({});",
+                    table, col_name, database, table, col_name
+                )
+            }
             DatabaseType::ClickHouse => {
                 format!(
                     "ALTER TABLE {}.{} ADD INDEX idx_{}_{} ({}) TYPE minmax GRANULARITY 3;",
@@ -730,6 +782,15 @@ pub async fn get_ai_index_recommendations(
                     )
                 }
                 DatabaseType::MySQL => {
+                    format!(
+                        "CREATE INDEX idx_{}_composite ON {}.{} ({});",
+                        table,
+                        database,
+                        table,
+                        top_cols.join(", ")
+                    )
+                }
+                DatabaseType::MSSQL => {
                     format!(
                         "CREATE INDEX idx_{}_composite ON {}.{} ({});",
                         table,

@@ -1,13 +1,14 @@
 /**
  * Database Adapter
  * Main entry point for database-specific operations
- * Automatically selects MySQL, PostgreSQL or ClickHouse based on active connection
+ * Automatically selects MySQL, PostgreSQL, ClickHouse or MSSQL based on active connection
  */
 
 import { DatabaseType, getActiveDbType, isPostgreSQL, isMySQL, COMMON_SQL_KEYWORDS, COMMON_SQL_FUNCTIONS, COMMON_DATA_TYPES } from './types.js';
 import { MYSQL_KEYWORDS, MYSQL_FUNCTIONS, MYSQL_DATA_TYPES, MYSQL_SNIPPETS, MYSQL_QUOTE_CHAR, getMySQLExplainQuery, MYSQL_INFO_QUERIES } from './mysql.js';
 import { POSTGRESQL_KEYWORDS, POSTGRESQL_FUNCTIONS, POSTGRESQL_DATA_TYPES, POSTGRESQL_SNIPPETS, POSTGRESQL_QUOTE_CHAR, getPostgreSQLExplainQuery, POSTGRESQL_INFO_QUERIES } from './postgresql.js';
 import { CLICKHOUSE_KEYWORDS, CLICKHOUSE_FUNCTIONS, CLICKHOUSE_DATA_TYPES, CLICKHOUSE_SNIPPETS, CLICKHOUSE_QUOTE_CHAR, getClickhouseExplainQuery, CLICKHOUSE_INFO_QUERIES } from './clickhouse.js';
+import { MSSQL_KEYWORDS, MSSQL_FUNCTIONS, MSSQL_DATA_TYPES, MSSQL_SNIPPETS, MSSQL_QUOTE_START, MSSQL_QUOTE_END, getMSSQLExplainQuery, MSSQL_INFO_QUERIES } from './mssql.js';
 
 // Re-export types for convenience
 export { DatabaseType, getActiveDbType, isPostgreSQL, isMySQL };
@@ -20,6 +21,13 @@ export const isClickHouse = () => {
 };
 
 /**
+ * Check if current database is MSSQL
+ */
+export const isMSSQL = () => {
+    return getActiveDbType() === DatabaseType.MSSQL;
+};
+
+/**
  * Get all SQL keywords for the current database type
  */
 export const getSqlKeywords = () => {
@@ -28,6 +36,8 @@ export const getSqlKeywords = () => {
         return [...COMMON_SQL_KEYWORDS, ...POSTGRESQL_KEYWORDS];
     } else if (dbType === DatabaseType.CLICKHOUSE) {
         return [...COMMON_SQL_KEYWORDS, ...CLICKHOUSE_KEYWORDS];
+    } else if (dbType === DatabaseType.MSSQL) {
+        return [...COMMON_SQL_KEYWORDS, ...MSSQL_KEYWORDS];
     }
     return [...COMMON_SQL_KEYWORDS, ...MYSQL_KEYWORDS];
 };
@@ -41,6 +51,8 @@ export const getSqlFunctions = () => {
         return [...COMMON_SQL_FUNCTIONS, ...POSTGRESQL_FUNCTIONS];
     } else if (dbType === DatabaseType.CLICKHOUSE) {
         return [...COMMON_SQL_FUNCTIONS, ...CLICKHOUSE_FUNCTIONS];
+    } else if (dbType === DatabaseType.MSSQL) {
+        return [...COMMON_SQL_FUNCTIONS, ...MSSQL_FUNCTIONS];
     }
     return [...COMMON_SQL_FUNCTIONS, ...MYSQL_FUNCTIONS];
 };
@@ -54,6 +66,8 @@ export const getDataTypes = () => {
         return [...COMMON_DATA_TYPES, ...POSTGRESQL_DATA_TYPES];
     } else if (dbType === DatabaseType.CLICKHOUSE) {
         return [...COMMON_DATA_TYPES, ...CLICKHOUSE_DATA_TYPES];
+    } else if (dbType === DatabaseType.MSSQL) {
+        return [...COMMON_DATA_TYPES, ...MSSQL_DATA_TYPES];
     }
     return [...COMMON_DATA_TYPES, ...MYSQL_DATA_TYPES];
 };
@@ -67,6 +81,8 @@ export const getSnippets = () => {
         return POSTGRESQL_SNIPPETS;
     } else if (dbType === DatabaseType.CLICKHOUSE) {
         return CLICKHOUSE_SNIPPETS;
+    } else if (dbType === DatabaseType.MSSQL) {
+        return MSSQL_SNIPPETS;
     }
     return MYSQL_SNIPPETS;
 };
@@ -146,12 +162,13 @@ export const getAllSnippets = () => {
 /**
  * Get the quote character for identifiers
  */
-export const getQuoteChar = () => {
-    const dbType = getActiveDbType();
+export const getQuoteChar = (dbType = getActiveDbType()) => {
     if (dbType === DatabaseType.POSTGRESQL) {
         return POSTGRESQL_QUOTE_CHAR;
     } else if (dbType === DatabaseType.CLICKHOUSE) {
         return CLICKHOUSE_QUOTE_CHAR;
+    } else if (dbType === DatabaseType.MSSQL) {
+        return [MSSQL_QUOTE_START, MSSQL_QUOTE_END];
     }
     return MYSQL_QUOTE_CHAR;
 };
@@ -159,8 +176,24 @@ export const getQuoteChar = () => {
 /**
  * Quote an identifier (table name, column name, etc.)
  */
-export const quoteIdentifier = (identifier) => {
-    const quote = getQuoteChar();
+export const quoteIdentifier = (identifier, dbType = getActiveDbType()) => {
+    if (!identifier) return identifier;
+    
+    if (dbType === DatabaseType.MSSQL) {
+        // Handle multipart identifiers like "dbo.Table" or "DB.dbo.Table"
+        if (identifier.includes('.') && !identifier.startsWith(MSSQL_QUOTE_START)) {
+            return identifier
+                .split('.')
+                .map(part => `${MSSQL_QUOTE_START}${part}${MSSQL_QUOTE_END}`)
+                .join('.');
+        }
+        return `${MSSQL_QUOTE_START}${identifier}${MSSQL_QUOTE_END}`;
+    }
+    
+    const quote = getQuoteChar(dbType);
+    if (Array.isArray(quote)) {
+        return `${quote[0]}${identifier}${quote[1]}`;
+    }
     return `${quote}${identifier}${quote}`;
 };
 
@@ -173,6 +206,8 @@ export const getExplainQuery = (sql) => {
         return getPostgreSQLExplainQuery(sql);
     } else if (dbType === DatabaseType.CLICKHOUSE) {
         return getClickhouseExplainQuery(sql);
+    } else if (dbType === DatabaseType.MSSQL) {
+        return getMSSQLExplainQuery(sql);
     }
     return getMySQLExplainQuery(sql);
 };
@@ -186,6 +221,8 @@ export const getInfoQueries = () => {
         return POSTGRESQL_INFO_QUERIES;
     } else if (dbType === DatabaseType.CLICKHOUSE) {
         return CLICKHOUSE_INFO_QUERIES;
+    } else if (dbType === DatabaseType.MSSQL) {
+        return MSSQL_INFO_QUERIES;
     }
     return MYSQL_INFO_QUERIES;
 };
@@ -199,6 +236,8 @@ export const getDatabaseDisplayName = () => {
         return 'PostgreSQL';
     } else if (dbType === DatabaseType.CLICKHOUSE) {
         return 'ClickHouse';
+    } else if (dbType === DatabaseType.MSSQL) {
+        return 'MSSQL';
     }
     return 'MySQL';
 };
@@ -235,12 +274,20 @@ export const isFeatureSupported = (feature) => {
         'LATERAL',
         'DISTINCT ON'
     ];
+
+    const mssqlUnsupportedFeatures = [
+        ...mysqlOnlyFeatures,
+        ...postgresOnlyFeatures,
+        'LIMIT' // MSSQL uses TOP
+    ];
     
     if (dbType === DatabaseType.MYSQL) {
         return !postgresOnlyFeatures.includes(feature);
     } else if (dbType === DatabaseType.CLICKHOUSE) {
         // ClickHouse supports many MySQL-like features via bridge
         return true; 
+    } else if (dbType === DatabaseType.MSSQL) {
+        return !mssqlUnsupportedFeatures.includes(feature);
     } else {
         return !mysqlOnlyFeatures.includes(feature);
     }
@@ -253,6 +300,7 @@ export default {
     isPostgreSQL,
     isMySQL,
     isClickHouse,
+    isMSSQL,
     getSqlKeywords,
     getSqlFunctions,
     getDataTypes,

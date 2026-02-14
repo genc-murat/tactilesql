@@ -6,6 +6,7 @@ use crate::db_types::{AppState, DatabaseType, QueryResult};
 use crate::mysql;
 use crate::postgres;
 use crate::clickhouse;
+use crate::mssql;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fs;
@@ -53,6 +54,13 @@ pub async fn export_table_csv(
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             let schema = mysql::get_table_schema(pool, &database, &table).await?;
             let rows = mysql::execute_query(pool, query).await?;
+            (schema, rows)
+        }
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            let schema = mssql::get_table_schema(pool, &database, "dbo", &table).await?;
+            let rows = mssql::execute_query(pool, query).await?;
             (schema, rows)
         }
         DatabaseType::ClickHouse => {
@@ -143,6 +151,13 @@ pub async fn export_table_json(
             let rows = mysql::execute_query(pool, query).await?;
             (schema, rows)
         }
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            let schema = mssql::get_table_schema(pool, &database, "dbo", &table).await?;
+            let rows = mssql::execute_query(pool, query).await?;
+            (schema, rows)
+        }
         DatabaseType::ClickHouse => {
             let guard = app_state.clickhouse_config.lock().await;
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
@@ -224,6 +239,13 @@ pub async fn export_table_sql(
             let rows = mysql::execute_query(pool, query).await?;
             (ddl, rows)
         }
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            let ddl = mssql::get_table_ddl(pool, &database, "dbo", &table).await.unwrap_or_default();
+            let rows = mssql::execute_query(pool, query).await?;
+            (ddl, rows)
+        }
         DatabaseType::ClickHouse => {
             let guard = app_state.clickhouse_config.lock().await;
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
@@ -296,6 +318,11 @@ pub async fn import_csv(
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_table_schema(pool, &database, &table).await?
+        }
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            mssql::get_table_schema(pool, &database, "dbo", &table).await?
         }
         DatabaseType::ClickHouse => {
             let guard = app_state.clickhouse_config.lock().await;
@@ -468,6 +495,45 @@ pub async fn import_csv(
                 .await
                 .map_err(|e| format!("Failed to commit import transaction: {}", e))?;
         }
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            
+            for (row_idx, record) in reader.records().enumerate() {
+                let row_no = row_idx + line_offset;
+                let record = match record {
+                    Ok(rec) => rec,
+                    Err(e) => {
+                        errors.push(format!("Row {} parse error: {}", row_no, e));
+                        continue;
+                    }
+                };
+
+                let values = column_mapping
+                    .iter()
+                    .map(|(source_idx, _)| {
+                        let raw = record.get(*source_idx).unwrap_or("").trim();
+                        if raw.is_empty() || raw.eq_ignore_ascii_case("null") {
+                            "NULL".to_string()
+                        } else {
+                            format!("'{}'", escape_sql_string(raw))
+                        }
+                    })
+                    .collect::<Vec<String>>()
+                    .join(", ");
+
+                let sql = format!(
+                    "INSERT INTO {} ({}) VALUES ({})",
+                    qualified_table, quoted_columns, values
+                );
+                
+                if let Err(err) = mssql::execute_query(pool, sql).await {
+                    errors.push(format!("Row {} insert failed: {}", row_no, err));
+                } else {
+                    rows_imported += 1;
+                }
+            }
+        }
         DatabaseType::ClickHouse => {
             let guard = app_state.clickhouse_config.lock().await;
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
@@ -607,6 +673,33 @@ pub async fn backup_database(
                 output.push('\n');
             }
         }
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            let tables = mssql::get_tables(pool, &database, "dbo").await?;
+
+            for table in tables {
+                output.push_str(&format!("-- Table: {}\n", table));
+                let ddl = mssql::get_table_ddl(pool, &database, "dbo", &table).await.unwrap_or_default();
+                output.push_str(&ensure_sql_terminated(&ddl));
+                output.push('\n');
+
+                if include_data {
+                    let query = format!(
+                        "SELECT * FROM {}",
+                        qualified_table_name(&db_type, &database, &table)
+                    );
+                    let results = mssql::execute_query(pool, query).await?;
+                    if let Some(first) = results.first() {
+                        for stmt in build_insert_statements(&db_type, &database, &table, first) {
+                            output.push_str(&stmt);
+                            output.push('\n');
+                        }
+                    }
+                }
+                output.push('\n');
+            }
+        }
         DatabaseType::ClickHouse => {
             let guard = app_state.clickhouse_config.lock().await;
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
@@ -676,12 +769,16 @@ pub async fn restore_database(
                 .await
                 .map_err(|e| format!("Restore failed: {}", e))?;
         }
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            mssql::execute_query(pool, sql_content)
+                .await
+                .map_err(|e| format!("Restore failed: {}", e))?;
+        }
         DatabaseType::ClickHouse => {
             let guard = app_state.clickhouse_config.lock().await;
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
-            
-            // ClickHouse HTTP client doesn't support raw_sql easily for arbitrary script execution
-            // We'll try to split and execute if needed, or just execute as one query if it's simple
             clickhouse::execute_query(config, sql_content)
                 .await
                 .map_err(|e| format!("Restore failed: {}", e))?;

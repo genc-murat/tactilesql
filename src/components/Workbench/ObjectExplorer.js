@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { showViewSourceModal } from '../UI/ViewSourceModal.js';
 import { Dialog } from '../UI/Dialog.js';
 import { ThemeManager } from '../../utils/ThemeManager.js';
-import { getQuoteChar, isPostgreSQL, DatabaseType } from '../../database/index.js';
+import { getQuoteChar, isPostgreSQL, DatabaseType, getActiveDbType, quoteIdentifier } from '../../database/index.js';
 import { escapeHtml, DatabaseCache, CacheTypes } from '../../utils/helpers.js';
 import { toastSuccess, toastError } from '../../utils/Toast.js';
 import { SettingsManager } from '../../utils/SettingsManager.js';
@@ -72,7 +72,9 @@ export function ObjectExplorer() {
     const connectionKeyById = new Map();
     const deriveStateKey = (conn) => {
         if (!conn) return null;
-        return conn.id || `${conn.name || conn.host || 'conn'}::${conn.host || ''}::${conn.port || ''}::${conn.username || ''}`;
+        // Include dbType in the key so switching types for the same connection ID clears the view state
+        const type = conn.dbType || conn.type || 'mysql';
+        return `${conn.id || 'id'}::${type}`;
     };
     const createState = () => ({
         databases: [],
@@ -241,11 +243,17 @@ export function ObjectExplorer() {
     // System databases/schemas per DB type
     const mysqlSystemDbs = ['mysql', 'information_schema', 'performance_schema', 'sys'];
     const pgSystemSchemas = ['pg_catalog', 'information_schema', 'pg_toast'];
+    const mssqlSystemDbs = ['master', 'tempdb', 'model', 'msdb', 'reportserver', 'reportservertempdb'];
 
     // Get system databases/schemas based on active DB type
     // For PostgreSQL, we list schemas (so use system schemas)
     // For MySQL, we list databases (so use system databases)
-    const getSystemDatabases = () => isPostgreSQL() ? pgSystemSchemas : mysqlSystemDbs;
+    const getSystemDatabases = () => {
+        const type = getActiveDbType();
+        if (type === DatabaseType.POSTGRESQL) return pgSystemSchemas;
+        if (type === DatabaseType.MSSQL) return mssqlSystemDbs;
+        return mysqlSystemDbs;
+    };
 
     // Get quote character based on active DB type (use database adapter)
     const getQuote = () => getQuoteChar();
@@ -1715,15 +1723,18 @@ export function ObjectExplorer() {
                 icon: 'table_view',
                 iconColor: isDawn ? 'text-[#9ccfd8]' : 'text-cyan-400',
                 onClick: () => {
-                    const q = getQuote(); // This might need dbType specific quote if we support mixed connections in future
-                    // For now, getQuote() uses active connection logic usually, or fallback.
-                    // Ideally we should move getQuoteChar to accept dbType. 
-                    // But `getQuoteChar` in `database/index.js` checks `isPostgreSQL()`.
-                    // We can check `dbType` passed here.
-                    const qChar = (dbType === 'postgresql') ? '"' : '`';
+                    const quotedDb = quoteIdentifier(dbName, dbType);
+                    const quotedView = quoteIdentifier(viewName, dbType);
+                    let query = '';
+
+                    if (dbType === 'mssql') {
+                        query = `SELECT TOP 1000 * FROM ${quotedDb}.${quotedView};`;
+                    } else {
+                        query = `SELECT * FROM ${quotedDb}.${quotedView} LIMIT 1000;`;
+                    }
 
                     window.dispatchEvent(new CustomEvent('tactilesql:run-query', {
-                        detail: { query: `SELECT * FROM ${qChar}${dbName}${qChar}.${qChar}${viewName}${qChar} LIMIT 1000;` }
+                        detail: { query }
                     }));
                 }
             },
@@ -1978,8 +1989,15 @@ export function ObjectExplorer() {
                 icon: 'table_view',
                 iconColor: isDawn ? 'text-[#9ccfd8]' : 'text-cyan-400',
                 onClick: async () => {
-                    const qChar = (dbType === 'postgresql') ? '"' : '`';
-                    const query = `SELECT * FROM ${qChar}${dbName}${qChar}.${qChar}${tableName}${qChar} LIMIT 200`;
+                    let query = '';
+                    const quotedDb = quoteIdentifier(dbName, dbType);
+                    const quotedTable = quoteIdentifier(tableName, dbType);
+
+                    if (dbType === 'mssql') {
+                        query = `SELECT TOP 200 * FROM ${quotedDb}.${quotedTable}`;
+                    } else {
+                        query = `SELECT * FROM ${quotedDb}.${quotedTable} LIMIT 200`;
+                    }
 
                     // Update query editor content
                     window.dispatchEvent(new CustomEvent('tactilesql:set-query', { detail: { query } }));
@@ -2105,13 +2123,13 @@ export function ObjectExplorer() {
                 icon: 'code',
                 iconColor: isDawn ? 'text-[#c6a0f6]' : 'text-purple-400',
                 items: [
-                    { label: 'Select', icon: 'abc', iconColor: 'text-gray-400', onClick: () => generateSQL('select', tableName, dbName) },
-                    { label: 'Insert', icon: 'add_circle', iconColor: 'text-green-400', onClick: () => generateSQL('insert', tableName, dbName) },
-                    { label: 'Update', icon: 'edit', iconColor: 'text-blue-400', onClick: () => generateSQL('update', tableName, dbName) },
-                    { label: 'Delete', icon: 'delete', iconColor: 'text-red-400', onClick: () => generateSQL('delete', tableName, dbName) },
-                    { label: 'Merge', icon: 'merge', iconColor: 'text-orange-400', onClick: () => generateSQL('merge', tableName, dbName) },
+                    { label: 'Select', icon: 'abc', iconColor: 'text-gray-400', onClick: () => generateSQL('select', tableName, dbName, dbType) },
+                    { label: 'Insert', icon: 'add_circle', iconColor: 'text-green-400', onClick: () => generateSQL('insert', tableName, dbName, dbType) },
+                    { label: 'Update', icon: 'edit', iconColor: 'text-blue-400', onClick: () => generateSQL('update', tableName, dbName, dbType) },
+                    { label: 'Delete', icon: 'delete', iconColor: 'text-red-400', onClick: () => generateSQL('delete', tableName, dbName, dbType) },
+                    { label: 'Merge', icon: 'merge', iconColor: 'text-orange-400', onClick: () => generateSQL('merge', tableName, dbName, dbType) },
                     { type: 'separator' },
-                    { label: 'DDL Script', icon: 'description', iconColor: 'text-yellow-400', onClick: () => generateSQL('ddl', tableName, dbName) }
+                    { label: 'DDL Script', icon: 'description', iconColor: 'text-yellow-400', onClick: () => generateSQL('ddl', tableName, dbName, dbType) }
                 ]
             },
             { type: 'separator' },
@@ -2135,14 +2153,20 @@ export function ObjectExplorer() {
     // Helper for generating SQL (was inline in old menu, assuming existence or need to restore logic)
     // The previous implementation used data attributes on buttons and a generic event handler.
     // We need to implement the action logic here.
-    const generateSQL = async (type, table, db) => {
+    const generateSQL = async (type, table, db, dbType = getActiveDbType()) => {
         try {
             let sql = '';
+            const quotedDb = quoteIdentifier(db, dbType);
+            const quotedTable = quoteIdentifier(table, dbType);
+
             if (type === 'ddl') {
                 sql = await invoke('get_table_ddl', { database: db, table });
             } else if (type === 'select') {
-                const q = getQuote();
-                sql = `SELECT * FROM ${q}${db}${q}.${q}${table}${q} \nLIMIT 100;`;
+                if (dbType === 'mssql') {
+                    sql = `SELECT TOP 100 * FROM ${quotedDb}.${quotedTable};`;
+                } else {
+                    sql = `SELECT * FROM ${quotedDb}.${quotedTable} \nLIMIT 100;`;
+                }
             } else if (['insert', 'update', 'merge', 'delete'].includes(type)) {
                 let cols = [];
                 // Only delete doesn't mandatory need columns for simple case, but good for WHERE 
@@ -2158,18 +2182,26 @@ export function ObjectExplorer() {
 
                 if (type === 'insert') {
                     const params = cols.map(() => '?').join(', ');
-                    const colList = cols.map(c => `\`${c.name}\``).join(', ');
-                    sql = `INSERT INTO \`${db}\`.\`${table}\`\n(${colList})\nVALUES\n(${params});`;
+                    const colList = cols.map(c => quoteIdentifier(c.name, dbType)).join(', ');
+                    sql = `INSERT INTO ${quotedDb}.${quotedTable}\n(${colList})\nVALUES\n(${params});`;
                 } else if (type === 'update') {
-                    const setList = cols.map(c => `    \`${c.name}\` = ?`).join(',\n');
-                    sql = `UPDATE \`${db}\`.\`${table}\`\nSET\n${setList}\nWHERE <condition>;`;
+                    const setList = cols.map(c => `    ${quoteIdentifier(c.name, dbType)} = ?`).join(',\n');
+                    sql = `UPDATE ${quotedDb}.${quotedTable}\nSET\n${setList}\nWHERE <condition>;`;
                 } else if (type === 'merge') {
                     const params = cols.map(() => '?').join(', ');
-                    const colList = cols.map(c => `\`${c.name}\``).join(', ');
-                    const updateList = cols.map(c => `    \`${c.name}\` = VALUES(\`${c.name}\`)`).join(',\n');
-                    sql = `INSERT INTO \`${db}\`.\`${table}\`\n(${colList})\nVALUES\n(${params})\nON DUPLICATE KEY UPDATE\n${updateList};`;
+                    const colList = cols.map(c => quoteIdentifier(c.name, dbType)).join(', ');
+                    
+                    if (dbType === 'postgresql') {
+                        const updateList = cols.map(c => `    ${quoteIdentifier(c.name, dbType)} = EXCLUDED.${quoteIdentifier(c.name, dbType)}`).join(',\n');
+                        sql = `INSERT INTO ${quotedDb}.${quotedTable}\n(${colList})\nVALUES\n(${params})\nON CONFLICT (<key_column>) DO UPDATE SET\n${updateList};`;
+                    } else if (dbType === 'mssql') {
+                        sql = `MERGE INTO ${quotedDb}.${quotedTable} AS Target\nUSING (SELECT ${params}) AS Source (<columns>)\nON (Target.<key> = Source.<key>)\nWHEN MATCHED THEN\n    UPDATE SET <column_mappings>\nWHEN NOT MATCHED THEN\n    INSERT (${colList}) VALUES (${params});`;
+                    } else {
+                        const updateList = cols.map(c => `    ${quoteIdentifier(c.name, dbType)} = VALUES(${quoteIdentifier(c.name, dbType)})`).join(',\n');
+                        sql = `INSERT INTO ${quotedDb}.${quotedTable}\n(${colList})\nVALUES\n(${params})\nON DUPLICATE KEY UPDATE\n${updateList};`;
+                    }
                 } else if (type === 'delete') {
-                    sql = `DELETE FROM \`${db}\`.\`${table}\`\nWHERE <condition>;`;
+                    sql = `DELETE FROM ${quotedDb}.${quotedTable}\nWHERE <condition>;`;
                 }
             }
 
@@ -2193,18 +2225,26 @@ export function ObjectExplorer() {
     const runMaintenance = async (operation, dbName, tableName, dbType) => {
         let query = '';
         const isPg = dbType === 'postgresql';
+        const isMssql = dbType === 'mssql';
+        const quotedDb = quoteIdentifier(dbName, dbType);
+        const quotedTable = quoteIdentifier(tableName, dbType);
 
         if (isPg) {
-            if (operation === 'analyze') query = `ANALYZE "${dbName}"."${tableName}"`;
-            else if (operation === 'optimize') query = `VACUUM FULL "${dbName}"."${tableName}"`;
+            if (operation === 'analyze') query = `ANALYZE ${quotedDb}.${quotedTable}`;
+            else if (operation === 'optimize') query = `VACUUM FULL ${quotedDb}.${quotedTable}`;
             else return; // check/repair not supported for PostgreSQL
+        } else if (isMssql) {
+            if (operation === 'analyze') query = `UPDATE STATISTICS ${quotedDb}.${quotedTable}`;
+            else if (operation === 'optimize') query = `ALTER INDEX ALL ON ${quotedDb}.${quotedTable} REORGANIZE`;
+            else if (operation === 'check') query = `DBCC CHECKTABLE ('${dbName}.${tableName}')`;
+            else return;
         } else if (dbType === 'clickhouse') {
-            if (operation === 'optimize') query = `OPTIMIZE TABLE \`${dbName}\`.\`${tableName}\` FINAL`;
+            if (operation === 'optimize') query = `OPTIMIZE TABLE ${quotedDb}.${quotedTable} FINAL`;
             else return;
         } else {
             // MySQL
             const op = operation.toUpperCase();
-            query = `${op} TABLE \`${dbName}\`.\`${tableName}\``;
+            query = `${op} TABLE ${quotedDb}.${quotedTable}`;
         }
 
         try {
@@ -2280,7 +2320,9 @@ export function ObjectExplorer() {
             // Trigger background pre-fetching for all databases
             if (databases.length > 0) {
                 const sysDbs = getSystemDatabases().map(d => d.toLowerCase());
+                const currentDbsLower = databases.map(d => d.toLowerCase());
                 const userDbs = databases.filter(d => !sysDbs.includes(d.toLowerCase()));
+                const actualSysDbs = databases.filter(d => sysDbs.includes(d.toLowerCase()));
                 const connConfig = connections.find(c => c.id === activeConnectionId);
 
                 // Prioritize user databases
@@ -2289,7 +2331,7 @@ export function ObjectExplorer() {
                         if (activeConnectionId !== connConfig.id) break; // Stop if switched away
                         if (!dbObjects[db]) await loadDatabaseObjects(db, true);
                     }
-                    for (const db of sysDbs) {
+                    for (const db of actualSysDbs) {
                         if (activeConnectionId !== connConfig.id) break;
                         if (!dbObjects[db]) await loadDatabaseObjects(db, true);
                     }
@@ -2422,6 +2464,7 @@ export function ObjectExplorer() {
     };
 
     const fetchDatabaseObjects = async (dbName) => {
+        console.log(`[ObjectExplorer] Fetching objects for DB: ${dbName}`);
         const [tables, views, triggers, procedures, functions, events, dictionaries] = await Promise.all([
             invoke('get_tables', { database: dbName }),
             invoke('get_views', { database: dbName }),
@@ -2431,6 +2474,7 @@ export function ObjectExplorer() {
             invoke('get_events', { database: dbName }),
             invoke('get_dictionaries', { database: dbName }).catch(() => [])
         ]);
+        console.log(`[ObjectExplorer] Received for ${dbName}:`, { tables, views, triggers });
         return { tables, views, triggers, procedures, functions, events, dictionaries };
     };
 
@@ -2438,6 +2482,7 @@ export function ObjectExplorer() {
         const details = {};
         for (const table of tables) {
             try {
+                console.log(`[ObjectExplorer] Fetching details for table: ${dbName}.${table}`);
                 const [columns, indexes, fks] = await Promise.all([
                     invoke('get_table_schema', { database: dbName, table }),
                     invoke('get_table_indexes', { database: dbName, table }),
@@ -2456,6 +2501,7 @@ export function ObjectExplorer() {
     };
 
     const loadDatabaseObjects = async (dbName, isBackground = false) => {
+        console.log(`[ObjectExplorer] loadDatabaseObjects called for ${dbName}, isBackground: ${isBackground}`);
         if (!isBackground) {
             cancelPreload = true;
             await ensureActiveBackend();
@@ -2505,13 +2551,14 @@ export function ObjectExplorer() {
     };
 
     const ensureExpandedDataLoaded = async () => {
+        const currentDbList = new Set(databases);
         const dbPromises = Array.from(expandedDbs).map(db => {
-            if (!dbObjects[db]) return loadDatabaseObjects(db, true);
+            if (currentDbList.has(db) && !dbObjects[db]) return loadDatabaseObjects(db, true);
             return Promise.resolve();
         });
         const tablePromises = Array.from(expandedTables).map(key => {
-            if (!tableDetails[key]) {
-                const [db, table] = key.split('.');
+            const [db, table] = key.split('.');
+            if (currentDbList.has(db) && !tableDetails[key]) {
                 return loadTableDetails(db, table);
             }
             return Promise.resolve();

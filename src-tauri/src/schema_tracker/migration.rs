@@ -61,6 +61,34 @@ pub fn generate_migration_script(diff: &SchemaDiff, db_type: &DatabaseType) -> S
     generate_migration_plan(diff, db_type, Some(MigrationStrategy::Native)).script
 }
 
+pub fn generate_migration_sql(diff: &SchemaDiff) -> Result<String, String> {
+    // Default to MySQL for generic generation or detect from snapshot if available
+    Ok(generate_migration_script(diff, &DatabaseType::MySQL))
+}
+
+pub fn build_migration_plan(diff: &SchemaDiff) -> MigrationPlan {
+    generate_migration_plan(diff, &DatabaseType::MySQL, None)
+}
+
+pub fn generate_schema_story_summary(diff: &SchemaDiff) -> String {
+    let mut parts = Vec::new();
+    if !diff.new_tables.is_empty() {
+        parts.push(format!("added {} tables", diff.new_tables.len()));
+    }
+    if !diff.dropped_tables.is_empty() {
+        parts.push(format!("removed {} tables", diff.dropped_tables.len()));
+    }
+    if !diff.modified_tables.is_empty() {
+        parts.push(format!("modified {} tables", diff.modified_tables.len()));
+    }
+    
+    if parts.is_empty() {
+        "no schema changes detected".to_string()
+    } else {
+        parts.join(", ")
+    }
+}
+
 pub fn generate_migration_plan(
     diff: &SchemaDiff,
     db_type: &DatabaseType,
@@ -354,6 +382,11 @@ fn build_lock_warnings(
                     );
                 }
             }
+            DatabaseType::MSSQL => {
+                if normalized.starts_with("ALTER TABLE") {
+                    push_warning("medium", "MSSQL ALTER TABLE may acquire schema modification locks.");
+                }
+            }
             DatabaseType::ClickHouse => {
                 // ClickHouse specific warnings can be added here
             }
@@ -378,6 +411,7 @@ fn generate_create_table(table: &TableDefinition, db_type: &DatabaseType) -> Str
             DatabaseType::MySQL => format_column_mysql(col),
             DatabaseType::PostgreSQL => format_column_postgres(col),
             DatabaseType::ClickHouse => format_column_mysql(col), // ClickHouse via MySQL bridge
+            DatabaseType::MSSQL => format_column_mssql(col),
             DatabaseType::Disconnected => String::new(),
         };
         columns_def.push(col_def);
@@ -390,7 +424,7 @@ fn generate_create_table(table: &TableDefinition, db_type: &DatabaseType) -> Str
         .collect();
     
     match db_type {
-        DatabaseType::PostgreSQL | DatabaseType::MySQL => {
+        DatabaseType::PostgreSQL | DatabaseType::MySQL | DatabaseType::MSSQL => {
             if !pk_cols.is_empty() {
                 columns_def.push(format!("PRIMARY KEY ({})", pk_cols.join(", ")));
             }
@@ -428,6 +462,11 @@ fn generate_alter_table(diff: &TableDiff, db_type: &DatabaseType) -> Vec<String>
                 "ALTER TABLE {} ADD COLUMN {}",
                 table,
                 format_column_postgres(col)
+            )),
+            DatabaseType::MSSQL => stmts.push(format!(
+                "ALTER TABLE {} ADD {}",
+                table,
+                format_column_mssql(col)
             )),
             DatabaseType::ClickHouse => stmts.push(format!(
                 "ALTER TABLE {} ADD COLUMN {}",
@@ -495,6 +534,13 @@ fn generate_alter_table(diff: &TableDiff, db_type: &DatabaseType) -> Vec<String>
                     stmts.push(format!("ALTER TABLE {} {}", table, change));
                 }
             }
+            DatabaseType::MSSQL => {
+                stmts.push(format!(
+                    "ALTER TABLE {} ALTER COLUMN {}",
+                    table,
+                    format_column_mssql(&col_diff.new_column)
+                ));
+            }
             DatabaseType::ClickHouse => stmts.push(format!(
                 "ALTER TABLE {} MODIFY COLUMN {}",
                 table,
@@ -523,6 +569,7 @@ fn generate_alter_table(diff: &TableDiff, db_type: &DatabaseType) -> Vec<String>
         match db_type {
             DatabaseType::MySQL => stmts.push(format!("DROP INDEX {} ON {}", idx.name, table)),
             DatabaseType::PostgreSQL => stmts.push(format!("DROP INDEX {}", idx.name)),
+            DatabaseType::MSSQL => stmts.push(format!("DROP INDEX {} ON {}", idx.name, table)),
             DatabaseType::ClickHouse => stmts.push(format!("ALTER TABLE {} DROP INDEX {}", table, idx.name)),
             DatabaseType::Disconnected => {}
         }
@@ -574,6 +621,20 @@ fn format_column_mysql(col: &ColumnSchema) -> String {
 }
 
 fn format_column_postgres(col: &ColumnSchema) -> String {
+    let null_def = if col.is_nullable { "NULL" } else { "NOT NULL" };
+    let default_def = if let Some(ref def) = col.column_default {
+        format!("DEFAULT {}", def)
+    } else {
+        String::new()
+    };
+
+    format!(
+        "{} {} {} {}",
+        col.name, col.column_type, null_def, default_def
+    )
+}
+
+fn format_column_mssql(col: &ColumnSchema) -> String {
     let null_def = if col.is_nullable { "NULL" } else { "NOT NULL" };
     let default_def = if let Some(ref def) = col.column_default {
         format!("DEFAULT {}", def)

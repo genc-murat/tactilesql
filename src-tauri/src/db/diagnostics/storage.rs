@@ -31,6 +31,16 @@ pub async fn get_capacity_metrics(
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_capacity_metrics(pool, &database).await
         }
+        DatabaseType::MSSQL => {
+            Ok(CapacityMetrics {
+                storage_bytes: 0,
+                data_bytes: 0,
+                index_bytes: 0,
+                buffer_hit_ratio: 0.0,
+                disk_read_bytes: 0,
+                disk_write_bytes: 0,
+            })
+        }
         DatabaseType::ClickHouse => {
             let guard = app_state.clickhouse_config.lock().await;
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
@@ -62,8 +72,7 @@ pub async fn get_sequences(
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_sequences(pool, &schema).await
         }
-        DatabaseType::MySQL | DatabaseType::ClickHouse => {
-            // MySQL and ClickHouse don't have sequences in the same way as Postgres
+        DatabaseType::MySQL | DatabaseType::ClickHouse | DatabaseType::MSSQL => {
             Ok(Vec::new())
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
@@ -88,7 +97,7 @@ pub async fn get_custom_types(
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_custom_types(pool, &schema).await
         }
-        DatabaseType::MySQL | DatabaseType::ClickHouse => Ok(Vec::new()),
+        DatabaseType::MySQL | DatabaseType::ClickHouse | DatabaseType::MSSQL => Ok(Vec::new()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -110,7 +119,7 @@ pub async fn get_tablespaces(app_state: State<'_, AppState>) -> Result<Vec<Strin
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_tablespaces(pool).await
         }
-        DatabaseType::MySQL | DatabaseType::ClickHouse => Ok(Vec::new()),
+        DatabaseType::MySQL | DatabaseType::ClickHouse | DatabaseType::MSSQL => Ok(Vec::new()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -142,6 +151,9 @@ pub async fn get_index_suggestions(
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_index_suggestions(pool, &database, &table).await
+        }
+        DatabaseType::MSSQL => {
+            Ok(Vec::new())
         }
         DatabaseType::ClickHouse => {
             let guard = app_state.clickhouse_config.lock().await;
@@ -176,6 +188,9 @@ pub async fn get_index_usage(
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_index_usage(pool, &database, &table).await
         }
+        DatabaseType::MSSQL => {
+            Ok(Vec::new())
+        }
         DatabaseType::ClickHouse => {
             let guard = app_state.clickhouse_config.lock().await;
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
@@ -208,6 +223,9 @@ pub async fn get_index_sizes(
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_index_sizes(pool, &database, &table).await
+        }
+        DatabaseType::MSSQL => {
+            Ok(Vec::new())
         }
         DatabaseType::ClickHouse => {
             let guard = app_state.clickhouse_config.lock().await;

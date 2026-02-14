@@ -542,6 +542,55 @@ pub struct ExtendedTableInfo {
     pub comment: String,
 }
 
+pub async fn get_table_stats(
+    config: &ConnectionConfig,
+    database: &str,
+    table: &str,
+) -> Result<TableStats, String> {
+    let query = format!(
+        "SELECT total_rows, total_bytes FROM system.tables WHERE database = '{}' AND name = '{}'",
+        database.replace('\'', "\\'"),
+        table.replace('\'', "\\'")
+    );
+    let results = execute_query_generic(config, query).await?;
+    
+    if let Some(first) = results.first() {
+        if let Some(row) = first.rows.first() {
+            let row_count = row.get(0).and_then(|v| {
+                if v.is_u64() { v.as_u64() }
+                else if v.is_string() { v.as_str().and_then(|s| s.parse::<u64>().ok()) }
+                else { None }
+            }).unwrap_or(0) as i64;
+
+            let data_size = row.get(1).and_then(|v| {
+                if v.is_u64() { v.as_u64() }
+                else if v.is_string() { v.as_str().and_then(|s| s.parse::<u64>().ok()) }
+                else { None }
+            }).unwrap_or(0) as i64;
+
+            return Ok(TableStats {
+                row_count,
+                data_size,
+                index_size: 0,
+                data_free: 0,
+                auto_increment: None,
+                collation: None,
+                charset: None,
+            });
+        }
+    }
+
+    Ok(TableStats {
+        row_count: 0,
+        data_size: 0,
+        index_size: 0,
+        data_free: 0,
+        auto_increment: None,
+        collation: None,
+        charset: None,
+    })
+}
+
 pub async fn get_extended_table_info(config: &ConnectionConfig, database: &str, table: &str) -> Result<ExtendedTableInfo, String> {
     let query = format!(
         "SELECT engine, engine_full, data_paths, metadata_path, storage_policy, total_rows, total_bytes, lifetime_rows, lifetime_bytes, metadata_modification_time, comment FROM system.tables WHERE database = '{}' AND name = '{}'",

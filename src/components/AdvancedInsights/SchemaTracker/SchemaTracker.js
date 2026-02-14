@@ -168,7 +168,7 @@ export function SchemaTracker() {
                 btn.disabled = true;
             }
             // Pass selectedDatabase provided it's not null/empty
-            await SchemaTrackerApi.captureSnapshot(activeConnection.id, selectedDatabase || undefined);
+            await SchemaTrackerApi.captureSnapshot(activeConnection.id, selectedDatabase || null);
             await loadSnapshots();
         } catch (e) {
             Dialog.alert("Capture failed: " + e, "Error");

@@ -1,6 +1,7 @@
 use crate::quality_analyzer::models::*;
 use sqlx::{MySql, Pool, Postgres, Row};
 use chrono::{Utc, DateTime};
+use crate::mssql;
 
 pub async fn analyze_table_mysql(
     pool: &Pool<MySql>,
@@ -840,6 +841,200 @@ pub async fn analyze_table_postgres(
                         affected_row_count: Some(failed as u64),
                         drill_down_query: Some(format!("SELECT * FROM {}.{} WHERE NOT ({}) LIMIT 50", schema, table, rule.sql_assertion)),
                     });
+                }
+            }
+        }
+    }
+
+    Ok(TableQualityReport {
+        id: None,
+        connection_id: connection_id.to_string(),
+        table_name: table.to_string(),
+        timestamp: Utc::now(),
+        overall_score: calculate_score(&issues),
+        row_count: total_row_count as u64,
+        last_updated,
+        column_metrics,
+        issues,
+        custom_rule_results: if custom_rule_results.is_empty() { None } else { Some(custom_rule_results) },
+        schema_snapshot_id: None,
+        schema_name: Some(schema.to_string()),
+    })
+}
+
+pub async fn analyze_table_mssql(
+    pool: &deadpool_tiberius::Pool,
+    database: &str,
+    schema: &str,
+    table: &str,
+    connection_id: &str,
+    _sample_percent: Option<f64>,
+    custom_rules: Option<Vec<CustomRule>>,
+) -> Result<TableQualityReport, String> {
+    // 1. Get Row Count
+    let count_query = format!("SELECT COUNT(*) FROM [{}].[{}].[{}]", database, schema, table);
+    let results = mssql::execute_query(pool, count_query).await?;
+    let total_row_count = results.get(0)
+        .and_then(|r| r.rows.get(0))
+        .and_then(|row| row.get(0))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+
+    if total_row_count == 0 {
+        return Ok(TableQualityReport {
+            id: None,
+            connection_id: connection_id.to_string(),
+            table_name: table.to_string(),
+            timestamp: Utc::now(),
+            overall_score: 100.0,
+            row_count: 0,
+            last_updated: None,
+            column_metrics: Vec::new(),
+            issues: Vec::new(),
+            custom_rule_results: None,
+            schema_snapshot_id: None,
+            schema_name: Some(schema.to_string()),
+        });
+    }
+
+    // 2. Get Columns
+    let columns_query = format!(
+        "SELECT COLUMN_NAME, DATA_TYPE FROM [{}].INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = '{}' AND TABLE_NAME = '{}'",
+        database, schema, table
+    );
+    let results = mssql::execute_query(pool, columns_query).await?;
+    let mut columns = Vec::new();
+    if let Some(first) = results.get(0) {
+        for row in &first.rows {
+            let name = row[0].as_str().unwrap_or("").to_string();
+            let data_type = row[1].as_str().unwrap_or("").to_string();
+            columns.push((name, data_type));
+        }
+    }
+
+    let mut column_metrics = Vec::new();
+    let mut issues = Vec::new();
+
+    // Freshness
+    let mut last_updated: Option<DateTime<Utc>> = None;
+    let freshness_cols: Vec<String> = columns.iter()
+        .filter(|(name, dt)| {
+            let n = name.to_lowercase();
+            let d = dt.to_lowercase();
+            (n.contains("created") || n.contains("updated") || n.contains("timestamp") || n.contains("date")) &&
+            (d.contains("timestamp") || d.contains("date") || d.contains("time") || d.contains("datetime"))
+        })
+        .map(|(name, _)| format!("MAX([{}])", name))
+        .collect();
+
+    if !freshness_cols.is_empty() {
+        let freshness_query = format!("SELECT {} FROM [{}].[{}].[{}]", freshness_cols.join(", "), database, schema, table);
+        if let Ok(res) = mssql::execute_query(pool, freshness_query).await {
+            if let Some(first) = res.get(0) {
+                if let Some(row) = first.rows.get(0) {
+                    for val in row {
+                        if let Some(s) = val.as_str() {
+                            // Try to parse datetime string from MSSQL
+                            if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
+                                let utc_dt = dt.with_timezone(&Utc);
+                                if last_updated.is_none() || Some(utc_dt) > last_updated {
+                                    last_updated = Some(utc_dt);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Optimized Metrics gathering
+    for (col_name, data_type) in &columns {
+        let _is_numeric = ["int", "decimal", "float", "numeric", "money"].iter().any(|t| data_type.contains(t));
+        
+        let metrics_query = format!(
+            "SELECT \
+                SUM(CASE WHEN [{}] IS NULL THEN 1 ELSE 0 END) as null_count, \
+                COUNT(DISTINCT [{}]) as distinct_count \
+             FROM [{}].[{}].[{}]",
+            col_name, col_name, database, schema, table
+        );
+
+        if let Ok(res) = mssql::execute_query(pool, metrics_query).await {
+            if let Some(first) = res.get(0) {
+                if let Some(row) = first.rows.get(0) {
+                    let null_count = row[0].as_i64().unwrap_or(0);
+                    let distinct_count = row[1].as_i64().unwrap_or(0);
+                    
+                    let null_pct = (null_count as f32 / total_row_count as f32) * 100.0;
+                    let distinct_pct = (distinct_count as f32 / total_row_count as f32) * 100.0;
+
+                    if null_pct > 50.0 {
+                        issues.push(DataQualityIssue {
+                            issue_type: IssueType::HighNullRate,
+                            severity: IssueSeverity::Warning,
+                            description: format!("Column '{}' has {:.1}% NULL values.", col_name, null_pct),
+                            column_name: Some(col_name.clone()),
+                            affected_row_count: Some(null_count as u64),
+                            drill_down_query: Some(format!("SELECT TOP 50 * FROM [{}].[{}].[{}] WHERE [{}] IS NULL", database, schema, table, col_name)),
+                        });
+                    }
+
+                    column_metrics.push(ColumnQualityMetrics {
+                        column_name: col_name.clone(),
+                        null_count: null_count as u64,
+                        null_percentage: null_pct,
+                        distinct_count: distinct_count as u64,
+                        distinct_percentage: distinct_pct,
+                        min_value: None, // Simplified for now
+                        max_value: None,
+                        mean_value: None,
+                        top_values: None,
+                        pattern_metrics: None,
+                    });
+                }
+            }
+        }
+    }
+
+    // Custom rules
+    let mut custom_rule_results = Vec::new();
+    if let Some(rules) = custom_rules {
+        for rule in rules {
+            let rule_query = format!(
+                "SELECT \
+                    SUM(CASE WHEN ({}) THEN 1 ELSE 0 END) as passed, \
+                    SUM(CASE WHEN NOT ({}) THEN 1 ELSE 0 END) as failed \
+                 FROM [{}].[{}].[{}]",
+                rule.sql_assertion, rule.sql_assertion, database, schema, table
+            );
+            if let Ok(res) = mssql::execute_query(pool, rule_query).await {
+                if let Some(first) = res.get(0) {
+                    if let Some(row) = first.rows.get(0) {
+                        let passed = row[0].as_i64().unwrap_or(0);
+                        let failed = row[1].as_i64().unwrap_or(0);
+                        let total = (passed + failed) as f32;
+                        let failure_pct = if total > 0.0 { (failed as f32 / total) * 100.0 } else { 0.0 };
+
+                        custom_rule_results.push(CustomRuleResult {
+                            rule_name: rule.rule_name.clone(),
+                            sql_assertion: rule.sql_assertion.clone(),
+                            passed_count: passed as u64,
+                            failed_count: failed as u64,
+                            failure_percentage: failure_pct,
+                        });
+
+                        if failure_pct > 0.0 {
+                            issues.push(DataQualityIssue {
+                                issue_type: IssueType::CustomRuleFailure,
+                                severity: if failure_pct > 10.0 { IssueSeverity::Critical } else { IssueSeverity::Warning },
+                                description: format!("Rule '{}' failed for {:.1}% of records.", rule.rule_name, failure_pct),
+                                column_name: None,
+                                affected_row_count: Some(failed as u64),
+                                drill_down_query: Some(format!("SELECT TOP 50 * FROM [{}].[{}].[{}] WHERE NOT ({})", database, schema, table, rule.sql_assertion)),
+                            });
+                        }
+                    }
                 }
             }
         }

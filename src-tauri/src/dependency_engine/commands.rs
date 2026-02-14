@@ -21,6 +21,7 @@ pub async fn get_dependency_graph(
         DatabaseType::MySQL => "mysql",
         DatabaseType::PostgreSQL => "postgresql",
         DatabaseType::ClickHouse => "clickhouse",
+        DatabaseType::MSSQL => "mssql",
         DatabaseType::Disconnected => "disconnected",
     };
 
@@ -77,6 +78,18 @@ pub async fn get_dependency_graph(
                 let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
                 super::extractor::build_dependency_graph_clickhouse(
                     config,
+                    &connection_id,
+                    database,
+                    table_name,
+                    hop_depth_usize,
+                )
+                .await
+            }
+            DatabaseType::MSSQL => {
+                let pool_guard = app_state.mssql_pool.lock().await;
+                let pool = pool_guard.as_ref().ok_or("No active MSSQL connection")?;
+                super::extractor::build_dependency_graph_mssql(
+                    pool,
                     &connection_id,
                     database,
                     table_name,

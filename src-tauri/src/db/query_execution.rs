@@ -8,6 +8,7 @@ use crate::db_types::{AppState, DatabaseType, QueryResult};
 use crate::mysql;
 use crate::postgres;
 use crate::clickhouse;
+use crate::mssql;
 
 static SYSTEM_QUERY_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     // Matches:
@@ -55,6 +56,7 @@ pub fn spawn_awareness_log(
     let db_type_clone = db_type.clone();
     let mysql_pool_arc = app_state.mysql_pool.clone();
     let postgres_pool_arc = app_state.postgres_pool.clone();
+    let mssql_pool_arc = app_state.mssql_pool.clone();
 
     tauri::async_runtime::spawn(async move {
         let guard = store_arc.lock().await;
@@ -88,6 +90,22 @@ pub fn spawn_awareness_log(
                                 crate::postgres::get_execution_plan(pool, &query_clone).await
                             } else {
                                 Err("Postgres pool not available".to_string())
+                            }
+                        }
+                        DatabaseType::MSSQL => {
+                            let g = mssql_pool_arc.lock().await;
+                            if let Some(pool) = g.as_ref() {
+                                // For MSSQL we can try SHOWPLAN
+                                let explain_query = format!("SET SHOWPLAN_TEXT ON; {}; SET SHOWPLAN_TEXT OFF;", query_clone);
+                                mssql::execute_query(pool, explain_query).await.map(|results| {
+                                    results.into_iter().next().map(|r| {
+                                        r.rows.into_iter().map(|row| {
+                                            row.into_iter().map(|v| v.as_str().unwrap_or_default().to_string()).collect::<Vec<_>>().join(" | ")
+                                        }).collect::<Vec<_>>().join("\n")
+                                    }).unwrap_or_default()
+                                })
+                            } else {
+                                Err("MSSQL pool not available".to_string())
                             }
                         }
                         DatabaseType::ClickHouse => {
@@ -194,6 +212,11 @@ pub async fn execute_query(
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::execute_query(pool, query.clone()).await
         }
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            mssql::execute_query(pool, query.clone()).await
+        }
         DatabaseType::ClickHouse => {
             let guard = app_state.clickhouse_config.lock().await;
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
@@ -267,6 +290,14 @@ pub async fn execute_query_profiled(
                 _query_timeout_seconds,
             )
             .await?
+        }
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            let res =
+                mssql::execute_query_with_timeout(pool, query.clone(), _query_timeout_seconds)
+                    .await?;
+            (res, None)
         }
         DatabaseType::ClickHouse => {
             let guard = app_state.clickhouse_config.lock().await;

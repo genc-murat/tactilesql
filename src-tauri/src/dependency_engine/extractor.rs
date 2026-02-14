@@ -3,6 +3,7 @@ use super::parser::{extract_dependencies, DbDialect};
 use sqlx::{MySql, Pool, Postgres, Row};
 use std::time::Duration;
 use tokio::time::timeout;
+use crate::mssql;
 
 /// Helper to safely get a string from a MySQL row column, handling both String and Vec<u8>.
 fn get_mysql_string(row: &sqlx::mysql::MySqlRow, index: usize) -> String {
@@ -364,6 +365,105 @@ pub async fn build_dependency_graph_postgres(
     }
 
     // 5) Optional focused neighborhood
+    if let Some(target) = table_name {
+        let hops = hop_depth.unwrap_or(2).max(1);
+        graph.filter_neighborhood(&target, database.as_deref(), hops);
+    }
+
+    Ok(graph)
+}
+
+pub async fn build_dependency_graph_mssql(
+    pool: &deadpool_tiberius::Pool,
+    _connection_id: &str,
+    database: Option<String>,
+    table_name: Option<String>,
+    hop_depth: Option<usize>,
+) -> Result<DependencyGraph, String> {
+    let mut graph = DependencyGraph::new();
+    let target_db = database.clone().unwrap_or_else(|| "master".to_string());
+
+    // 1) Tables and Views
+    let tables_query = format!(
+        "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE FROM [{}].INFORMATION_SCHEMA.TABLES",
+        target_db
+    );
+    let results = mssql::execute_query(pool, tables_query).await?;
+    if let Some(first) = results.get(0) {
+        for row in &first.rows {
+            let schema = row[0].as_str().unwrap_or("dbo").to_string();
+            let name = row[1].as_str().unwrap_or("").to_string();
+            let table_type = row[2].as_str().unwrap_or("").to_string();
+            
+            let node_type = if table_type.contains("VIEW") {
+                NodeType::View
+            } else {
+                NodeType::Table
+            };
+            graph.add_node(Some(schema), name, node_type);
+        }
+    }
+
+    // 2) Expression Dependencies (Views, Stored Procedures, etc.)
+    // Note: This relies on sys.sql_expression_dependencies which is per-database
+    let dep_query = format!(
+        "SELECT \
+            OBJECT_SCHEMA_NAME(referencing_id) AS referencing_schema, \
+            OBJECT_NAME(referencing_id) AS referencing_name, \
+            referenced_schema_name, \
+            referenced_entity_name \
+         FROM [{}].sys.sql_expression_dependencies",
+        target_db
+    );
+    
+    if let Ok(res) = mssql::execute_query(pool, dep_query).await {
+        if let Some(first) = res.get(0) {
+            for row in &first.rows {
+                let source_schema = row[0].as_str().unwrap_or("dbo");
+                let source_name = row[1].as_str().unwrap_or("");
+                let target_schema = row[2].as_str().unwrap_or("dbo");
+                let target_name = row[3].as_str().unwrap_or("");
+
+                if !source_name.is_empty() && !target_name.is_empty() {
+                    let source_id = format!("{}.{}", source_schema, source_name);
+                    let target_id = format!("{}.{}", target_schema, target_name);
+                    graph.add_edge(&source_id, &target_id, EdgeType::Select);
+                }
+            }
+        }
+    }
+
+    // 3) Foreign Keys
+    let fk_query = format!(
+        "SELECT \
+            SCHEMA_NAME(fk.schema_id) AS schema_name, \
+            fk.name AS fk_name, \
+            OBJECT_NAME(fk.parent_object_id) AS table_name, \
+            SCHEMA_NAME(ref_t.schema_id) AS referenced_schema, \
+            ref_t.name AS referenced_table \
+         FROM [{}].sys.foreign_keys fk \
+         INNER JOIN [{}].sys.tables ref_t ON fk.referenced_object_id = ref_t.object_id",
+        target_db, target_db
+    );
+
+    if let Ok(res) = mssql::execute_query(pool, fk_query).await {
+        if let Some(first) = res.get(0) {
+            for row in &first.rows {
+                let schema = row[0].as_str().unwrap_or("dbo");
+                let table = row[2].as_str().unwrap_or("");
+                let ref_schema = row[3].as_str().unwrap_or("dbo");
+                let ref_table = row[4].as_str().unwrap_or("");
+
+                if !table.is_empty() && !ref_table.is_empty() {
+                    let source_id = format!("{}.{}", schema, table);
+                    let target_id = format!("{}.{}", ref_schema, ref_table);
+                    graph.add_edge(&source_id, &target_id, EdgeType::ForeignKey);
+                }
+            }
+        }
+    }
+
+    // 4) Optional focused neighborhood
     if let Some(target) = table_name {
         let hops = hop_depth.unwrap_or(2).max(1);
         graph.filter_neighborhood(&target, database.as_deref(), hops);

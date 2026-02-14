@@ -1,14 +1,16 @@
 use crate::er_diagram::models::{ErLayoutRecord, ErLayoutSummary};
 use chrono::Utc;
 use sqlx::{sqlite::SqliteRow, Pool, Row, Sqlite};
+use std::sync::Arc;
 
+#[derive(Clone)]
 pub struct ErDiagramStore {
-    pool: Pool<Sqlite>,
+    pool: Arc<Pool<Sqlite>>,
 }
 
 impl ErDiagramStore {
     pub async fn new(pool: Pool<Sqlite>) -> Result<Self, String> {
-        let store = Self { pool };
+        let store = Self { pool: Arc::new(pool) };
         store.init_schema().await?;
         Ok(store)
     }
@@ -26,17 +28,31 @@ impl ErDiagramStore {
                 updated_at INTEGER NOT NULL,
                 UNIQUE(connection_id, database_name, diagram_name)
             );
+            "#,
+        )
+        .execute(&*self.pool)
+        .await
+        .map_err(|e| format!("Failed to create er_diagram_layouts table: {}", e))?;
 
+        sqlx::query(
+            r#"
             CREATE INDEX IF NOT EXISTS idx_er_diagram_layouts_lookup
                 ON er_diagram_layouts(connection_id, database_name, diagram_name);
+            "#,
+        )
+        .execute(&*self.pool)
+        .await
+        .map_err(|e| format!("Failed to create lookup index: {}", e))?;
 
+        sqlx::query(
+            r#"
             CREATE INDEX IF NOT EXISTS idx_er_diagram_layouts_updated
                 ON er_diagram_layouts(updated_at);
             "#,
         )
-        .execute(&self.pool)
+        .execute(&*self.pool)
         .await
-        .map_err(|e| format!("Failed to init er_diagram schema: {}", e))?;
+        .map_err(|e| format!("Failed to create updated index: {}", e))?;
 
         Ok(())
     }
@@ -82,7 +98,7 @@ impl ErDiagramStore {
         .bind(payload_text)
         .bind(now)
         .bind(now)
-        .fetch_one(&self.pool)
+        .fetch_one(&*self.pool)
         .await
         .map_err(|e| format!("Failed to save ER layout: {}", e))?;
 
@@ -112,7 +128,7 @@ impl ErDiagramStore {
         .bind(connection_id)
         .bind(database_name)
         .bind(diagram_name)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&*self.pool)
         .await
         .map_err(|e| format!("Failed to fetch ER layout: {}", e))?;
 
@@ -143,7 +159,7 @@ impl ErDiagramStore {
         )
         .bind(connection_id)
         .bind(database_name)
-        .fetch_all(&self.pool)
+        .fetch_all(&*self.pool)
         .await
         .map_err(|e| format!("Failed to list ER layouts: {}", e))?;
 
@@ -167,7 +183,7 @@ impl ErDiagramStore {
         .bind(connection_id)
         .bind(database_name)
         .bind(diagram_name)
-        .execute(&self.pool)
+        .execute(&*self.pool)
         .await
         .map_err(|e| format!("Failed to delete ER layout: {}", e))?;
 

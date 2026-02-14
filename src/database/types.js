@@ -6,7 +6,8 @@
 export const DatabaseType = {
     MYSQL: 'mysql',
     POSTGRESQL: 'postgresql',
-    CLICKHOUSE: 'clickhouse'
+    CLICKHOUSE: 'clickhouse',
+    MSSQL: 'mssql'
 };
 
 // Get current active database type

@@ -7,6 +7,7 @@ use crate::db_types::{
 use crate::mysql;
 use crate::postgres;
 use crate::clickhouse;
+use crate::mssql;
 
 #[tauri::command]
 pub async fn get_databases(app_state: State<'_, AppState>) -> Result<Vec<String>, String> {
@@ -17,18 +18,21 @@ pub async fn get_databases(app_state: State<'_, AppState>) -> Result<Vec<String>
 
     match db_type {
         DatabaseType::PostgreSQL => {
-            // PostgreSQL: Return schemas instead of databases
-            // because we connect to a specific database and browse schemas within it
             let guard = app_state.postgres_pool.lock().await;
             let pool = guard
                 .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
-            postgres::get_schemas(pool).await
+            postgres::get_databases(pool).await
         }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_databases(pool).await
+        }
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            mssql::get_databases(pool).await
         }
         DatabaseType::ClickHouse => {
             let guard = app_state.clickhouse_config.lock().await;
@@ -40,37 +44,7 @@ pub async fn get_databases(app_state: State<'_, AppState>) -> Result<Vec<String>
 }
 
 #[tauri::command]
-pub async fn get_schemas(app_state: State<'_, AppState>) -> Result<Vec<String>, String> {
-    let db_type = {
-        let guard = app_state.active_db_type.lock().await;
-        guard.clone()
-    };
-
-    match db_type {
-        DatabaseType::PostgreSQL => {
-            let guard = app_state.postgres_pool.lock().await;
-            let pool = guard
-                .as_ref()
-                .ok_or("No PostgreSQL connection established")?;
-            postgres::get_schemas(pool).await
-        }
-        DatabaseType::MySQL => {
-            // MySQL doesn't have schemas like PostgreSQL
-            let guard = app_state.mysql_pool.lock().await;
-            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
-            mysql::get_databases(pool).await
-        }
-        DatabaseType::ClickHouse => {
-            let guard = app_state.clickhouse_config.lock().await;
-            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
-            clickhouse::get_databases(config).await
-        }
-        DatabaseType::Disconnected => Err("No connection established".into()),
-    }
-}
-
-#[tauri::command]
-pub async fn get_tables(
+pub async fn get_schemas(
     app_state: State<'_, AppState>,
     database: String,
 ) -> Result<Vec<String>, String> {
@@ -85,17 +59,56 @@ pub async fn get_tables(
             let pool = guard
                 .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
-            postgres::get_tables(pool, &database).await
+            postgres::get_schemas(pool).await
+        }
+        DatabaseType::MySQL => Ok(vec![database]),
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            mssql::get_schemas(pool, &database).await
+        }
+        DatabaseType::ClickHouse => Ok(vec![database]),
+        DatabaseType::Disconnected => Err("No connection established".into()),
+    }
+}
+
+#[tauri::command]
+pub async fn get_tables(
+    app_state: State<'_, AppState>,
+    database: Option<String>,
+    schema: Option<String>,
+) -> Result<Vec<String>, String> {
+    let db_type = {
+        let guard = app_state.active_db_type.lock().await;
+        guard.clone()
+    };
+
+    let db_name = database.clone().unwrap_or_else(|| "default".to_string());
+
+    match db_type {
+        DatabaseType::PostgreSQL => {
+            let guard = app_state.postgres_pool.lock().await;
+            let pool = guard
+                .as_ref()
+                .ok_or("No PostgreSQL connection established")?;
+            let schema_name = schema.unwrap_or_else(|| "public".to_string());
+            postgres::get_tables(pool, &schema_name).await
         }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
-            mysql::get_tables(pool, &database).await
+            mysql::get_tables(pool, &db_name).await
+        }
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            let schema_name = schema.unwrap_or_else(|| "dbo".to_string());
+            mssql::get_tables(pool, &db_name, &schema_name).await
         }
         DatabaseType::ClickHouse => {
             let guard = app_state.clickhouse_config.lock().await;
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
-            clickhouse::get_only_tables(config, &database).await
+            clickhouse::get_only_tables(config, &db_name).await
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
@@ -104,7 +117,8 @@ pub async fn get_tables(
 #[tauri::command]
 pub async fn get_table_schema(
     app_state: State<'_, AppState>,
-    database: String,
+    database: Option<String>,
+    schema: Option<String>,
     table: String,
 ) -> Result<Vec<ColumnSchema>, String> {
     let db_type = {
@@ -112,23 +126,32 @@ pub async fn get_table_schema(
         guard.clone()
     };
 
+    let db_name = database.clone().unwrap_or_else(|| "default".to_string());
+
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
             let pool = guard
                 .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
-            postgres::get_table_schema(pool, &database, &table).await
+            let schema_name = schema.unwrap_or_else(|| "public".to_string());
+            postgres::get_table_schema(pool, &schema_name, &table).await
         }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
-            mysql::get_table_schema(pool, &database, &table).await
+            mysql::get_table_schema(pool, &db_name, &table).await
+        }
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            let schema_name = schema.unwrap_or_else(|| "dbo".to_string());
+            mssql::get_table_schema(pool, &db_name, &schema_name, &table).await
         }
         DatabaseType::ClickHouse => {
             let guard = app_state.clickhouse_config.lock().await;
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
-            clickhouse::get_table_schema(config, &database, &table).await
+            clickhouse::get_table_schema(config, &db_name, &table).await
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
@@ -137,7 +160,8 @@ pub async fn get_table_schema(
 #[tauri::command]
 pub async fn get_table_ddl(
     app_state: State<'_, AppState>,
-    database: String,
+    database: Option<String>,
+    schema: Option<String>,
     table: String,
 ) -> Result<String, String> {
     let db_type = {
@@ -145,23 +169,31 @@ pub async fn get_table_ddl(
         guard.clone()
     };
 
+    let db_name = database.unwrap_or_else(|| "default".to_string());
+    let schema_name = schema.unwrap_or_else(|| "public".to_string());
+
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
             let pool = guard
                 .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
-            postgres::get_table_ddl(pool, &database, &table).await
+            postgres::get_table_ddl(pool, &schema_name, &table).await
         }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
-            mysql::get_table_ddl(pool, &database, &table).await
+            mysql::get_table_ddl(pool, &db_name, &table).await
+        }
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            mssql::get_table_ddl(pool, &db_name, &schema_name, &table).await
         }
         DatabaseType::ClickHouse => {
             let guard = app_state.clickhouse_config.lock().await;
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
-            clickhouse::get_table_ddl(config, &database, &table).await
+            clickhouse::get_table_ddl(config, &db_name, &table).await
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
@@ -170,7 +202,8 @@ pub async fn get_table_ddl(
 #[tauri::command]
 pub async fn get_table_indexes(
     app_state: State<'_, AppState>,
-    database: String,
+    database: Option<String>,
+    schema: Option<String>,
     table: String,
 ) -> Result<Vec<TableIndex>, String> {
     let db_type = {
@@ -178,23 +211,31 @@ pub async fn get_table_indexes(
         guard.clone()
     };
 
+    let db_name = database.unwrap_or_else(|| "default".to_string());
+    let schema_name = schema.unwrap_or_else(|| "public".to_string());
+
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
             let pool = guard
                 .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
-            postgres::get_table_indexes(pool, &database, &table).await
+            postgres::get_table_indexes(pool, &schema_name, &table).await
         }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
-            mysql::get_table_indexes(pool, &database, &table).await
+            mysql::get_table_indexes(pool, &db_name, &table).await
+        }
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            mssql::get_table_indexes(pool, &db_name, &schema_name, &table).await
         }
         DatabaseType::ClickHouse => {
             let guard = app_state.clickhouse_config.lock().await;
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
-            clickhouse::get_table_indexes(config, &database, &table).await
+            clickhouse::get_table_indexes(config, &db_name, &table).await
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
@@ -203,7 +244,8 @@ pub async fn get_table_indexes(
 #[tauri::command]
 pub async fn get_table_foreign_keys(
     app_state: State<'_, AppState>,
-    database: String,
+    database: Option<String>,
+    schema: Option<String>,
     table: String,
 ) -> Result<Vec<ForeignKey>, String> {
     let db_type = {
@@ -211,49 +253,53 @@ pub async fn get_table_foreign_keys(
         guard.clone()
     };
 
+    let db_name = database.unwrap_or_else(|| "default".to_string());
+    let schema_name = schema.unwrap_or_else(|| "public".to_string());
+
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
             let pool = guard
                 .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
-            postgres::get_table_foreign_keys(pool, &database, &table).await
+            postgres::get_table_foreign_keys(pool, &schema_name, &table).await
         }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
-            mysql::get_table_foreign_keys(pool, &database, &table).await
+            mysql::get_table_foreign_keys(pool, &db_name, &table).await
         }
-        DatabaseType::ClickHouse => {
-            // ClickHouse doesn't support foreign keys in the traditional sense
-            Ok(vec![])
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            mssql::get_table_foreign_keys(pool, &db_name, &schema_name, &table).await
         }
+        DatabaseType::ClickHouse => Ok(vec![]),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
 #[tauri::command]
-pub async fn get_foreign_keys(
-    app_state: State<'_, AppState>,
-    database: String,
-    table: String,
-) -> Result<Vec<ForeignKey>, String> {
-    get_table_foreign_keys(app_state, database, table).await
+pub async fn get_indexes(
+    _app_state: State<'_, AppState>,
+    _database: String,
+) -> Result<Vec<TableIndex>, String> {
+    Ok(vec![])
 }
 
 #[tauri::command]
-pub async fn get_indexes(
-    app_state: State<'_, AppState>,
-    database: String,
-    table: String,
-) -> Result<Vec<TableIndex>, String> {
-    get_table_indexes(app_state, database, table).await
+pub async fn get_foreign_keys(
+    _app_state: State<'_, AppState>,
+    _database: String,
+) -> Result<Vec<ForeignKey>, String> {
+    Ok(vec![])
 }
 
 #[tauri::command]
 pub async fn get_table_primary_keys(
     app_state: State<'_, AppState>,
-    database: String,
+    database: Option<String>,
+    schema: Option<String>,
     table: String,
 ) -> Result<Vec<PrimaryKey>, String> {
     let db_type = {
@@ -261,23 +307,31 @@ pub async fn get_table_primary_keys(
         guard.clone()
     };
 
+    let db_name = database.unwrap_or_else(|| "default".to_string());
+    let schema_name = schema.unwrap_or_else(|| "public".to_string());
+
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
             let pool = guard
                 .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
-            postgres::get_table_primary_keys(pool, &database, &table).await
+            postgres::get_table_primary_keys(pool, &schema_name, &table).await
         }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
-            mysql::get_table_primary_keys(pool, &database, &table).await
+            mysql::get_table_primary_keys(pool, &db_name, &table).await
+        }
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            mssql::get_table_primary_keys(pool, &db_name, &schema_name, &table).await
         }
         DatabaseType::ClickHouse => {
             let guard = app_state.clickhouse_config.lock().await;
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
-            clickhouse::get_table_primary_keys(config, &database, &table).await
+            clickhouse::get_table_primary_keys(config, &db_name, &table).await
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
@@ -286,7 +340,8 @@ pub async fn get_table_primary_keys(
 #[tauri::command]
 pub async fn get_table_constraints(
     app_state: State<'_, AppState>,
-    database: String,
+    database: Option<String>,
+    schema: Option<String>,
     table: String,
 ) -> Result<Vec<TableConstraint>, String> {
     let db_type = {
@@ -294,30 +349,36 @@ pub async fn get_table_constraints(
         guard.clone()
     };
 
+    let db_name = database.unwrap_or_else(|| "default".to_string());
+    let schema_name = schema.unwrap_or_else(|| "public".to_string());
+
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
             let pool = guard
                 .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
-            postgres::get_table_constraints(pool, &database, &table).await
+            postgres::get_table_constraints(pool, &schema_name, &table).await
         }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
-            mysql::get_table_constraints(pool, &database, &table).await
+            mysql::get_table_constraints(pool, &db_name, &table).await
         }
-        DatabaseType::ClickHouse => {
-            Ok(vec![])
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            mssql::get_table_constraints(pool, &db_name, &schema_name, &table).await
         }
-        DatabaseType::Disconnected => Err("No connection established".into()),
+        _ => Ok(vec![]),
     }
 }
 
 #[tauri::command]
 pub async fn get_table_stats(
     app_state: State<'_, AppState>,
-    database: String,
+    database: Option<String>,
+    schema: Option<String>,
     table: String,
 ) -> Result<TableStats, String> {
     let db_type = {
@@ -325,33 +386,36 @@ pub async fn get_table_stats(
         guard.clone()
     };
 
+    let db_name = database.unwrap_or_else(|| "default".to_string());
+    let schema_name = schema.unwrap_or_else(|| "public".to_string());
+
     match db_type {
         DatabaseType::PostgreSQL => {
             let guard = app_state.postgres_pool.lock().await;
             let pool = guard
                 .as_ref()
                 .ok_or("No PostgreSQL connection established")?;
-            postgres::get_table_stats(pool, &database, &table).await
+            postgres::get_table_stats(pool, &schema_name, &table).await
         }
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
-            mysql::get_table_stats(pool, &database, &table).await
+            mysql::get_table_stats(pool, &db_name, &table).await
+        }
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            mssql::get_table_stats(pool, &db_name, &schema_name, &table).await
         }
         DatabaseType::ClickHouse => {
-            Ok(TableStats {
-                row_count: 0,
-                data_size: 0,
-                index_size: 0,
-                data_free: 0,
-                auto_increment: None,
-                collation: None,
-                charset: None,
-            })
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+            clickhouse::get_table_stats(config, &db_name, &table).await
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
+
 #[tauri::command]
 pub async fn get_dictionaries(
     app_state: State<'_, AppState>,
@@ -368,6 +432,6 @@ pub async fn get_dictionaries(
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
             clickhouse::get_dictionaries(config, &database).await
         }
-        _ => Ok(vec![]), // Only ClickHouse supports dictionaries for now
+        _ => Ok(vec![]),
     }
 }

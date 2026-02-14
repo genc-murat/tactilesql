@@ -362,7 +362,13 @@ export function ERDiagram() {
                 state.diagramName || 'default'
             );
 
-            applyLoadedLayout(layout || null);
+            if (layout) {
+                applyLoadedLayout(layout);
+            } else {
+                // Not an error, just no saved layout yet.
+                state.layoutInfo = null;
+                state.pendingPositions = null;
+            }
 
             if (state.pendingPositions && activeViewer && typeof activeViewer.setNodePositions === 'function') {
                 activeViewer.setNodePositions(state.pendingPositions, { fit: false, animate: false });
@@ -370,7 +376,9 @@ export function ERDiagram() {
             }
         } catch (error) {
             console.warn('Layout load failed:', error);
-            toastWarning('Saved layout could not be loaded.');
+            // Only show toast if it's a real error, not just 'not found'
+            // Since getLayout returns null for not found, any catch here IS a real error (like DB failure)
+            toastError(`Failed to load saved layout: ${error}`);
         }
     };
 

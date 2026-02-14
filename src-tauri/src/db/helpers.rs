@@ -37,11 +37,13 @@ pub fn parse_warnings_json(raw: &str) -> Vec<String> {
 }
 
 /// Collapse multiple whitespace characters into single spaces
+#[allow(dead_code)]
 pub fn collapse_whitespace(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// Truncate string to max_chars, adding "..." if truncated
+#[allow(dead_code)]
 pub fn truncate_chars(value: &str, max_chars: usize) -> String {
     let mut out = String::new();
     for (idx, ch) in value.chars().enumerate() {

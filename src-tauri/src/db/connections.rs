@@ -7,6 +7,7 @@ use crate::db_types::{AppState, ConnectionConfig, DatabaseType, SSHTunnelConfig}
 use crate::mysql;
 use crate::postgres;
 use crate::clickhouse;
+use crate::mssql;
 use crate::ssh_tunnel;
 use super::crypto::{decrypt_password_with_key, encrypt_password_with_key};
 use std::fs;
@@ -72,6 +73,7 @@ pub async fn test_connection(config: ConnectionConfig) -> Result<String, String>
         DatabaseType::PostgreSQL => postgres::test_connection(&effective_config).await,
         DatabaseType::MySQL => mysql::test_connection(&effective_config).await,
         DatabaseType::ClickHouse => clickhouse::test_connection(&effective_config).await,
+        DatabaseType::MSSQL => mssql::test_connection(&effective_config).await,
         DatabaseType::Disconnected => Err("Cannot test connection for 'Disconnected' type".into()),
     };
 
@@ -178,6 +180,17 @@ pub async fn establish_connection(
 
             Ok("ClickHouse connection established successfully".to_string())
         }
+        DatabaseType::MSSQL => {
+            let pool = mssql::create_pool(&effective_config).await?;
+
+            let mut mssql_guard = app_state.mssql_pool.lock().await;
+            *mssql_guard = Some(pool);
+
+            let mut db_type_guard = app_state.active_db_type.lock().await;
+            *db_type_guard = DatabaseType::MSSQL;
+
+            Ok("MSSQL connection established successfully".to_string())
+        }
         DatabaseType::Disconnected => Err("Cannot establish a 'Disconnected' connection".into()),
     };
 
@@ -225,6 +238,12 @@ pub async fn disconnect(app_state: State<'_, AppState>) -> Result<String, String
             let mut guard = app_state.mysql_pool.lock().await;
             if let Some(pool) = guard.take() {
                 pool.close().await;
+            }
+        }
+        DatabaseType::MSSQL => {
+            let mut guard = app_state.mssql_pool.lock().await;
+            if let Some(pool) = guard.take() {
+                pool.close();
             }
         }
         DatabaseType::ClickHouse => {
