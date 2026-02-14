@@ -66,6 +66,7 @@ TactileSQL is a modern, desktop-first SQL workbench for MySQL and PostgreSQL, bu
 - **Connection Manager** with encrypted credential storage, connection testing, and SSH tunnel configuration.
 - **MySQL User & Role Management**: Create/drop roles, grant/revoke roles to users, manage global privileges, and monitor account status (lock state, password expiry, last changed).
 - **Access Control** viewer for MySQL users and privileges.
+- **MySQL Partition Management**: Interactive tool to view, reorganize, add, or drop partitions via `information_schema.PARTITIONS`, including visual **Pruning Analysis** to verify query optimization.
 - **MySQL Version Intelligence**: Automatically detects MySQL version (5.7+ vs 8.0+) to provide compatible monitoring queries and feature fallbacks.
 - **Table Maintenance Wizard**: Specialized Material Design interface for MySQL fragmentation analysis (`DATA_FREE` vs `DATA_LENGTH`) with one-click **ANALYZE**, **CHECK**, **OPTIMIZE**, or **REPAIR** operations.
 - **Server-Wide Bloat Analysis**: Dedicated Maintenance dashboard to identify storage waste across all tables, prioritized by wasted bytes.

@@ -389,7 +389,7 @@ function renderLinearLayout(svg, explainData, totalRows, isLight, isDawn) {
     drawStartNode(svg, centerX, 30, isLight, isDawn);
 
     explainData.forEach((row, index) => {
-        const { id, select_type, table, type, key, rows, Extra } = row;
+        const { id, select_type, table, type, key, rows, partitions, Extra } = row;
         const opInfo = getOperationInfo(type);
         const rowCount = parseInt(rows) || 0;
         const costPercent = totalRows > 0 ? Math.round((rowCount / totalRows) * 100) : 0;
@@ -458,6 +458,22 @@ function renderLinearLayout(svg, explainData, totalRows, isLight, isDawn) {
         rowsText.setAttribute('font-size', '11');
         rowsText.textContent = `Rows: ${formatNumber(rows)}`;
         group.appendChild(rowsText);
+
+        if (partitions) {
+            const partText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            partText.setAttribute('x', centerX - nodeWidth / 2 + 15);
+            partText.setAttribute('y', currentY - nodeHeight / 2 + 95);
+            partText.setAttribute('fill', (isLight || isDawn) ? '#2563eb' : '#60a5fa');
+            partText.setAttribute('font-size', '10');
+            partText.setAttribute('font-style', 'italic');
+            partText.textContent = `Partitions: ${partitions.length > 20 ? partitions.substring(0, 17) + '...' : partitions}`;
+            
+            const partTitle = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+            partTitle.textContent = `Used Partitions: ${partitions}`;
+            partText.appendChild(partTitle);
+            
+            group.appendChild(partText);
+        }
 
         svg.appendChild(group);
         currentY += nodeHeight + verticalGap;

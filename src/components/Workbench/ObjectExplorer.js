@@ -16,6 +16,7 @@ import { showDataLineage } from './DataLineage.js';
 import { showTableMaintenanceModal } from '../UI/TableMaintenanceModal.js';
 import { showTableMaintenanceWizard } from '../UI/TableMaintenanceWizard.js';
 import { showServerVariablesModal } from '../UI/ServerVariablesModal.js';
+import { showPartitionManagementModal } from '../UI/PartitionManagementModal.js';
 
 
 export function ObjectExplorer() {
@@ -2064,6 +2065,14 @@ export function ObjectExplorer() {
                 iconColor: isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal',
                 onClick: () => window.location.hash = `/schema?db=${encodeURIComponent(dbName)}&table=${encodeURIComponent(tableName)}`
             },
+            ...(dbType === 'mysql' ? [
+                {
+                    label: 'Partition Management',
+                    icon: 'grid_view',
+                    iconColor: isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal',
+                    onClick: () => showPartitionManagementModal(dbName, tableName)
+                }
+            ] : []),
             {
                 type: 'submenu',
                 label: 'Generate SQL',
