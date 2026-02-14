@@ -4,6 +4,7 @@ import { ThemeManager } from '../utils/ThemeManager.js';
 import { escapeHtml, formatBytes, formatNumber } from '../utils/helpers.js';
 import { LoadingManager } from '../components/UI/LoadingStates.js';
 import { Charting } from '../utils/Charting.js';
+import { showMySQLSlowQueryConfigModal } from '../components/UI/MySQLSlowQueryConfigModal.js';
 
 export function ServerMonitor() {
     let theme = ThemeManager.getCurrentTheme();
@@ -732,9 +733,17 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
         const isPostgres = activeDbType === 'postgresql';
         const totalSlowQueries = serverStatus?.slow_queries || 0;
 
+        const configBtn = !isPostgres ? `
+            <button id="config-slow-query-btn" class="ml-auto flex items-center gap-2 px-3 py-1 rounded-lg ${isLight ? 'bg-amber-500/10 text-amber-600 hover:bg-amber-500/20' : 'bg-amber-500/20 text-amber-400 hover:bg-amber-500/30'} border border-amber-500/30 transition-all text-xs font-bold uppercase tracking-wider">
+                <span class="material-symbols-outlined text-sm">settings</span>
+                Configure
+            </button>
+        ` : '';
+
         if (slowQueries.length === 0) {
             return `
-                <div class="rounded-xl p-12 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))} text-center">
+                <div class="rounded-xl p-12 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))} text-center relative">
+                    <div class="absolute top-4 right-4">${configBtn}</div>
                     <span class="material-symbols-outlined text-5xl ${totalSlowQueries > 0 ? 'text-yellow-500' : 'text-green-500'} mb-4">${totalSlowQueries > 0 ? 'warning' : 'check_circle'}</span>
                     <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} mb-2">${totalSlowQueries > 0 ? 'Slow Query Details Not Available' : 'No Slow Queries'}</h3>
                     ${totalSlowQueries > 0 ? `
@@ -770,12 +779,13 @@ SET GLOBAL long_query_time = 1;</pre>
 
         return `
             <div class="rounded-xl ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))} overflow-hidden flex flex-col flex-1 h-full">
-                <div class="p-4 border-b ${isLight ? 'border-gray-200' : 'border-white/10'} flex-shrink-0">
+                <div class="p-4 border-b ${isLight ? 'border-gray-200' : 'border-white/10'} flex-shrink-0 flex items-center gap-2">
                     <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} flex items-center gap-2">
                         <span class="material-symbols-outlined text-yellow-500">hourglass_empty</span>
                         Slow Query Log
                         <span class="px-2 py-0.5 text-xs rounded-full bg-yellow-500/20 text-yellow-500 border border-yellow-500/30">${slowQueries.length} queries</span>
                     </h3>
+                    ${configBtn}
                 </div>
                 <div class="overflow-auto flex-1 custom-scrollbar">
                     <table class="w-full text-sm border-separate border-spacing-0">
@@ -1417,6 +1427,11 @@ SET GLOBAL long_query_time = 1;</pre>
                     Dialog.showSQL(query.sql_text, `Slow Query Detail (${formatNumber(query.query_time)}s)`);
                 }
             });
+        });
+
+        // Slow Query Configuration
+        container.querySelector('#config-slow-query-btn')?.addEventListener('click', () => {
+            showMySQLSlowQueryConfigModal();
         });
 
         // Back button
