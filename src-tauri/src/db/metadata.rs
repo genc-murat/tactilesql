@@ -192,8 +192,9 @@ pub async fn get_table_indexes(
             mysql::get_table_indexes(pool, &database, &table).await
         }
         DatabaseType::ClickHouse => {
-            // ClickHouse indexes are quite different, return empty for now
-            Ok(vec![])
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+            clickhouse::get_table_indexes(config, &database, &table).await
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
@@ -274,8 +275,9 @@ pub async fn get_table_primary_keys(
             mysql::get_table_primary_keys(pool, &database, &table).await
         }
         DatabaseType::ClickHouse => {
-            // ClickHouse primary keys are different
-            Ok(vec![])
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+            clickhouse::get_table_primary_keys(config, &database, &table).await
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
@@ -345,5 +347,66 @@ pub async fn get_table_stats(
             })
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
+    }
+}
+#[tauri::command]
+pub async fn get_dictionaries(
+    app_state: State<'_, AppState>,
+    database: String,
+) -> Result<Vec<String>, String> {
+    let db_type = {
+        let guard = app_state.active_db_type.lock().await;
+        guard.clone()
+    };
+
+    match db_type {
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+            clickhouse::get_dictionaries(config, &database).await
+        }
+        _ => Ok(vec![]), // Only ClickHouse supports dictionaries for now
+    }
+}
+
+#[tauri::command]
+pub async fn get_table_parts(
+    app_state: State<'_, AppState>,
+    database: String,
+    table: String,
+) -> Result<crate::db_types::QueryResult, String> {
+    let db_type = {
+        let guard = app_state.active_db_type.lock().await;
+        guard.clone()
+    };
+
+    match db_type {
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+            clickhouse::get_table_parts(config, &database, &table).await
+        }
+        _ => Err("Operation only supported for ClickHouse".into()),
+    }
+}
+
+#[tauri::command]
+pub async fn get_table_mutations(
+    app_state: State<'_, AppState>,
+    database: String,
+    table: String,
+) -> Result<crate::db_types::QueryResult, String> {
+    let db_type = {
+        let guard = app_state.active_db_type.lock().await;
+        guard.clone()
+    };
+
+    match db_type {
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+            clickhouse::get_table_mutations(config, &database, &table).await
+        }
+        _ => Err("Operation only supported for ClickHouse".into()),
     }
 }

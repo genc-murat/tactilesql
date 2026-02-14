@@ -159,7 +159,8 @@ export function ObjectExplorer() {
                     triggers: new Map(),
                     procedures: new Map(),
                     functions: new Map(),
-                    events: new Map()
+                    events: new Map(),
+                    dictionaries: new Map()
                 };
                 Object.entries(ctx.tables).forEach(([db, tables]) => searchContext.tables.set(db, new Set(tables)));
                 Object.entries(ctx.views).forEach(([db, views]) => searchContext.views.set(db, new Set(views)));
@@ -167,6 +168,7 @@ export function ObjectExplorer() {
                 Object.entries(ctx.procedures).forEach(([db, procedures]) => searchContext.procedures.set(db, new Set(procedures)));
                 Object.entries(ctx.functions).forEach(([db, functions]) => searchContext.functions.set(db, new Set(functions)));
                 Object.entries(ctx.events).forEach(([db, events]) => searchContext.events.set(db, new Set(events)));
+                if (ctx.dictionaries) Object.entries(ctx.dictionaries).forEach(([db, dictionaries]) => searchContext.dictionaries.set(db, new Set(dictionaries)));
             } else {
                 searchContext = null;
             }
@@ -185,8 +187,8 @@ export function ObjectExplorer() {
                     });
                 }
                 // Ensure parents of other objects are expanded
-                [searchContext.views, searchContext.triggers, searchContext.procedures, searchContext.functions, searchContext.events].forEach(map => {
-                    map.forEach((_, db) => expandedDbs.add(db));
+                [searchContext.views, searchContext.triggers, searchContext.procedures, searchContext.functions, searchContext.events, searchContext.dictionaries].forEach(map => {
+                    if (map) map.forEach((_, db) => expandedDbs.add(db));
                 });
             }
 
@@ -253,6 +255,8 @@ export function ObjectExplorer() {
                 return searchContext.functions.get(db)?.has(name) ?? false;
             case 'event':
                 return searchContext.events.get(db)?.has(name) ?? false;
+            case 'dictionary':
+                return searchContext.dictionaries.get(db)?.has(name) ?? false;
             default:
                 return true;
         }
@@ -266,7 +270,8 @@ export function ObjectExplorer() {
             (searchContext.triggers.get(db)?.size ?? 0) > 0 ||
             (searchContext.procedures.get(db)?.size ?? 0) > 0 ||
             (searchContext.functions.get(db)?.size ?? 0) > 0 ||
-            (searchContext.events.get(db)?.size ?? 0) > 0;
+            (searchContext.events.get(db)?.size ?? 0) > 0 ||
+            (searchContext.dictionaries.get(db)?.size ?? 0) > 0;
     };
 
     // --- Tree Flattening (Virtual Scrolling) ---
@@ -434,7 +439,7 @@ export function ObjectExplorer() {
 
     const flattenDatabaseObjects = (nodes, db, objs, ctx, connId) => {
         const { searchContext } = ctx;
-        const { tables, views, triggers, procedures, functions, events } = objs;
+        const { tables, views, triggers, procedures, functions, events, dictionaries = [] } = objs;
 
         const fTables = searchContext ? tables.filter(t => hasSearchMatch('table', db, t)) : tables;
         const fViews = searchContext ? views.filter(v => hasSearchMatch('view', db, v)) : views;
@@ -442,8 +447,9 @@ export function ObjectExplorer() {
         const fProcs = searchContext ? procedures.filter(p => hasSearchMatch('procedure', db, p.name)) : procedures;
         const fFuncs = searchContext ? functions.filter(f => hasSearchMatch('function', db, f.name)) : functions;
         const fEvents = searchContext ? events.filter(e => hasSearchMatch('event', db, e.name)) : events;
+        const fDicts = searchContext ? dictionaries.filter(d => hasSearchMatch('dictionary', db, d)) : dictionaries;
 
-        if (searchContext && !fTables.length && !fViews.length && !fTriggers.length && !fProcs.length && !fFuncs.length && !fEvents.length) return;
+        if (searchContext && !fTables.length && !fViews.length && !fTriggers.length && !fProcs.length && !fFuncs.length && !fEvents.length && !fDicts.length) return;
 
         flattenObjectCategory(nodes, db, 'tables', 'Tables', 'table_rows', fTables, ctx, connId);
         flattenObjectCategory(nodes, db, 'views', 'Views', 'visibility', fViews, ctx, connId);
@@ -451,6 +457,7 @@ export function ObjectExplorer() {
         flattenObjectCategory(nodes, db, 'procedures', 'Procedures', 'code_blocks', fProcs, ctx, connId);
         flattenObjectCategory(nodes, db, 'functions', 'Functions', 'function', fFuncs, ctx, connId);
         flattenObjectCategory(nodes, db, 'events', 'Events', 'schedule', fEvents, ctx, connId);
+        flattenObjectCategory(nodes, db, 'dictionaries', 'Dictionaries', 'book', fDicts, ctx, connId);
     };
 
     const flattenObjectCategory = (nodes, db, type, label, icon, items, ctx, connId) => {
@@ -1894,6 +1901,48 @@ export function ObjectExplorer() {
                     }
                 }
             },
+            ...(dbType === 'clickhouse' ? [
+                {
+                    label: 'View Parts',
+                    icon: 'segment',
+                    iconColor: isDawn ? 'text-[#f6c177]' : 'text-orange-400',
+                    onClick: async () => {
+                        const query = `SELECT * FROM system.parts WHERE database = '${dbName}' AND table = '${tableName}' ORDER BY modification_time DESC`;
+                        try {
+                            const result = await invoke('get_table_parts', { database: dbName, table: tableName });
+                            window.dispatchEvent(new CustomEvent('tactilesql:open-result-tab', {
+                                detail: {
+                                    query,
+                                    data: result,
+                                    title: `Parts: ${tableName}`
+                                }
+                            }));
+                        } catch (error) {
+                            Dialog.alert(`Failed to fetch parts: ${String(error).replace(/\n/g, '<br>')}`, 'Error');
+                        }
+                    }
+                },
+                {
+                    label: 'View Mutations',
+                    icon: 'change_history',
+                    iconColor: isDawn ? 'text-[#eb6f92]' : 'text-red-400',
+                    onClick: async () => {
+                        const query = `SELECT * FROM system.mutations WHERE database = '${dbName}' AND table = '${tableName}' ORDER BY create_time DESC`;
+                        try {
+                            const result = await invoke('get_table_mutations', { database: dbName, table: tableName });
+                            window.dispatchEvent(new CustomEvent('tactilesql:open-result-tab', {
+                                detail: {
+                                    query,
+                                    data: result,
+                                    title: `Mutations: ${tableName}`
+                                }
+                            }));
+                        } catch (error) {
+                            Dialog.alert(`Failed to fetch mutations: ${String(error).replace(/\n/g, '<br>')}`, 'Error');
+                        }
+                    }
+                }
+            ] : []),
             {
                 label: 'Schema Design',
                 icon: 'schema',
@@ -2196,15 +2245,16 @@ export function ObjectExplorer() {
     };
 
     const fetchDatabaseObjects = async (dbName) => {
-        const [tables, views, triggers, procedures, functions, events] = await Promise.all([
+        const [tables, views, triggers, procedures, functions, events, dictionaries] = await Promise.all([
             invoke('get_tables', { database: dbName }),
             invoke('get_views', { database: dbName }),
             invoke('get_triggers', { database: dbName }),
             invoke('get_procedures', { database: dbName }),
             invoke('get_functions', { database: dbName }),
-            invoke('get_events', { database: dbName })
+            invoke('get_events', { database: dbName }),
+            invoke('get_dictionaries', { database: dbName }).catch(() => [])
         ]);
-        return { tables, views, triggers, procedures, functions, events };
+        return { tables, views, triggers, procedures, functions, events, dictionaries };
     };
 
     const fetchTableDetailsAll = async (dbName, tables) => {

@@ -285,6 +285,8 @@ export function ResultsTable(options = {}) {
         });
 
         activeTabId = id;
+        renderControls();
+        renderTable(data);
         return id;
     };
 
@@ -330,6 +332,9 @@ export function ResultsTable(options = {}) {
             clearPendingChanges();
             selectedRows.clear();
             hiddenColumns.clear();
+
+            renderControls();
+            renderTable(currentData);
         }
     };
 
@@ -1745,6 +1750,9 @@ export function ResultsTable(options = {}) {
     renderControls();
 
     container.render = (data) => renderTable(data);
+
+    container.addResultTab = addResultTab;
+    container.setActiveTab = setActiveTab; // Might be useful too
 
     return container;
 }

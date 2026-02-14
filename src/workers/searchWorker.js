@@ -161,6 +161,7 @@ const performSearch = () => {
         checkObj(objs.procedures, 'procedure', 'procedure');
         checkObj(objs.functions, 'function', 'function');
         checkObj(objs.events, 'event', 'event');
+        checkObj(objs.dictionaries, 'dictionary', 'dictionary');
     });
 
     // Build context for tree filtering
@@ -181,7 +182,8 @@ const performSearch = () => {
         triggers: {},
         procedures: {},
         functions: {},
-        events: {}
+        events: {},
+        dictionaries: {}
     };
 
     const addToMap = (obj, db, val) => {
@@ -213,6 +215,9 @@ const performSearch = () => {
                 break;
             case 'event':
                 addToMap(context.events, m.db, m.event || m.name);
+                break;
+            case 'dictionary':
+                addToMap(context.dictionaries, m.db, m.dictionary || m.name);
                 break;
         }
     });

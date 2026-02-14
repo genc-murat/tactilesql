@@ -959,6 +959,7 @@ export function QueryEditor() {
         // Check if PostgreSQL (hide database selector for PostgreSQL)
         const activeDbType = localStorage.getItem('activeDbType') || 'mysql';
         const isPg = activeDbType === 'postgresql';
+        const isClickHouse = activeDbType === 'clickhouse';
         const lineNumbersEnabled = SettingsManager.get(SETTINGS_PATHS.EDITOR_LINE_NUMBERS);
         const lineWrapMode = getEditorLineWrapMode();
         const wrapClass = getWrapClassForMode(lineWrapMode);
@@ -983,6 +984,7 @@ export function QueryEditor() {
             isOceanic,
             isNeon,
             isPg,
+            isClickHouse,
             estimatedExecutionTime,
             lastExecutionTime,
             defaultRunModeLabel
@@ -2659,6 +2661,97 @@ export function QueryEditor() {
                 } finally {
                     explainBtn.innerHTML = originalHTML;
                     explainBtn.classList.remove('opacity-70');
+                    isExplaining = false;
+                }
+            });
+        }
+
+        // Explain Pipeline (ClickHouse)
+        const explainPipelineBtn = container.querySelector('#explain-pipeline-btn');
+        if (explainPipelineBtn) {
+            let isExplaining = false;
+            explainPipelineBtn.addEventListener('click', async () => {
+                if (isExplaining) return;
+                isExplaining = true;
+
+                const queryToRun = getAnalysisQuery();
+                if (!queryToRun) {
+                    isExplaining = false;
+                    Dialog.alert('Please enter a query to explain.', 'Info');
+                    return;
+                }
+
+                const originalHTML = explainPipelineBtn.innerHTML;
+
+                try {
+                    explainPipelineBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span> ANALYZING';
+                    explainPipelineBtn.classList.add('opacity-70');
+
+                    // Open in formatted dialog (like Execution Plan)
+                    const explainQuery = `EXPLAIN PIPELINE ${queryToRun}`;
+                    const result = await invoke('execute_query', { query: explainQuery });
+
+                    // Extract text from result (columns: ["Explain Output"], rows: [["text"]])
+                    let explainText = '';
+                    const data = Array.isArray(result) ? result[0] : result;
+                    if (data && data.rows && data.rows.length > 0) {
+                        explainText = data.rows.map(row => row[0]).join('\n');
+                    } else {
+                        explainText = 'No output returned.';
+                    }
+
+                    showVisualExplainModal(explainText);
+
+                } catch (error) {
+                    Dialog.alert(`Explain Pipeline failed: ${String(error).replace(/\n/g, '<br>')}`, 'Error');
+                } finally {
+                    explainPipelineBtn.innerHTML = originalHTML;
+                    explainPipelineBtn.classList.remove('opacity-70');
+                    isExplaining = false;
+                }
+            });
+        }
+
+        // Explain AST (ClickHouse)
+        const explainAstBtn = container.querySelector('#explain-ast-btn');
+        if (explainAstBtn) {
+            let isExplaining = false;
+            explainAstBtn.addEventListener('click', async () => {
+                if (isExplaining) return;
+                isExplaining = true;
+
+                const queryToRun = getAnalysisQuery();
+                if (!queryToRun) {
+                    isExplaining = false;
+                    Dialog.alert('Please enter a query to explain.', 'Info');
+                    return;
+                }
+
+                const originalHTML = explainAstBtn.innerHTML;
+
+                try {
+                    explainAstBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span> ANALYZING';
+                    explainAstBtn.classList.add('opacity-70');
+
+                    const explainQuery = `EXPLAIN AST ${queryToRun}`;
+                    const result = await invoke('execute_query', { query: explainQuery });
+
+                    // Extract text from result
+                    let explainText = '';
+                    const data = Array.isArray(result) ? result[0] : result;
+                    if (data && data.rows && data.rows.length > 0) {
+                        explainText = data.rows.map(row => row[0]).join('\n');
+                    } else {
+                        explainText = 'No output returned.';
+                    }
+
+                    showVisualExplainModal(explainText);
+
+                } catch (error) {
+                    Dialog.alert(`Explain AST failed: ${String(error).replace(/\n/g, '<br>')}`, 'Error');
+                } finally {
+                    explainAstBtn.innerHTML = originalHTML;
+                    explainAstBtn.classList.remove('opacity-70');
                     isExplaining = false;
                 }
             });

@@ -5,6 +5,7 @@ export const renderToolbar = ({
     isOceanic,
     isNeon,
     isPg,
+    isClickHouse,
     estimatedExecutionTime,
     lastExecutionTime,
     defaultRunModeLabel
@@ -74,6 +75,17 @@ export const renderToolbar = ({
                                 <span class="material-symbols-outlined text-[14px] text-cyan-400">data_object</span>
                                 <span class="text-[10px] font-bold">Execution Plan (Raw)</span>
                             </button>
+                            ${isClickHouse ? `
+                            <button id="explain-pipeline-btn" class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors ${isLight ? 'text-gray-700 hover:bg-gray-100' : 'text-gray-300 hover:bg-white/10'}">
+                                <span class="material-symbols-outlined text-[14px] text-orange-400">account_tree</span>
+                                <span class="text-[10px] font-bold">Explain Pipeline</span>
+                            </button>
+                            <button id="explain-ast-btn" class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors ${isLight ? 'text-gray-700 hover:bg-gray-100' : 'text-gray-300 hover:bg-white/10'}">
+                                <span class="material-symbols-outlined text-[14px] text-pink-400">code_blocks</span>
+                                <span class="text-[10px] font-bold">Explain AST</span>
+                            </button>
+                            ` : ''}
+                            <button id="explain-btn" class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors ${isLight ? 'text-gray-700 hover:bg-gray-100' : 'text-gray-300 hover:bg-white/10'}">
                             <button id="explain-btn" class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors ${isLight ? 'text-gray-700 hover:bg-gray-100' : 'text-gray-300 hover:bg-white/10'}">
                                 <span class="material-symbols-outlined text-[14px] text-blue-400">analytics</span>
                                 <span class="text-[10px] font-bold">Visual Explain</span>

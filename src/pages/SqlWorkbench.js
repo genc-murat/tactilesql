@@ -292,6 +292,15 @@ export function SqlWorkbench() {
     };
     window.addEventListener('tactilesql:query-executed', onQueryExecuted);
 
+    // Listen for requests to open new result tabs
+    const onOpenResultTab = (e) => {
+        const { query, data, title } = e.detail;
+        if (resultsTable.addResultTab) {
+            resultsTable.addResultTab(query, data, title);
+        }
+    };
+    window.addEventListener('tactilesql:open-result-tab', onOpenResultTab);
+
     // Cleanup logic
     container.onUnmount = () => {
         document.removeEventListener('mousemove', onMouseMove);
@@ -301,6 +310,7 @@ export function SqlWorkbench() {
         window.removeEventListener('tactilesql:toggle-story-panel', onToggleStoryPanel);
         window.removeEventListener('tactilesql:query-changed', onQueryChanged);
         window.removeEventListener('tactilesql:query-executed', onQueryExecuted);
+        window.removeEventListener('tactilesql:open-result-tab', onOpenResultTab);
 
         // Cleanup components
         if (sidebar && typeof sidebar.onUnmount === 'function') sidebar.onUnmount();

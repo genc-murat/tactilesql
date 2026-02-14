@@ -298,6 +298,9 @@ pub fn run() {
             db::get_tables,
             db::get_table_schema,
             db::get_table_ddl,
+            db::get_dictionaries,
+            db::get_table_parts,
+            db::get_table_mutations,
             // Indexes & Keys
             db::get_table_indexes,
             db::get_table_foreign_keys,

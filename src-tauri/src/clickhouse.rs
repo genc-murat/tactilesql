@@ -92,6 +92,16 @@ pub async fn execute_query_generic(config: &ConnectionConfig, query: String) -> 
         }]);
     }
 
+    // Special handling for EXPLAIN AST and EXPLAIN PIPELINE (return raw text)
+    let upper_query = query_trimmed.to_uppercase();
+    if upper_query.starts_with("EXPLAIN AST") || upper_query.starts_with("EXPLAIN PIPELINE") {
+        let body = execute_raw_query(config, query_trimmed).await?;
+        return Ok(vec![QueryResult {
+            columns: vec!["Explain Output".to_string()],
+            rows: vec![vec![serde_json::Value::String(body)]],
+        }]);
+    }
+
     // Use JSONCompactEachRowWithNamesAndTypes for robust dynamic results
     let base_query = query_trimmed.trim_end_matches(';').split("FORMAT").next().unwrap_or(query_trimmed).trim();
     let query_with_format = format!("{} FORMAT JSONCompactEachRowWithNamesAndTypes", base_query);
@@ -180,7 +190,7 @@ pub async fn get_tables(config: &ConnectionConfig, database: &str) -> Result<Vec
 
 pub async fn get_only_tables(config: &ConnectionConfig, database: &str) -> Result<Vec<String>, String> {
     let query = format!(
-        "SELECT name FROM system.tables WHERE database = '{}' AND engine NOT IN ('View', 'MaterializedView', 'LiveView', 'WindowView')",
+        "SELECT name, engine, total_rows, total_bytes FROM system.tables WHERE database = '{}' AND engine NOT IN ('View', 'MaterializedView', 'LiveView', 'WindowView')",
         database.replace('\'', "\\'")
     );
     
@@ -188,13 +198,37 @@ pub async fn get_only_tables(config: &ConnectionConfig, database: &str) -> Resul
     
     let mut tables = Vec::new();
     if let Some(first) = results.first() {
+        let name_idx = first.columns.iter().position(|c| c == "name");
+        // We can expose engine/rows/bytes later if we update the frontend struct, 
+        // for now just return names to match signature, or update signature if allowed.
+        // The current signature returns Vec<String>, so sticking to names.
+        
         for row in &first.rows {
-            if let Some(name) = row.get(0).and_then(|v| v.as_str()) {
+            if let Some(name) = name_idx.and_then(|i| row.get(i)).and_then(|v| v.as_str()) {
                 tables.push(name.to_string());
             }
         }
     }
     Ok(tables)
+}
+
+pub async fn get_dictionaries(config: &ConnectionConfig, database: &str) -> Result<Vec<String>, String> {
+    let query = format!(
+        "SELECT name FROM system.dictionaries WHERE database = '{}'",
+        database.replace('\'', "\\'")
+    );
+    
+    let results = execute_query_generic(config, query).await?;
+    
+    let mut dicts = Vec::new();
+    if let Some(first) = results.first() {
+        for row in &first.rows {
+            if let Some(name) = row.get(0).and_then(|v| v.as_str()) {
+                dicts.push(name.to_string());
+            }
+        }
+    }
+    Ok(dicts)
 }
 
 pub async fn get_views(config: &ConnectionConfig, database: &str) -> Result<Vec<String>, String> {
@@ -214,6 +248,27 @@ pub async fn get_views(config: &ConnectionConfig, database: &str) -> Result<Vec<
         }
     }
     Ok(views)
+}
+
+pub async fn get_table_parts(config: &ConnectionConfig, database: &str, table: &str) -> Result<QueryResult, String> {
+    let query = format!(
+        "SELECT * FROM system.parts WHERE database = '{}' AND table = '{}' ORDER BY modification_time DESC",
+        database.replace('\'', "\\'"),
+        table.replace('\'', "\\'")
+    );
+    let results = execute_query_generic(config, query).await?;
+    // Flatten result: execute_query_generic returns Vec<QueryResult>, we take the first one or empty
+    Ok(results.into_iter().next().unwrap_or(QueryResult { columns: vec![], rows: vec![] }))
+}
+
+pub async fn get_table_mutations(config: &ConnectionConfig, database: &str, table: &str) -> Result<QueryResult, String> {
+    let query = format!(
+        "SELECT * FROM system.mutations WHERE database = '{}' AND table = '{}' ORDER BY create_time DESC",
+        database.replace('\'', "\\'"),
+        table.replace('\'', "\\'")
+    );
+    let results = execute_query_generic(config, query).await?;
+    Ok(results.into_iter().next().unwrap_or(QueryResult { columns: vec![], rows: vec![] }))
 }
 
 pub async fn get_table_schema(
@@ -279,19 +334,77 @@ pub async fn get_table_ddl(
 }
 
 pub async fn get_table_primary_keys(
-    _config: &ConnectionConfig,
-    _database: &str,
-    _table: &str,
+    config: &ConnectionConfig,
+    database: &str,
+    table: &str,
 ) -> Result<Vec<PrimaryKey>, String> {
-    Ok(Vec::new())
+    // ClickHouse "Primary Key" is the sorting key + primary key definition
+    let query = format!(
+        "SELECT primary_key, sorting_key FROM system.tables WHERE database = '{}' AND name = '{}'",
+        database.replace('\'', "\\'"),
+        table.replace('\'', "\\'")
+    );
+
+    let results = execute_query_generic(config, query).await?;
+    let mut keys = Vec::new();
+
+    if let Some(first) = results.first() {
+        if let Some(row) = first.rows.first() {
+            let pk_str = row.get(0).and_then(|v| v.as_str()).unwrap_or_default();
+            // let sk_str = row.get(1).and_then(|v| v.as_str()).unwrap_or_default(); 
+            // Often PK is enough or same as SK. 
+            
+            // Split by comma and clean up
+            if !pk_str.is_empty() {
+                let parts: Vec<&str> = pk_str.split(',').map(|s| s.trim()).collect();
+                for (i, part) in parts.iter().enumerate() {
+                    keys.push(PrimaryKey {
+                        column_name: part.to_string(),
+                        ordinal_position: (i + 1) as i32,
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(keys)
 }
 
 pub async fn get_table_indexes(
-    _config: &ConnectionConfig,
-    _database: &str,
-    _table: &str,
+    config: &ConnectionConfig,
+    database: &str,
+    table: &str,
 ) -> Result<Vec<TableIndex>, String> {
-    Ok(Vec::new())
+    // Fetch Data Skipping Indices
+    let query = format!(
+        "SELECT name, type, expr FROM system.data_skipping_indices WHERE database = '{}' AND table = '{}'",
+        database.replace('\'', "\\'"),
+        table.replace('\'', "\\'")
+    );
+
+    let results = execute_query_generic(config, query).await?;
+    let mut indexes = Vec::new();
+
+    if let Some(first) = results.first() {
+         let name_idx = first.columns.iter().position(|c| c == "name");
+         let type_idx = first.columns.iter().position(|c| c == "type");
+         let expr_idx = first.columns.iter().position(|c| c == "expr");
+
+         for row in &first.rows {
+             let name = name_idx.and_then(|i| row.get(i)).and_then(|v| v.as_str()).unwrap_or_default();
+             let idx_type = type_idx.and_then(|i| row.get(i)).and_then(|v| v.as_str()).unwrap_or_default();
+             let expr = expr_idx.and_then(|i| row.get(i)).and_then(|v| v.as_str()).unwrap_or_default();
+
+             indexes.push(TableIndex {
+                 name: name.to_string(),
+                 column_name: expr.to_string(), // In ClickHouse, index is on expression, mapping to column_name for UI
+                 non_unique: true, // Skipping indices are not unique constraints
+                 index_type: idx_type.to_string(),
+             });
+         }
+    }
+
+    Ok(indexes)
 }
 
 pub async fn get_slow_queries(_config: &ConnectionConfig, _limit: i32) -> Result<Vec<SlowQuery>, String> {
