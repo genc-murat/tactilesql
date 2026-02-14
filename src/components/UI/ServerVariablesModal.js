@@ -11,12 +11,12 @@ import { toastSuccess, toastError } from '../../utils/Toast.js';
 const CATEGORIES = {
     mysql: [
         { id: 'all', label: 'All', icon: 'list' },
+        { id: 'performance', label: 'Performance Tuning', icon: 'speed', pattern: /innodb_buffer_pool_size|max_connections|query_cache|sort_buffer_size|join_buffer_size|thread_cache|max_heap_table_size|tmp_table_size|performance_schema/i },
         { id: 'innodb', label: 'InnoDB', icon: 'database', pattern: /^innodb_/i },
-        { id: 'performance', label: 'Performance', icon: 'speed', pattern: /performance_schema|query_cache|thread_cache/i },
-        { id: 'network', label: 'Network', icon: 'lan', pattern: /port|bind|max_allowed_packet|net_/i },
-        { id: 'logging', label: 'Logging', icon: 'description', pattern: /log_|general_log|slow_query_log/i },
-        { id: 'security', label: 'Security', icon: 'security', pattern: /ssl|secure|authentication|password/i },
-        { id: 'replica', label: 'Replication', icon: 'hub', pattern: /slave|master|replica|binlog|gtid/i },
+        { id: 'network', label: 'Network', icon: 'lan', pattern: /port|bind|max_allowed_packet|net_|timeout|wait_timeout/i },
+        { id: 'logging', label: 'Logging', icon: 'description', pattern: /log_|general_log|slow_query_log|audit/i },
+        { id: 'security', label: 'Security', icon: 'security', pattern: /ssl|secure|authentication|password|privilege/i },
+        { id: 'replica', label: 'Replication', icon: 'hub', pattern: /slave|master|replica|binlog|gtid|relay/i },
     ],
     postgresql: [
         { id: 'all', label: 'All', icon: 'list' },
@@ -271,13 +271,15 @@ export async function showServerVariablesModal(connectionId, dbType) {
     }
 
     async function editVariable(name, currentValue) {
-        const newValue = await Dialog.prompt(`Enter new value for session variable <b>${name}</b>:`, currentValue, 'Edit Session Variable');
+        const title = dbType === 'mysql' ? 'Edit Global Variable' : 'Edit Session Variable';
+        const label = dbType === 'mysql' ? 'global' : 'session';
+        const newValue = await Dialog.prompt(`Enter new value for ${label} variable <b>${name}</b>:`, currentValue, title);
         if (newValue === null || newValue === currentValue) return;
 
         try {
             toastSuccess(`Updating ${name}...`);
             let query = '';
-            if (dbType === 'mysql') query = `SET SESSION ${name} = '${newValue}'`;
+            if (dbType === 'mysql') query = `SET GLOBAL ${name} = '${newValue}'`;
             else if (dbType === 'postgresql') query = `SET ${name} = '${newValue}'`;
             else return;
 
@@ -287,7 +289,7 @@ export async function showServerVariablesModal(connectionId, dbType) {
             const v = allVariables.find(x => x.name === name);
             if (v) v.value = newValue;
             renderVariables();
-            toastSuccess(`${name} updated for current session`);
+            toastSuccess(`${name} updated ${dbType === 'mysql' ? 'globally' : 'for current session'}`);
         } catch (err) {
             Dialog.alert(`Failed to update variable: ${err}`, 'Error');
         }
