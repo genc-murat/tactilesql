@@ -420,6 +420,7 @@ The Rust backend exposes the following commands (used by the UI):
 - **Advanced Table Inspector**: Detailed view of MergeTree properties, storage policy, data paths, and metadata.
 - **Partition Explorer**: Manage partitions (view stats, detach, drop) directly from the UI.
 - **Query Log Dashboard**: Visualize server performance metrics (duration, memory, read rows) derived from `system.query_log`.
+- **Kafka Engine Monitoring**: Real-time dashboard for Kafka consumer groups, displaying offset lag, current offsets, and consumption errors.
 
 ## Keyboard Shortcuts
 

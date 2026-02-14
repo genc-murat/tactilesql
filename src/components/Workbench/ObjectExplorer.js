@@ -10,6 +10,7 @@ import { SETTINGS_PATHS } from '../../constants/settingsKeys.js';
 import { createContextMenu, removeContextMenu } from '../../utils/ContextMenu.js';
 import { showClickHouseTableDetails } from './ClickHouseTableDetails.js';
 import { showClickHouseQueryDashboard } from './ClickHouseQueryDashboard.js';
+import { showClickHouseKafkaMonitor } from './ClickHouseKafkaMonitor.js';
 
 
 export function ObjectExplorer() {
@@ -1798,6 +1799,17 @@ export function ObjectExplorer() {
                             Dialog.alert('Active connection not found', 'Error');
                         }
                     }
+                },
+                {
+                    label: 'Kafka Monitor',
+                    icon: 'sync_alt',
+                    iconColor: isDawn ? 'text-[#ea9d34]' : 'text-orange-500',
+                    onClick: () => {
+                        const config = connections.find(c => c.id === activeConnectionId);
+                        if (config) {
+                            showClickHouseKafkaMonitor(config);
+                        }
+                    }
                 }
             ] : [])
         ];
@@ -1933,6 +1945,17 @@ export function ObjectExplorer() {
                             showClickHouseTableDetails(config, dbName, tableName);
                         } else {
                             Dialog.alert('Active connection not found', 'Error');
+                        }
+                    }
+                },
+                {
+                    label: 'Kafka Monitor',
+                    icon: 'sync_alt',
+                    iconColor: isDawn ? 'text-[#ea9d34]' : 'text-orange-500',
+                    onClick: () => {
+                        const config = connections.find(c => c.id === activeConnectionId);
+                        if (config) {
+                            showClickHouseKafkaMonitor(config);
                         }
                     }
                 }

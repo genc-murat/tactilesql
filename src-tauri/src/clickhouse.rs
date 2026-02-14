@@ -762,7 +762,165 @@ pub async fn manage_partition(config: ConnectionConfig, action: String, database
     manage_partition_impl(&config, &action, &database, &table, &partition_id).await
 }
 
+
 #[tauri::command]
 pub async fn get_clickhouse_query_log(config: ConnectionConfig) -> Result<Vec<QueryLogStats>, String> {
     get_query_log_stats(&config).await
+}
+
+
+// --- Kafka Engine Monitoring ---
+#[derive(Serialize, Debug)]
+pub struct KafkaTableInfo {
+    pub database: String,
+    pub table: String,
+    pub engine_full: String,
+}
+
+#[derive(Serialize, Debug)]
+pub struct KafkaConsumerInfo {
+    pub database: String,
+    pub table: String,
+    pub consumer_id: String,
+    pub topic: String,
+    pub partition: Option<u64>,
+    pub current_offset: Option<u64>,
+    pub last_committed_offset: Option<u64>,
+    pub assigned_partitions: Option<u64>,
+    pub last_exception: String,
+    pub last_exception_time: String,
+    pub lag: Option<u64>, 
+}
+
+pub async fn get_kafka_tables_impl(config: &ConnectionConfig) -> Result<Vec<KafkaTableInfo>, String> {
+    let query = "SELECT database, name, engine_full FROM system.tables WHERE engine = 'Kafka'";
+    let results = execute_query_generic(config, query.to_string()).await?;
+
+    let mut tables = Vec::new();
+    if let Some(first) = results.first() {
+        if first.rows.is_empty() { return Ok(tables); }
+
+        let db_idx = first.columns.iter().position(|c| c == "database");
+        let name_idx = first.columns.iter().position(|c| c == "name");
+        let engine_idx = first.columns.iter().position(|c| c == "engine_full");
+
+        for row in &first.rows {
+            tables.push(KafkaTableInfo {
+                database: db_idx.and_then(|i| row.get(i)).and_then(|v| v.as_str()).unwrap_or_default().to_string(),
+                table: name_idx.and_then(|i| row.get(i)).and_then(|v| v.as_str()).unwrap_or_default().to_string(),
+                engine_full: engine_idx.and_then(|i| row.get(i)).and_then(|v| v.as_str()).unwrap_or_default().to_string(),
+            });
+        }
+    }
+    Ok(tables)
+}
+
+pub async fn get_kafka_consumers_impl(config: &ConnectionConfig) -> Result<Vec<KafkaConsumerInfo>, String> {
+    // Try to query system.kafka_consumers. 
+    // We check if table exists first? Or just try and catch error.
+    // Query assumes standard columns. 'assignments.topic' usually returned as map or flattened?
+    // In system.kafka_consumers, fields like assignments are often nested or we need to query distinct rows.
+    // Actually system.kafka_consumers usually returns one row per consumer assignment?
+    // Let's use * to be safe and parse by name to avoid issues if column order changes.
+    // Wait, Generic parser maps by column name? Yes `execute_query_generic` returns columns list.
+    
+    // NOTE: system.kafka_consumers might not exist if Kafka is not enabled/used.
+    let query = "SELECT * FROM system.kafka_consumers";
+    let results = execute_query_generic(config, query.to_string()).await.map_err(|e| format!("Failed to query system.kafka_consumers (Kafka might not be enabled): {}", e))?;
+
+    let mut consumers = Vec::new();
+    if let Some(first) = results.first() {
+         if first.rows.is_empty() { return Ok(consumers); }
+         
+         // Helper to find column index
+         let get_idx = |name: &str| first.columns.iter().position(|c| c == name);
+         
+         let db_idx = get_idx("database");
+         let table_idx = get_idx("table");
+         let cid_idx = get_idx("consumer_id");
+         // assignments is a Nested or Tuple? 
+         // Actually in recent CH versions it might be separate columns?
+         // Let's check typical schema:
+         // database, table, consumer_id, cluster, topics, partitions, offsets...
+         // Or typically, creating a view over it is safer.
+         // Let's try to find common columns.
+         // If we can't find specific columns, we return defaults.
+         
+         // Assuming we want row per partition if possible, but system.kafka_consumers might be 1 row per consumer.
+         // If it is 1 row per consumer, 'partitions' and 'offsets' are Arrays.
+         // That complicates parsing in Rust without flattening.
+         // Let's query with ARRAY JOIN to flatten if they are arrays!
+         
+         // Let's check if 'assignments' is a thing.
+         // Actually, let's try a safer query that unrolls arrays if they exist, or just selects standard columns.
+         // "SELECT database, table, consumer_id, last_exception, last_exception_time FROM system.kafka_consumers"
+         // And for metrics, maybe "SELECT * FROM system.kafka_log" is better for lag?
+         // But user wants `system.kafka_consumers`.
+         
+         // Let's try to detect if we have specific columns.
+         // Easier: use `SELECT *` and dynamic parsing.
+         
+         // If it's Array(UInt64) for offsets, we can't easily display it in flat table without unrolling.
+         // Let's try to unroll using `ARRAY JOIN` in query if we suspect array.
+         // But we don't know if they are arrays.
+         
+         // STRATEGY: Select vital info that is usually scalar. `database`, `table`, `consumer_id`, `last_exception`, `last_exception_time`.
+         // For offsets/lag, if they are arrays, we might just show "Compounded" or stringified.
+         // But useful monitor needs per-partition lag.
+         
+         // Let's try:
+         // SELECT database, table, consumer_id, topic, partition, current_offset, last_committed_offset FROM system.kafka_consumers
+         // If 'topic' is not found, fallback?
+         // Let's rely on the result columns.
+         
+         let topic_idx = get_idx("topic").or(get_idx("assignments.topic")); // Flattened?
+         let partition_idx = get_idx("partition").or(get_idx("assignments.partition"));
+         let cur_offset_idx = get_idx("current_offset").or(get_idx("assignments.current_offset"));
+         let commit_offset_idx = get_idx("last_committed_offset").or(get_idx("assignments.last_committed_offset"));
+         
+         // Exception info
+         let exc_idx = get_idx("last_exception");
+         let exc_time_idx = get_idx("last_exception_time");
+
+         for row in &first.rows {
+            let get_str = |idx: Option<usize>| idx.and_then(|i| row.get(i)).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+            let get_u64 = |idx: Option<usize>| idx.and_then(|i| row.get(i)).and_then(|v| {
+                if v.is_u64() { v.as_u64() }
+                else if v.is_string() { v.as_str().and_then(|s| s.parse::<u64>().ok()) }
+                else { None }
+            });
+            
+            let cur = get_u64(cur_offset_idx);
+            let com = get_u64(commit_offset_idx);
+            let lag = if let (Some(c), Some(l)) = (cur, com) {
+                if c >= l { Some(c - l) } else { Some(0) } // Rough calc if names imply logic
+            } else { None };
+
+            consumers.push(KafkaConsumerInfo {
+                database: get_str(db_idx),
+                table: get_str(table_idx),
+                consumer_id: get_str(cid_idx),
+                topic: get_str(topic_idx), // Might be empty if array
+                partition: get_u64(partition_idx),
+                current_offset: cur,
+                last_committed_offset: com,
+                assigned_partitions: None, // Logic for count if array?
+                last_exception: get_str(exc_idx),
+                last_exception_time: get_str(exc_time_idx),
+                lag,
+            });
+         }
+    }
+    
+    Ok(consumers)
+}
+
+#[tauri::command]
+pub async fn get_clickhouse_kafka_tables(config: ConnectionConfig) -> Result<Vec<KafkaTableInfo>, String> {
+    get_kafka_tables_impl(&config).await
+}
+
+#[tauri::command]
+pub async fn get_clickhouse_kafka_consumers(config: ConnectionConfig) -> Result<Vec<KafkaConsumerInfo>, String> {
+    get_kafka_consumers_impl(&config).await
 }

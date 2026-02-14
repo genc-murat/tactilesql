@@ -298,6 +298,8 @@ pub fn run() {
             clickhouse::get_clickhouse_partitions,
             clickhouse::manage_partition,
             clickhouse::get_clickhouse_query_log,
+            clickhouse::get_clickhouse_kafka_tables,
+            clickhouse::get_clickhouse_kafka_consumers,
             // Database/Table Operations
             db::get_databases,
             db::get_schemas,
