@@ -300,6 +300,8 @@ pub fn run() {
             clickhouse::get_clickhouse_query_log,
             clickhouse::get_clickhouse_kafka_tables,
             clickhouse::get_clickhouse_kafka_consumers,
+            clickhouse::get_clickhouse_merges,
+            clickhouse::get_clickhouse_mutations,
             // Database/Table Operations
             db::get_databases,
             db::get_schemas,

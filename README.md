@@ -9,7 +9,7 @@ TactileSQL is a modern, desktop-first SQL workbench for MySQL and PostgreSQL, bu
 ## Highlights
 
 - **SQL Workbench** with multi-tab editor, syntax highlighting, auto-format, autocomplete, and **code folding**.
-- **First-Class ClickHouse Support**: Visual Explain Plans (AST & Pipeline), Advanced Table Inspector (MergeTree details), Partition Explorer, Query Log Dashboard, and **Materialized View Data Lineage**.
+- **First-Class ClickHouse Support**: Visual Explain Plans (AST & Pipeline), Advanced Table Inspector (MergeTree details), Partition Explorer, Query Log Dashboard, Kafka Engine Monitoring, Materialized View Data Lineage, and **Merge & Mutation Monitor**.
 - **Code Folding**: Collapse and expand code blocks (subqueries, CASE/END, BEGIN/END, block comments) for improved readability.
 - **Configurable SQL Execution Defaults**: Set default run mode (`current statement` / `selection first` / `run all`) and query timeout (`0 = unlimited`).
 - **Smart Autocomplete++** with context-aware suggestions, abbreviation matching (e.g. `tc` → `test_customers`), FK-based JOIN hints, database/schema qualification control (Never/Always/On collisions), and frequency learning.
@@ -409,8 +409,17 @@ The Rust backend exposes the following commands (used by the UI):
 - `get_locks` — Raw lock inventory (engine lock metadata)
 - `get_lock_analysis` — Blocking graph, chain/deadlock analysis, and automatic recommendations
 - `get_slow_queries` — Slow query samples with timing stats
-- `get_replication_status` — Replication health/status snapshot
 - `get_innodb_status` — InnoDB storage engine status
+- `get_replication_status` — Replication health/status snapshot
+
+### ClickHouse Commands
+- `get_clickhouse_server_status` — ClickHouse server status and uptime
+- `get_clickhouse_table_info` — Detailed MergeTree table properties
+- `get_clickhouse_partitions`, `manage_partition` — Partition management
+- `get_clickhouse_query_log` — Query performance statistics
+- `get_clickhouse_kafka_tables`, `get_clickhouse_kafka_consumers` — Kafka engine monitoring
+- `get_clickhouse_merges`, `get_clickhouse_mutations` — Merge and mutation monitoring
+- `get_clickhouse_data_lineage` — Materialized view dependency extraction
 
 ### User Management
 - `get_users`, `get_user_privileges`
@@ -422,6 +431,7 @@ The Rust backend exposes the following commands (used by the UI):
 - **Query Log Dashboard**: Visualize server performance metrics (duration, memory, read rows) derived from `system.query_log`.
 - **Kafka Engine Monitoring**: Real-time dashboard for Kafka consumer groups, displaying offset lag, current offsets, and consumption errors.
 - **Materialized View Data Lineage**: Interactive graph visualization of data flow between source tables and target tables through Materialized Views.
+- **Merge & Mutation Monitor**: Live tracking of background merges and mutation history (ALTER UPDATE/DELETE) with progress bars and status badges.
 
 ## Keyboard Shortcuts
 

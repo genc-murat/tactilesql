@@ -11,6 +11,7 @@ import { createContextMenu, removeContextMenu } from '../../utils/ContextMenu.js
 import { showClickHouseTableDetails } from './ClickHouseTableDetails.js';
 import { showClickHouseQueryDashboard } from './ClickHouseQueryDashboard.js';
 import { showClickHouseKafkaMonitor } from './ClickHouseKafkaMonitor.js';
+import { showClickHouseMergeMonitor } from './ClickHouseMergeMonitor.js';
 import { showDataLineage } from './DataLineage.js';
 
 
@@ -1813,6 +1814,17 @@ export function ObjectExplorer() {
                     }
                 },
                 {
+                    label: 'Merge & Mutation Monitor',
+                    icon: 'merge',
+                    iconColor: isDawn ? 'text-[#56949f]' : 'text-emerald-500',
+                    onClick: () => {
+                        const config = connections.find(c => c.id === activeConnectionId);
+                        if (config) {
+                            showClickHouseMergeMonitor(config, dbName);
+                        }
+                    }
+                },
+                {
                     label: 'Data Lineage',
                     icon: 'account_tree',
                     iconColor: isDawn ? 'text-[#c4a7e7]' : 'text-blue-500',
@@ -1968,6 +1980,17 @@ export function ObjectExplorer() {
                         const config = connections.find(c => c.id === activeConnectionId);
                         if (config) {
                             showClickHouseKafkaMonitor(config);
+                        }
+                    }
+                },
+                {
+                    label: 'Merge & Mutation Monitor',
+                    icon: 'merge',
+                    iconColor: isDawn ? 'text-[#56949f]' : 'text-emerald-500',
+                    onClick: () => {
+                        const config = connections.find(c => c.id === activeConnectionId);
+                        if (config) {
+                            showClickHouseMergeMonitor(config, dbName, tableName);
                         }
                     }
                 }

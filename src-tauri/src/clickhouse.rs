@@ -924,3 +924,54 @@ pub async fn get_clickhouse_kafka_tables(config: ConnectionConfig) -> Result<Vec
 pub async fn get_clickhouse_kafka_consumers(config: ConnectionConfig) -> Result<Vec<KafkaConsumerInfo>, String> {
     get_kafka_consumers_impl(&config).await
 }
+
+// --- Merge & Mutation Monitoring ---
+
+#[tauri::command]
+pub async fn get_clickhouse_merges(config: ConnectionConfig, database: Option<String>, table: Option<String>) -> Result<Vec<QueryResult>, String> {
+    let mut query = String::from(
+        "SELECT database, table, elapsed, progress, num_parts, result_part_name, \
+         total_size_bytes_compressed, bytes_read_uncompressed, rows_read, \
+         merge_type, merge_algorithm \
+         FROM system.merges"
+    );
+
+    let mut conditions = Vec::new();
+    if let Some(db) = &database {
+        conditions.push(format!("database = '{}'", db.replace('\'', "\\'")));
+    }
+    if let Some(tbl) = &table {
+        conditions.push(format!("table = '{}'", tbl.replace('\'', "\\'")));
+    }
+    if !conditions.is_empty() {
+        query.push_str(" WHERE ");
+        query.push_str(&conditions.join(" AND "));
+    }
+    query.push_str(" ORDER BY elapsed DESC");
+
+    execute_query_generic(&config, query).await
+}
+
+#[tauri::command]
+pub async fn get_clickhouse_mutations(config: ConnectionConfig, database: Option<String>, table: Option<String>) -> Result<Vec<QueryResult>, String> {
+    let mut query = String::from(
+        "SELECT database, table, mutation_id, command, create_time, \
+         is_done, parts_to_do, latest_fail_reason \
+         FROM system.mutations"
+    );
+
+    let mut conditions = Vec::new();
+    if let Some(db) = &database {
+        conditions.push(format!("database = '{}'", db.replace('\'', "\\'")));
+    }
+    if let Some(tbl) = &table {
+        conditions.push(format!("table = '{}'", tbl.replace('\'', "\\'")));
+    }
+    if !conditions.is_empty() {
+        query.push_str(" WHERE ");
+        query.push_str(&conditions.join(" AND "));
+    }
+    query.push_str(" ORDER BY create_time DESC LIMIT 200");
+
+    execute_query_generic(&config, query).await
+}
