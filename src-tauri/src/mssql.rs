@@ -926,20 +926,20 @@ pub async fn get_storage_stats(pool: &Pool, database: &str) -> Result<Vec<Storag
         FROM sys.database_files f
     ";
     
-    let stream = conn.query(query, &[]).await.map_err(|e| e.to_string())?;
-    let rows = stream.into_first_result().await.map_err(|e| e.to_string())?;
+    let results = execute_query(pool, query.to_string()).await?;
     
     let mut stats = Vec::new();
-    
-    for row in rows {
-        stats.push(StorageStats {
-            file_name: row.get::<&str, _>(0).unwrap_or("").to_string(),
-            file_type: row.get::<&str, _>(1).unwrap_or("").to_string(),
-            size_mb: row.get::<f64, _>(2).unwrap_or(0.0),
-            used_mb: row.get::<f64, _>(3).unwrap_or(0.0),
-            free_mb: row.get::<f64, _>(4).unwrap_or(0.0),
-            physical_name: row.get::<&str, _>(5).unwrap_or("").to_string(),
-        });
+    if let Some(result_set) = results.first() {
+        for row in &result_set.rows {
+            stats.push(StorageStats {
+                file_name: row[0].as_str().unwrap_or("").to_string(),
+                file_type: row[1].as_str().unwrap_or("").to_string(),
+                size_mb: row[2].as_f64().unwrap_or(0.0),
+                used_mb: row[3].as_f64().unwrap_or(0.0),
+                free_mb: row[4].as_f64().unwrap_or(0.0),
+                physical_name: row[5].as_str().unwrap_or("").to_string(),
+            });
+        }
     }
 
     Ok(stats)
@@ -953,20 +953,50 @@ pub async fn get_execution_plan(pool: &Pool, query: &str) -> Result<String, Stri
     // Enable XML plan
     conn.simple_query("SET SHOWPLAN_XML ON").await.map_err(|e| e.to_string())?;
     
-    // Execute user query - The result will be the plan XML in a single column
-    let stream = conn.query(query, &[]).await.map_err(|e| e.to_string())?;
-    let results = stream.into_first_result().await.map_err(|e| e.to_string())?;
-    
     let mut xml_plan = String::new();
-    if let Some(row) = results.first() {
-        // XML plan is typically returned as a string in the first column
-        if let Some(val) = row.get::<&str, _>(0) {
-             xml_plan = val.to_string();
+    let mut row_count = 0;
+    let mut meta_count = 0;
+    let mut col_names = Vec::new();
+
+    {
+        // Using simple_query can be more reliable for session-dependent plans
+        let mut stream = conn.simple_query(query).await.map_err(|e| e.to_string())?;
+
+        while let Some(item) = stream.try_next().await.map_err(|e| e.to_string())? {
+            match item {
+                QueryItem::Metadata(meta) => {
+                    meta_count += 1;
+                    if col_names.is_empty() {
+                        col_names = meta.columns().iter().map(|c| c.name().to_string()).collect();
+                    }
+                }
+                QueryItem::Row(row) => {
+                    row_count += 1;
+                    // Try &str first, then fallback to &[u8]
+                    if let Ok(Some(val)) = row.try_get::<&str, _>(0) {
+                         xml_plan.push_str(val);
+                    } else if let Ok(Some(val)) = row.try_get::<&[u8], _>(0) {
+                         if let Ok(s) = std::str::from_utf8(val) {
+                             xml_plan.push_str(s);
+                         }
+                    }
+                }
+            }
         }
     }
     
-    // Disable XML plan - crucial to reset session state
+    // Disable XML plan
     conn.simple_query("SET SHOWPLAN_XML OFF").await.map_err(|e| e.to_string())?;
+    
+    if xml_plan.trim().is_empty() {
+        return Err(format!(
+            "No execution plan detected. Results: {} metadata blocks, {} rows. Columns: [{}]. Query prefix: '{}...'",
+            meta_count,
+            row_count,
+            col_names.join(", "),
+            query.chars().take(50).collect::<String>()
+        ));
+    }
     
     Ok(xml_plan)
 }

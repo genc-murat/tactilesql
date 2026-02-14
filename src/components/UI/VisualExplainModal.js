@@ -14,11 +14,13 @@ export function showVisualExplainModal(queryResult) {
 
     let explainData = null;
     let isTree = false;
+    let currentView = 'visual'; // 'visual' or 'tree'
 
     // Detect ClickHouse raw text input (AST/Pipeline) or MSSQL XML
     if (typeof queryResult === 'string') {
-        if (queryResult.trim().startsWith('<ShowPlanXML')) {
-            explainData = parseMssqlXmlExplain(queryResult);
+        const trimmedResult = queryResult.trim();
+        if (trimmedResult.includes('<ShowPlanXML')) {
+            explainData = parseMssqlXmlExplain(trimmedResult);
             isTree = true;
         } else {
             explainData = parseClickHouseExplain(queryResult);
@@ -103,6 +105,14 @@ export function showVisualExplainModal(queryResult) {
                         <p class="text-[10px] text-gray-500">Visual analysis of query optimization</p>
                     </div>
                 </div>
+
+                <!-- View Switcher -->
+                <div class="flex bg-black/20 p-1 rounded-lg border border-white/5">
+                    <button id="view-visual" class="px-4 py-1.5 text-[10px] font-bold uppercase rounded-md transition-all bg-mysql-teal text-white">Visual</button>
+                    <button id="view-tree" class="px-4 py-1.5 text-[10px] font-bold uppercase rounded-md transition-all text-gray-400 hover:text-white">Tree</button>
+                    <button id="view-raw" class="px-4 py-1.5 text-[10px] font-bold uppercase rounded-md transition-all text-gray-400 hover:text-white">Raw</button>
+                </div>
+
                 <div class="flex items-center gap-3">
                     <button id="close-modal" class="w-8 h-8 flex items-center justify-center rounded-lg ${isLight ? 'bg-gray-100 hover:bg-gray-200' : (isDawn ? 'bg-[#fffaf3] hover:bg-[#f2e9e1] text-[#575279]' : 'bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white')} transition-all">
                         <span class="material-symbols-outlined text-base">close</span>
@@ -137,15 +147,29 @@ export function showVisualExplainModal(queryResult) {
                 </div>
             </div>
             
-            <div class="flex-1 overflow-auto custom-scrollbar p-8 ${isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]'))} relative text-center">
+            <div id="explain-content" class="flex-1 overflow-auto custom-scrollbar p-8 ${isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]'))} relative text-center">
                 <svg id="svg-visualization" class="w-full inline-block" style="min-height: 400px;">
                     <!-- SVG visualization will be generated here -->
                 </svg>
+                <div id="tree-visualization" class="hidden text-left font-mono text-xs w-full max-w-4xl mx-auto">
+                    <!-- Tree visualization will be generated here -->
+                </div>
+                <div id="raw-visualization" class="hidden text-left font-mono text-[10px] w-full p-4 rounded-lg bg-black/40 overflow-auto whitespace-pre-wrap select-text">
+                    <!-- Raw text will be injected here -->
+                </div>
             </div>
         </div>
     `;
 
     document.body.appendChild(overlay);
+
+    // Event Handlers
+    const svg = overlay.querySelector('#svg-visualization');
+    const treeDiv = overlay.querySelector('#tree-visualization');
+    const rawDiv = overlay.querySelector('#raw-visualization');
+    const visualBtn = overlay.querySelector('#view-visual');
+    const treeBtn = overlay.querySelector('#view-tree');
+    const rawBtn = overlay.querySelector('#view-raw');
 
     // Event Handlers
     const closeBtn = overlay.querySelector('#close-modal');
@@ -159,7 +183,51 @@ export function showVisualExplainModal(queryResult) {
     };
     document.addEventListener('keydown', escHandler);
 
-    const svg = overlay.querySelector('#svg-visualization');
+    visualBtn.onclick = () => {
+        currentView = 'visual';
+        updateSwitchButtons(visualBtn);
+        svg.classList.remove('hidden');
+        treeDiv.classList.add('hidden');
+        rawDiv.classList.add('hidden');
+    };
+
+    treeBtn.onclick = () => {
+        currentView = 'tree';
+        updateSwitchButtons(treeBtn);
+        svg.classList.add('hidden');
+        treeDiv.classList.remove('hidden');
+        rawDiv.classList.add('hidden');
+        renderTreeView(treeDiv, explainData, isLight, isDawn);
+    };
+
+    rawBtn.onclick = () => {
+        currentView = 'raw';
+        updateSwitchButtons(rawBtn);
+        svg.classList.add('hidden');
+        treeDiv.classList.add('hidden');
+        rawDiv.classList.remove('hidden');
+
+        // Populate raw data - If it was parsed from string, use the original string
+        if (typeof queryResult === 'string') {
+            rawDiv.textContent = queryResult;
+        } else {
+            // If it was tabular (MySQL/Postgres), stringify it
+            rawDiv.textContent = JSON.stringify(queryResult, null, 2);
+        }
+    };
+
+    function updateSwitchButtons(activeBtn) {
+        [visualBtn, treeBtn, rawBtn].forEach(btn => {
+            if (btn === activeBtn) {
+                btn.className = "px-4 py-1.5 text-[10px] font-bold uppercase rounded-md transition-all bg-mysql-teal text-white";
+            } else {
+                btn.className = "px-4 py-1.5 text-[10px] font-bold uppercase rounded-md transition-all text-gray-400 hover:text-white";
+            }
+        });
+    }
+
+    // SVG already initialized above
+
 
     // Create SVG defs
     const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
@@ -202,7 +270,6 @@ export function showVisualExplainModal(queryResult) {
     defs.appendChild(filter);
     svg.appendChild(defs);
 
-    // RENDER
     try {
         if (isTree) {
             renderTreeLayout(svg, explainData, isLight, isDawn);
@@ -213,6 +280,63 @@ export function showVisualExplainModal(queryResult) {
         console.error('SVG rendering error:', error);
         svg.innerHTML = `<text x="50" y="50" fill="#ef4444" font-size="14">Error rendering visualization: ${error.message}</text>`;
     }
+}
+
+function renderTreeView(container, node, isLight, isDawn) {
+    container.innerHTML = '';
+    const treeRoot = document.createElement('div');
+    treeRoot.className = 'tree-view-root space-y-2';
+
+    const renderNode = (n, depth = 0) => {
+        const row = document.createElement('div');
+        row.className = `flex flex-col border-l-2 py-2 pl-4 transition-all ${isLight ? 'border-gray-100 hover:border-mysql-teal' : 'border-white/5 hover:border-mysql-teal/50'}`;
+        row.style.marginLeft = `${depth * 20}px`;
+
+        const header = document.createElement('div');
+        header.className = 'flex items-center gap-2 group';
+
+        const icon = document.createElement('span');
+        icon.className = 'material-symbols-outlined text-sm text-mysql-teal opacity-70 group-hover:opacity-100';
+        icon.textContent = n.children && n.children.length > 0 ? 'account_tree' : 'adjust';
+
+        const label = document.createElement('span');
+        label.className = `font-bold ${isLight ? 'text-gray-700' : 'text-gray-200'}`;
+        label.textContent = n.label;
+
+        const details = document.createElement('div');
+        details.className = 'flex flex-wrap gap-3 mt-1 ml-6';
+
+        if (n.rows !== undefined) {
+            addBadge(details, 'Rows', new Intl.NumberFormat().format(n.rows), 'bg-emerald-500/10 text-emerald-500', isLight);
+        }
+        if (n.cost !== undefined) {
+            addBadge(details, 'Cost', n.cost.toFixed(4), 'bg-blue-500/10 text-blue-500', isLight);
+        }
+        if (n.cpu !== undefined && n.cpu > 0) {
+            addBadge(details, 'CPU', n.cpu.toFixed(6), 'bg-yellow-500/10 text-yellow-500', isLight);
+        }
+
+        header.appendChild(icon);
+        header.appendChild(label);
+        row.appendChild(header);
+        row.appendChild(details);
+
+        treeRoot.appendChild(row);
+
+        if (n.children) {
+            n.children.forEach(child => renderNode(child, depth + 1));
+        }
+    };
+
+    const addBadge = (parent, label, value, colors, isLight) => {
+        const badge = document.createElement('div');
+        badge.className = `px-2 py-0.5 rounded text-[9px] uppercase font-bold flex items-center gap-1 ${colors}`;
+        badge.innerHTML = `<span class="opacity-50">${label}:</span> <span>${value}</span>`;
+        parent.appendChild(badge);
+    };
+
+    renderNode(node);
+    container.appendChild(treeRoot);
 }
 
 function createStop(offset, color) {
@@ -252,29 +376,31 @@ function parseMssqlXmlExplain(xml) {
     const parser = new DOMParser();
     const doc = parser.parseFromString(xml, "text/xml");
 
-    // Find Root RelOp
+    // Find Root RelOp - Using getElementsByTagName without namespace prefix
+    // (In case browser doesn't handle default namespaces strictly with getElementsByTagName)
     const stmts = doc.getElementsByTagName("StmtSimple");
     let rootRelOp = null;
 
-    for (let i = 0; i < stmts.length; i++) {
-        const stmt = stmts[i];
-        const plan = stmt.getElementsByTagName("QueryPlan")[0];
-        if (plan) {
-            // Check direct children for RelOp
-            let relOp = null;
-            for (let j = 0; j < plan.children.length; j++) {
-                if (plan.children[j].tagName === 'RelOp') {
-                    relOp = plan.children[j];
-                    break;
-                }
-            }
-
-            if (relOp) {
-                rootRelOp = relOp;
-                break;
-            }
+    // Helper to find element by local name if standard getElementsByTagName fails
+    const findByLocalName = (root, localName) => {
+        if (root.localName === localName) return root;
+        for (let i = 0; i < root.children.length; i++) {
+            const found = findByLocalName(root.children[i], localName);
+            if (found) return found;
         }
-    }
+        return null;
+    };
+
+    const getFirstRelOp = (el) => {
+        for (let i = 0; i < el.children.length; i++) {
+            if (el.children[i].localName === 'RelOp') return el.children[i];
+            const found = getFirstRelOp(el.children[i]);
+            if (found) return found;
+        }
+        return null;
+    };
+
+    rootRelOp = doc.documentElement ? getFirstRelOp(doc.documentElement) : null;
 
     if (!rootRelOp) {
         return { id: 'error', label: 'No Execution Plan Found (Check if Query is Valid)', children: [] };
@@ -287,13 +413,24 @@ function parseMssqlXmlExplain(xml) {
         const parallel = el.getAttribute("Parallel") === "1";
         const nodeId = el.getAttribute("NodeId");
 
+        // Advanced metrics for Tree View
+        const estimateCPU = el.getAttribute("EstimateCPU");
+        const estimateIO = el.getAttribute("EstimateIO");
+        const estimateTotalSubtreeCost = el.getAttribute("EstimatedTotalSubtreeCost");
+
         const label = physicalOp || logicalOp || "Operator";
 
         const children = [];
         for (let i = 0; i < el.children.length; i++) {
             const childKey = el.children[i];
-            if (childKey.tagName === 'RelOp') {
+            if (childKey.localName === 'RelOp') {
                 children.push(parseRelOp(childKey));
+            } else {
+                for (let j = 0; j < childKey.children.length; j++) {
+                    if (childKey.children[j].localName === 'RelOp') {
+                        children.push(parseRelOp(childKey.children[j]));
+                    }
+                }
             }
         }
 
@@ -301,6 +438,9 @@ function parseMssqlXmlExplain(xml) {
             id: `node-${nodeId}`,
             label: label,
             rows: parseFloat(estimateRows || 0),
+            cpu: parseFloat(estimateCPU || 0),
+            io: parseFloat(estimateIO || 0),
+            cost: parseFloat(estimateTotalSubtreeCost || 0),
             parallel,
             children
         };

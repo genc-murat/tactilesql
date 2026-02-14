@@ -71,10 +71,6 @@ export const renderToolbar = ({
                     <!-- Dropdown -->
                     <div class="menu-dropdown absolute right-0 top-full mt-1 w-44 hidden z-[500] animate-in fade-in slide-in-from-top-1 duration-200">
                         <div class="p-0.5 rounded border ${isLight ? 'bg-white border-gray-200 shadow-lg' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-lg' : (isOceanic ? 'bg-ocean-panel border-ocean-border shadow-xl' : (isNeon ? 'bg-neon-panel border-neon-border shadow-xl' : 'bg-[#1a1d23] border-white/10 shadow-xl')))} backdrop-blur-xl">
-                            <button id="execution-plan-btn" class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors ${isLight ? 'text-gray-700 hover:bg-gray-100' : 'text-gray-300 hover:bg-white/10'}">
-                                <span class="material-symbols-outlined text-[14px] text-cyan-400">data_object</span>
-                                <span class="text-[10px] font-bold">Execution Plan (Raw)</span>
-                            </button>
                             ${isClickHouse ? `
                             <button id="explain-pipeline-btn" class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors ${isLight ? 'text-gray-700 hover:bg-gray-100' : 'text-gray-300 hover:bg-white/10'}">
                                 <span class="material-symbols-outlined text-[14px] text-orange-400">account_tree</span>
@@ -85,7 +81,6 @@ export const renderToolbar = ({
                                 <span class="text-[10px] font-bold">Explain AST</span>
                             </button>
                             ` : ''}
-                            <button id="explain-btn" class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors ${isLight ? 'text-gray-700 hover:bg-gray-100' : 'text-gray-300 hover:bg-white/10'}">
                             <button id="explain-btn" class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors ${isLight ? 'text-gray-700 hover:bg-gray-100' : 'text-gray-300 hover:bg-white/10'}">
                                 <span class="material-symbols-outlined text-[14px] text-blue-400">analytics</span>
                                 <span class="text-[10px] font-bold">Visual Explain</span>

@@ -2587,42 +2587,6 @@ export function QueryEditor() {
             aiExplainBtn.addEventListener('click', handleAiExplain);
         }
 
-        // Execution Plan Logic (Raw backend plan text)
-        const executionPlanBtn = container.querySelector('#execution-plan-btn');
-        if (executionPlanBtn) {
-            let isLoadingExecutionPlan = false;
-            executionPlanBtn.addEventListener('click', async () => {
-                if (isLoadingExecutionPlan) return;
-
-                const queryToRun = getAnalysisQuery();
-                if (!queryToRun) {
-                    Dialog.alert('Please enter a query to analyze.', 'Info');
-                    return;
-                }
-
-                const originalHTML = executionPlanBtn.innerHTML;
-                isLoadingExecutionPlan = true;
-
-                try {
-                    executionPlanBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span><span class="text-[10px] font-bold">Loading...</span>';
-                    executionPlanBtn.classList.add('opacity-70');
-
-                    const plan = await invoke('get_execution_plan', { query: queryToRun });
-                    const planText = typeof plan === 'string' ? plan : JSON.stringify(plan, null, 2);
-                    Dialog.alert(
-                        `<pre class="max-h-96 overflow-auto whitespace-pre-wrap text-left text-[11px] leading-relaxed" > ${escapeHtml(planText)}</pre> `,
-                        'Execution Plan'
-                    );
-                } catch (error) {
-                    Dialog.alert(`Execution plan failed: ${String(error).replace(/\n/g, '<br>')} `, 'Query Analysis Error');
-                } finally {
-                    executionPlanBtn.innerHTML = originalHTML;
-                    executionPlanBtn.classList.remove('opacity-70');
-                    isLoadingExecutionPlan = false;
-                }
-            });
-        }
-
         // Explain Logic (Visual Explain with EXPLAIN query execution)
         const explainBtn = container.querySelector('#explain-btn');
         if (explainBtn) {
