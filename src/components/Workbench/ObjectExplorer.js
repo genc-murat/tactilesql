@@ -1104,7 +1104,7 @@ export function ObjectExplorer() {
                         <h2 class="text-[10px] font-bold tracking-[0.15em] ${headerText}">Explorer</h2>
                         <div class="flex gap-2">
                             <span id="refresh-btn" class="material-symbols-outlined text-[16px] ${iconColor} cursor-pointer ${hoverIcon}" title="Reload Connections">sync</span>
-                            <a href="#/connections" class="material-symbols-outlined text-[16px] ${iconColor} cursor-pointer ${hoverIcon}" title="Manage Connections">settings</a>
+                            <a href="#/connections" id="manage-conns-link" class="material-symbols-outlined text-[16px] ${iconColor} cursor-pointer ${hoverIcon}" title="Manage Connections">settings_input_component</a>
                         </div>
                     </div>
                     <div class="px-2 mt-2 flex-shrink-0" id="search-container-wrapper"></div>
@@ -2190,7 +2190,7 @@ export function ObjectExplorer() {
                 } else if (type === 'merge') {
                     const params = cols.map(() => '?').join(', ');
                     const colList = cols.map(c => quoteIdentifier(c.name, dbType)).join(', ');
-                    
+
                     if (dbType === 'postgresql') {
                         const updateList = cols.map(c => `    ${quoteIdentifier(c.name, dbType)} = EXCLUDED.${quoteIdentifier(c.name, dbType)}`).join(',\n');
                         sql = `INSERT INTO ${quotedDb}.${quotedTable}\n(${colList})\nVALUES\n(${params})\nON CONFLICT (<key_column>) DO UPDATE SET\n${updateList};`;
@@ -2637,6 +2637,23 @@ export function ObjectExplorer() {
         isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
         isNeon = theme === 'neon';
         explorer.className = getExplorerClass(theme);
+
+        // Update header theme if it exists
+        const headerStruct = container.querySelector('#explorer-header-structure');
+        if (headerStruct) {
+            const headerTextClass = isLight ? 'text-gray-500' : (isDawn ? 'text-[#9797a2]' : (isNeon ? 'text-neon-text/40' : 'text-gray-600'));
+            const iconColorClass = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-600'));
+            const hoverIconClass = isDawn ? 'hover:text-[#ea9d34]' : 'hover:text-mysql-teal';
+
+            const h2 = headerStruct.querySelector('h2');
+            if (h2) h2.className = `text-[10px] font-bold tracking-[0.15em] ${headerTextClass}`;
+
+            const icons = headerStruct.querySelectorAll('.material-symbols-outlined');
+            icons.forEach(icon => {
+                icon.className = `material-symbols-outlined text-[16px] ${iconColorClass} cursor-pointer ${hoverIconClass}`;
+            });
+        }
+
         render();
     };
     window.addEventListener('themechange', onThemeChange);
