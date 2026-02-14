@@ -419,12 +419,19 @@ pub async fn build_dependency_graph_clickhouse(
 
             // If it's a view (or MaterializedView), parse the Create Query for dependencies
             if node_type == NodeType::View && !create_query.is_empty() {
-                // Remove "CREATE VIEW ... AS" prefix to get just the SELECT part if possible, 
-                // but our parser handles full statements too.
-                // ClickHouse `create_table_query` is usually "CREATE VIEW db.name ... AS SELECT ..."
-                
+                // Parse SELECT dependencies (source tables)
                 let parser_result = extract_dependencies(&create_query, DbDialect::ClickHouse);
                 add_dependency_edges(&mut graph, &node_id, &target_db, parser_result.dependencies);
+                
+                // For MaterializedView, also extract TO clause (target table)
+                if engine == "MaterializedView" {
+                    if let Some(target_table) = extract_mv_to_clause(&create_query) {
+                        // Add edge from MV to target table (MV writes to target)
+                        let target_id = format!("{}.{}", target_db, target_table);
+                        println!("DEBUG: [ClickHouse Extractor] MV {} -> target {}", node_id, target_id);
+                        graph.add_edge(&node_id, &target_id, EdgeType::Insert);
+                    }
+                }
             }
         }
     }
@@ -436,4 +443,20 @@ pub async fn build_dependency_graph_clickhouse(
     }
 
     Ok(graph)
+}
+
+/// Extract the target table from a MaterializedView's TO clause
+/// Example: "CREATE MATERIALIZED VIEW mv TO target_table AS SELECT..." -> Some("target_table")
+fn extract_mv_to_clause(create_query: &str) -> Option<String> {
+    // Regex to match: TO [database.]table_name
+    let re = regex::Regex::new(r"(?i)\bTO\s+(?:([a-zA-Z0-9_]+)\.)?([a-zA-Z0-9_]+)\b").ok()?;
+    
+    if let Some(cap) = re.captures(create_query) {
+        // If database.table format, use table name (group 2)
+        // If just table format, use table name (group 2, group 1 is None)
+        let table_name = cap.get(2).map(|m| m.as_str().to_string())?;
+        return Some(table_name);
+    }
+    
+    None
 }

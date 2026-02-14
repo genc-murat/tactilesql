@@ -387,6 +387,7 @@ pub fn run() {
             quality_analyzer::commands::delete_quality_rule,
             // Dependency Engine
             dependency_engine::commands::get_dependency_graph,
+            dependency_engine::commands::get_clickhouse_data_lineage,
             // ER Diagram
             er_diagram::commands::build_er_graph,
             er_diagram::commands::save_er_layout,

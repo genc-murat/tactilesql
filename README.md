@@ -9,7 +9,7 @@ TactileSQL is a modern, desktop-first SQL workbench for MySQL and PostgreSQL, bu
 ## Highlights
 
 - **SQL Workbench** with multi-tab editor, syntax highlighting, auto-format, autocomplete, and **code folding**.
-- **First-Class ClickHouse Support**: Visual Explain Plans (AST & Pipeline), Advanced Table Inspector (MergeTree details), Partition Explorer, and Query Log Dashboard.
+- **First-Class ClickHouse Support**: Visual Explain Plans (AST & Pipeline), Advanced Table Inspector (MergeTree details), Partition Explorer, Query Log Dashboard, and **Materialized View Data Lineage**.
 - **Code Folding**: Collapse and expand code blocks (subqueries, CASE/END, BEGIN/END, block comments) for improved readability.
 - **Configurable SQL Execution Defaults**: Set default run mode (`current statement` / `selection first` / `run all`) and query timeout (`0 = unlimited`).
 - **Smart Autocomplete++** with context-aware suggestions, abbreviation matching (e.g. `tc` → `test_customers`), FK-based JOIN hints, database/schema qualification control (Never/Always/On collisions), and frequency learning.
@@ -421,6 +421,7 @@ The Rust backend exposes the following commands (used by the UI):
 - **Partition Explorer**: Manage partitions (view stats, detach, drop) directly from the UI.
 - **Query Log Dashboard**: Visualize server performance metrics (duration, memory, read rows) derived from `system.query_log`.
 - **Kafka Engine Monitoring**: Real-time dashboard for Kafka consumer groups, displaying offset lag, current offsets, and consumption errors.
+- **Materialized View Data Lineage**: Interactive graph visualization of data flow between source tables and target tables through Materialized Views.
 
 ## Keyboard Shortcuts
 

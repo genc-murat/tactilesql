@@ -101,3 +101,24 @@ pub async fn get_dependency_graph(
 
     Ok(data)
 }
+
+#[command]
+pub async fn get_clickhouse_data_lineage(
+    app_state: State<'_, AppState>,
+    connection_id: String,
+    database: String,
+) -> Result<DependencyGraphData, String> {
+    let guard = app_state.clickhouse_config.lock().await;
+    let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+    
+    let graph = super::extractor::build_dependency_graph_clickhouse(
+        config,
+        &connection_id,
+        Some(database),
+        None, // No specific table filter - get full database lineage
+        None, // No hop limit - get complete graph
+    )
+    .await?;
+    
+    Ok(graph.to_data())
+}
