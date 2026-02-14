@@ -18,6 +18,18 @@ pub enum DatabaseType {
     ClickHouse,
 }
 
+// --- MySQL Version Info ---
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct MySqlVersion {
+    pub major: u8,
+    pub minor: u8,
+    pub patch: u8,
+    pub version_string: String,
+    pub has_performance_schema: bool,
+    pub has_data_locks: bool,
+    pub has_account_locked: bool,
+}
+
 // --- State Management ---
 pub struct AppState {
     pub mysql_pool: Arc<Mutex<Option<Pool<MySql>>>>,
@@ -42,6 +54,7 @@ pub struct AppState {
     pub task_scheduler_state: Arc<Mutex<crate::task_manager::models::SchedulerState>>,
     pub task_last_retention_purge_epoch: Arc<Mutex<i64>>,
     pub local_db_pool: Arc<Mutex<Option<Pool<Sqlite>>>>,
+    pub mysql_version: Arc<Mutex<Option<MySqlVersion>>>,
 }
 
 impl Default for AppState {
@@ -68,6 +81,7 @@ impl Default for AppState {
             )),
             task_last_retention_purge_epoch: Arc::new(Mutex::new(0)),
             local_db_pool: Arc::new(Mutex::new(None)),
+            mysql_version: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -94,6 +108,7 @@ impl Clone for AppState {
             task_scheduler_state: Arc::clone(&self.task_scheduler_state),
             task_last_retention_purge_epoch: Arc::clone(&self.task_last_retention_purge_epoch),
             local_db_pool: Arc::clone(&self.local_db_pool),
+            mysql_version: Arc::clone(&self.mysql_version),
         }
     }
 }

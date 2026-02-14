@@ -73,7 +73,9 @@ pub async fn get_locks(app_state: State<'_, AppState>) -> Result<Vec<LockInfo>, 
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
-            mysql::get_locks(pool).await
+            let version_guard = app_state.mysql_version.lock().await;
+            let version = version_guard.as_ref().cloned().unwrap_or_default();
+            mysql::get_locks(pool, &version).await
         }
         DatabaseType::ClickHouse => Ok(Vec::new()), // ClickHouse has a different locking model
         DatabaseType::Disconnected => Err("No connection established".into()),
@@ -98,7 +100,9 @@ pub async fn get_lock_analysis(app_state: State<'_, AppState>) -> Result<LockAna
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
-            mysql::get_lock_graph_edges(pool).await?
+            let version_guard = app_state.mysql_version.lock().await;
+            let version = version_guard.as_ref().cloned().unwrap_or_default();
+            mysql::get_lock_graph_edges(pool, &version).await?
         }
         DatabaseType::ClickHouse => Vec::new(),
         DatabaseType::Disconnected => return Err("No connection established".into()),

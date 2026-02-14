@@ -23,7 +23,9 @@ pub async fn get_users(app_state: State<'_, AppState>) -> Result<Vec<MySqlUser>,
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
-            mysql::get_users(pool).await
+            let version_guard = app_state.mysql_version.lock().await;
+            let version = version_guard.as_ref().cloned().unwrap_or_default();
+            mysql::get_users(pool, &version).await
         }
         DatabaseType::ClickHouse => {
             clickhouse::get_users(app_state.inner()).await

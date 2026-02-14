@@ -150,8 +150,14 @@ pub async fn establish_connection(
         DatabaseType::MySQL => {
             let pool = mysql::create_pool(&effective_config).await?;
 
+            // Detect MySQL version for compatibility branching
+            let version = mysql::detect_mysql_version(&pool).await?;
+
             let mut mysql_guard = app_state.mysql_pool.lock().await;
             *mysql_guard = Some(pool);
+
+            let mut version_guard = app_state.mysql_version.lock().await;
+            *version_guard = Some(version);
 
             let mut db_type_guard = app_state.active_db_type.lock().await;
             *db_type_guard = DatabaseType::MySQL;

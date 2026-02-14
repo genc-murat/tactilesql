@@ -89,6 +89,74 @@ pub async fn create_pool(config: &ConnectionConfig) -> Result<Pool<MySql>, Strin
         })
 }
 
+// --- Version Detection ---
+
+pub async fn detect_mysql_version(pool: &Pool<MySql>) -> Result<MySqlVersion, String> {
+    let row = sqlx::query("SELECT VERSION() as ver")
+        .fetch_one(pool)
+        .await
+        .map_err(|e| format!("Failed to detect MySQL version: {}", e))?;
+
+    let version_string: String = row
+        .try_get::<String, _>("ver")
+        .or_else(|_| row.try_get::<String, _>(0))
+        .unwrap_or_else(|_| "0.0.0".to_string());
+
+    let (major, minor, patch) = parse_version_string(&version_string);
+
+    // data_locks table exists in MySQL 8.0+
+    let has_data_locks = major >= 8;
+
+    // account_locked column in mysql.user exists since MySQL 5.7.6
+    let has_account_locked = major > 5 || (major == 5 && minor > 7) || (major == 5 && minor == 7 && patch >= 6);
+
+    // Check if performance_schema is available and enabled
+    let has_performance_schema = sqlx::query(
+        "SELECT COUNT(*) as cnt FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = 'performance_schema'"
+    )
+    .fetch_one(pool)
+    .await
+    .map(|r| r.try_get::<i64, _>("cnt").unwrap_or(0) > 0)
+    .unwrap_or(false);
+
+    let version = MySqlVersion {
+        major,
+        minor,
+        patch,
+        version_string,
+        has_performance_schema,
+        has_data_locks,
+        has_account_locked,
+    };
+
+    eprintln!(
+        "[TactileSQL] MySQL version detected: {}.{}.{} (perf_schema={}, data_locks={}, account_locked={})",
+        version.major, version.minor, version.patch,
+        version.has_performance_schema, version.has_data_locks, version.has_account_locked
+    );
+
+    Ok(version)
+}
+
+fn parse_version_string(version: &str) -> (u8, u8, u8) {
+    // Handle strings like "8.0.35", "5.7.44-log", "10.6.12-MariaDB"
+    let numeric_part = version
+        .split(|c: char| !c.is_ascii_digit() && c != '.')
+        .next()
+        .unwrap_or("0.0.0");
+
+    let parts: Vec<u8> = numeric_part
+        .split('.')
+        .filter_map(|s| s.parse::<u8>().ok())
+        .collect();
+
+    (
+        parts.first().copied().unwrap_or(0),
+        parts.get(1).copied().unwrap_or(0),
+        parts.get(2).copied().unwrap_or(0),
+    )
+}
+
 // --- Query Execution ---
 
 fn normalize_query_timeout_seconds(query_timeout_seconds: Option<u64>) -> Option<u64> {
@@ -817,9 +885,14 @@ pub async fn get_events(pool: &Pool<MySql>, database: &str) -> Result<Vec<EventI
 
 // --- User Management ---
 
-pub async fn get_users(pool: &Pool<MySql>) -> Result<Vec<MySqlUser>, String> {
-    let query =
-        "SELECT User, Host, account_locked, password_expired FROM mysql.user ORDER BY User, Host";
+pub async fn get_users(pool: &Pool<MySql>, version: &MySqlVersion) -> Result<Vec<MySqlUser>, String> {
+    let query = if version.has_account_locked {
+        // MySQL 5.7.6+
+        "SELECT User, Host, account_locked, password_expired FROM mysql.user ORDER BY User, Host"
+    } else {
+        // MySQL 5.5/5.6: no account_locked column
+        "SELECT User, Host, 'N' as account_locked, password_expired FROM mysql.user ORDER BY User, Host"
+    };
 
     let rows = sqlx::query(query)
         .fetch_all(pool)
@@ -1155,22 +1228,40 @@ pub async fn get_replication_status(pool: &Pool<MySql>) -> Result<serde_json::Va
     }))
 }
 
-pub async fn get_locks(pool: &Pool<MySql>) -> Result<Vec<LockInfo>, String> {
-    let query = r#"
-        SELECT 
-            ENGINE_LOCK_ID as lock_id,
-            LOCK_MODE as lock_mode,
-            LOCK_TYPE as lock_type,
-            OBJECT_NAME as lock_table,
-            LOCK_DATA as lock_data
-        FROM performance_schema.data_locks
-        LIMIT 100
-    "#;
+pub async fn get_locks(pool: &Pool<MySql>, version: &MySqlVersion) -> Result<Vec<LockInfo>, String> {
+    let query = if version.has_data_locks {
+        // MySQL 8.0+
+        r#"
+            SELECT 
+                ENGINE_LOCK_ID as lock_id,
+                LOCK_MODE as lock_mode,
+                LOCK_TYPE as lock_type,
+                OBJECT_NAME as lock_table,
+                LOCK_DATA as lock_data
+            FROM performance_schema.data_locks
+            LIMIT 100
+        "#.to_string()
+    } else {
+        // MySQL 5.x fallback: information_schema.INNODB_LOCKS
+        r#"
+            SELECT 
+                lock_id as lock_id,
+                lock_mode as lock_mode,
+                lock_type as lock_type,
+                lock_table as lock_table,
+                lock_data as lock_data
+            FROM information_schema.INNODB_LOCKS
+            LIMIT 100
+        "#.to_string()
+    };
 
-    let rows = sqlx::query(query)
-        .fetch_all(pool)
-        .await
-        .map_err(|e| format!("Failed to fetch locks: {}", e))?;
+    let rows = match sqlx::query(&query).fetch_all(pool).await {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("[TactileSQL] Lock query failed (version {}.{}): {}", version.major, version.minor, e);
+            return Ok(vec![]);
+        }
+    };
 
     let mut locks = Vec::new();
     for row in rows {
@@ -1192,40 +1283,72 @@ fn normalize_optional_text(value: Option<String>) -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
-pub async fn get_lock_graph_edges(pool: &Pool<MySql>) -> Result<Vec<LockGraphEdge>, String> {
-    let query = r#"
-        SELECT
-            COALESCE(rt.PROCESSLIST_ID, r.trx_mysql_thread_id) AS waiting_process_id,
-            COALESCE(bt.PROCESSLIST_ID, b.trx_mysql_thread_id) AS blocking_process_id,
-            COALESCE(TIMESTAMPDIFF(SECOND, COALESCE(r.trx_wait_started, r.trx_started), NOW()), 0) AS wait_seconds,
-            r.trx_query AS waiting_query,
-            b.trx_query AS blocking_query,
-            CONCAT_WS('.', rl.OBJECT_SCHEMA, rl.OBJECT_NAME) AS object_name,
-            rl.LOCK_TYPE AS lock_type,
-            rl.LOCK_MODE AS waiting_lock_mode,
-            bl.LOCK_MODE AS blocking_lock_mode
-        FROM performance_schema.data_lock_waits w
-        LEFT JOIN performance_schema.data_locks rl
-            ON rl.ENGINE_LOCK_ID = w.REQUESTING_ENGINE_LOCK_ID
-        LEFT JOIN performance_schema.data_locks bl
-            ON bl.ENGINE_LOCK_ID = w.BLOCKING_ENGINE_LOCK_ID
-        LEFT JOIN performance_schema.threads rt
-            ON rt.THREAD_ID = rl.THREAD_ID
-        LEFT JOIN performance_schema.threads bt
-            ON bt.THREAD_ID = bl.THREAD_ID
-        LEFT JOIN information_schema.innodb_trx r
-            ON r.trx_id = w.REQUESTING_ENGINE_TRANSACTION_ID
-        LEFT JOIN information_schema.innodb_trx b
-            ON b.trx_id = w.BLOCKING_ENGINE_TRANSACTION_ID
-        WHERE COALESCE(rt.PROCESSLIST_ID, r.trx_mysql_thread_id) IS NOT NULL
-          AND COALESCE(bt.PROCESSLIST_ID, b.trx_mysql_thread_id) IS NOT NULL
-        LIMIT 500
-    "#;
+pub async fn get_lock_graph_edges(pool: &Pool<MySql>, version: &MySqlVersion) -> Result<Vec<LockGraphEdge>, String> {
+    let query = if version.has_data_locks {
+        // MySQL 8.0+
+        r#"
+            SELECT
+                COALESCE(rt.PROCESSLIST_ID, r.trx_mysql_thread_id) AS waiting_process_id,
+                COALESCE(bt.PROCESSLIST_ID, b.trx_mysql_thread_id) AS blocking_process_id,
+                COALESCE(TIMESTAMPDIFF(SECOND, COALESCE(r.trx_wait_started, r.trx_started), NOW()), 0) AS wait_seconds,
+                r.trx_query AS waiting_query,
+                b.trx_query AS blocking_query,
+                CONCAT_WS('.', rl.OBJECT_SCHEMA, rl.OBJECT_NAME) AS object_name,
+                rl.LOCK_TYPE AS lock_type,
+                rl.LOCK_MODE AS waiting_lock_mode,
+                bl.LOCK_MODE AS blocking_lock_mode
+            FROM performance_schema.data_lock_waits w
+            LEFT JOIN performance_schema.data_locks rl
+                ON rl.ENGINE_LOCK_ID = w.REQUESTING_ENGINE_LOCK_ID
+            LEFT JOIN performance_schema.data_locks bl
+                ON bl.ENGINE_LOCK_ID = w.BLOCKING_ENGINE_LOCK_ID
+            LEFT JOIN performance_schema.threads rt
+                ON rt.THREAD_ID = rl.THREAD_ID
+            LEFT JOIN performance_schema.threads bt
+                ON bt.THREAD_ID = bl.THREAD_ID
+            LEFT JOIN information_schema.innodb_trx r
+                ON r.trx_id = w.REQUESTING_ENGINE_TRANSACTION_ID
+            LEFT JOIN information_schema.innodb_trx b
+                ON b.trx_id = w.BLOCKING_ENGINE_TRANSACTION_ID
+            WHERE COALESCE(rt.PROCESSLIST_ID, r.trx_mysql_thread_id) IS NOT NULL
+              AND COALESCE(bt.PROCESSLIST_ID, b.trx_mysql_thread_id) IS NOT NULL
+            LIMIT 500
+        "#.to_string()
+    } else {
+        // MySQL 5.x fallback: information_schema.INNODB_LOCK_WAITS + INNODB_LOCKS
+        r#"
+            SELECT
+                r.trx_mysql_thread_id AS waiting_process_id,
+                b.trx_mysql_thread_id AS blocking_process_id,
+                COALESCE(TIMESTAMPDIFF(SECOND, COALESCE(r.trx_wait_started, r.trx_started), NOW()), 0) AS wait_seconds,
+                r.trx_query AS waiting_query,
+                b.trx_query AS blocking_query,
+                rl.lock_table AS object_name,
+                rl.lock_type AS lock_type,
+                rl.lock_mode AS waiting_lock_mode,
+                bl.lock_mode AS blocking_lock_mode
+            FROM information_schema.INNODB_LOCK_WAITS w
+            LEFT JOIN information_schema.INNODB_LOCKS rl
+                ON rl.lock_id = w.requested_lock_id
+            LEFT JOIN information_schema.INNODB_LOCKS bl
+                ON bl.lock_id = w.blocking_lock_id
+            LEFT JOIN information_schema.innodb_trx r
+                ON r.trx_id = w.requesting_trx_id
+            LEFT JOIN information_schema.innodb_trx b
+                ON b.trx_id = w.blocking_trx_id
+            WHERE r.trx_mysql_thread_id IS NOT NULL
+              AND b.trx_mysql_thread_id IS NOT NULL
+            LIMIT 500
+        "#.to_string()
+    };
 
-    let rows = sqlx::query(query)
-        .fetch_all(pool)
-        .await
-        .map_err(|e| format!("Failed to fetch lock wait graph: {}", e))?;
+    let rows = match sqlx::query(&query).fetch_all(pool).await {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("[TactileSQL] Lock graph query failed (version {}.{}): {}", version.major, version.minor, e);
+            return Ok(vec![]);
+        }
+    };
 
     let mut edges = Vec::new();
     for row in rows {
@@ -1854,9 +1977,55 @@ mod tests {
         assert!(has_index_usage_signal(&payload, "idx_orders_created_at"));
         assert!(!has_index_usage_signal(&payload, "idx_other"));
     }
+
+    #[test]
+    fn parse_version_standard() {
+        assert_eq!(parse_version_string("8.0.35"), (8, 0, 35));
+    }
+
+    #[test]
+    fn parse_version_with_suffix() {
+        assert_eq!(parse_version_string("5.7.44-log"), (5, 7, 44));
+    }
+
+    #[test]
+    fn parse_version_mariadb() {
+        assert_eq!(parse_version_string("10.6.12-MariaDB"), (10, 6, 12));
+    }
+
+    #[test]
+    fn version_feature_flags_mysql8() {
+        let (major, minor, patch) = (8u8, 0u8, 35u8);
+        let has_data_locks = major >= 8;
+        let has_account_locked = major > 5 || (major == 5 && minor > 7) || (major == 5 && minor == 7 && patch >= 6);
+        assert!(has_data_locks);
+        assert!(has_account_locked);
+    }
+
+    #[test]
+    fn version_feature_flags_mysql57() {
+        let (major, minor, patch) = (5u8, 7u8, 44u8);
+        let has_data_locks = major >= 8;
+        let has_account_locked = major > 5 || (major == 5 && minor > 7) || (major == 5 && minor == 7 && patch >= 6);
+        assert!(!has_data_locks);
+        assert!(has_account_locked);
+    }
+
+    #[test]
+    fn version_feature_flags_mysql56() {
+        let (major, minor, patch) = (5u8, 6u8, 51u8);
+        let has_data_locks = major >= 8;
+        let has_account_locked = major > 5 || (major == 5 && minor > 7) || (major == 5 && minor == 7 && patch >= 6);
+        assert!(!has_data_locks);
+        assert!(!has_account_locked);
+    }
 }
 
-pub async fn get_wait_events(pool: &Pool<MySql>) -> Result<Vec<WaitEventSummary>, String> {
+pub async fn get_wait_events(pool: &Pool<MySql>, version: &MySqlVersion) -> Result<Vec<WaitEventSummary>, String> {
+    if !version.has_performance_schema {
+        return Ok(vec![]);
+    }
+
     let query = r#"
         SELECT 
             EVENT_NAME as event_name,
@@ -1870,10 +2039,13 @@ pub async fn get_wait_events(pool: &Pool<MySql>) -> Result<Vec<WaitEventSummary>
         LIMIT 20
     "#;
 
-    let rows = sqlx::query(query)
-        .fetch_all(pool)
-        .await
-        .map_err(|e| format!("Failed to fetch wait events: {}", e))?;
+    let rows = match sqlx::query(query).fetch_all(pool).await {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("[TactileSQL] Wait events query failed: {}", e);
+            return Ok(vec![]);
+        }
+    };
 
     let total_latency: f64 = rows.iter().map(|r| r.try_get::<f64, _>("total_latency_ms").unwrap_or(0.0)).sum();
 
@@ -1902,7 +2074,11 @@ pub async fn get_wait_events(pool: &Pool<MySql>) -> Result<Vec<WaitEventSummary>
     Ok(events)
 }
 
-pub async fn get_table_resource_usage(pool: &Pool<MySql>) -> Result<Vec<TableResourceUsage>, String> {
+pub async fn get_table_resource_usage(pool: &Pool<MySql>, version: &MySqlVersion) -> Result<Vec<TableResourceUsage>, String> {
+    if !version.has_performance_schema {
+        return Ok(vec![]);
+    }
+
     let query = r#"
         SELECT 
             OBJECT_SCHEMA as `schema`,
@@ -1920,10 +2096,13 @@ pub async fn get_table_resource_usage(pool: &Pool<MySql>) -> Result<Vec<TableRes
         LIMIT 20
     "#;
 
-    let rows = sqlx::query(query)
-        .fetch_all(pool)
-        .await
-        .map_err(|e| format!("Failed to fetch table resource usage: {}", e))?;
+    let rows = match sqlx::query(query).fetch_all(pool).await {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("[TactileSQL] Table resource usage query failed: {}", e);
+            return Ok(vec![]);
+        }
+    };
 
     let mut usage = Vec::new();
     for row in rows {

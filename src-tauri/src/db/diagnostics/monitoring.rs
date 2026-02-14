@@ -96,22 +96,26 @@ pub async fn get_monitor_snapshot(app_state: State<'_, AppState>) -> Result<Moni
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
 
+            let version_guard = app_state.mysql_version.lock().await;
+            let version = version_guard.as_ref().cloned().unwrap_or_default();
+            drop(version_guard);
+
             let server_status = mysql::get_server_status(pool).await?;
             let processes = mysql::get_process_list(pool).await?;
             let replication = mysql::get_replication_status(pool).await?;
             let slow_queries = mysql::get_slow_queries(pool, 50).await?;
-            let locks = mysql::get_locks(pool).await?;
+            let locks = mysql::get_locks(pool, &version).await?;
             let innodb_status = Some(mysql::get_innodb_status(pool).await.unwrap_or_default());
 
-            let lock_edges = mysql::get_lock_graph_edges(pool).await.unwrap_or_default();
+            let lock_edges = mysql::get_lock_graph_edges(pool, &version).await.unwrap_or_default();
             let lock_analysis = if !lock_edges.is_empty() {
                 Some(build_lock_analysis(&db_type, lock_edges))
             } else {
                 None
             };
 
-            let wait_events = mysql::get_wait_events(pool).await.unwrap_or_default();
-            let table_usage = mysql::get_table_resource_usage(pool).await.unwrap_or_default();
+            let wait_events = mysql::get_wait_events(pool, &version).await.unwrap_or_default();
+            let table_usage = mysql::get_table_resource_usage(pool, &version).await.unwrap_or_default();
             let health_metrics = mysql::get_health_metrics(pool).await.unwrap_or_default();
 
             Ok(MonitorSnapshot {
