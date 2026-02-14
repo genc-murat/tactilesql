@@ -65,6 +65,9 @@ TactileSQL is a modern, desktop-first SQL workbench for MySQL and PostgreSQL, bu
 - **Lineage Performance**: Graph construction runs in a Web Worker with main-thread fallback and timeout protection.
 - **Connection Manager** with encrypted credential storage, connection testing, and SSH tunnel configuration.
 - **Access Control** viewer for MySQL users and privileges.
+- **MySQL Version Intelligence**: Automatically detects MySQL version (5.7+ vs 8.0+) to provide compatible monitoring queries and feature fallbacks.
+- **Table Maintenance**: Right-click any table to run **ANALYZE**, **CHECK**, **OPTIMIZE**, or **REPAIR** operations with a dedicated results modal.
+- **Server Variables Inspector**: Browse and edit server configuration with a searchable, categorized interface for MySQL, PostgreSQL, and ClickHouse.
 - **Themes**: Dark, Light, and Oceanic.
 - **Global keyboard shortcuts** and shortcut help overlay.
 
@@ -169,6 +172,7 @@ Optional environment overrides:
 - Configurable max rows per query in results (`0 = unlimited`) with limit indicator when truncation is applied
 - **Results Explorer**: Ctrl+Click on foreign keys to view referenced related data in popup
 - **Object Explorer Search**: Quickly jump to any database, table, or column with a persistent search box, match navigation, and auto-expanding tree.
+- **Table Maintenance**: Direct access to **ANALYZE**, **CHECK**, **OPTIMIZE**, and **REPAIR** (MySQL) or **VACUUM** (PostgreSQL) from the table context menu.
 - **Find & Replace**: Full-featured search and replace in editor with Regex support, case sensitivity, and highlighting (`Ctrl+F` / `Ctrl+H`).
 
 ### Audit Trail
@@ -274,12 +278,9 @@ Task Center docs:
 - Review query-level regression deltas, coverage ratio, and confidence score
 - Copy rollback SQL for safer rollback planning
 
-### Connection Manager
-
-- Create, edit, delete, and reorder connections
-- SSH Tunnel configuration for secure remote access
-- Test and establish connection pools
-- Color-coded connection groups
+- **Connection Manager** with encrypted credential storage, connection testing, and SSH tunnel configuration.
+- **Server Variables**: Full-screen, searchable inspector for server configuration settings with session-level editing support (`SET SESSION`).
+- **Color-coded connection groups**
 
 ### Access Control
 

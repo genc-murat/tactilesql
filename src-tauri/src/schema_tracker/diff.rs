@@ -484,6 +484,7 @@ mod tests {
         SchemaSnapshot {
             id: None,
             connection_id: "conn-1".to_string(),
+            database_name: None,
             timestamp: Utc::now(),
             schema_hash: "hash".to_string(),
             tables,

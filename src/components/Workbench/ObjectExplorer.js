@@ -13,6 +13,8 @@ import { showClickHouseQueryDashboard } from './ClickHouseQueryDashboard.js';
 import { showClickHouseKafkaMonitor } from './ClickHouseKafkaMonitor.js';
 import { showClickHouseMergeMonitor } from './ClickHouseMergeMonitor.js';
 import { showDataLineage } from './DataLineage.js';
+import { showTableMaintenanceModal } from '../UI/TableMaintenanceModal.js';
+import { showServerVariablesModal } from '../UI/ServerVariablesModal.js';
 
 
 export function ObjectExplorer() {
@@ -1659,6 +1661,12 @@ export function ObjectExplorer() {
                     icon: 'monitor_heart',
                     iconColor: isDawn ? 'text-[#eb6f92]' : 'text-rose-400',
                     onClick: () => window.location.hash = `/monitor?conn=${id}`
+                },
+                {
+                    label: 'Server Variables',
+                    icon: 'settings_suggest',
+                    iconColor: isDawn ? 'text-[#c4a7e7]' : 'text-indigo-400',
+                    onClick: () => showServerVariablesModal(id, dbType)
                 }
             ] : []),
             {
@@ -1993,8 +2001,52 @@ export function ObjectExplorer() {
                             showClickHouseMergeMonitor(config, dbName, tableName);
                         }
                     }
+                },
+                {
+                    label: 'Optimize Table',
+                    icon: 'speed',
+                    iconColor: isDawn ? 'text-[#c4a7e7]' : 'text-violet-400',
+                    onClick: () => runMaintenance('optimize', dbName, tableName, dbType)
                 }
             ] : []),
+            ...(dbType === 'clickhouse' ? [] : [
+                {
+                    type: 'submenu',
+                    label: 'Table Maintenance',
+                    icon: 'build_circle',
+                    iconColor: isDawn ? 'text-[#ea9d34]' : 'text-amber-400',
+                    items: [
+                        {
+                            label: 'Analyze Table',
+                            icon: 'analytics',
+                            iconColor: 'text-cyan-400',
+                            onClick: () => runMaintenance('analyze', dbName, tableName, dbType)
+                        },
+                        ...(dbType !== 'postgresql' ? [
+                            {
+                                label: 'Check Table',
+                                icon: 'verified',
+                                iconColor: 'text-emerald-400',
+                                onClick: () => runMaintenance('check', dbName, tableName, dbType)
+                            }
+                        ] : []),
+                        {
+                            label: dbType === 'postgresql' ? 'Vacuum Full' : 'Optimize Table',
+                            icon: 'speed',
+                            iconColor: 'text-violet-400',
+                            onClick: () => runMaintenance('optimize', dbName, tableName, dbType)
+                        },
+                        ...(dbType !== 'postgresql' ? [
+                            {
+                                label: 'Repair Table',
+                                icon: 'build',
+                                iconColor: 'text-orange-400',
+                                onClick: () => runMaintenance('repair', dbName, tableName, dbType)
+                            }
+                        ] : [])
+                    ]
+                }
+            ]),
             {
                 label: 'Schema Design',
                 icon: 'schema',
@@ -2088,6 +2140,33 @@ export function ObjectExplorer() {
             }
         } catch (err) {
             Dialog.alert(`Failed to generate SQL: ${err}`, 'Error');
+        }
+    };
+
+    // --- Table Maintenance ---
+    const runMaintenance = async (operation, dbName, tableName, dbType) => {
+        let query = '';
+        const isPg = dbType === 'postgresql';
+
+        if (isPg) {
+            if (operation === 'analyze') query = `ANALYZE "${dbName}"."${tableName}"`;
+            else if (operation === 'optimize') query = `VACUUM FULL "${dbName}"."${tableName}"`;
+            else return; // check/repair not supported for PostgreSQL
+        } else if (dbType === 'clickhouse') {
+            if (operation === 'optimize') query = `OPTIMIZE TABLE \`${dbName}\`.\`${tableName}\` FINAL`;
+            else return;
+        } else {
+            // MySQL
+            const op = operation.toUpperCase();
+            query = `${op} TABLE \`${dbName}\`.\`${tableName}\``;
+        }
+
+        try {
+            toastSuccess(`Running ${operation.toUpperCase()} on ${tableName}...`);
+            const results = await invoke('execute_query', { query });
+            showTableMaintenanceModal(operation, dbName, tableName, results);
+        } catch (err) {
+            Dialog.alert(`${operation.toUpperCase()} TABLE failed: ${err}`, 'Maintenance Error');
         }
     };
 
