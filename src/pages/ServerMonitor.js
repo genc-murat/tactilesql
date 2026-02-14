@@ -6,6 +6,7 @@ import { LoadingManager } from '../components/UI/LoadingStates.js';
 import { Charting } from '../utils/Charting.js';
 import { showMySQLSlowQueryConfigModal } from '../components/UI/MySQLSlowQueryConfigModal.js';
 import { showDeadlockAnalyzerModal } from '../components/UI/DeadlockAnalyzerModal.js';
+import { showTableMaintenanceWizard } from '../components/UI/TableMaintenanceWizard.js';
 
 export function ServerMonitor() {
     let theme = ThemeManager.getCurrentTheme();
@@ -375,10 +376,14 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
                         <span class="material-symbols-outlined text-base mr-1 align-middle">database</span>
                         Top Tables
                     </button>
+                    <button class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'maintenance' ? 'bg-mysql-teal text-white shadow-lg' : ((isLight || isDawn) ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white')}" data-tab="maintenance">
+                        <span class="material-symbols-outlined text-base mr-1 align-middle">build</span>
+                        Maintenance
+                    </button>
                 </div>
 
                 <!-- Content -->
-                <div class="flex-1 ${activeTab === 'overview' || activeTab === 'usage' ? 'overflow-y-auto pr-2' : 'overflow-hidden'} flex flex-col custom-scrollbar">
+                <div class="flex-1 ${activeTab === 'overview' || activeTab === 'usage' || activeTab === 'maintenance' ? 'overflow-y-auto pr-2' : 'overflow-hidden'} flex flex-col custom-scrollbar">
                     ${isLoading ? renderLoading() : renderTabContent()}
                 </div>
             </div>
@@ -403,6 +408,114 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
         `;
     };
 
+    const loadBloatData = async () => {
+        isAnalyzingBloat = true;
+        render();
+        try {
+            bloatData = await invoke('get_bloat_analysis');
+            isAnalyzingBloat = false;
+            render();
+        } catch (error) {
+            console.error('Failed to load bloat analysis:', error);
+            isAnalyzingBloat = false;
+            render();
+        }
+    };
+
+    const renderMaintenance = () => {
+        const isLight = theme === 'light';
+        const isDawn = theme === 'dawn';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+
+        if (isAnalyzingBloat) {
+            return `
+                <div class="flex flex-col items-center justify-center py-20 gap-4">
+                    <div class="w-12 h-12 border-4 border-mysql-teal border-t-transparent rounded-full animate-spin"></div>
+                    <p class="${isLight ? 'text-gray-600' : 'text-gray-400'}">Analyzing table fragmentation...</p>
+                </div>
+            `;
+        }
+
+        if (!bloatData || bloatData.length === 0) {
+            return `
+                <div class="rounded-xl p-12 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : 'bg-[#13161b] border border-white/10')} text-center">
+                    <span class="material-symbols-outlined text-5xl text-gray-500 mb-4">analytics</span>
+                    <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} mb-2">No Fragmentation Data</h3>
+                    <p class="${isLight ? 'text-gray-500' : 'text-gray-400'} mb-6">Click the button below to scan for table fragmentation and bloat.</p>
+                    <button id="analyze-bloat-btn" class="px-6 py-2 rounded-lg bg-mysql-teal text-white hover:bg-mysql-teal/90 transition-all shadow-lg flex items-center gap-2 mx-auto">
+                        <span class="material-symbols-outlined text-sm">search</span>
+                        Start Fragmentation Analysis
+                    </button>
+                </div>
+            `;
+        }
+
+        return `
+            <div class="space-y-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h3 class="text-lg font-semibold ${isLight ? 'text-gray-900' : 'text-white'} flex items-center gap-2">
+                            <span class="material-symbols-outlined text-orange-500">waves</span>
+                            Table Fragmentation (Bloat)
+                        </h3>
+                        <p class="text-sm ${isLight ? 'text-gray-500' : 'text-gray-400'}">Tables with significant unused space that could benefit from optimization.</p>
+                    </div>
+                    <button id="analyze-bloat-btn" class="px-4 py-2 rounded-lg ${isLight ? 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50' : 'bg-white/10 border border-white/20 text-gray-300 hover:bg-white/20'} transition-all flex items-center gap-2">
+                        <span class="material-symbols-outlined text-sm">refresh</span>
+                        Re-analyze
+                    </button>
+                </div>
+
+                <div class="rounded-xl ${isLight ? 'bg-white border border-gray-200' : 'bg-[#13161b] border border-white/10'} overflow-hidden">
+                    <div class="overflow-auto">
+                        <table class="w-full text-sm">
+                            <thead class="${isLight ? 'bg-gray-100' : 'bg-white/5'}">
+                                <tr class="${isLight ? 'text-gray-600' : 'text-gray-400'} text-xs uppercase tracking-wider">
+                                    <th class="px-4 py-3 text-left">Schema</th>
+                                    <th class="px-4 py-3 text-left">Table</th>
+                                    <th class="px-4 py-3 text-right">Total Size</th>
+                                    <th class="px-4 py-3 text-right">Free Space</th>
+                                    <th class="px-4 py-3 text-center">Fragmentation</th>
+                                    <th class="px-4 py-3 text-center">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y ${isLight ? 'divide-gray-100' : 'divide-white/5'}">
+                                ${bloatData.map(b => {
+                                    let fragColor = 'bg-emerald-500';
+                                    if (b.bloat_pct > 30) fragColor = 'bg-red-500';
+                                    else if (b.bloat_pct > 15) fragColor = 'bg-orange-500';
+                                    else if (b.bloat_pct > 5) fragColor = 'bg-yellow-500';
+
+                                    return `
+                                    <tr class="${isLight ? 'hover:bg-gray-50' : 'hover:bg-white/5'} transition-colors">
+                                        <td class="px-4 py-3 ${isLight ? 'text-gray-500' : 'text-gray-400'}">${b.schema}</td>
+                                        <td class="px-4 py-3 ${isLight ? 'text-gray-900' : 'text-white'} font-medium">${b.table}</td>
+                                        <td class="px-4 py-3 text-right font-mono">${formatBytes(b.total_bytes)}</td>
+                                        <td class="px-4 py-3 text-right font-mono ${b.bloat_pct > 15 ? 'text-orange-500' : ''}">${formatBytes(b.wasted_bytes)}</td>
+                                        <td class="px-4 py-3">
+                                            <div class="flex flex-col gap-1 items-center">
+                                                <div class="w-24 h-1.5 rounded-full ${isLight ? 'bg-gray-100' : 'bg-white/5'} overflow-hidden">
+                                                    <div class="h-full rounded-full ${fragColor}" style="width: ${Math.min(b.bloat_pct, 100)}%"></div>
+                                                </div>
+                                                <span class="text-[10px] font-mono font-bold">${b.bloat_pct.toFixed(1)}%</span>
+                                            </div>
+                                        </td>
+                                        <td class="px-4 py-3 text-center">
+                                            <button class="open-maint-wizard-btn px-3 py-1 rounded bg-mysql-teal/10 text-mysql-teal hover:bg-mysql-teal text-xs font-bold transition-all hover:text-white" 
+                                                data-db="${b.schema}" data-table="${b.table}">
+                                                Wizard
+                                            </button>
+                                        </td>
+                                    </tr>
+                                `;}).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+    };
+
     const renderTabContent = () => {
         switch (activeTab) {
             case 'overview': return renderOverview();
@@ -413,6 +526,7 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
             case 'deadlocks': return renderDeadlocks();
             case 'replication': return replicationStatus && replicationStatus.replicas ? renderPostgresReplication() : renderReplication();
             case 'usage': return renderUsage();
+            case 'maintenance': return renderMaintenance();
             default: return renderOverview();
         }
     };
@@ -1582,6 +1696,16 @@ SET GLOBAL long_query_time = 1;</pre>
         });
         container.querySelectorAll('.delete-alert-btn').forEach(btn => {
             btn.addEventListener('click', () => deleteAlert(parseInt(btn.dataset.id)));
+        });
+
+        // Maintenance events
+        container.querySelector('#analyze-bloat-btn')?.addEventListener('click', loadBloatData);
+        container.querySelectorAll('.open-maint-wizard-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const db = btn.dataset.db;
+                const table = btn.dataset.table;
+                showTableMaintenanceWizard(db, table);
+            });
         });
     };
 

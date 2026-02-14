@@ -677,6 +677,7 @@ pub async fn get_table_stats(
         row_count: row.try_get::<i64, _>("row_count").unwrap_or(0),
         data_size: row.try_get::<i64, _>("data_size").unwrap_or(0),
         index_size: row.try_get::<i64, _>("index_size").unwrap_or(0),
+        data_free: 0,
         auto_increment: None,
         collation: None,
         charset: None,

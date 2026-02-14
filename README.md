@@ -67,7 +67,9 @@ TactileSQL is a modern, desktop-first SQL workbench for MySQL and PostgreSQL, bu
 - **MySQL User & Role Management**: Create/drop roles, grant/revoke roles to users, manage global privileges, and monitor account status (lock state, password expiry, last changed).
 - **Access Control** viewer for MySQL users and privileges.
 - **MySQL Version Intelligence**: Automatically detects MySQL version (5.7+ vs 8.0+) to provide compatible monitoring queries and feature fallbacks.
-- **Table Maintenance**: Right-click any table to run **ANALYZE**, **CHECK**, **OPTIMIZE**, or **REPAIR** operations with a dedicated results modal.
+- **Table Maintenance Wizard**: Specialized Material Design interface for MySQL fragmentation analysis (`DATA_FREE` vs `DATA_LENGTH`) with one-click **ANALYZE**, **CHECK**, **OPTIMIZE**, or **REPAIR** operations.
+- **Server-Wide Bloat Analysis**: Dedicated Maintenance dashboard to identify storage waste across all tables, prioritized by wasted bytes.
+- **MySQL Slow Query Log Runtime Config**: Configure `slow_query_log`, `long_query_time`, `log_queries_not_using_indexes`, and `log_output` directly from the UI using `SET GLOBAL`.
 - **Server Variables Inspector**: Browse and edit server configuration with a searchable, categorized interface for MySQL, PostgreSQL, and ClickHouse.
 - **Themes**: Dark, Light, and Oceanic.
 - **Global keyboard shortcuts** and shortcut help overlay.
@@ -406,6 +408,7 @@ The Rust backend exposes the following commands (used by the UI):
 - `get_server_status` — Server status counters and runtime metrics
 - `get_monitor_snapshot` — Unified snapshot of all monitoring telemetry
 - `get_monitor_history` — Retrieve historical server metrics for trend analysis
+- `get_bloat_analysis` — Server-wide fragmentation/waste scan for MySQL and PostgreSQL
 - `get_process_list` — Active backend/session list
 - `kill_process` — Terminate blocking or runaway sessions
 - `get_locks` — Raw lock inventory (engine lock metadata)

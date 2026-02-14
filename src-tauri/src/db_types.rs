@@ -208,6 +208,7 @@ pub struct TableStats {
     pub row_count: i64,
     pub data_size: i64,
     pub index_size: i64,
+    pub data_free: i64,
     pub auto_increment: Option<i64>,
     pub collation: Option<String>,
     pub charset: Option<String>,

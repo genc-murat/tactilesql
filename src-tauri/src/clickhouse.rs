@@ -4,7 +4,7 @@
 
 use crate::db_types::*;
 use clickhouse::Client;
-use serde::{Serialize, Deserialize};
+use serde::Serialize;
 use serde_json::Value;
 
 // --- Connection ---

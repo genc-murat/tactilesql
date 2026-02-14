@@ -14,6 +14,7 @@ import { showClickHouseKafkaMonitor } from './ClickHouseKafkaMonitor.js';
 import { showClickHouseMergeMonitor } from './ClickHouseMergeMonitor.js';
 import { showDataLineage } from './DataLineage.js';
 import { showTableMaintenanceModal } from '../UI/TableMaintenanceModal.js';
+import { showTableMaintenanceWizard } from '../UI/TableMaintenanceWizard.js';
 import { showServerVariablesModal } from '../UI/ServerVariablesModal.js';
 
 
@@ -2017,6 +2018,15 @@ export function ObjectExplorer() {
                     icon: 'build_circle',
                     iconColor: isDawn ? 'text-[#ea9d34]' : 'text-amber-400',
                     items: [
+                        ...(dbType !== 'postgresql' ? [
+                            {
+                                label: 'Maintenance Wizard',
+                                icon: 'magic_button',
+                                iconColor: 'text-indigo-400',
+                                onClick: () => showTableMaintenanceWizard(dbName, tableName)
+                            },
+                            { type: 'separator' }
+                        ] : []),
                         {
                             label: 'Analyze Table',
                             icon: 'analytics',

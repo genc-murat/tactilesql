@@ -208,7 +208,7 @@ pub async fn get_quality_rules(
 #[command]
 pub async fn check_charset_mismatches(
     app_state: State<'_, AppState>,
-    connection_id: String,
+    _connection_id: String,
     schema: Option<String>,
 ) -> Result<Vec<crate::quality_analyzer::models::DataQualityIssue>, String> {
     let db_type = {

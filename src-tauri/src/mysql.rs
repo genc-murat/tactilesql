@@ -682,6 +682,7 @@ pub async fn get_table_stats(
             TABLE_ROWS as row_count,
             DATA_LENGTH as data_size,
             INDEX_LENGTH as index_size,
+            DATA_FREE as data_free,
             AUTO_INCREMENT,
             TABLE_COLLATION as collation
         FROM information_schema.TABLES
@@ -705,6 +706,7 @@ pub async fn get_table_stats(
         row_count: row.try_get::<i64, _>("row_count").unwrap_or(0),
         data_size: row.try_get::<i64, _>("data_size").unwrap_or(0),
         index_size: row.try_get::<i64, _>("index_size").unwrap_or(0),
+        data_free: row.try_get::<i64, _>("data_free").unwrap_or(0),
         auto_increment: row.try_get::<i64, _>("AUTO_INCREMENT").ok(),
         collation,
         charset,
@@ -1450,7 +1452,11 @@ pub async fn get_deadlock_history(pool: &Pool<MySql>, version: &MySqlVersion) ->
     // 2. If MySQL 8.0.22+, try reading performance_schema.error_log
     // Note: This requires specific configuration (log_error_verbosity >= 3 and maybe others)
     // and might not contain the full graph, but we check anyway.
-    if version.major >= 8 && version.minor >= 0 && version.patch >= 22 {
+    let is_8_0_22_plus = version.major > 8 
+        || (version.major == 8 && version.minor > 0) 
+        || (version.major == 8 && version.minor == 0 && version.patch >= 22);
+
+    if is_8_0_22_plus {
         let query = r#"
             SELECT logged, data 
             FROM performance_schema.error_log 
@@ -2572,6 +2578,48 @@ pub async fn get_slow_queries(pool: &Pool<MySql>, limit: i32) -> Result<Vec<Slow
         }
     }
 }
+
+pub async fn get_bloat_analysis(pool: &Pool<MySql>) -> Result<Vec<BloatInfo>, String> {
+    let query = r#"
+        SELECT 
+            TABLE_SCHEMA as `schema`,
+            TABLE_NAME as `table`,
+            DATA_FREE as wasted_bytes,
+            DATA_LENGTH + INDEX_LENGTH as total_bytes,
+            CASE 
+                WHEN (DATA_LENGTH + INDEX_LENGTH) > 0 
+                THEN (DATA_FREE / (DATA_LENGTH + INDEX_LENGTH)) * 100 
+                ELSE 0 
+            END as bloat_pct
+        FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys')
+          AND TABLE_TYPE = 'BASE TABLE'
+          AND (DATA_LENGTH + INDEX_LENGTH) > 0
+          AND DATA_FREE > 0
+        ORDER BY DATA_FREE DESC
+        LIMIT 50
+    "#;
+
+    let rows = sqlx::query(query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch bloat analysis: {}", e))?;
+
+    let mut bloat_info = Vec::new();
+    for row in rows {
+        bloat_info.push(BloatInfo {
+            schema: row.try_get("schema").unwrap_or_default(),
+            table: row.try_get("table").unwrap_or_default(),
+            bloat_pct: row.try_get::<f64, _>("bloat_pct").unwrap_or(0.0),
+            wasted_bytes: row.try_get::<i64, _>("wasted_bytes").unwrap_or(0),
+            total_bytes: row.try_get::<i64, _>("total_bytes").unwrap_or(0),
+            table_type: "table".to_string(),
+        });
+    }
+
+    Ok(bloat_info)
+}
+
 // --- Execution Plan ---
 
 pub async fn get_execution_plan(pool: &Pool<MySql>, query: &str) -> Result<String, String> {

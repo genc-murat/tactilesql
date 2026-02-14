@@ -343,6 +343,7 @@ pub async fn get_table_stats(
                 row_count: 0,
                 data_size: 0,
                 index_size: 0,
+                data_free: 0,
                 auto_increment: None,
                 collation: None,
                 charset: None,
