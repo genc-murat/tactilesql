@@ -2,6 +2,7 @@
 import { Dialog } from '../UI/Dialog.js';
 import { invoke } from '@tauri-apps/api/core';
 import { showVisualExplainModal } from '../UI/VisualExplainModal.js';
+import { showExplainPipelineModal } from '../UI/ExplainPipelineModal.js';
 import { ThemeManager } from '../../utils/ThemeManager.js';
 import { registerHandler, unregisterHandler } from '../../utils/KeyboardShortcuts.js';
 import { highlightSQL, formatSQL, SQL_KEYWORDS } from '../../utils/SqlHighlighter.js';
@@ -2700,7 +2701,7 @@ export function QueryEditor() {
                         explainText = 'No output returned.';
                     }
 
-                    showVisualExplainModal(explainText);
+                    showExplainPipelineModal(explainText);
 
                 } catch (error) {
                     Dialog.alert(`Explain Pipeline failed: ${String(error).replace(/\n/g, '<br>')}`, 'Error');
