@@ -5,7 +5,7 @@
  */
 
 import { DatabaseType, getActiveDbType, isPostgreSQL, isMySQL, COMMON_SQL_KEYWORDS, COMMON_SQL_FUNCTIONS, COMMON_DATA_TYPES } from './types.js';
-import { MYSQL_KEYWORDS, MYSQL_FUNCTIONS, MYSQL_DATA_TYPES, MYSQL_SNIPPETS, MYSQL_QUOTE_CHAR, getMySQLExplainQuery, MYSQL_INFO_QUERIES, isFeatureAvailable as isMySqlFeatureAvailable } from './mysql.js';
+import { MYSQL_KEYWORDS, MYSQL_FUNCTIONS, MYSQL_DATA_TYPES, MYSQL_SNIPPETS, MYSQL_QUOTE_CHAR, getMySQLExplainQuery, MYSQL_INFO_QUERIES, isFeatureAvailable as isMySqlFeatureAvailable, getMySQLSnippetsByVersion } from './mysql.js';
 import { POSTGRESQL_KEYWORDS, POSTGRESQL_FUNCTIONS, POSTGRESQL_DATA_TYPES, POSTGRESQL_SNIPPETS, POSTGRESQL_QUOTE_CHAR, getPostgreSQLExplainQuery, POSTGRESQL_INFO_QUERIES } from './postgresql.js';
 import { CLICKHOUSE_KEYWORDS, CLICKHOUSE_FUNCTIONS, CLICKHOUSE_DATA_TYPES, CLICKHOUSE_SNIPPETS, CLICKHOUSE_QUOTE_CHAR, getClickhouseExplainQuery, CLICKHOUSE_INFO_QUERIES } from './clickhouse.js';
 import { MSSQL_KEYWORDS, MSSQL_FUNCTIONS, MSSQL_DATA_TYPES, MSSQL_SNIPPETS, MSSQL_QUOTE_START, MSSQL_QUOTE_END, getMSSQLExplainQuery, MSSQL_INFO_QUERIES } from './mssql.js';
@@ -74,8 +74,9 @@ export const getDataTypes = () => {
 
 /**
  * Get snippets for the current database type
+ * @param {object} version - Optional database version (for MySQL only)
  */
-export const getSnippets = () => {
+export const getSnippets = (version = null) => {
     const dbType = getActiveDbType();
     if (dbType === DatabaseType.POSTGRESQL) {
         return POSTGRESQL_SNIPPETS;
@@ -83,6 +84,10 @@ export const getSnippets = () => {
         return CLICKHOUSE_SNIPPETS;
     } else if (dbType === DatabaseType.MSSQL) {
         return MSSQL_SNIPPETS;
+    }
+
+    if (version) {
+        return getMySQLSnippetsByVersion(version);
     }
     return MYSQL_SNIPPETS;
 };
@@ -154,9 +159,10 @@ export const getCommonSnippets = () => {
 
 /**
  * Get all snippets (common + database-specific)
+ * @param {object} version - Optional database version
  */
-export const getAllSnippets = () => {
-    return [...getCommonSnippets(), ...getSnippets()];
+export const getAllSnippets = (version = null) => {
+    return [...getCommonSnippets(), ...getSnippets(version)];
 };
 
 /**

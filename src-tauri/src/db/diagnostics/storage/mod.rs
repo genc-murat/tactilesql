@@ -150,7 +150,9 @@ pub async fn get_index_suggestions(
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
-            mysql::get_index_suggestions(pool, &database, &table).await
+            let version_guard = app_state.mysql_version.lock().await;
+            let version = version_guard.as_ref().cloned().unwrap_or_default();
+            mysql::get_index_suggestions(pool, &database, &table, &version).await
         }
         DatabaseType::MSSQL => {
             Ok(Vec::new())
@@ -186,7 +188,9 @@ pub async fn get_index_usage(
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
-            mysql::get_index_usage(pool, &database, &table).await
+            let version_guard = app_state.mysql_version.lock().await;
+            let version = version_guard.as_ref().cloned().unwrap_or_default();
+            mysql::get_index_usage(pool, &database, &table, &version).await
         }
         DatabaseType::MSSQL => {
             Ok(Vec::new())

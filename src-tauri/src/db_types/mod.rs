@@ -36,6 +36,9 @@ pub struct MySqlVersion {
     pub has_descending_indexes: bool,
     pub has_roles: bool,
     pub has_histograms: bool,
+    pub default_charset: String,
+    pub default_collation: String,
+    pub auth_plugin: Option<String>,
 }
 
 // --- State Management ---

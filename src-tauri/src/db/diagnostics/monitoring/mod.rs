@@ -166,9 +166,9 @@ pub async fn get_monitor_snapshot(app_state: State<'_, AppState>) -> Result<Moni
             drop(version_guard);
 
             let server_status = mysql::get_server_status(pool).await?;
-            let processes = mysql::get_process_list(pool).await?;
+            let processes = mysql::get_process_list(pool, &version).await?;
             let replication = mysql::get_replication_status(pool).await?;
-            let slow_queries = mysql::get_slow_queries(pool, 50).await?;
+            let slow_queries = mysql::get_slow_queries(pool, 50, &version).await?;
             let locks = mysql::get_locks(pool, &version).await?;
             let innodb_status = Some(mysql::get_innodb_status(pool).await.unwrap_or_default());
 

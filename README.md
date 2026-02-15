@@ -12,6 +12,7 @@ TactileSQL is a modern, desktop-first SQL workbench for MySQL, PostgreSQL, Click
 - **First-Class MSSQL Support**: Deep integration with SQL Server featuring schema-qualified object browsing, automatic square bracket quoting, and MSSQL-optimized pagination. Includes the **Advanced Server Monitor** (uptime, batch requests, session termination), **Multi-View Visual Execution Plan** (Visual/Diagram, Tree/Hierarchical, and Raw/Source views with Cost/CPU/IO/Rows metrics), **Index Fragmentation & Maintenance** (Rebuild/Reorganize), **SQL Server Agent Job Manager**, and **Storage Visualization** for database files.
 - **Native ClickHouse Integration**: High-performance connectivity via native HTTP protocol (port 8123). Features rich SVG **Visual Explain Pipeline**, **Storage Analyzer** (compression & column usage), **Query Profiler** (execution timeline & comparison), **TTL Management** (visual policy editor & impact preview), Partition Explorer, Query Log Dashboard, **System Metrics Dashboard**, Kafka Monitoring, **Merge & Mutation Monitor**, and **User & Settings Profile Management**.
 - **Advanced PostgreSQL Support**: Deep-dive monitoring with the **Server Activity Monitor** (session termination), **Lock Monitor** (visualize blocking chains), and **Extension Management** (install/uninstall extensions).
+- **Proactive MySQL Compatibility Initiative**: Comprehensive support for MySQL 5.5 through 8.4+. Features **Intelligent SQL Normalization** (automatically patches breaking syntax like `GROUP BY DESC`), **Version-Aware SQL Snippets**, and **Deep Query Analysis** with proactive `EXPLAIN FORMAT=JSON` selection, cost estimation, and structural insights for Window Functions and CTEs. Extensive monitoring coverage for legacy and modern Performance Schema schemas.
 - **Code Folding**: Collapse and expand code blocks (subqueries, CASE/END, BEGIN/END, block comments) for improved readability.
 - **Configurable SQL Execution Defaults**: Set default run mode (`current statement` / `selection first` / `run all`) and query timeout (`0 = unlimited`).
 - **Smart Autocomplete++** with context-aware suggestions, abbreviation matching (e.g. `tc` → `test_customers`), FK-based JOIN hints, database/schema qualification control, and frequency learning.
@@ -66,7 +67,7 @@ src-tauri/
 
 - **Node.js** (LTS recommended)
 - **Rust toolchain** (stable)
-- **Database Server**: MySQL (5.7+), PostgreSQL (12+), ClickHouse, or SQL Server (2017+)
+- **Database Server**: MySQL (5.5+), PostgreSQL (12+), ClickHouse, or SQL Server (2017+)
 - **Tauri system dependencies** for your OS (see Tauri v2 docs)
 
 ## Setup
@@ -110,6 +111,8 @@ The Rust backend exposes a comprehensive set of commands for cross-database oper
 - `get_lock_analysis` — Blocking graphs and deadlock detection
 - `get_slow_queries` — Performance samples with AI analysis hooks
 - `get_bloat_analysis` — Server-wide fragmentation/waste scanning
+- `get_mysql_version` — Detailed version and feature metadata for proactive compatibility
+- `normalize_mysql_query` — Translation layer for cross-version SQL syntax normalization
 
 ### ClickHouse & MSSQL Specifics
 - `get_clickhouse_partitions`, `manage_partition`, `get_clickhouse_merges`, `get_clickhouse_mutations`, `get_clickhouse_system_metrics`

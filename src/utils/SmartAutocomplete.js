@@ -212,6 +212,7 @@ export class SmartAutocomplete {
     #query = '';
     #cursorPos = 0;
     #currentDb = '';
+    #mysqlVersion = null;
     #parsedQuery = null;
 
     // Debounce timer
@@ -243,6 +244,15 @@ export class SmartAutocomplete {
      */
     setDbType(dbType) {
         this.#dbType = dbType === 'postgres' || dbType === 'postgresql' ? 'postgres' : 'mysql';
+    }
+
+    /**
+     * Set MySQL version for version-aware snippets/features
+     * @param {object} version - MySqlVersion object from backend
+     */
+    setMysqlVersion(version) {
+        this.#mysqlVersion = version;
+        console.log('[SmartAutocomplete] MySQL version updated:', version);
     }
 
     /**
@@ -1556,7 +1566,7 @@ export class SmartAutocomplete {
         const suggestions = [];
         const wordLower = word.toLowerCase();
         // Get snippets from database adapter + user snippets + builtin snippets
-        const dbSnippets = getAllSnippets();
+        const dbSnippets = getAllSnippets(this.#mysqlVersion);
         const builtinSnippets = getAllBuiltinSnippets();
         const allSnippets = [...builtinSnippets, ...dbSnippets, ...this.#userSnippets];
 

@@ -35,9 +35,13 @@ pub async fn test_connection(config: &ConnectionConfig) -> Result<String, String
     }
 
     options = options.log_statements(log::LevelFilter::Debug).to_owned();
+    options = options.charset("utf8mb4");
 
     let mut conn = options.connect().await.map_err(|e| {
         let err_msg = e.to_string();
+        if err_msg.contains("Access denied") || err_msg.contains("authentication") {
+            return format!("Authentication failed: {}.\\n\\nNote: MySQL 8.0+ uses 'caching_sha2_password' by default, while older versions use 'mysql_native_password'.", e);
+        }
         if err_msg.contains("os error 111") {
             return format!(
                 "Connection Refused ({})\\n\\nCheck if MySQL is running on {}:{}",
@@ -71,23 +75,40 @@ pub async fn create_pool(config: &ConnectionConfig) -> Result<Pool<MySql>, Strin
         }
     }
 
-    sqlx::mysql::MySqlPoolOptions::new()
+    // Use utf8mb4 as default if possible, otherwise it falls back to sqlx default
+    options = options.charset("utf8mb4");
+
+    // Try connection with default configuration
+    let pool_result = sqlx::mysql::MySqlPoolOptions::new()
         .max_connections(10)
         .min_connections(2)
         .acquire_timeout(std::time::Duration::from_secs(10))
         .idle_timeout(std::time::Duration::from_secs(300))
         .max_lifetime(std::time::Duration::from_secs(1800))
-        .connect_with(options).await
-        .map_err(|e| {
+        .connect_with(options.clone())
+        .await;
+
+    match pool_result {
+        Ok(pool) => Ok(pool),
+        Err(e) => {
             let err_msg = e.to_string();
+            // Handle common authentication errors by retrying with explicit auth plugin if needed
+            // SQLx usually handles protocol negotiation, but sometimes a nudge helps
+            // or we might want to try different character sets if utf8mb4 failed on very old servers
+            if err_msg.contains("Access denied") || err_msg.contains("authentication") {
+                // Return descriptive error for auth issues
+                return Err(format!("Authentication failed: {}.\\n\\nNote: MySQL 8.0+ uses 'caching_sha2_password' by default, while older versions use 'mysql_native_password'.", e));
+            }
+            
             if err_msg.contains("os error 111") {
-                return format!("Connection Refused ({})\\n\\nCheck if MySQL is running on {}:{}", err_msg, config.host, config.port);
+                return Err(format!("Connection Refused ({})\\n\\nCheck if MySQL is running on {}:{}", err_msg, config.host, config.port));
             }
             if err_msg.contains("timed out") {
-                return format!("Connection Timed Out\\n\\nThe server at {}:{} did not respond within 10 seconds.", config.host, config.port);
+                return Err(format!("Connection Timed Out\\n\\nThe server at {}:{} did not respond within 10 seconds.", config.host, config.port));
             }
-            format!("Failed to create pool: {}", e)
-        })
+            Err(format!("Failed to create pool: {}", e))
+        }
+    }
 }
 
 // --- Version Detection ---
@@ -133,6 +154,23 @@ pub async fn detect_mysql_version(pool: &Pool<MySql>) -> Result<MySqlVersion, St
     .map(|r| r.try_get::<i64, _>("cnt").unwrap_or(0) > 0)
     .unwrap_or(false);
 
+    // Fetch character set, collation and auth plugin
+    let row_params = sqlx::query("SELECT @@character_set_server as charset, @@collation_server as collation, @@default_authentication_plugin as auth_plugin")
+        .fetch_one(pool)
+        .await
+        .ok();
+
+    let default_charset = row_params.as_ref()
+        .and_then(|r| r.try_get::<String, _>("charset").ok())
+        .unwrap_or_else(|| "utf8mb4".to_string());
+
+    let default_collation = row_params.as_ref()
+        .and_then(|r| r.try_get::<String, _>("collation").ok())
+        .unwrap_or_else(|| "utf8mb4_0900_ai_ci".to_string());
+
+    let auth_plugin = row_params.as_ref()
+        .and_then(|r| r.try_get::<String, _>("auth_plugin").ok());
+
     let version = MySqlVersion {
         major,
         minor,
@@ -148,6 +186,9 @@ pub async fn detect_mysql_version(pool: &Pool<MySql>) -> Result<MySqlVersion, St
         has_descending_indexes,
         has_roles,
         has_histograms,
+        default_charset,
+        default_collation,
+        auth_plugin,
     };
 
     eprintln!(
@@ -255,9 +296,33 @@ fn normalize_operators(query: &str) -> String {
 
 fn fix_group_by_syntax(query: &str) -> String {
     // MySQL 8.0+ removed ASC/DESC in GROUP BY. 
-    // We should translate `GROUP BY col DESC` to `GROUP BY col ORDER BY col DESC`
-    // Note: This is still naive as it doesn't handle existing ORDER BY perfectly, 
-    // but for simple cases it restores the expected behavior.
+    // We try to translate simple GROUP BY with sorting into GROUP BY + ORDER BY.
+    // Handles multi-column: GROUP BY a DESC, b ASC -> GROUP BY a, b ORDER BY a DESC, b ASC
+    let re_gb = regex::Regex::new(r"(?i)GROUP\s+BY\s+(.+?)(?:\s+(?:HAVING|ORDER|LIMIT|FOR|LOCK|WINDOW)|$)").unwrap();
+    
+    if let Some(caps) = re_gb.captures(query) {
+        let full_gb_clause = caps.get(1).unwrap().as_str();
+        if full_gb_clause.to_uppercase().contains(" ASC") || full_gb_clause.to_uppercase().contains(" DESC") {
+            // Clean the GROUP BY clause
+            let clean_gb = full_gb_clause.to_string()
+                .replace(" ASC", "")
+                .replace(" DESC", "")
+                .replace(" asc", "")
+                .replace(" desc", "");
+                
+            // If the query doesn't already have an ORDER BY, add one
+            if !query.to_uppercase().contains("ORDER BY") {
+                let mut fixed = query.replace(full_gb_clause, &clean_gb);
+                fixed.push_str(&format!(" ORDER BY {}", full_gb_clause));
+                return fixed;
+            } else {
+                // If it already has ORDER BY, just clean the GROUP BY and hope for the best
+                return query.replace(full_gb_clause, &clean_gb);
+            }
+        }
+    }
+    
+    // Fallback to simple regex for partial matches if the complex one fails
     let re = regex::Regex::new(r"(?i)GROUP\s+BY\s+([a-zA-Z0-9_`.]+)\s+(ASC|DESC)").unwrap();
     re.replace_all(query, "GROUP BY $1 ORDER BY $1 $2").to_string()
 }
@@ -1373,8 +1438,25 @@ pub async fn get_capacity_metrics(
     })
 }
 
-pub async fn get_process_list(pool: &Pool<MySql>) -> Result<Vec<ProcessInfo>, String> {
-    let rows = sqlx::query("SHOW FULL PROCESSLIST")
+pub async fn get_process_list(pool: &Pool<MySql>, version: &MySqlVersion) -> Result<Vec<ProcessInfo>, String> {
+    let query = if version.has_performance_schema {
+        // Use performance_schema for more structured data if available
+        "SELECT 
+            PROCESSLIST_ID as Id, 
+            PROCESSLIST_USER as User, 
+            PROCESSLIST_HOST as Host, 
+            PROCESSLIST_DB as db, 
+            PROCESSLIST_COMMAND as Command, 
+            PROCESSLIST_TIME as Time, 
+            PROCESSLIST_STATE as State, 
+            PROCESSLIST_INFO as Info 
+         FROM performance_schema.threads 
+         WHERE PROCESSLIST_ID IS NOT NULL"
+    } else {
+        "SHOW FULL PROCESSLIST"
+    };
+
+    let rows = sqlx::query(query)
         .fetch_all(pool)
         .await
         .map_err(|e| format!("Failed to fetch process list: {}", e))?;
@@ -1834,21 +1916,27 @@ pub async fn get_lock_graph_edges(pool: &Pool<MySql>, version: &MySqlVersion) ->
 
 // --- Query Analysis ---
 
-pub async fn analyze_query(pool: &Pool<MySql>, query: &str) -> Result<QueryAnalysis, String> {
+pub async fn analyze_query(
+    pool: &Pool<MySql>,
+    query: &str,
+    version: &MySqlVersion,
+) -> Result<QueryAnalysis, String> {
     let query = query.trim().trim_end_matches(';').trim();
-    
+
     // Check if query is explainable (MySQL supports SELECT, DELETE, INSERT, REPLACE, UPDATE)
     let first_word = query.split_whitespace().next().unwrap_or("").to_uppercase();
     if !["SELECT", "INSERT", "UPDATE", "DELETE", "REPLACE"].contains(&first_word.as_str()) {
         return Err(format!("Query analysis (EXPLAIN) is not supported for {} statements. It is only supported for SELECT, INSERT, UPDATE, DELETE, and REPLACE.", first_word));
     }
 
-    let explain_query = format!("EXPLAIN FORMAT=JSON {}", query);
+    // Proactively choose format based on version (5.7+ supports JSON)
+    let is_json_supported = version.major > 5 || (version.major == 5 && version.minor >= 7);
 
-    let result = sqlx::query(&explain_query).fetch_one(pool).await;
+    if is_json_supported {
+        let explain_query = format!("EXPLAIN FORMAT=JSON {}", query);
+        let result = sqlx::query(&explain_query).fetch_one(pool).await;
 
-    match result {
-        Ok(row) => {
+        if let Ok(row) = result {
             let explain_json: String = row.try_get(0).unwrap_or_default();
             let explain_result: serde_json::Value =
                 serde_json::from_str(&explain_json).unwrap_or(serde_json::json!({}));
@@ -1856,78 +1944,98 @@ pub async fn analyze_query(pool: &Pool<MySql>, query: &str) -> Result<QueryAnaly
             let mut suggestions = Vec::new();
             let mut warnings = Vec::new();
 
+            // 1) Cost Analysis
             if let Some(query_block) = explain_result.get("query_block") {
                 if let Some(cost) = query_block
                     .get("cost_info")
                     .and_then(|c| c.get("query_cost"))
                 {
-                    if let Some(cost_str) = cost.as_str() {
-                        if let Ok(cost_val) = cost_str.parse::<f64>() {
-                            if cost_val > 1000.0 {
-                                warnings.push(format!("High query cost: {}", cost_val));
-                                suggestions.push(
-                                    "Consider adding indexes or optimizing the query".to_string(),
-                                );
-                            }
-                        }
+                    let cost_val = match cost {
+                        serde_json::Value::String(s) => s.parse::<f64>().unwrap_or(0.0),
+                        serde_json::Value::Number(n) => n.as_f64().unwrap_or(0.0),
+                        _ => 0.0,
+                    };
+
+                    if cost_val > 1000.0 {
+                        warnings.push(format!("High total query cost: {:.2}", cost_val));
+                        suggestions.push(
+                            "Consider adding indexes or simplifying JOIN conditions".to_string(),
+                        );
                     }
+                }
+
+                // 2) Structural Insights (Window Functions / CTEs)
+                let explain_str = explain_json.to_lowercase();
+                if explain_str.contains("\"windowing\"") {
+                    suggestions.push("Window functions detected. Ensure sort buffers are adequate (sort_buffer_size).".to_string());
+                }
+                if explain_str.contains("\"common_table_expr\"") || explain_str.contains("\"cte_") {
+                    suggestions.push("CTEs detected. For recursive CTEs, check cte_max_recursion_depth if needed.".to_string());
+                }
+
+                // 3) Table Scan detection
+                if explain_str.contains("\"access_type\": \"all\"") {
+                    warnings.push("Full table scan detected (ALL).".to_string());
+                    suggestions.push("Add indexes to avoid scanning the entire table.".to_string());
                 }
             }
 
-            Ok(QueryAnalysis {
+            return Ok(QueryAnalysis {
                 explain_result: vec![explain_result],
                 warnings,
                 suggestions,
-            })
-        }
-        Err(_) => {
-            // Fallback for MySQL 5.6 or older that might not support FORMAT=JSON
-            let traditional_explain = format!("EXPLAIN {}", query);
-            let rows = sqlx::query(&traditional_explain)
-                .fetch_all(pool)
-                .await
-                .map_err(|e| format!("Failed to analyze query: {}", e))?;
-
-            let mut warnings = Vec::new();
-            let mut suggestions = Vec::new();
-
-            for row in rows {
-                let extra: String = row.try_get("Extra").unwrap_or_default();
-                if extra.contains("Using filesort") {
-                    warnings.push(
-                        "Query is using filesort, which can be slow on large datasets.".to_string(),
-                    );
-                    suggestions.push("Consider adding an index to avoid sorting.".to_string());
-                }
-                if extra.contains("Using temporary") {
-                    warnings.push("Query is using a temporary table.".to_string());
-                    suggestions
-                        .push("Optimize the query or JOINs to avoid temporary tables.".to_string());
-                }
-
-                let select_type: String = row.try_get("select_type").unwrap_or_default();
-                if select_type == "DEPENDENT SUBQUERY" {
-                    warnings
-                        .push("Dependent subquery detected, which can be very slow.".to_string());
-                    suggestions.push("Try converting the subquery into a JOIN.".to_string());
-                }
-            }
-
-            Ok(QueryAnalysis {
-                explain_result: vec![
-                    serde_json::json!({"info": "Traditional EXPLAIN used for compatibility"}),
-                ],
-                warnings,
-                suggestions,
-            })
+            });
         }
     }
+
+    // Fallback or Legacy Choice: Traditional EXPLAIN
+    let traditional_explain = format!("EXPLAIN {}", query);
+    let rows = sqlx::query(&traditional_explain)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to analyze query: {}", e))?;
+
+    let mut warnings = Vec::new();
+    let mut suggestions = Vec::new();
+
+    for row in rows {
+        let extra: String = row.try_get("Extra").unwrap_or_default();
+        if extra.contains("Using filesort") {
+            warnings.push("Query is using filesort, which can be slow on large datasets.".to_string());
+            suggestions.push("Consider adding an index to avoid sorting.".to_string());
+        }
+        if extra.contains("Using temporary") {
+            warnings.push("Query is using a temporary table.".to_string());
+            suggestions.push("Optimize the query or JOINs to avoid temporary tables.".to_string());
+        }
+
+        let select_type: String = row.try_get("select_type").unwrap_or_default();
+        if select_type == "DEPENDENT SUBQUERY" {
+            warnings.push("Dependent subquery detected, which can be very slow.".to_string());
+            suggestions.push("Try converting the subquery into a JOIN.".to_string());
+        }
+
+        let type_col: String = row.try_get("type").unwrap_or_default();
+        if type_col == "ALL" {
+            warnings.push("Full table scan (ALL) detected.".to_string());
+            suggestions.push("Add indexes to match your WHERE clause.".to_string());
+        }
+    }
+
+    Ok(QueryAnalysis {
+        explain_result: vec![serde_json::json!({
+            "info": if is_json_supported { "JSON EXPLAIN failed, fell back to Traditional" } else { "Traditional EXPLAIN used (JSON not supported)" }
+        })],
+        warnings,
+        suggestions,
+    })
 }
 
 pub async fn get_index_suggestions(
     pool: &Pool<MySql>,
     database: &str,
     table: &str,
+    version: &MySqlVersion,
 ) -> Result<Vec<IndexSuggestion>, String> {
     let mut suggestions = Vec::new();
     let mut flagged_indexes: HashSet<String> = HashSet::new();
@@ -1962,34 +2070,36 @@ pub async fn get_index_suggestions(
     }
 
     // 2) Real usage metrics via performance_schema (if enabled)
-    let perf_query = format!(
-        r#"
-        SELECT 
-            INDEX_NAME,
-            COUNT_STAR as total_ops
-        FROM performance_schema.table_io_waits_summary_by_index_usage
-        WHERE OBJECT_SCHEMA = '{}'
-          AND OBJECT_NAME = '{}'
-          AND INDEX_NAME IS NOT NULL
-    "#,
-        database, table
-    );
+    if version.has_performance_schema {
+        let perf_query = format!(
+            r#"
+            SELECT 
+                INDEX_NAME,
+                COUNT_STAR as total_ops
+            FROM performance_schema.table_io_waits_summary_by_index_usage
+            WHERE OBJECT_SCHEMA = '{}'
+              AND OBJECT_NAME = '{}'
+              AND INDEX_NAME IS NOT NULL
+        "#,
+            database, table
+        );
 
-    if let Ok(rows) = sqlx::query(&perf_query).fetch_all(pool).await {
-        for row in rows {
-            let index_name: String = row.try_get("INDEX_NAME").unwrap_or_default();
-            let total_ops: i64 = row.try_get::<i64, _>("total_ops").unwrap_or(0);
-            if index_name.is_empty() {
-                continue;
-            }
-            if total_ops == 0 && flagged_indexes.insert(index_name.clone()) {
-                suggestions.push(IndexSuggestion {
-                    table_name: table.to_string(),
-                    column_name: index_name.clone(),
-                    index_name: Some(index_name.clone()),
-                    suggestion: "Consider removing unused index".to_string(),
-                    reason: "No usage detected (performance_schema)".to_string(),
-                });
+        if let Ok(rows) = sqlx::query(&perf_query).fetch_all(pool).await {
+            for row in rows {
+                let index_name: String = row.try_get("INDEX_NAME").unwrap_or_default();
+                let total_ops: i64 = row.try_get::<i64, _>("total_ops").unwrap_or(0);
+                if index_name.is_empty() {
+                    continue;
+                }
+                if total_ops == 0 && flagged_indexes.insert(index_name.clone()) {
+                    suggestions.push(IndexSuggestion {
+                        table_name: table.to_string(),
+                        column_name: index_name.clone(),
+                        index_name: Some(index_name.clone()),
+                        suggestion: "Consider removing unused index".to_string(),
+                        reason: "No usage detected (performance_schema)".to_string(),
+                    });
+                }
             }
         }
     }
@@ -2046,7 +2156,11 @@ pub async fn get_index_usage(
     pool: &Pool<MySql>,
     database: &str,
     table: &str,
+    version: &MySqlVersion,
 ) -> Result<Vec<IndexUsage>, String> {
+    if !version.has_performance_schema {
+        return Ok(vec![]);
+    }
     let query = format!(
         r#"
         SELECT 
@@ -2560,27 +2674,50 @@ pub async fn get_health_metrics(pool: &Pool<MySql>) -> Result<Vec<HealthMetric>,
 
 use crate::db_types::SlowQuery;
 
-pub async fn get_slow_queries(pool: &Pool<MySql>, limit: i32) -> Result<Vec<SlowQuery>, String> {
+pub async fn get_slow_queries(
+    pool: &Pool<MySql>,
+    limit: i32,
+    version: &MySqlVersion,
+) -> Result<Vec<SlowQuery>, String> {
     // Try to get slow queries from performance_schema or mysql.slow_log
-    // First, check if performance_schema.events_statements_summary_by_digest is available
-    let query = format!(
-        r#"
-        SELECT 
-            DATE_FORMAT(CURRENT_TIMESTAMP, '%Y-%m-%d %H:%i:%s') as start_time,
-            IFNULL(SCHEMA_NAME, 'N/A') as user_host,
-            FORMAT(AVG_TIMER_WAIT/1000000000000, 6) as query_time,
-            AVG_TIMER_WAIT/1000000000.0 as duration_ms,
-            FORMAT(SUM_LOCK_TIME/1000000000000, 6) as lock_time,
-            SUM_ROWS_SENT as rows_sent,
-            SUM_ROWS_EXAMINED as rows_examined,
-            DIGEST_TEXT as sql_text
-        FROM performance_schema.events_statements_summary_by_digest
-        WHERE AVG_TIMER_WAIT > 1000000000000
-        ORDER BY AVG_TIMER_WAIT DESC
-        LIMIT {}
-    "#,
-        limit
-    );
+    let query = if version.has_performance_schema {
+        format!(
+            r#"
+            SELECT 
+                DATE_FORMAT(LAST_SEEN, '%Y-%m-%d %H:%i:%s') as start_time,
+                IFNULL(SCHEMA_NAME, 'N/A') as user_host,
+                FORMAT(AVG_TIMER_WAIT/1000000000000, 6) as query_time,
+                AVG_TIMER_WAIT/1000000000.0 as duration_ms,
+                FORMAT(SUM_LOCK_TIME/1000000000000, 6) as lock_time,
+                SUM_ROWS_SENT as rows_sent,
+                SUM_ROWS_EXAMINED as rows_examined,
+                DIGEST_TEXT as sql_text
+            FROM performance_schema.events_statements_summary_by_digest
+            ORDER BY AVG_TIMER_WAIT DESC
+            LIMIT {}
+        "#,
+            limit
+        )
+    } else {
+        // Fallback to mysql.slow_log if available (requires table output to be enabled)
+        format!(
+            r#"
+            SELECT 
+                start_time,
+                user_host,
+                query_time,
+                (TIME_TO_SEC(query_time) * 1000) as duration_ms,
+                lock_time,
+                rows_sent,
+                rows_examined,
+                sql_text
+            FROM mysql.slow_log
+            ORDER BY start_time DESC
+            LIMIT {}
+        "#,
+            limit
+        )
+    };
 
     let rows = sqlx::query(&query).fetch_all(pool).await;
 

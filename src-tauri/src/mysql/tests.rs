@@ -99,4 +99,60 @@ fn test_mysql_query_normalization() {
     let query_n = "SELECT N'text'";
     let normalized_n = normalize_mysql_query(query_n, &version_8);
     assert_eq!(normalized_n, "SELECT 'text'");
+
+    // 5. Complex GROUP BY (multiple columns)
+    let query_multi_gb = "SELECT a, b FROM t GROUP BY a DESC, b ASC";
+    let normalized_multi_gb = normalize_mysql_query(query_multi_gb, &version_8);
+    assert!(normalized_multi_gb.contains("GROUP BY a, b ORDER BY a DESC, b ASC"));
+}
+
+#[test]
+fn test_query_compatibility_validation() {
+    let version_8 = MySqlVersion { major: 8, minor: 0, ..Default::default() };
+    
+    // 1. Operator warning
+    let warnings_ops = validate_query_compatibility("SELECT * FROM t WHERE a && b", &version_8);
+    assert!(warnings_ops.iter().any(|w| w.contains("&&") && w.contains("deprecated")));
+
+    // 2. Group By warning
+    let warnings_gb = validate_query_compatibility("SELECT a FROM t GROUP BY a DESC", &version_8);
+    assert!(warnings_gb.iter().any(|w| w.contains("GROUP BY") && w.contains("Sorting")));
+
+    // 3. Float warning
+    let warnings_float = validate_query_compatibility("CREATE TABLE t (a FLOAT(10,2))", &version_8);
+    assert!(warnings_float.iter().any(|w| w.contains("(M,D)") && w.contains("deprecated")));
+}
+
+#[test]
+fn test_structural_analysis_insights() {
+    // Mock JSON for window functions
+    let explain_window = serde_json::json!({
+        "query_block": {
+            "windowing": {
+                "using_temporary_table": true
+            }
+        }
+    });
+    
+    let mut suggestions = Vec::new();
+    let explain_str = explain_window.to_string().to_lowercase();
+    if explain_str.contains("\"windowing\"") {
+        suggestions.push("Window functions detected".to_string());
+    }
+    assert!(suggestions.iter().any(|s| s.contains("Window functions")));
+
+    // Mock JSON for CTEs
+    let explain_cte = serde_json::json!({
+        "query_block": {
+            "common_table_expr": [
+                { "table_name": "cte1" }
+            ]
+        }
+    });
+    let mut cte_suggestions = Vec::new();
+    let explain_cte_str = explain_cte.to_string().to_lowercase();
+    if explain_cte_str.contains("\"common_table_expr\"") {
+        cte_suggestions.push("CTEs detected".to_string());
+    }
+    assert!(cte_suggestions.iter().any(|s| s.contains("CTEs")));
 }

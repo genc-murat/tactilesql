@@ -8,6 +8,7 @@ import { toastSuccess, toastError } from '../../utils/Toast.js';
 import { SettingsManager } from '../../utils/SettingsManager.js';
 import { SETTINGS_PATHS } from '../../constants/settingsKeys.js';
 import { createContextMenu, removeContextMenu } from '../../utils/ContextMenu.js';
+import { smartAutocomplete } from '../../utils/SmartAutocomplete.js';
 import { showClickHouseTableDetails } from './ClickHouseTableDetails.js';
 import { showClickHouseQueryDashboard } from './ClickHouseQueryDashboard.js';
 import { showClickHouseKafkaMonitor } from './ClickHouseKafkaMonitor.js';
@@ -79,6 +80,7 @@ export function ObjectExplorer() {
             try {
                 const version = await invoke('get_mysql_version');
                 mysqlVersion = version;
+                smartAutocomplete.setMysqlVersion(version);
                 console.log('[ObjectExplorer] MySQL version refreshed:', mysqlVersion);
             } catch (err) {
                 console.error('Failed to refresh MySQL version:', err);

@@ -115,7 +115,9 @@ pub async fn get_slow_queries(
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
-            mysql::get_slow_queries(pool, limit).await
+            let version_guard = app_state.mysql_version.lock().await;
+            let version = version_guard.as_ref().cloned().unwrap_or_default();
+            mysql::get_slow_queries(pool, limit, &version).await
         }
         DatabaseType::MSSQL => {
             let guard = app_state.mssql_pool.lock().await;
@@ -150,7 +152,9 @@ pub async fn analyze_query(
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
-            mysql::analyze_query(pool, &query).await
+            let version_guard = app_state.mysql_version.lock().await;
+            let version = version_guard.as_ref().cloned().unwrap_or_default();
+            mysql::analyze_query(pool, &query, &version).await
         }
         DatabaseType::MSSQL => {
             Err("Query analysis not yet supported for MSSQL".to_string())
