@@ -29,6 +29,13 @@ pub struct MySqlVersion {
     pub has_performance_schema: bool,
     pub has_data_locks: bool,
     pub has_account_locked: bool,
+    pub has_json: bool,
+    pub has_window_functions: bool,
+    pub has_ctes: bool,
+    pub has_invisible_indexes: bool,
+    pub has_descending_indexes: bool,
+    pub has_roles: bool,
+    pub has_histograms: bool,
 }
 
 // --- State Management ---

@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { showViewSourceModal } from '../UI/ViewSourceModal.js';
 import { Dialog } from '../UI/Dialog.js';
 import { ThemeManager } from '../../utils/ThemeManager.js';
-import { getQuoteChar, isPostgreSQL, DatabaseType, getActiveDbType, quoteIdentifier } from '../../database/index.js';
+import { getQuoteChar, isPostgreSQL, DatabaseType, getActiveDbType, quoteIdentifier, isMySqlFeatureAvailable } from '../../database/index.js';
 import { escapeHtml, DatabaseCache, CacheTypes } from '../../utils/helpers.js';
 import { toastSuccess, toastError } from '../../utils/Toast.js';
 import { SettingsManager } from '../../utils/SettingsManager.js';
@@ -72,6 +72,21 @@ export function ObjectExplorer() {
     let userDbsLimit = 150; // Initial limit for user databases
     let objectsLimit = 100; // Initial limit for tables/views per database
     let columnLimits = {}; // key: "db.table", value: int limit
+    let mysqlVersion = null; // detected MySQL version object
+
+    const refreshMysqlVersion = async () => {
+        if (activeDbType === 'mysql' || activeDbType === DatabaseType.MYSQL) {
+            try {
+                const version = await invoke('get_mysql_version');
+                mysqlVersion = version;
+                console.log('[ObjectExplorer] MySQL version refreshed:', mysqlVersion);
+            } catch (err) {
+                console.error('Failed to refresh MySQL version:', err);
+            }
+        } else {
+            mysqlVersion = null;
+        }
+    };
 
     // Per-connection UI/cache state
     const connectionStates = new Map();
@@ -602,6 +617,7 @@ export function ObjectExplorer() {
             await invoke('establish_connection', { config: stored });
             DatabaseCache.setConnectionId(activeConnectionId);
             currentBackendId = activeConnectionId;
+            await refreshMysqlVersion();
         } catch (err) {
             console.error('Failed to ensure active backend connection:', err);
         }
@@ -1626,6 +1642,7 @@ export function ObjectExplorer() {
             await invoke('establish_connection', {
                 config: connConfig
             });
+            await refreshMysqlVersion();
             currentBackendId = connConfig.id;
             // Persist as active
             localStorage.setItem('activeConnection', JSON.stringify(connConfig));
@@ -1822,6 +1839,7 @@ export function ObjectExplorer() {
                             await invoke('establish_connection', {
                                 config: { ...activeConfig, id: activeConfig.id || null, name: activeConfig.name || null }
                             });
+                            await refreshMysqlVersion();
                             localStorage.setItem('activeConnection', JSON.stringify(activeConfig));
                         }
 
@@ -2426,6 +2444,7 @@ export function ObjectExplorer() {
                 try {
                     if (!cancelPreload) {
                         await invoke('establish_connection', { config: conn });
+                        await refreshMysqlVersion();
                         DatabaseCache.setConnectionId(conn.id);
                         currentBackendId = conn.id;
 

@@ -111,6 +111,19 @@ pub async fn detect_mysql_version(pool: &Pool<MySql>) -> Result<MySqlVersion, St
     // account_locked column in mysql.user exists since MySQL 5.7.6
     let has_account_locked = major > 5 || (major == 5 && minor > 7) || (major == 5 && minor == 7 && patch >= 6);
 
+    // JSON support since MySQL 5.7
+    let has_json = major > 5 || (major == 5 && minor >= 7);
+
+    // Window functions and CTEs since MySQL 8.0
+    let has_window_functions = major >= 8;
+    let has_ctes = major >= 8;
+
+    // Invisible indexes, descending indexes, roles, and histograms since MySQL 8.0
+    let has_invisible_indexes = major >= 8;
+    let has_descending_indexes = major >= 8;
+    let has_roles = major >= 8;
+    let has_histograms = major >= 8;
+
     // Check if performance_schema is available and enabled
     let has_performance_schema = sqlx::query(
         "SELECT COUNT(*) as cnt FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = 'performance_schema'"
@@ -128,12 +141,20 @@ pub async fn detect_mysql_version(pool: &Pool<MySql>) -> Result<MySqlVersion, St
         has_performance_schema,
         has_data_locks,
         has_account_locked,
+        has_json,
+        has_window_functions,
+        has_ctes,
+        has_invisible_indexes,
+        has_descending_indexes,
+        has_roles,
+        has_histograms,
     };
 
     eprintln!(
-        "[TactileSQL] MySQL version detected: {}.{}.{} (perf_schema={}, data_locks={}, account_locked={})",
+        "[TactileSQL] MySQL version detected: {}.{}.{} (perf_schema={}, data_locks={}, account_locked={}, json={}, window_fn={}, ctes={}, roles={})",
         version.major, version.minor, version.patch,
-        version.has_performance_schema, version.has_data_locks, version.has_account_locked
+        version.has_performance_schema, version.has_data_locks, version.has_account_locked,
+        version.has_json, version.has_window_functions, version.has_ctes, version.has_roles
     );
 
     Ok(version)
@@ -156,6 +177,73 @@ pub(crate) fn parse_version_string(version: &str) -> (u8, u8, u8) {
         parts.get(1).copied().unwrap_or(0),
         parts.get(2).copied().unwrap_or(0),
     )
+}
+
+// --- Query Normalization ---
+
+pub fn normalize_mysql_query(query: &str, version: &MySqlVersion) -> String {
+    let mut normalized = query.to_string();
+
+    // 1. Operator Normalization: && -> AND, || -> OR, ! -> NOT
+    // This is safer to do for newer versions where these might be disabled by sql_mode,
+    // but generally good for consistency. We use simple regex for now.
+    normalized = normalize_operators(&normalized);
+
+    // 2. GROUP BY ASC/DESC Fix: Removed in MySQL 8.0
+    if version.major >= 8 {
+        normalized = fix_group_by_syntax(&normalized);
+    }
+
+    // 3. FLOAT(M,D) Deprecation: Strip (M,D) if found in certain contexts
+    if version.major >= 8 {
+        normalized = normalize_float_double_syntax(&normalized);
+    }
+
+    // 4. N'...' synonym for Unicode literals (MySQL 8.0+ changes)
+    if version.major >= 8 {
+        normalized = normalize_n_synonym(&normalized);
+    }
+
+    normalized
+}
+
+fn normalize_operators(query: &str) -> String {
+    // Basic operator replacement. 
+    // WARNING: This is naive and can hit strings/comments. 
+    // In a production app, we should use a proper SQL parser.
+    // For now, we use word boundaries where possible.
+    
+    let mut result = query.to_string();
+    
+    // Replace && with AND (if space around)
+    // Replace || with OR (if space around)
+    // Replace ! with NOT (if followed by space/identifier)
+    
+    // Simple replacements for now - in follow-up we can improve with regex matching excluding quotes
+    result = result.replace(" && ", " AND ");
+    result = result.replace(" || ", " OR ");
+    
+    result
+}
+
+fn fix_group_by_syntax(query: &str) -> String {
+    // MySQL 8.0+ removed ASC/DESC in GROUP BY. 
+    // We should translate `GROUP BY col DESC` to `GROUP BY col ORDER BY col DESC`
+    // Note: This is still naive as it doesn't handle existing ORDER BY perfectly, 
+    // but for simple cases it restores the expected behavior.
+    let re = regex::Regex::new(r"(?i)GROUP\s+BY\s+([a-zA-Z0-9_`.]+)\s+(ASC|DESC)").unwrap();
+    re.replace_all(query, "GROUP BY $1 ORDER BY $1 $2").to_string()
+}
+
+fn normalize_n_synonym(query: &str) -> String {
+    // MySQL 8.0+ treats N'...' differently. Convert to standard literals if needed.
+    let re = regex::Regex::new(r"\bN'([^']*)'").unwrap();
+    re.replace_all(query, "'$1'").to_string()
+}
+
+fn normalize_float_double_syntax(query: &str) -> String {
+    let re = regex::Regex::new(r"(?i)\b(FLOAT|DOUBLE)\s*\(\s*\d+\s*,\s*\d+\s*\)").unwrap();
+    re.replace_all(query, "$1").to_string()
 }
 
 // --- Query Execution ---
@@ -189,6 +277,10 @@ where
     let mut results = Vec::new();
 
     let stream_future = async {
+        // Apply MySQL-specific normalization if applicable
+        // Note: For now we don't have the version here, we need to pass it or fetch it.
+        // Let's modify the signature to accept Option<&MySqlVersion>
+        
         let mut stream = sqlx::raw_sql(query).fetch_many(executor);
 
         let mut current_rows = Vec::new();

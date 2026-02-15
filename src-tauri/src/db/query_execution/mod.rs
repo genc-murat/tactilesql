@@ -210,7 +210,17 @@ pub async fn execute_query(
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
-            mysql::execute_query(pool, query.clone()).await
+            
+            let normalized_query = {
+                let version_guard = app_state.mysql_version.lock().await;
+                if let Some(version) = version_guard.as_ref() {
+                    mysql::normalize_mysql_query(&query, version)
+                } else {
+                    query.clone()
+                }
+            };
+            
+            mysql::execute_query(pool, normalized_query).await
         }
         DatabaseType::MSSQL => {
             let guard = app_state.mssql_pool.lock().await;
@@ -284,9 +294,19 @@ pub async fn execute_query_profiled(
         DatabaseType::MySQL => {
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
+            
+            let normalized_query = {
+                let version_guard = app_state.mysql_version.lock().await;
+                if let Some(version) = version_guard.as_ref() {
+                    mysql::normalize_mysql_query(&query, version)
+                } else {
+                    query.clone()
+                }
+            };
+            
             mysql::execute_query_with_status_with_timeout(
                 pool,
-                query.clone(),
+                normalized_query,
                 _query_timeout_seconds,
             )
             .await?

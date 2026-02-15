@@ -3,7 +3,7 @@
 // Handles database connection lifecycle, configuration storage, and testing
 // =====================================================
 
-use crate::db_types::{AppState, ConnectionConfig, DatabaseType, SSHTunnelConfig};
+use crate::db_types::{AppState, ConnectionConfig, DatabaseType, MySqlVersion, SSHTunnelConfig};
 use crate::mysql;
 use crate::postgres;
 use crate::clickhouse;
@@ -271,6 +271,12 @@ pub async fn disconnect(app_state: State<'_, AppState>) -> Result<String, String
     ssh_tunnel::close_all_tunnels().await?;
 
     Ok("Disconnected successfully".to_string())
+}
+
+#[tauri::command]
+pub async fn get_mysql_version(app_state: State<'_, AppState>) -> Result<Option<MySqlVersion>, String> {
+    let guard = app_state.mysql_version.lock().await;
+    Ok(guard.clone())
 }
 
 #[tauri::command]

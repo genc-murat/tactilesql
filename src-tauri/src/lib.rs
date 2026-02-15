@@ -269,6 +269,7 @@ pub fn run() {
             db::save_connection,
             db::load_connections,
             db::delete_connection,
+            db::get_mysql_version,
             // Data Tools
             db::export_table_csv,
             db::export_table_json,
