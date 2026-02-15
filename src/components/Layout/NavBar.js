@@ -44,7 +44,7 @@ export function NavBar() {
                 icon: 'settings_suggest',
                 id: 'menu-ops',
                 children: [
-                    { path: '/monitor', label: 'MONITOR', icon: 'speed' },
+                    ...((localStorage.getItem('activeDbType') === 'mysql' || localStorage.getItem('activeDbType') === 'postgresql') ? [{ path: '/monitor', label: 'MONITOR', icon: 'speed' }] : []),
                     { path: '/config', label: 'CONFIG', icon: 'tune' },
                     ...(taskCenterEnabled
                         ? [{ path: '/tasks', label: 'TASKS', icon: 'checklist' }]
@@ -64,6 +64,20 @@ export function NavBar() {
                 ]
             }
         ];
+
+
+
+        // Cleanup listener (though this render function re-binds, we need to be careful about dupes if not careful, 
+        // but NavBar is likely mounted once. If render is called multiple times, we might stack listeners if not careful.
+        // Better pattern: bind once outside or ensure cleanup. 
+        // Given existing code structure, `render` re-creates `navItems` but doesn't re-attach global listeners indiscriminately EXCEPT 
+        // `nav.onUnmount` handles cleanup. We should add our new listener there.
+
+        // Let's attach the listener OUTSIDE render or ensure we don't duplicate.
+        // Actually, looking at `NavBar.js`, `render` is called internally. 
+        // The `window.addEventListener('themechange', ...)` is outside `render`.
+        // We should move this listener outside `render` too.
+
 
         const renderNavItems = () => {
             return navItems.map(item => {
@@ -225,9 +239,14 @@ export function NavBar() {
     const onHashChange = () => render();
     window.addEventListener('hashchange', onHashChange);
 
+    // Re-render on connection change (to update available menus based on db type)
+    const onConnectionChange = () => render();
+    window.addEventListener('tactilesql:connection-changed', onConnectionChange);
+
     nav.onUnmount = () => {
         window.removeEventListener('themechange', onThemeChange);
         window.removeEventListener('hashchange', onHashChange);
+        window.removeEventListener('tactilesql:connection-changed', onConnectionChange);
     };
 
     render();

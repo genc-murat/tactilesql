@@ -1695,12 +1695,14 @@ export function ObjectExplorer() {
                         toastSuccess('Schema cache refreshed');
                     }
                 },
-                {
-                    label: 'Server Monitor',
-                    icon: 'monitor_heart',
-                    iconColor: isDawn ? 'text-[#eb6f92]' : 'text-rose-400',
-                    onClick: () => window.location.hash = `/monitor?conn=${id}`
-                },
+                ...(['mysql', 'postgresql'].includes(dbType) ? [
+                    {
+                        label: 'Server Monitor',
+                        icon: 'monitor_heart',
+                        iconColor: isDawn ? 'text-[#eb6f92]' : 'text-rose-400',
+                        onClick: () => window.location.hash = `/monitor?conn=${id}`
+                    }
+                ] : []),
                 ...(dbType === 'mssql' ? [
                     {
                         label: 'SQL Agent Jobs',
