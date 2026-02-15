@@ -784,51 +784,105 @@ export function ObjectExplorer() {
     // --- Render ---
     // --- Virtual Render Engine ---
 
-    // Renders a single node to an HTML string
-    const renderNode = (node) => {
+    // --- Virtual Render Engine (Recycled) ---
+    const rowPool = [];
+    let poolContainer = null;
+
+    const getRowElement = (idx) => {
+        if (!rowPool[idx]) {
+            const el = document.createElement('div');
+            el.className = 'virtual-row absolute w-full flex items-center overflow-hidden whitespace-nowrap box-border';
+            el.style.height = `${ROW_HEIGHT}px`;
+            el.style.left = '0';
+            // el.style.willChange = 'transform'; // Optional optimization
+            poolContainer.appendChild(el);
+            rowPool[idx] = el;
+        }
+        return rowPool[idx];
+    };
+
+    // Updates a pooled row element with new node data
+    const updateRowElement = (rowEl, node, yPos) => {
         const { type, id, data, depth, expanded, active, connId } = node;
-        const paddingLeft = depth * 4; // Minimal indentation
-        const style = `padding-left: ${paddingLeft}px; height: ${ROW_HEIGHT}px;`;
+        const paddingLeft = depth * 4;
 
-        // Common Highlights
-        const highlight = (id) => highlightClass(id);
-        const searchId = (id) => `data-search-id="${id}"`;
+        // Reset base styles
+        rowEl.style.transform = `translateY(${yPos}px)`;
+        rowEl.style.paddingLeft = `${paddingLeft}px`;
+        rowEl.dataset.connId = connId || '';
 
-        // Theme colors
+        // Clear dataset attributes to prevent leaks from previous usage?
+        // It's safer to re-set explicitly or verify delegation handles overrides.
+        // For simplicity, we just set the new ones. Old ones might persist if not overwritten? 
+        // Yes, dataset is a DOMStringMap. We should clear relevant data-attributes if recycling.
+        // But most handlers check `closest('.class')` AND data attributes.
+        // If we change class, outdated data attributes might be ignored.
+        // Let's clear dataset for safety or just overwrite.
+        // Efficient way:
+        Object.keys(rowEl.dataset).forEach(key => delete rowEl.dataset[key]);
+        if (connId) rowEl.dataset.connId = connId;
+
+        // Apply highlights
+        const hlClass = highlightClass(id);
+        const searchAttr = `data-search-id="${id}"`;
+        if (searchAttr) rowEl.dataset.searchId = id; // use dataset
+
+        // Theme utilities
         const mainText = isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text/80' : 'text-gray-500'));
         const hoverText = isLight ? 'hover:text-mysql-teal' : (isDawn ? 'hover:text-[#ea9d34]' : (isOceanic ? 'hover:text-ocean-frost' : 'hover:text-white'));
 
+        // Helper for common structure
+        const commonClass = `virtual-row absolute w-full flex items-center overflow-hidden whitespace-nowrap box-border cursor-pointer transition-colors`;
+
+        // --- Render Logic based on Type ---
         switch (type) {
             case 'connection': {
-                // Connection Header
-                const { name, id: cid, dbType } = data;
-                const borderClass = isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isNeon ? 'border-white/5' : 'border-white/5'));
+                const { name, id: cid, dbType, color } = data;
+                const borderClass = isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5');
                 const bgClass = active ? (isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#f2e9e1]' : (isOceanic ? 'bg-ocean-surface' : (isNeon ? 'bg-white/5' : 'bg-gray-800')))) : '';
-                return `
-                    <div class="connection-item virtual-row flex items-center gap-2 w-full cursor-pointer ${bgClass} hover:bg-opacity-80 transition-colors border-b ${borderClass}" style="${style}" data-conn-id="${cid}" data-db-type="${dbType || 'mysql'}" draggable="true">
-                         <div class="w-1.5 h-1.5 rounded-full ${active ? 'bg-green-500' : 'bg-gray-400'}"></div>
-                         <span class="font-bold text-[10px] truncate flex-1 min-w-0 ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">${escapeHtml(name)}</span>
-                         ${active ? `<span class="material-symbols-outlined text-[12px] ${expanded ? 'rotate-180' : ''}">expand_more</span>` : ''} 
-                    </div>
+
+                rowEl.className = `${commonClass} gap-2 ${bgClass} hover:bg-opacity-80 border-b ${borderClass} connection-item`;
+                rowEl.draggable = true;
+                rowEl.dataset.connId = cid;
+                rowEl.dataset.dbType = dbType || 'mysql';
+
+                // Color integration: Use configured color or default
+                // If color is present, show as a left border strip or indicator
+                const indicatorStyle = color
+                    ? `background-color: ${color}; box-shadow: 0 0 8px ${color}40;`
+                    : (active ? '' : 'background-color: #9ca3af;'); // default gray if no color and not active
+
+                const activeIndicatorClass = !color && active ? 'bg-green-500' : '';
+
+                rowEl.innerHTML = `
+                     <div class="w-1.5 h-1.5 rounded-full shrink-0 ${activeIndicatorClass}" style="${indicatorStyle}"></div>
+                     <span class="font-bold text-[10px] truncate flex-1 min-w-0 ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-300')}">${escapeHtml(name)}</span>
+                     ${active ? `<span class="material-symbols-outlined text-[12px] shrink-0 ${expanded ? 'rotate-180' : ''}">expand_more</span>` : ''} 
                 `;
+                // Add color border to the row if defined?
+                if (color) {
+                    rowEl.style.borderLeft = `3px solid ${color}`;
+                    rowEl.style.paddingLeft = `${paddingLeft + 4}px`; // adjust padding? already 0 for conn
+                } else {
+                    rowEl.style.borderLeft = '';
+                }
+                break;
             }
             case 'group-header': {
-                // User/System Databases Group
                 const { label, count, icon, isSystem } = data;
                 const headerText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9797a2]' : (isNeon ? 'text-neon-text/40' : 'text-gray-600'));
-                const countTextColor = isLight ? 'text-gray-300' : (isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent/50' : 'text-gray-700'));
                 const iconColor = isSystem ? (isDawn ? 'text-[#f6c177]' : (isNeon ? 'text-neon-accent/60' : 'text-amber-500')) : (isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-mysql-teal'));
-
                 const toggleClass = isSystem ? 'system-dbs-toggle' : 'user-dbs-toggle';
 
-                return `
-                    <div class="${toggleClass} virtual-row flex items-center gap-2 w-full cursor-pointer px-2 py-1 text-[8px] font-bold tracking-[0.2em] ${headerText} hover:opacity-80 transition-colors" style="${style}" data-conn-id="${connId}">
-                        <span class="material-symbols-outlined text-[10px] transition-transform ${expanded ? 'rotate-90' : ''}">arrow_right</span>
-                        <span class="material-symbols-outlined text-[11px] ${iconColor}"> ${icon}</span>
-                        ${label}
-                        <span class="${countTextColor}"> (${count})</span>
-                    </div>
-                 `;
+                rowEl.className = `${commonClass} ${toggleClass} gap-2 px-2 py-1 text-[8px] font-bold tracking-[0.2em] ${headerText} hover:opacity-80`;
+                rowEl.innerHTML = `
+                    <span class="material-symbols-outlined text-[10px] transition-transform ${expanded ? 'rotate-90' : ''}">arrow_right</span>
+                    <span class="material-symbols-outlined text-[11px] ${iconColor}"> ${icon}</span>
+                    ${escapeHtml(label)}
+                    <span class="opacity-70"> (${count})</span>
+                `;
+                rowEl.style.borderLeft = '';
+                break;
             }
             case 'database': {
                 const { name, dbType } = data;
@@ -837,13 +891,17 @@ export function ObjectExplorer() {
                 const dotColor = expanded ? (isDawn ? 'bg-[#ea9d34] shadow-[0_0_8px_rgba(234,157,52,0.6)]' : (isNeon ? 'bg-neon-accent shadow-[0_0_8px_rgba(0,243,255,0.6)]' : 'bg-mysql-teal glow-node')) : (isLight ? 'bg-gray-300' : (isDawn ? 'bg-[#cecacd]' : (isOceanic ? 'bg-[#4C566A]' : (isNeon ? 'bg-white/10' : 'bg-gray-700'))));
                 const activeText = expanded ? (isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-mysql-teal')) : '';
 
-                return `
-                    <div class="db-item virtual-row flex items-center gap-2 w-full ${baseColor} ${hoverColor} group cursor-pointer" style="${style}" data-db="${name}" data-conn-id="${connId}" data-db-type="${dbType || 'mysql'}">
-                         <span class="material-symbols-outlined text-xs shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}">arrow_right</span>
-                         <div class="w-1.5 h-1.5 shrink-0 rounded-full ${dotColor}"></div>
-                         <span class="font-bold tracking-tight ${activeText} ${highlightClass(`db-${name}`)} flex-1 min-w-0 truncate" title="${escapeHtml(name)}" ${searchId(`db-${name}`)}>${escapeHtml(name)}</span>
-                    </div>
+                rowEl.className = `${commonClass} db-item gap-2 ${baseColor} ${hoverColor} group`;
+                rowEl.dataset.db = name;
+                rowEl.dataset.dbType = dbType || 'mysql';
+
+                rowEl.innerHTML = `
+                     <span class="material-symbols-outlined text-xs shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}">arrow_right</span>
+                     <div class="w-1.5 h-1.5 shrink-0 rounded-full ${dotColor}"></div>
+                     <span class="font-bold tracking-tight ${activeText} ${hlClass} flex-1 min-w-0 truncate" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
                 `;
+                rowEl.style.borderLeft = '';
+                break;
             }
             case 'category': {
                 const { label, icon, count, type: catType } = data;
@@ -856,32 +914,37 @@ export function ObjectExplorer() {
                 else if (catType === 'functions') iconColorClass = isDawn ? 'text-[#eb6f92]' : (isNeon ? 'text-neon-pink' : 'text-pink-400');
                 else if (catType === 'events') iconColorClass = isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-orange-400');
 
-                return `
-                    <div class="category-item virtual-row flex items-center gap-1.5 ${headerText} text-[9px]" style="${style}">
-                         <span class="material-symbols-outlined text-[11px] ${iconColorClass}">${icon}</span>
-                         <span class="tracking-wider font-semibold">${label}</span>
-                         <span class="${isLight ? 'text-gray-300' : (isDawn ? 'text-[#ea9d34]' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-700'))}">(${count})</span>
-                    </div>
+                rowEl.className = `${commonClass} category-item gap-1.5 ${headerText} text-[9px]`;
+                rowEl.innerHTML = `
+                     <span class="material-symbols-outlined text-[11px] ${iconColorClass}">${icon}</span>
+                     <span class="tracking-wider font-semibold">${escapeHtml(label)}</span>
+                     <span class="opacity-70">(${count})</span>
                 `;
+                rowEl.style.borderLeft = '';
+                break;
             }
             case 'table': {
                 const { name: table, db, dbType } = data;
                 const iconColor = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-700'));
                 const iconHover = isLight ? 'group-hover:text-mysql-teal' : (isDawn ? 'group-hover:text-[#ea9d34]' : 'group-hover:text-mysql-teal');
-
-                // Force tables even more to the left
                 const tablePadding = Math.max(0, paddingLeft - 8);
 
-                return `
-                    <div class="table-item virtual-row flex items-center gap-2 w-full ${mainText} ${hoverText} cursor-pointer group" style="padding-left: ${tablePadding}px; height: ${ROW_HEIGHT}px;" data-table="${table}" data-db="${db}" data-conn-id="${connId}" data-db-type="${dbType || 'mysql'}" draggable="true">
-                        <span class="material-symbols-outlined text-[10px] shrink-0 transition-transform ${expanded ? 'rotate-90' : ''} ${isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : iconColor)}">arrow_right</span>
-                        <span class="material-symbols-outlined text-[14px] shrink-0 ${iconColor} ${iconHover}">table_rows</span>
-                        <span class="${highlightClass(`table-${db}-${table}`)} flex-1 min-w-0 truncate" title="${escapeHtml(table)}" ${searchId(`table-${db}-${table}`)}>${escapeHtml(table)}</span>
-                    </div>
+                rowEl.style.paddingLeft = `${tablePadding}px`;
+                rowEl.className = `${commonClass} table-item gap-2 ${mainText} ${hoverText} group`;
+                rowEl.draggable = true;
+                rowEl.dataset.table = table;
+                rowEl.dataset.db = db;
+                rowEl.dataset.dbType = dbType || 'mysql';
+
+                rowEl.innerHTML = `
+                    <span class="material-symbols-outlined text-[10px] shrink-0 transition-transform ${expanded ? 'rotate-90' : ''} ${isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : iconColor)}">arrow_right</span>
+                    <span class="material-symbols-outlined text-[14px] shrink-0 ${iconColor} ${iconHover}">table_rows</span>
+                    <span class="${hlClass} flex-1 min-w-0 truncate" title="${escapeHtml(table)}">${escapeHtml(table)}</span>
                 `;
+                rowEl.style.borderLeft = '';
+                break;
             }
             case 'object': {
-                // Generic Object (View, Trigger, Proc, Func, Event)
                 const { name, type: objType, db, extra, dbType } = data;
                 let icon = 'circle';
                 let iconColorClass = '';
@@ -892,66 +955,72 @@ export function ObjectExplorer() {
                 else if (objType === 'function') { icon = 'function'; iconColorClass = isDawn ? 'text-[#eb6f92]' : (isNeon ? 'text-neon-pink' : 'text-pink-400'); }
                 else if (objType === 'event') { icon = 'schedule'; iconColorClass = isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-orange-400'); }
 
-                const subText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-700'));
+                const itemClass = objType === 'view' ? 'view-item' : 'object-item';
 
-                // We use different classes for click handlers e.g. view-item
-                const itemClass = objType === 'view' ? 'view-item' : 'object-item'; // triggers/procs don't have specific class in old code, usually just generic click handler?
-                // Actually old code had inline onClick logic or specific class structure.
-                // Triggers was just a div with click handler.
-                // Let's add a generic `virtual-object` class and data attributes
+                rowEl.className = `${commonClass} ${itemClass} grid w-full text-[9px] ${mainText} hover:bg-black/5`;
+                // Grid layout needs specific style handling or class
+                rowEl.style.paddingLeft = '0';
+                rowEl.style.display = 'grid';
+                rowEl.style.gridTemplateColumns = `${paddingLeft}px 12px minmax(0,1fr) minmax(0,45%)`;
 
-                return `
-                    <div class="${itemClass} virtual-row grid items-center gap-2 w-full text-[9px] ${mainText} cursor-pointer hover:bg-black/5" style="${style} padding-left: 0; grid-template-columns: ${paddingLeft}px 12px minmax(0,1fr) minmax(0,45%); display: grid;" data-${objType}="${name}" data-db="${db}" data-db-type="${dbType || 'mysql'}">
-                         <span class="col-start-2 material-symbols-outlined text-[11px] shrink-0 ${iconColorClass}">${icon}</span>
-                         <span class="${highlightClass(`${objType}-${db}-${name}`)} min-w-0 truncate" title="${escapeHtml(name)}" ${searchId(`${objType}-${db}-${name}`)}>${escapeHtml(name)}</span>
-                         ${extra ? `<span class="${subText} text-[8px] min-w-0 truncate text-right" title="${escapeHtml(extra)}">${escapeHtml(extra)}</span>` : ''}
-                    </div>
+                rowEl.dataset[objType] = name;
+                rowEl.dataset.db = db;
+                rowEl.dataset.dbType = dbType || 'mysql';
+
+                rowEl.innerHTML = `
+                     <span class="col-start-2 material-symbols-outlined text-[11px] shrink-0 ${iconColorClass}">${icon}</span>
+                     <span class="${hlClass} min-w-0 truncate" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
+                     ${extra ? `<span class="col-start-4 opacity-50 text-[8px] min-w-0 truncate text-right" title="${escapeHtml(extra)}">${escapeHtml(extra)}</span>` : ''}
                 `;
+                rowEl.style.borderLeft = '';
+                break;
             }
             case 'detail-header': {
                 const { label, count, icon } = data;
                 const headerText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'));
-                const iconColor = isDawn ? 'text-[#c6a0f6]' : (isNeon ? 'text-neon-accent' : 'text-purple-400'); // Default to column color
-                // Adjust icon color based on label if needed
-                return `
-                    <div class="virtual-row flex items-center gap-1.5 ${headerText} text-[9px]" style="${style}">
-                         <span class="material-symbols-outlined text-[11px] ${iconColor}">${icon}</span>
-                         <span class="tracking-wider font-semibold">${label}</span>
-                         <span class="${isLight ? 'text-gray-300' : (isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent/50' : 'text-gray-700'))}">(${count})</span>
-                    </div>
+                const iconColor = isDawn ? 'text-[#c6a0f6]' : (isNeon ? 'text-neon-accent' : 'text-purple-400');
+
+                rowEl.className = `${commonClass} gap-1.5 ${headerText} text-[9px]`;
+                rowEl.style.display = 'flex'; // Reset grid if recycled from object
+                rowEl.innerHTML = `
+                     <span class="material-symbols-outlined text-[11px] ${iconColor}">${icon}</span>
+                     <span class="tracking-wider font-semibold">${escapeHtml(label)}</span>
+                     <span class="opacity-70">(${count})</span>
                 `;
+                rowEl.style.borderLeft = '';
+                break;
             }
             case 'column': {
                 const { col, db, table } = data;
-                // Reuse column rendering logic or simplified?
-                // The old column item was complex grid.
                 const colText = isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text/60' : (isNeon ? 'text-neon-text/60' : 'text-gray-600')));
                 const typeText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : (isNeon ? 'text-neon-text/40' : 'text-gray-700')));
-
-                // Force columns even more to the left
                 const colPadding = Math.max(0, paddingLeft - 8);
 
-                return `
-                    <div class="column-item cursor-context-menu virtual-row grid items-center gap-1 w-full overflow-hidden text-[9px] ${colText}" style="${style} padding-left: 0; grid-template-columns: ${colPadding}px 12px minmax(0,1fr) minmax(0,45%); display: grid;"
-                         data-col-name="${escapeHtml(col.name || '')}"
-                         data-col-type="${escapeHtml(col.column_type || col.data_type || '')}"
-                         data-col-nullable="${col.is_nullable ? 'YES' : 'NO'}"
-                         data-col-key="${escapeHtml(col.column_key || '')}"
-                         data-col-default="${escapeHtml(col.column_default || 'NULL')}"
-                         data-col-extra="${escapeHtml(col.extra || '')}"
-                         data-col-collation="${escapeHtml(col.collation || '')}">
-                         
-                         <span class="col-start-2 flex items-center justify-center">
-                            ${col.column_key === 'PRI' ? `<span class="material-symbols-outlined text-[10px] shrink-0 ${isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-yellow-500')}">key</span>` :
-                        col.column_key === 'UNI' ? `<span class="material-symbols-outlined text-[10px] shrink-0 ${isDawn ? 'text-[#3e8fb0]' : (isNeon ? 'text-neon-pink' : 'text-blue-400')}">fingerprint</span>` :
-                            col.column_key === 'MUL' ? `<span class="material-symbols-outlined text-[10px] shrink-0 ${isNeon ? 'text-neon-accent/60' : 'text-gray-500'}">link</span>` :
-                                '<span class="w-[10px] shrink-0"></span>'}
-                         </span>
+                rowEl.className = `${commonClass} column-item cursor-context-menu grid w-full overflow-hidden text-[9px] ${colText}`;
+                rowEl.style.paddingLeft = '0';
+                rowEl.style.display = 'grid';
+                rowEl.style.gridTemplateColumns = `${colPadding}px 12px minmax(0,1fr) minmax(0,45%)`;
 
-                         <span class="${isLight ? 'text-gray-700' : (isDawn ? 'text-[#575279] font-medium' : (isOceanic ? 'text-ocean-text' : (isNeon ? 'text-neon-text' : 'text-gray-400')))} ${highlightClass(`col-${db}-${table}-${col.name}`)} min-w-0 truncate" title="${escapeHtml(col.name || '')}${col.collation ? ` • Collation: ${col.collation}` : ''}" ${searchId(`col-${db}-${table}-${col.name}`)}>${escapeHtml(col.name || '')}</span>
-                         <span class="${typeText} text-[9px] min-w-0 truncate text-right" title="${escapeHtml(col.data_type || '')}">${escapeHtml(col.data_type || '')}</span>
-                    </div>
-               `;
+                // Data attributes
+                rowEl.dataset.colName = col.name || '';
+                rowEl.dataset.colType = col.column_type || col.data_type || '';
+                rowEl.dataset.colNullable = col.is_nullable ? 'YES' : 'NO';
+                rowEl.dataset.colKey = col.column_key || '';
+                rowEl.dataset.colDefault = col.column_default || 'NULL';
+                rowEl.dataset.colExtra = col.extra || '';
+
+                const keyIcon = col.column_key === 'PRI' ? `<span class="material-symbols-outlined text-[10px] shrink-0 ${isDawn ? 'text-[#ea9d34]' : (isNeon ? 'text-neon-accent' : 'text-yellow-500')}">key</span>` :
+                    col.column_key === 'UNI' ? `<span class="material-symbols-outlined text-[10px] shrink-0 ${isDawn ? 'text-[#3e8fb0]' : (isNeon ? 'text-neon-pink' : 'text-blue-400')}">fingerprint</span>` :
+                        col.column_key === 'MUL' ? `<span class="material-symbols-outlined text-[10px] shrink-0 ${isNeon ? 'text-neon-accent/60' : 'text-gray-500'}">link</span>` :
+                            '<span class="w-[10px] shrink-0"></span>';
+
+                rowEl.innerHTML = `
+                     <span class="col-start-2 flex items-center justify-center">${keyIcon}</span>
+                     <span class="${hlClass} min-w-0 truncate" title="${escapeHtml(col.name || '')}">${escapeHtml(col.name || '')}</span>
+                     <span class="${typeText} text-[9px] min-w-0 truncate text-right" title="${escapeHtml(col.data_type || '')}">${escapeHtml(col.data_type || '')}</span>
+                `;
+                rowEl.style.borderLeft = '';
+                break;
             }
             case 'loading': {
                 const text = data.text;
@@ -960,37 +1029,53 @@ export function ObjectExplorer() {
                     (isDawn ? 'text-[#ea9d34] hover:underline cursor-pointer' : (isNeon ? 'text-neon-accent hover:underline cursor-pointer' : (isOceanic ? 'text-ocean-frost hover:underline cursor-pointer' : 'text-mysql-teal hover:underline cursor-pointer'))) :
                     (isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]' : (isOceanic ? 'text-ocean-text/40' : (isNeon ? 'text-neon-text/40' : 'text-gray-700'))));
 
-                return `<div class="virtual-row loading-item ${loadingColor} italic text-[9px] flex items-center" style="${style}" data-conn-id="${connId || ''}">${text}</div>`;
+                rowEl.className = `${commonClass} loading-item ${loadingColor} italic text-[9px] flex items-center`;
+                rowEl.style.display = 'flex';
+                rowEl.innerHTML = `<span>${escapeHtml(text)}</span>`;
+                if (connId) rowEl.dataset.connId = connId;
+                rowEl.style.borderLeft = '';
+                break;
             }
             case 'show-more-dbs':
             case 'show-more-objects':
             case 'show-more-columns': {
                 const { count, db, type: objType, table } = data;
-                const btnClass = `w-full text-left px-0 py-1 text-[8px] font-bold ${isDawn ? 'text-[#ea9d34] hover:text-[#c48c2b]' : (isNeon ? 'text-neon-accent hover:text-neon-cyan' : 'text-mysql-teal hover:text-mysql-teal-light')} opacity-80 hover:opacity-100 transition-all flex items-center gap-1 cursor-pointer`;
+                rowEl.className = `${commonClass} ${type}`; // Add type as class for click delegation
+                rowEl.style.display = 'flex';
 
-                let dataAttrs = `data-count="${count}"`;
-                if (db) dataAttrs += ` data-db="${db}"`;
-                if (objType) dataAttrs += ` data-type="${objType}"`;
-                if (table) dataAttrs += ` data-table="${table}"`;
-                if (connId) dataAttrs += ` data-conn-id="${connId}"`;
+                if (db) rowEl.dataset.db = db;
+                if (objType) rowEl.dataset.type = objType;
+                if (table) rowEl.dataset.table = table;
+                if (connId) rowEl.dataset.connId = connId;
 
-                return `
-                    <div class="virtual-row" style="${style}">
-                         <button class="${type} ${btnClass}" ${dataAttrs}>
-                            <span class="material-symbols-outlined text-[12px]">add_circle</span>
-                            Show ${count} more...
-                        </button>
+                const btnClass = `text-[8px] font-bold ${isDawn ? 'text-[#ea9d34] hover:text-[#c48c2b]' : (isNeon ? 'text-neon-accent hover:text-neon-cyan' : 'text-mysql-teal hover:text-mysql-teal-light')} opacity-80 hover:opacity-100 transition-all flex items-center gap-1`;
+
+                rowEl.innerHTML = `
+                    <div class="${btnClass}">
+                        <span class="material-symbols-outlined text-[12px]">add_circle</span>
+                        Show ${count} more...
                     </div>
                 `;
+                rowEl.style.borderLeft = '';
+                break;
             }
             case 'no-matches': {
-                return `<div class="virtual-row pl-6 py-1 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-600')} italic text-[9px]" style="${style}">No matches</div>`;
+                rowEl.className = `${commonClass} pl-6 py-1 ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-600')} italic text-[9px]`;
+                rowEl.innerHTML = `No matches`;
+                rowEl.style.display = 'flex';
+                rowEl.style.borderLeft = '';
+                break;
             }
             case 'empty-state': {
-                return `<div class="virtual-row p-4 text-center text-gray-400 text-xs" style="${style}">No connections found</div>`;
+                rowEl.className = `${commonClass} p-4 text-center text-gray-400 text-xs`;
+                rowEl.innerHTML = `No connections found`;
+                rowEl.style.display = 'flex';
+                rowEl.style.justifyContent = 'center';
+                rowEl.style.borderLeft = '';
+                break;
             }
             default:
-                return '';
+                rowEl.innerHTML = '';
         }
     };
 
@@ -1101,22 +1186,11 @@ export function ObjectExplorer() {
 
     // --- Update Virtual Scroll Logic ---
     // Modify updateVirtualScroll to include Search HTML and partial updates
+    // --- Update Virtual Scroll Logic ---
     const updateVirtualScroll = () => {
-        const containerHeight = explorer.offsetHeight || 600;
-        const visibleCount = Math.ceil(containerHeight / ROW_HEIGHT) + 4;
-        const startNode = Math.floor(scrollTop / ROW_HEIGHT);
-        const startIndex = Math.max(0, startNode - 2);
-        const endIndex = Math.min(visibleNodes.length, startIndex + visibleCount);
-
-        const topSpacerHeight = startIndex * ROW_HEIGHT;
-        const bottomSpacerHeight = Math.max(0, (visibleNodes.length - endIndex) * ROW_HEIGHT);
-
-        const visibleSlice = visibleNodes.slice(startIndex, endIndex);
-        const html = visibleSlice.map(renderNode).join('');
-
-        const searchHtml = getSearchResultsHtml();
-
         const headerId = 'explorer-header-structure';
+
+        // 1. Ensure Structure Exists
         if (!container.querySelector(`#${headerId}`)) {
             const headerText = isLight ? 'text-gray-500' : (isDawn ? 'text-[#9797a2]' : (isNeon ? 'text-neon-text/40' : 'text-gray-600'));
             const iconColor = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/30' : 'text-gray-600'));
@@ -1143,9 +1217,9 @@ export function ObjectExplorer() {
                 scrollTop = e.target.scrollTop;
                 requestAnimationFrame(updateVirtualScroll);
             });
-            // Note: Context menu listener is handled by setupListeners via delegation on explorer container
         }
 
+        // 2. Search UI Update (Conditional Re-render)
         const searchWrapper = container.querySelector('#search-container-wrapper');
         if (searchWrapper && (!searchWrapper.innerHTML.trim() || didStateChangeSinceLastTreeRender)) {
             const headerText = isLight ? 'text-gray-500' : (isDawn ? 'text-[#9797a2]' : (isNeon ? 'text-neon-text/40' : 'text-gray-600'));
@@ -1174,23 +1248,71 @@ export function ObjectExplorer() {
             if (hasFocus) {
                 const newInput = searchWrapper.querySelector('#explorer-search');
                 newInput.focus();
-                newInput.setSelectionRange(selectionStart, selectionEnd);
+                try { newInput.setSelectionRange(selectionStart, selectionEnd); } catch (e) { /* ignore */ }
             }
         }
 
+        // 3. Virtual List Rendering (Recycled)
         const tree = container.querySelector('#explorer-tree');
-        if (tree && visibleNodes.length > 0) {
-            tree.innerHTML = `
-                <div style="height: ${topSpacerHeight}px; width: 1px;"></div>
-                ${html}
-                <div style="height: ${bottomSpacerHeight}px; width: 1px;"></div>
-            `;
-        } else if (tree) {
-            tree.innerHTML = visibleNodes.length === 0 ? `<div class="p-4 text-center text-gray-400 text-xs italic">No items</div>` : '';
+        if (!tree) return;
+
+        // Ensure Virtual Content Container
+        let virtualContent = tree.querySelector('#virtual-content');
+        if (!virtualContent) {
+            virtualContent = document.createElement('div');
+            virtualContent.id = 'virtual-content';
+            virtualContent.style.position = 'relative';
+            virtualContent.style.width = '100%';
+            virtualContent.style.overflow = 'hidden';
+            tree.appendChild(virtualContent);
+            poolContainer = virtualContent;
         }
 
+        if (visibleNodes.length === 0) {
+            virtualContent.style.height = 'auto';
+            const unused = rowPool.length;
+            for (let k = 0; k < unused; k++) if (rowPool[k]) rowPool[k].style.display = 'none';
+            // Show empty state if needed, or rely on empty-state node which usually comes from getVisibleNodes
+            if (!container.querySelector('.empty-message-placeholder')) {
+                // We could add a placeholder if visibleNodes is truly empty (no connections)
+            }
+        } else {
+            const totalHeight = visibleNodes.length * ROW_HEIGHT;
+            virtualContent.style.height = `${totalHeight}px`;
+
+            const containerHeight = explorer.offsetHeight || 600;
+            const visibleCount = Math.ceil(containerHeight / ROW_HEIGHT) + 4; // buffer
+            const startNode = Math.floor(scrollTop / ROW_HEIGHT);
+            const startIndex = Math.max(0, startNode - 2);
+            const endIndex = Math.min(visibleNodes.length, startIndex + visibleCount);
+
+            let poolIdx = 0;
+            for (let i = startIndex; i < endIndex; i++) {
+                const node = visibleNodes[i];
+                const el = getRowElement(poolIdx);
+                el.style.display = '';
+                updateRowElement(el, node, i * ROW_HEIGHT);
+                poolIdx++;
+            }
+
+            // Hide remaining pool elements
+            while (rowPool[poolIdx]) {
+                rowPool[poolIdx].style.display = 'none';
+                poolIdx++;
+            }
+        }
+
+        // 4. Update Search Results Overlay
         const overlay = container.querySelector('#search-results-overlay');
-        if (overlay) { overlay.innerHTML = searchHtml; }
+        if (overlay && didStateChangeSinceLastTreeRender && searchQuery) {
+            overlay.innerHTML = getSearchResultsHtml();
+        } else if (overlay && !searchQuery) {
+            overlay.innerHTML = '';
+        }
+
+        if (didStateChangeSinceLastTreeRender) {
+            didStateChangeSinceLastTreeRender = false;
+        }
     };
 
     const updateSearchUI = () => {
