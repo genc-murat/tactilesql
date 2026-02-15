@@ -23,6 +23,8 @@ import { showPostgresExtensionsModal } from '../UI/PostgresExtensionsModal.js';
 import { showMssqlIndexManagerModal } from '../UI/MssqlIndexManagerModal.js';
 import { showMssqlAgentManagerModal } from '../UI/MssqlAgentManagerModal.js';
 import { showMssqlStorageModal } from '../UI/MssqlStorageModal.js';
+import { showClickHouseUserManager } from './ClickHouseUserManager.js';
+import { showClickHouseProfileManager } from './ClickHouseProfileManager.js';
 
 
 export function ObjectExplorer() {
@@ -1699,6 +1701,26 @@ export function ObjectExplorer() {
                         icon: 'lock',
                         iconColor: isDawn ? 'text-[#ea9d34]' : 'text-orange-500',
                         onClick: () => showPostgresLockMonitor()
+                    }
+                ] : []),
+                ...(dbType === 'clickhouse' ? [
+                    {
+                        label: 'User Management',
+                        icon: 'group',
+                        iconColor: isDawn ? 'text-[#c4a7e7]' : 'text-blue-500',
+                        onClick: () => {
+                            const config = connections.find(c => c.id === id);
+                            if (config) showClickHouseUserManager(config);
+                        }
+                    },
+                    {
+                        label: 'Settings Profiles',
+                        icon: 'settings_account_box',
+                        iconColor: isDawn ? 'text-[#c4a7e7]' : 'text-purple-500',
+                        onClick: () => {
+                            const config = connections.find(c => c.id === id);
+                            if (config) showClickHouseProfileManager(config);
+                        }
                     }
                 ] : []),
                 {

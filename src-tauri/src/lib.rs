@@ -312,6 +312,20 @@ pub fn run() {
             clickhouse::modify_clickhouse_ttl,
             clickhouse::get_clickhouse_ttl_preview,
             clickhouse::get_clickhouse_ttl_audit,
+            // ClickHouse User Management
+            clickhouse::get_clickhouse_users,
+            clickhouse::create_clickhouse_user,
+            clickhouse::update_clickhouse_user,
+            clickhouse::delete_clickhouse_user,
+            clickhouse::get_clickhouse_roles,
+            clickhouse::grant_clickhouse_privilege,
+            clickhouse::revoke_clickhouse_privilege,
+            // Settings Profiles
+            clickhouse::get_clickhouse_profiles,
+            clickhouse::get_clickhouse_profile_details,
+            clickhouse::create_clickhouse_profile,
+            clickhouse::update_clickhouse_profile,
+            clickhouse::delete_clickhouse_profile,
             // Database/Table Operations
             db::get_databases,
             db::get_schemas,

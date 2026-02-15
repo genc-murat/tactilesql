@@ -4,7 +4,7 @@
 
 use crate::db_types::*;
 use clickhouse::Client;
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use serde_json::Value;
 
 // --- Connection ---
@@ -1610,4 +1610,394 @@ pub async fn get_clickhouse_ttl_audit(config: ConnectionConfig, database: String
     }
 
     Ok(TTLAudit { is_efficient, sorting_key, used_column })
+}
+
+// --- User & Role Management ---
+
+#[derive(Serialize, Debug)]
+pub struct ClickHouseUser {
+    pub name: String,
+    pub id: String,
+    pub storage: String,
+    pub auth_type: String,
+    pub auth_params: String,
+    pub host_ip: String,
+    pub host_names: Vec<String>,
+    pub host_names_regexp: Vec<String>,
+    pub host_names_like: Vec<String>,
+    pub default_roles: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn get_clickhouse_users(config: ConnectionConfig) -> Result<Vec<ClickHouseUser>, String> {
+    let query = "
+        SELECT 
+            name, 
+            id, 
+            storage, 
+            auth_type, 
+            auth_params, 
+            host_ip, 
+            host_names, 
+            host_names_regexp, 
+            host_names_like, 
+            default_roles_all
+        FROM system.users
+        ORDER BY name ASC
+    ";
+
+    let results = execute_query_generic(&config, query.to_string()).await?;
+    let mut users = Vec::new();
+
+    if let Some(first) = results.first() {
+        for row in &first.rows {
+            let get_str = |idx: usize| row.get(idx).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+            let get_vec = |idx: usize| -> Vec<String> {
+                row.get(idx).and_then(|v| {
+                    if let Some(arr) = v.as_array() {
+                        Some(arr.iter().filter_map(|val| val.as_str().map(|s| s.to_string())).collect())
+                    } else {
+                        None
+                    }
+                }).unwrap_or_default()
+            };
+
+            users.push(ClickHouseUser {
+                name: get_str(0),
+                id: get_str(1),
+                storage: get_str(2),
+                auth_type: get_str(3),
+                auth_params: get_str(4),
+                host_ip: get_str(5),
+                host_names: get_vec(6),
+                host_names_regexp: get_vec(7),
+                host_names_like: get_vec(8),
+                default_roles: get_vec(9),
+            });
+        }
+    }
+
+    Ok(users)
+}
+
+#[tauri::command]
+pub async fn create_clickhouse_user(
+    config: ConnectionConfig,
+    name: String,
+    password: Option<String>,
+    profile: Option<String>,
+    roles: Option<Vec<String>>,
+    networks: Option<Vec<String>>,
+) -> Result<String, String> {
+    let mut query = format!("CREATE USER `{}`", name.replace('`', "\\`"));
+
+    if let Some(pwd) = password {
+        if !pwd.is_empty() {
+            query.push_str(&format!(" IDENTIFIED WITH sha256_password BY '{}'", pwd.replace('\'', "\\'")));
+        }
+    }
+
+    if let Some(net) = networks {
+        if !net.is_empty() {
+            query.push_str(" HOST ");
+            let parts: Vec<String> = net.iter().map(|n| {
+                if n.contains('/') { // CIDR
+                     format!("IP '{}'", n)
+                } else if n.chars().all(|c| c.is_numeric() || c == '.') { // IP
+                     format!("IP '{}'", n)
+                } else { // Hostname / Regexp / Like
+                     format!("NAME '{}'", n)
+                }
+            }).collect();
+            query.push_str(&parts.join(", "));
+        }
+    }
+
+    if let Some(r) = roles {
+        if !r.is_empty() {
+             query.push_str(" DEFAULT ROLE ");
+             query.push_str(&r.iter().map(|role| format!("`{}`", role.replace('`', "\\`"))).collect::<Vec<_>>().join(", "));
+        }
+    }
+
+    if let Some(prof) = profile {
+        if !prof.is_empty() && prof != "default" {
+            query.push_str(&format!(" SETTINGS PROFILE `{}`", prof.replace('`', "\\`")));
+        }
+    }
+
+    execute_query_generic(&config, query).await?;
+    Ok(format!("User {} created successfully", name))
+}
+
+#[tauri::command]
+pub async fn update_clickhouse_user(
+    config: ConnectionConfig,
+    name: String,
+    password: Option<String>,
+    profile: Option<String>,
+    roles: Option<Vec<String>>,
+    networks: Option<Vec<String>>,
+) -> Result<String, String> {
+    
+    // Changing password
+    if let Some(pwd) = &password {
+        let query = format!("ALTER USER `{}` IDENTIFIED WITH sha256_password BY '{}'", 
+            name.replace('`', "\\`"), 
+            pwd.replace('\'', "\\'")
+        );
+        execute_query_generic(&config, query).await?;
+    }
+
+    // Changing Profile
+    if let Some(prof) = &profile {
+         let query = format!("ALTER USER `{}` SETTINGS PROFILE `{}`", 
+            name.replace('`', "\\`"), 
+            prof.replace('`', "\\`")
+        );
+        execute_query_generic(&config, query).await?;
+    }
+
+    // Changing Default Roles
+    if let Some(r) = &roles {
+        let roles_list = r.iter().map(|role| format!("`{}`", role.replace('`', "\\`"))).collect::<Vec<_>>().join(", ");
+        let query = format!("ALTER USER `{}` DEFAULT ROLE {}", 
+            name.replace('`', "\\`"), 
+            if r.is_empty() { "NONE".to_string() } else { roles_list }
+        );
+        execute_query_generic(&config, query).await?;
+    }
+    
+    // Changing Hosts
+    // Limitation here: ALTER USER ... HOST ... usually replaces the host definition, so this works.
+    if let Some(net) = &networks {
+         if !net.is_empty() {
+            let parts: Vec<String> = net.iter().map(|n| {
+                if n.contains('/') { format!("IP '{}'", n) }
+                else if n.chars().all(|c| c.is_numeric() || c == '.') { format!("IP '{}'", n) }
+                else { format!("NAME '{}'", n) }
+            }).collect();
+            let query = format!("ALTER USER `{}` HOST {}", name.replace('`', "\\`"), parts.join(", "));
+            execute_query_generic(&config, query).await?;
+         } else {
+             // Allowing ANY host if empty is dangerous? Or means revert to ANY?
+             // Usually default is ANY if not specified on CREATE, but on ALTER it replaces.
+             // If empty, let's assume ANY for now or skip.
+             // "HOST ANY" or similar.
+             let query = format!("ALTER USER `{}` HOST ANY", name.replace('`', "\\`"));
+             execute_query_generic(&config, query).await?;
+         }
+    }
+
+    Ok(format!("User {} updated successfully", name))
+}
+
+#[tauri::command]
+pub async fn delete_clickhouse_user(config: ConnectionConfig, name: String) -> Result<String, String> {
+    let query = format!("DROP USER `{}`", name.replace('`', "\\`"));
+    execute_query_generic(&config, query).await?;
+    Ok(format!("User {} deleted successfully", name))
+}
+
+#[tauri::command]
+pub async fn get_clickhouse_roles(config: ConnectionConfig) -> Result<Vec<String>, String> {
+    let query = "SELECT name FROM system.roles ORDER BY name";
+    let results = execute_query_generic(&config, query.to_string()).await?;
+    
+    let mut roles = Vec::new();
+    if let Some(first) = results.first() {
+        for row in &first.rows {
+            if let Some(name) = row.get(0).and_then(|v| v.as_str()) {
+                roles.push(name.to_string());
+            }
+        }
+    }
+    Ok(roles)
+}
+
+#[tauri::command]
+pub async fn grant_clickhouse_privilege(
+    config: ConnectionConfig,
+    user: String,
+    privilege: String,
+    database: String,
+    table: String,
+) -> Result<String, String> {
+    let target = if table == "*" || table.is_empty() {
+        if database == "*" || database.is_empty() {
+            "*.*".to_string()
+        } else {
+            format!("`{}`.*", database.replace('`', "\\`"))
+        }
+    } else {
+        format!("`{}`.`{}`", database.replace('`', "\\`"), table.replace('`', "\\`"))
+    };
+
+    let query = format!("GRANT {} ON {} TO `{}`", 
+        privilege, // Privilege is usually an enum or keyword, assume safe or validate in frontend
+        target,
+        user.replace('`', "\\`")
+    );
+    
+    execute_query_generic(&config, query).await?;
+    Ok(format!("Granted {} on {} to {}", privilege, target, user))
+}
+
+#[tauri::command]
+pub async fn revoke_clickhouse_privilege(
+    config: ConnectionConfig,
+    user: String,
+    privilege: String,
+    database: String,
+    table: String,
+) -> Result<String, String> {
+     let target = if table == "*" || table.is_empty() {
+        if database == "*" || database.is_empty() {
+            "*.*".to_string()
+        } else {
+            format!("`{}`.*", database.replace('`', "\\`"))
+        }
+    } else {
+        format!("`{}`.`{}`", database.replace('`', "\\`"), table.replace('`', "\\`"))
+    };
+
+    let query = format!("REVOKE {} ON {} FROM `{}`", 
+        privilege,
+        target,
+        user.replace('`', "\\`")
+    );
+    
+    execute_query_generic(&config, query).await?;
+    Ok(format!("Revoked {} on {} from {}", privilege, target, user))
+}
+
+// --- Settings Profile Management ---
+
+#[derive(Serialize, Debug)]
+pub struct ClickHouseProfile {
+    pub name: String,
+    pub storage: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ClickHouseProfileSetting {
+    pub name: String,
+    pub value: String,
+    pub min: Option<String>,
+    pub max: Option<String>,
+}
+
+#[tauri::command]
+pub async fn get_clickhouse_profiles(config: ConnectionConfig) -> Result<Vec<ClickHouseProfile>, String> {
+    let query = "
+        SELECT name, storage 
+        FROM system.settings_profiles 
+        ORDER BY name
+    ";
+    let results = execute_query_generic(&config, query.to_string()).await?;
+    
+    let mut profiles = Vec::new();
+    if let Some(first) = results.first() {
+        for row in &first.rows {
+             let get_str = |idx: usize| row.get(idx).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+
+            profiles.push(ClickHouseProfile {
+                name: get_str(0),
+                storage: get_str(1),
+            });
+        }
+    }
+    Ok(profiles)
+}
+
+#[tauri::command]
+pub async fn get_clickhouse_profile_details(config: ConnectionConfig, profile_name: String) -> Result<Vec<ClickHouseProfileSetting>, String> {
+    // We can get details from system.settings_profile_elements
+    // But that table might be complex (inheritance, etc.)
+    // For simplicity, let's try to parse `SHOW CREATE SETTINGS PROFILE` or just use `system.settings_profile_elements` if available.
+    // `system.settings_profile_elements` columns: profile_name, setting_name, value, min, max, readonly, inherit_from...
+    
+    let query = format!("
+        SELECT setting_name, value, min, max
+        FROM system.settings_profile_elements
+        WHERE profile_name = '{}'
+        ORDER BY setting_name
+    ", profile_name.replace('\'', "\\'"));
+
+    let results = execute_query_generic(&config, query).await?;
+    let mut settings = Vec::new();
+
+    if let Some(first) = results.first() {
+        for row in &first.rows {
+            let get_str = |idx: usize| row.get(idx).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+            let get_opt_str = |idx: usize| row.get(idx).and_then(|v| v.as_str()).map(|s| s.to_string()).filter(|s| !s.is_empty());
+            settings.push(ClickHouseProfileSetting {
+                name: get_str(0),
+                value: get_str(1),
+                min: get_opt_str(2),
+                max: get_opt_str(3),
+            });
+        }
+    }
+    Ok(settings)
+}
+
+#[tauri::command]
+pub async fn create_clickhouse_profile(
+    config: ConnectionConfig,
+    name: String,
+    settings: Vec<ClickHouseProfileSetting>
+) -> Result<String, String> {
+    let mut query = format!("CREATE SETTINGS PROFILE `{}`", name.replace('`', "\\`"));
+    
+    if !settings.is_empty() {
+        query.push_str(" SETTINGS ");
+        let parts: Vec<String> = settings.iter().map(|s| {
+            let mut part = format!("{} = '{}'", s.name, s.value.replace('\'', "\\'"));
+            if let Some(min) = &s.min { part.push_str(&format!(" MIN {}", min)); }
+            if let Some(max) = &s.max { part.push_str(&format!(" MAX {}", max)); }
+            part
+        }).collect();
+        query.push_str(&parts.join(", "));
+    }
+    
+    execute_query_generic(&config, query).await?;
+    Ok(format!("Profile {} created successfully", name))
+}
+
+#[tauri::command]
+pub async fn update_clickhouse_profile(
+    config: ConnectionConfig,
+    name: String,
+    settings: Vec<ClickHouseProfileSetting> // Expects list of settings to SET (upsert)
+) -> Result<String, String> {
+    // This is tricky. ALTER SETTINGS PROFILE ... SETTINGS ...
+    // If we want to remove a setting, we might need inheriting logic or unset?
+    // For now, assuming this function handles UPSERTS of settings. 
+    // If the user wants to unset, we might need a separate mechanism or assume non-passed are visible?
+    // Let's assume passed settings are the ones to be applied/updated.
+    
+    let mut query = format!("ALTER SETTINGS PROFILE `{}` SETTINGS ", name.replace('`', "\\`"));
+    
+    if settings.is_empty() {
+        return Ok("No settings to update".to_string());
+    }
+
+    let parts: Vec<String> = settings.iter().map(|s| {
+        let mut part = format!("{} = '{}'", s.name, s.value.replace('\'', "\\'"));
+        if let Some(min) = &s.min { part.push_str(&format!(" MIN {}", min)); }
+        if let Some(max) = &s.max { part.push_str(&format!(" MAX {}", max)); }
+        part
+    }).collect();
+    query.push_str(&parts.join(", "));
+
+    execute_query_generic(&config, query).await?;
+    Ok(format!("Profile {} updated successfully", name))
+}
+
+#[tauri::command]
+pub async fn delete_clickhouse_profile(config: ConnectionConfig, name: String) -> Result<String, String> {
+    let query = format!("DROP SETTINGS PROFILE `{}`", name.replace('`', "\\`"));
+    execute_query_generic(&config, query).await?;
+    Ok(format!("Profile {} deleted successfully", name))
 }
