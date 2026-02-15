@@ -154,11 +154,20 @@ pub struct ConnectionConfig {
     pub ssh_key_path: Option<String>,
 }
 
+#[derive(Serialize, Clone, Debug, Default)]
+pub struct QueryStatistics {
+    pub elapsed: f64,
+    pub rows_read: u64,
+    pub bytes_read: u64,
+}
+
 // --- Query Result ---
 #[derive(Serialize, Clone)]
 pub struct QueryResult {
     pub columns: Vec<String>,
     pub rows: Vec<Vec<serde_json::Value>>,
+    pub query_id: Option<String>,
+    pub statistics: Option<QueryStatistics>,
 }
 
 // --- Column Schema ---

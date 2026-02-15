@@ -1,6 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import { Dialog } from '../UI/Dialog.js';
 import { toastSuccess, toastError } from '../../utils/Toast.js';
+import { ClickHouseStorageAnalyzer } from './ClickHouseStorageAnalyzer.js';
+import { ClickHouseTTLManager } from './ClickHouseTTLManager.js';
 
 export function showClickHouseTableDetails(connection, database, table) {
     const overlay = document.createElement('div');
@@ -34,6 +36,8 @@ export function showClickHouseTableDetails(connection, database, table) {
     tabsContainer.innerHTML = `
         <button data-tab="overview" class="tab-btn px-6 py-3 font-medium text-blue-600 border-b-2 border-blue-500 bg-blue-50/50 dark:bg-blue-900/20">Overview</button>
         <button data-tab="partitions" class="tab-btn px-6 py-3 font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white border-b-2 border-transparent">Partitions</button>
+        <button data-tab="storage" class="tab-btn px-6 py-3 font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white border-b-2 border-transparent">Storage</button>
+        <button data-tab="ttl" class="tab-btn px-6 py-3 font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white border-b-2 border-transparent">TTL</button>
     `;
     modal.appendChild(tabsContainer);
 
@@ -47,7 +51,11 @@ export function showClickHouseTableDetails(connection, database, table) {
     // --- State & Logic ---
     let currentTab = 'overview';
     let tableInfo = null;
+    let tableStorage = null;
+    let tableTTL = null;
     let partitions = [];
+    let storageAnalyzer = null;
+    let ttlManager = null;
 
     const close = () => overlay.remove();
     header.querySelector('#close-btn').addEventListener('click', close);
@@ -80,7 +88,14 @@ export function showClickHouseTableDetails(connection, database, table) {
         if (currentTab === 'overview') {
             if (!tableInfo) {
                 try {
-                    tableInfo = await invoke('get_clickhouse_table_info', { config: connection, database, table });
+                    const [info, storage, ttl] = await Promise.all([
+                        invoke('get_clickhouse_table_info', { config: connection, database, table }),
+                        invoke('get_clickhouse_table_storage_info', { config: connection, database, table }),
+                        invoke('get_clickhouse_ttl_status', { config: connection, database, table })
+                    ]);
+                    tableInfo = info;
+                    tableStorage = storage;
+                    tableTTL = ttl;
                 } catch (e) {
                     contentArea.innerHTML = `<div class="text-red-500 text-center">Failed to load info: ${e}</div>`;
                     return;
@@ -95,6 +110,14 @@ export function showClickHouseTableDetails(connection, database, table) {
             } catch (e) {
                 contentArea.innerHTML = `<div class="text-red-500 text-center">Failed to load partitions: ${e}</div>`;
             }
+        } else if (currentTab === 'storage') {
+            contentArea.innerHTML = ''; // Clear for component
+            if (storageAnalyzer) storageAnalyzer.destroy();
+            storageAnalyzer = ClickHouseStorageAnalyzer({ connection, database, table, parentElement: contentArea });
+        } else if (currentTab === 'ttl') {
+            contentArea.innerHTML = '';
+            if (ttlManager) ttlManager.destroy();
+            ttlManager = ClickHouseTTLManager({ connection, database, table, parentElement: contentArea });
         }
     };
 
@@ -126,6 +149,31 @@ export function showClickHouseTableDetails(connection, database, table) {
                                 <span class="text-gray-500">Lifetime Size</span>
                                 <span class="font-mono text-gray-400">${formatBytes(tableInfo.lifetime_bytes)}</span>
                             </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-gray-50 dark:bg-white/5 rounded-lg border border-gray-200 dark:border-white/10 p-5">
+                         <h3 class="text-xs font-bold uppercase text-gray-400 mb-4 flex items-center gap-2">
+                            <span class="material-symbols-outlined text-sm">compress</span> Compression & TTL
+                        </h3>
+                         <div class="space-y-3 text-sm">
+                            <div class="flex justify-between border-b border-gray-100 dark:border-white/5 pb-2">
+                                <span class="text-gray-500">Compression Ratio</span>
+                                <span class="font-mono font-bold text-green-500">
+                                    ${tableStorage ? (tableStorage.reduce((acc, col) => acc + col.data_uncompressed_bytes, 0) / Math.max(1, tableStorage.reduce((acc, col) => acc + col.data_compressed_bytes, 0))).toFixed(2) + 'x' : '-'}
+                                </span>
+                            </div>
+                            <div class="flex justify-between border-b border-gray-100 dark:border-white/5 pb-2">
+                                <span class="text-gray-500">TTL Policy</span>
+                                <span class="font-mono ${tableTTL && tableTTL.table_ttl_expression ? 'text-blue-500 font-bold' : 'text-gray-400'}">
+                                    ${tableTTL && tableTTL.table_ttl_expression ? 'Active' : 'None'}
+                                </span>
+                            </div>
+                             ${tableTTL && tableTTL.table_ttl_expression ? `
+                                <div class="mt-2 text-xs font-mono text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-black/20 p-2 rounded break-all">
+                                    ${tableTTL.table_ttl_expression}
+                                </div>
+                            ` : ''}
                         </div>
                     </div>
 

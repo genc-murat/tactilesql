@@ -49,6 +49,8 @@ fn test_build_insert_statements() {
             vec![serde_json::json!(1), serde_json::json!("a")],
             vec![serde_json::json!(2), serde_json::json!("b'c")],
         ],
+        query_id: None,
+        statistics: None,
     };
     
     let stmts = build_insert_statements(&DatabaseType::MySQL, "db", "t", &result);

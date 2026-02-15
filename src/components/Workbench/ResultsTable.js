@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Dialog } from '../UI/Dialog.js';
 import { ThemeManager } from '../../utils/ThemeManager.js';
 import { LoadingStates } from '../UI/LoadingStates.js';
-import { escapeHtml } from '../../utils/helpers.js';
+import { escapeHtml, formatBytes, formatDuration, formatNumber } from '../../utils/helpers.js';
 import { toastSuccess, toastError } from '../../utils/Toast.js';
 
 // Virtual scrolling threshold - use virtual scroll for datasets larger than this
@@ -763,7 +763,20 @@ export function ResultsTable(options = {}) {
                 countText = `${filteredRows.length.toLocaleString()} / ${rows.length.toLocaleString()} ROWS`;
             }
 
-            rowCountBadge.innerHTML = `${countText} ${rowLimitBadge} ${vsIndicator}<span class="${isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]/60' : (isOceanic ? 'text-ocean-text/40' : (isNeon ? 'text-neon-text/40' : 'text-gray-500')))} font-normal ml-1">• ${formatDurationValue(currentData.duration)}</span>`;
+            let statsHtml = '';
+            if (currentData.statistics) {
+                const { elapsed, rows_read, bytes_read } = currentData.statistics;
+                // Elapsed is from ClickHouse in seconds, convert to ms for formatDuration
+                const durationText = formatDuration(elapsed * 1000);
+                const rowsText = rows_read ? `${formatNumber(rows_read)} rows read` : '';
+                const bytesText = bytes_read ? `${formatBytes(bytes_read)}` : '';
+
+                statsHtml = `<span class="${isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]/60' : (isOceanic ? 'text-ocean-text/40' : (isNeon ? 'text-neon-text/40' : 'text-gray-500')))} font-normal ml-1">• ${durationText} ${rowsText ? `• ${rowsText}` : ''} ${bytesText ? `• ${bytesText}` : ''}</span>`;
+            } else if (currentData.duration) {
+                statsHtml = `<span class="${isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]/60' : (isOceanic ? 'text-ocean-text/40' : (isNeon ? 'text-neon-text/40' : 'text-gray-500')))} font-normal ml-1">• ${formatDurationValue(currentData.duration)}</span>`;
+            }
+
+            rowCountBadge.innerHTML = `${countText} ${rowLimitBadge} ${vsIndicator}${statsHtml}`;
         }
     };
 
@@ -1069,7 +1082,19 @@ export function ResultsTable(options = {}) {
                 countText = `${filteredRows.length.toLocaleString()} / ${rows.length.toLocaleString()} ROWS`;
             }
 
-            rowCountBadge.innerHTML = `${countText} ${rowLimitBadge} ${vsIndicator}<span class="${isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]/60' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'))} font-normal ml-1">• ${formatDurationValue(data.duration)}</span>`;
+            let statsHtml = '';
+            if (data.statistics) {
+                const { elapsed, rows_read, bytes_read } = data.statistics;
+                const durationText = formatDuration(elapsed * 1000);
+                const rowsText = rows_read ? `${formatNumber(rows_read)} rows read` : '';
+                const bytesText = bytes_read ? `${formatBytes(bytes_read)}` : '';
+
+                statsHtml = `<span class="${isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]/60' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'))} font-normal ml-1">• ${durationText} ${rowsText ? `• ${rowsText}` : ''} ${bytesText ? `• ${bytesText}` : ''}</span>`;
+            } else if (data.duration) {
+                statsHtml = `<span class="${isLight ? 'text-gray-400' : (isDawn ? 'text-[#797593]/60' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'))} font-normal ml-1">• ${formatDurationValue(data.duration)}</span>`;
+            }
+
+            rowCountBadge.innerHTML = `${countText} ${rowLimitBadge} ${vsIndicator}${statsHtml}`;
         }
 
         const table = container.querySelector('table');

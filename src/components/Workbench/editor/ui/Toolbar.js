@@ -1,4 +1,4 @@
-
+import { formatDuration } from '../../../../utils/helpers.js';
 export const renderToolbar = ({
     isLight,
     isDawn,
@@ -38,16 +38,16 @@ export const renderToolbar = ({
                 <div class="h-4 w-px ${isLight ? 'bg-gray-200' : 'bg-white/5'}"></div>
 
                 <div class="flex items-center gap-2">
-                    ${estimatedExecutionTime ? `
+                    ${estimatedExecutionTime !== null && estimatedExecutionTime !== undefined ? `
                         <div class="px-1 py-0 text-[8px] ${isLight ? 'bg-blue-50 text-blue-700 border border-blue-100' : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'} rounded font-bold flex items-center gap-0.5 animate-pulse">
                             <span class="material-symbols-outlined" style="font-size: 9px;">insights</span>
-                            ~${estimatedExecutionTime}ms
+                            ~${formatDuration(estimatedExecutionTime)}
                         </div>
                     ` : ''}
-                    ${lastExecutionTime ? `
+                    ${lastExecutionTime !== null && lastExecutionTime !== undefined ? `
                         <div class="px-1 py-0 text-[8px] ${isLight ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'} rounded font-bold flex items-center gap-0.5">
                             <span class="material-symbols-outlined" style="font-size: 9px;">schedule</span>
-                            ${lastExecutionTime}ms
+                            ${formatDuration(lastExecutionTime)}
                         </div>
                     ` : ''}
                 </div>

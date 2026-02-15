@@ -20,11 +20,18 @@ const escapeHtml = (str) => {
 export function QueryProfiler() {
     // --- State (Instance Scoped) ---
     let isVisible = false;
-    let activeTab = 'profile'; // 'profile' | 'monitor' | 'locks'
+    let activeTab = 'profile'; // 'profile' | 'monitor' | 'locks' | 'compare' | 'plan' | 'history'
     let profileData = null;
     let monitorData = [];
     let locksData = [];
     let lockAnalysis = null;
+    let comparisonData = null; // { profile_a, profile_b, diffs... }
+    let planData = null; // String (JSON or Text)
+    let historyData = null; // Array of QueryHistoryEntry
+    let suggestionsData = null; // Array of OptimizationSuggestion
+    let planLoading = false;
+    let comparisonLoading = false;
+    let historyLoading = false;
     let monitorInterval = null;
     let profilerEnabled = SettingsManager.get(SETTINGS_PATHS.PROFILER_ENABLED);
     let lockWaitDetailsSupported = true;
@@ -276,6 +283,17 @@ export function QueryProfiler() {
                     <button id="tab-locks" class="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest transition-colors ${activeTab === 'locks' ? dangerActiveColor : inactiveColor}">
                         <span class="material-symbols-outlined text-[12px]">lock</span> Locks
                     </button>
+                    ${getDbType() === 'clickhouse' ? `
+                        <button id="tab-compare" class="px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest transition-colors ${activeTab === 'compare' ? activeColor : inactiveColor}">
+                            Compare
+                        </button>
+                        <button id="tab-plan" class="px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest transition-colors ${activeTab === 'plan' ? activeColor : inactiveColor}">
+                            Plan
+                        </button>
+                         <button id="tab-history" class="px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest transition-colors ${activeTab === 'history' ? activeColor : inactiveColor}">
+                            History
+                        </button>
+                    ` : ''}
                 </div>
                 <button id="close-profiler" class="p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
                     <span class="material-symbols-outlined text-[14px] ${(isLight || isDawn) ? 'text-gray-400' : 'text-gray-500'}">close</span>
@@ -323,6 +341,134 @@ export function QueryProfiler() {
         }
     };
 
+    // ClickHouse Render Logic
+    const renderClickHouseProfile = (contentDiv, data) => {
+        const { duration, rowsReturned, query, clickhouseProfile } = data;
+
+        if (!clickhouseProfile) {
+            // Loading state or basic info
+            const labelColor = (isLight || isDawn) ? 'text-gray-500' : 'text-gray-400';
+            contentDiv.innerHTML = `
+                <div class="h-32 flex flex-col items-center justify-center text-center ${labelColor}">
+                    <span class="material-symbols-outlined text-3xl animate-spin opacity-50 mb-1">sync</span>
+                    <span class="text-xs font-medium uppercase tracking-wider">Fetching execution profile...</span>
+                </div>
+            `;
+            return;
+        }
+
+        const {
+            read_rows, read_bytes, memory_usage, result_rows, result_bytes, total_rows_approx, timeline
+        } = clickhouseProfile;
+
+        // Styling helpers
+        const labelColor = (isLight || isDawn) ? 'text-gray-500' : 'text-gray-400';
+        const valueColor = isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-200');
+        const gridBg = isLight ? 'bg-gray-50/80' : (isDawn ? 'bg-[#fffaf3]/80' : 'bg-white/5');
+
+        // Main Stats (replacing Score for now as we don't have a heuristic yet)
+        const formatMem = (bytes) => formatBytes(bytes);
+
+        contentDiv.innerHTML = `
+             <div class="flex items-start gap-3 mb-3">
+                <div class="w-12 h-12 rounded-full flex items-center justify-center border-2 border-mysql-teal/20 bg-mysql-teal/10 shrink-0">
+                    <span class="material-symbols-outlined text-mysql-teal">speed</span>
+                </div>
+                
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-baseline justify-between">
+                        <span class="text-xs font-bold ${valueColor} truncate" title="Duration">Duration</span>
+                        <span class="text-lg font-black bg-clip-text text-transparent bg-gradient-to-r from-mysql-teal to-cyan-400">${formatDuration(duration)}</span>
+                    </div>
+                    <div class="text-[10px] ${labelColor} truncate font-mono mt-0.5" title="${escapeHtml(query)}">${escapeHtml(query) || 'Unknown Query'}</div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 mb-3">
+                <div class="p-2 rounded-lg ${gridBg} border ${isLight ? 'border-transparent' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
+                    <div class="text-[9px] uppercase tracking-wider ${labelColor} mb-0.5">Read Rows</div>
+                    <div class="flex items-baseline justify-between">
+                        <span class="text-xs font-bold ${valueColor}">${formatNumber(read_rows)}</span>
+                        <span class="text-[9px] opacity-60">${formatBytes(read_bytes)}</span>
+                    </div>
+                </div>
+                 <div class="p-2 rounded-lg ${gridBg} border ${isLight ? 'border-transparent' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
+                    <div class="text-[9px] uppercase tracking-wider ${labelColor} mb-0.5">Result</div>
+                    <div class="flex items-baseline justify-between">
+                        <span class="text-xs font-bold ${valueColor}">${formatNumber(result_rows)}</span>
+                         <span class="text-[9px] opacity-60">${formatBytes(result_bytes)}</span>
+                    </div>
+                </div>
+                <div class="p-2 rounded-lg ${gridBg} border ${isLight ? 'border-transparent' : 'border-white/5'}">
+                    <div class="text-[9px] uppercase tracking-wider ${labelColor} mb-0.5">Memory</div>
+                    <div class="flex items-baseline justify-between">
+                        <span class="text-[10px] font-bold ${valueColor}">${formatMem(memory_usage)}</span>
+                        <span class="text-[9px] opacity-60">peak</span>
+                    </div>
+                </div>
+                 <div class="p-2 rounded-lg ${gridBg} border ${isLight ? 'border-transparent' : 'border-white/5'}">
+                    <div class="text-[9px] uppercase tracking-wider ${labelColor} mb-0.5">Total Rows</div>
+                    <div class="flex items-baseline justify-between">
+                        <span class="text-[10px] font-bold ${valueColor}">${formatNumber(total_rows_approx)}</span>
+                        <span class="text-[9px] opacity-60">approx</span>
+                    </div>
+                </div>
+            </div>
+
+            ${timeline && timeline.length > 0 ? `
+                <div class="mb-2">
+                    <div class="text-[10px] font-black uppercase tracking-wider ${labelColor} mb-1">Execution Timeline</div>
+                    <div class="space-y-1 relative pl-2 border-l ${isLight ? 'border-gray-200' : 'border-white/10'}">
+                        ${timeline.slice(0, 10).map((event, idx) => `
+                            <div class="relative pl-3 py-0.5">
+                                <div class="absolute left-[-5px] top-1.5 w-2.5 h-2.5 rounded-full ${isLight ? 'bg-white border-2 border-mysql-teal' : 'bg-[#1a1d23] border-2 border-mysql-teal'}"></div>
+                                <div class="flex justify-between items-center text-[10px]">
+                                    <span class="font-mono ${valueColor}">${event.description}</span>
+                                    <span class="${labelColor}">${formatDuration(event.timestamp_ms)}</span>
+                                </div>
+                                 <div class="text-[9px] opacity-50 ${labelColor}">Thread #${event.thread_id}</div>
+                            </div>
+                        `).join('')}
+                         ${timeline.length > 10 ? `<div class="pl-3 text-[9px] italic ${labelColor}">+ ${timeline.length - 10} more events</div>` : ''}
+                    </div>
+                </div>
+            ` : ''}
+
+            <!-- Optimization Suggestions -->
+            ${suggestionsData && suggestionsData.length > 0 ? `
+                <div class="mb-2">
+                    <div class="text-[10px] font-black uppercase tracking-wider ${labelColor} mb-1 flex items-center gap-1">
+                        <span class="material-symbols-outlined text-[12px] text-yellow-500">lightbulb</span>
+                        Optimization Suggestions
+                    </div>
+                    <div class="space-y-1">
+                        ${suggestionsData.map(s => `
+                            <div class="p-2 rounded ${isLight ? 'bg-yellow-50 border border-yellow-100' : 'bg-yellow-500/10 border border-yellow-500/20'}">
+                                <div class="flex items-center gap-1 mb-0.5">
+                                    <span class="text-[10px] font-bold ${isLight ? 'text-yellow-700' : 'text-yellow-400'}">${escapeHtml(s.title)}</span>
+                                    <span class="px-1 rounded text-[8px] font-black uppercase ${s.severity === 'High' ? 'bg-red-500 text-white' : (s.severity === 'Medium' ? 'bg-yellow-500 text-black' : 'bg-blue-500 text-white')}">${s.severity}</span>
+                                </div>
+                                <div class="text-[9px] ${isLight ? 'text-yellow-800' : 'text-yellow-200/80'} leading-snug">${escapeHtml(s.description)}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : ''}
+        `;
+
+        // Trigger suggestions fetch if not already present
+        if (!suggestionsData && profileData.query_id) {
+            // Avoid infinite loop if fetch fails or returns empty, check if we already tried? 
+            // We can check if suggestionsData is null. Initialize it to null.
+            // But we need to distinguish "not fetched" vs "fetched and empty".
+            // Let's just fetch it once when rendering this view if it's null.
+            // To be safe, we'll do it in a timeout to not block render.
+            setTimeout(() => {
+                if (suggestionsData === null) fetchSuggestions();
+            }, 100);
+        }
+    };
+
     const renderProfileContent = () => {
         const contentDiv = container.querySelector('#profiler-content');
         if (!contentDiv) return;
@@ -337,8 +483,20 @@ export function QueryProfiler() {
             return;
         }
 
-        const { duration, rowsReturned, query } = profileData;
+        const { duration, rowsReturned, query, query_id } = profileData;
         const dbType = getDbType();
+
+        // Reset suggestions when switching queries
+        if (query_id && (!suggestionsData || (suggestionsData.queryId && suggestionsData.queryId !== query_id))) {
+            // This logic is tricky inside render. Better to reset when setting profileData.
+            // For now, let's rely on the fact that profileData changing resets the profiler usually?
+            // Actually, the `onQueryResult` sets profileData. We should reset derived data there.
+        }
+
+        if (dbType === 'clickhouse') {
+            renderClickHouseProfile(contentDiv, profileData);
+            return;
+        }
 
         if (dbType === 'postgresql' || dbType === 'postgres') {
             const pgSharedHitBlocks = getStatusDiff('pg_shared_hit_blocks');
@@ -972,6 +1130,370 @@ export function QueryProfiler() {
         });
     };
 
+    const fetchComparison = async (qidA, qidB) => {
+        if (!qidA || !qidB) return;
+        comparisonLoading = true;
+        render();
+        try {
+            const stored = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+            const data = await invoke('compare_clickhouse_query_profiles', {
+                config: stored,
+                queryIdA: qidA,
+                queryIdB: qidB
+            });
+            comparisonData = data;
+        } catch (e) {
+            console.error(e);
+            Dialog.alert('Comparison failed: ' + e);
+        } finally {
+            comparisonLoading = false;
+            render();
+        }
+    };
+
+    const fetchPlan = async () => {
+        if (!profileData || !profileData.query) return;
+        planLoading = true;
+        render();
+        try {
+            const stored = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+            const plan = await invoke('get_clickhouse_query_plan', {
+                config: stored,
+                query: profileData.query
+            });
+            planData = plan;
+        } catch (e) {
+            console.error(e);
+            Dialog.alert('Failed to fetch plan: ' + e);
+        } finally {
+            planLoading = false;
+            render();
+        }
+    };
+
+    const renderCompareContent = () => {
+        const contentDiv = container.querySelector('#profiler-content');
+        if (!contentDiv) return;
+
+        if (comparisonLoading) {
+            const labelColor = (isLight || isDawn) ? 'text-gray-500' : 'text-gray-400';
+            contentDiv.innerHTML = `
+                <div class="h-64 flex flex-col items-center justify-center text-center ${labelColor}">
+                    <span class="material-symbols-outlined text-3xl animate-spin opacity-50 mb-1">sync</span>
+                    <span class="text-xs font-medium uppercase tracking-wider">Comparing profiles...</span>
+                </div>
+            `;
+            return;
+        }
+
+        if (!comparisonData) {
+            // Input form
+            const labelColor = (isLight || isDawn) ? 'text-gray-500' : 'text-gray-400';
+            const inputBg = isLight ? 'bg-white border-gray-200' : 'bg-black/20 border-white/10';
+            const valueColor = isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-200');
+
+            contentDiv.innerHTML = `
+                <div class="p-4">
+                    <div class="text-[10px] font-black uppercase tracking-wider ${labelColor} mb-3">Compare Query Executions</div>
+                    
+                    <div class="space-y-3">
+                         <div>
+                            <label class="block text-[9px] uppercase tracking-wider ${labelColor} mb-1">Baseline Query ID (A)</label>
+                            <input type="text" id="cmp-qid-a" class="w-full px-2 py-1.5 rounded text-[11px] ${inputBg} ${valueColor} border focus:outline-none focus:border-mysql-teal/50 transition-colors" placeholder="metrics will be compared relative to this" value="">
+                        </div>
+
+                         <div>
+                            <label class="block text-[9px] uppercase tracking-wider ${labelColor} mb-1">Target Query ID (B)</label>
+                            <input type="text" id="cmp-qid-b" class="w-full px-2 py-1.5 rounded text-[11px] ${inputBg} ${valueColor} border focus:outline-none focus:border-mysql-teal/50 transition-colors" placeholder="current query" value="${profileData?.query_id || ''}">
+                        </div>
+
+                        <button id="cmp-btn" class="w-full py-1.5 rounded bg-mysql-teal/10 hover:bg-mysql-teal/20 text-mysql-teal border border-mysql-teal/20 text-[10px] font-black uppercase tracking-wider transition-all">
+                            Run Comparison
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            contentDiv.querySelector('#cmp-btn')?.addEventListener('click', () => {
+                const qidA = contentDiv.querySelector('#cmp-qid-a').value.trim();
+                const qidB = contentDiv.querySelector('#cmp-qid-b').value.trim();
+                if (qidA && qidB) fetchComparison(qidA, qidB);
+                else Dialog.alert("Please provide both Query IDs");
+            });
+            return;
+        }
+
+        // Render Comparison Results
+        const { profile_a, profile_b, duration_diff_ms, duration_diff_percent, rows_diff, rows_diff_percent, bytes_diff, bytes_diff_percent, memory_diff, memory_diff_percent } = comparisonData;
+        const labelColor = (isLight || isDawn) ? 'text-gray-500' : 'text-gray-400';
+        const valueColor = isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-200');
+        const gridBg = isLight ? 'bg-gray-50/80' : (isDawn ? 'bg-[#fffaf3]/80' : 'bg-white/5');
+
+        const formatDiff = (val, pct, unit = '') => {
+            const sign = val > 0 ? '+' : '';
+            const color = val > 0 ? 'text-red-400' : (val < 0 ? 'text-green-400' : 'text-gray-400');
+            if (val === 0) return `<span class="opacity-50">No change</span>`;
+            return `<span class="${color} font-bold">${sign}${formatNumber(val)}${unit} (${sign}${pct.toFixed(1)}%)</span>`;
+        };
+
+        const formatDiffBytes = (val, pct) => {
+            const sign = val > 0 ? '+' : '';
+            const color = val > 0 ? 'text-red-400' : (val < 0 ? 'text-green-400' : 'text-gray-400');
+            if (val === 0) return `<span class="opacity-50">No change</span>`;
+            return `<span class="${color} font-bold">${sign}${formatBytes(Math.abs(val))} (${sign}${pct.toFixed(1)}%)</span>`;
+        };
+
+        contentDiv.innerHTML = `
+            <div class="mb-3 flex items-center justify-between">
+                <div class="text-[10px]"><span class="${labelColor}">Base:</span> <span class="font-mono ${valueColor}">${profile_a.query_id.substring(0, 8)}...</span></div>
+                <div class="text-[10px]"><span class="${labelColor}">Target:</span> <span class="font-mono ${valueColor}">${profile_b.query_id.substring(0, 8)}...</span></div>
+                <button id="cmp-reset" class="text-[10px] text-mysql-teal hover:underline">New Comparison</button>
+            </div>
+
+            <div class="grid grid-cols-1 gap-2">
+                 <div class="p-2 rounded-lg ${gridBg} border border-white/5">
+                    <div class="text-[9px] uppercase tracking-wider ${labelColor} mb-1">Duration</div>
+                    <div class="flex justify-between items-baseline">
+                        <span class="${valueColor} font-mono">${formatDuration(profile_b.query_duration_ms)}</span>
+                        <div class="text-[10px]">${formatDiff(duration_diff_ms, duration_diff_percent, 'ms')}</div>
+                    </div>
+                </div>
+
+                <div class="p-2 rounded-lg ${gridBg} border border-white/5">
+                    <div class="text-[9px] uppercase tracking-wider ${labelColor} mb-1">Read Rows</div>
+                    <div class="flex justify-between items-baseline">
+                        <span class="${valueColor} font-mono">${formatNumber(profile_b.read_rows)}</span>
+                        <div class="text-[10px]">${formatDiff(rows_diff, rows_diff_percent)}</div>
+                    </div>
+                </div>
+
+                 <div class="p-2 rounded-lg ${gridBg} border border-white/5">
+                    <div class="text-[9px] uppercase tracking-wider ${labelColor} mb-1">Read Bytes</div>
+                    <div class="flex justify-between items-baseline">
+                        <span class="${valueColor} font-mono">${formatBytes(profile_b.read_bytes)}</span>
+                        <div class="text-[10px]">${formatDiffBytes(bytes_diff, bytes_diff_percent)}</div>
+                    </div>
+                </div>
+                
+                 <div class="p-2 rounded-lg ${gridBg} border border-white/5">
+                    <div class="text-[9px] uppercase tracking-wider ${labelColor} mb-1">Memory Usage</div>
+                    <div class="flex justify-between items-baseline">
+                        <span class="${valueColor} font-mono">${formatBytes(profile_b.memory_usage)}</span>
+                        <div class="text-[10px]">${formatDiffBytes(memory_diff, memory_diff_percent)}</div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        contentDiv.querySelector('#cmp-reset')?.addEventListener('click', () => {
+            comparisonData = null;
+            render();
+        });
+    };
+
+    const renderPlanContent = () => {
+        const contentDiv = container.querySelector('#profiler-content');
+        if (!contentDiv) return;
+
+        if (planLoading) {
+            const labelColor = (isLight || isDawn) ? 'text-gray-500' : 'text-gray-400';
+            contentDiv.innerHTML = `
+                <div class="h-64 flex flex-col items-center justify-center text-center ${labelColor}">
+                    <span class="material-symbols-outlined text-3xl animate-spin opacity-50 mb-1">sync</span>
+                    <span class="text-xs font-medium uppercase tracking-wider">Fetching plan...</span>
+                </div>
+            `;
+            return;
+        }
+
+        if (!planData) {
+            const labelColor = (isLight || isDawn) ? 'text-gray-500' : 'text-gray-400';
+            contentDiv.innerHTML = `
+                <div class="h-64 flex flex-col items-center justify-center text-center ${labelColor}">
+                    <span class="material-symbols-outlined text-3xl opacity-50 mb-2">account_tree</span>
+                    <span class="text-xs font-medium uppercase tracking-wider mb-2">Execution Plan</span>
+                    ${profileData && profileData.query ? `
+                        <button id="fetch-plan-btn" class="px-3 py-1.5 rounded bg-mysql-teal/10 hover:bg-mysql-teal/20 text-mysql-teal border border-mysql-teal/20 text-[10px] font-black uppercase tracking-wider transition-all">
+                            Fetch Plan
+                        </button>
+                    ` : '<span class="text-[10px] opacity-70">Execute a query first</span>'}
+                </div>
+            `;
+
+            contentDiv.querySelector('#fetch-plan-btn')?.addEventListener('click', fetchPlan);
+            return;
+        }
+
+        // Render Plan (JSON tree or pre-formatted text)
+        const labelColor = (isLight || isDawn) ? 'text-gray-500' : 'text-gray-400';
+        const valueColor = isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-200');
+        const codeBg = isLight ? 'bg-gray-50 border-gray-200' : 'bg-black/20 border-white/10';
+
+        contentDiv.innerHTML = `
+            <div class="p-2">
+                <div class="flex justify-between items-center mb-2">
+                     <div class="text-[10px] font-black uppercase tracking-wider ${labelColor}">Execution Plan</div>
+                     <button id="refresh-plan-btn" class="text-[10px] text-mysql-teal hover:underline">Refresh</button>
+                </div>
+                <div class="overflow-x-auto p-2 rounded text-[10px] font-mono whitespace-pre ${codeBg} ${valueColor} border">
+${escapeHtml(planData)}
+                </div>
+            </div>
+         `;
+        contentDiv.querySelector('#refresh-plan-btn')?.addEventListener('click', fetchPlan);
+    }
+
+    const fetchSuggestions = async () => {
+        if (!profileData || !profileData.query_id) return;
+        try {
+            const stored = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+            const suggestions = await invoke('get_clickhouse_optimization_suggestions', {
+                config: stored,
+                queryId: profileData.query_id
+            });
+            suggestionsData = suggestions;
+            render(); // Re-render to show suggestions
+        } catch (e) {
+            console.error('Failed to fetch suggestions:', e);
+        }
+    };
+
+    const fetchHistory = async () => {
+        if (!profileData || !profileData.query_id) return;
+        historyLoading = true;
+        render();
+        try {
+            const stored = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+            const history = await invoke('get_clickhouse_query_history', {
+                config: stored,
+                queryId: profileData.query_id
+            });
+            historyData = history;
+        } catch (e) {
+            console.error(e);
+            Dialog.alert('Failed to fetch history: ' + e);
+        } finally {
+            historyLoading = false;
+            render();
+        }
+    };
+
+    const renderHistoryContent = () => {
+        const contentDiv = container.querySelector('#profiler-content');
+        if (!contentDiv) return;
+
+        if (historyLoading) {
+            const labelColor = (isLight || isDawn) ? 'text-gray-500' : 'text-gray-400';
+            contentDiv.innerHTML = `
+                <div class="h-64 flex flex-col items-center justify-center text-center ${labelColor}">
+                    <span class="material-symbols-outlined text-3xl animate-spin opacity-50 mb-1">sync</span>
+                    <span class="text-xs font-medium uppercase tracking-wider">Fetching execution history...</span>
+                </div>
+            `;
+            return;
+        }
+
+        if (!historyData) {
+            const labelColor = (isLight || isDawn) ? 'text-gray-500' : 'text-gray-400';
+            contentDiv.innerHTML = `
+                <div class="h-64 flex flex-col items-center justify-center text-center ${labelColor}">
+                    <span class="material-symbols-outlined text-3xl opacity-50 mb-2">history</span>
+                    <span class="text-xs font-medium uppercase tracking-wider mb-2">Query History</span>
+                    ${profileData && profileData.query_id ? `
+                        <button id="fetch-history-btn" class="px-3 py-1.5 rounded bg-mysql-teal/10 hover:bg-mysql-teal/20 text-mysql-teal border border-mysql-teal/20 text-[10px] font-black uppercase tracking-wider transition-all">
+                            Load History
+                        </button>
+                    ` : '<span class="text-[10px] opacity-70">Execute a query first</span>'}
+                </div>
+            `;
+            contentDiv.querySelector('#fetch-history-btn')?.addEventListener('click', fetchHistory);
+            return;
+        }
+
+        if (historyData.length === 0) {
+            const labelColor = (isLight || isDawn) ? 'text-gray-500' : 'text-gray-400';
+            contentDiv.innerHTML = `
+                <div class="h-64 flex flex-col items-center justify-center text-center ${labelColor}">
+                    <span class="material-symbols-outlined text-3xl opacity-50 mb-2">history_toggle_off</span>
+                    <span class="text-xs font-medium uppercase tracking-wider">No history found</span>
+                </div>
+            `;
+            return;
+        }
+
+        // Render Trend Chart (Simple Bar Chart)
+        const labelColor = (isLight || isDawn) ? 'text-gray-500' : 'text-gray-400';
+        const valueColor = isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-200');
+        const gridBg = isLight ? 'bg-gray-50/80' : (isDawn ? 'bg-[#fffaf3]/80' : 'bg-white/5');
+
+        const maxDuration = Math.max(...historyData.map(h => h.duration_ms));
+
+        contentDiv.innerHTML = `
+            <div class="p-2 space-y-3">
+                 <div class="flex justify-between items-center">
+                     <div class="text-[10px] font-black uppercase tracking-wider ${labelColor}">Execution Trend (Last ${historyData.length})</div>
+                     <button id="refresh-history-btn" class="text-[10px] text-mysql-teal hover:underline">Refresh</button>
+                </div>
+                
+                <!-- Sparkline Area -->
+                <div class="h-24 flex items-end justify-between gap-1 px-1 border-b ${isLight ? 'border-gray-200' : 'border-white/10'} pb-2">
+                    ${historyData.slice().reverse().map(h => {
+            const height = maxDuration > 0 ? (h.duration_ms / maxDuration) * 100 : 0;
+            const isCurrent = h.query_id === profileData?.query_id;
+            const barColor = isCurrent ? 'bg-mysql-teal' : (isLight ? 'bg-gray-300' : 'bg-white/20');
+            return `
+                             <div class="flex-1 flex flex-col items-center gap-1 group relative">
+                                <div class="w-full ${barColor} rounded-t-sm transition-all hover:bg-cyan-400 min-h-[4px]" style="height: ${height}%"></div>
+                                <!-- Tooltip -->
+                                <div class="hidden group-hover:block absolute bottom-full mb-1 p-1 rounded bg-black/90 text-white text-[9px] whitespace-nowrap z-10 pointer-events-none">
+                                    ${formatDuration(h.duration_ms)}<br>${h.event_time}
+                                </div>
+                            </div>
+                        `;
+        }).join('')}
+                </div>
+
+                <div class="space-y-1">
+                    <div class="text-[9px] font-black uppercase tracking-wider ${labelColor} mb-1">Recent Executions</div>
+                    <div class="max-h-48 overflow-y-auto space-y-1 pr-1">
+                         ${historyData.map(h => `
+                            <div class="flex items-center justify-between p-1.5 rounded ${gridBg} border border-transparent hover:border-mysql-teal/30 transition-colors text-[10px]">
+                                <div class="flex flex-col">
+                                    <span class="font-mono ${valueColor}">${h.event_time}</span>
+                                    <span class="text-[9px] opacity-50 ${labelColor} font-mono">${h.query_id.substring(0, 8)}...</span>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                     <div class="text-right">
+                                        <div class="font-bold ${valueColor}">${formatDuration(h.duration_ms)}</div>
+                                        <div class="text-[9px] opacity-60">${formatNumber(h.read_rows)} rows</div>
+                                    </div>
+                                    ${h.query_id !== profileData?.query_id ? `
+                                        <button class="cmp-hist-btn hover:text-mysql-teal transition-colors" data-qid="${h.query_id}" title="Compare with current">
+                                            <span class="material-symbols-outlined text-[14px]">compare_arrows</span>
+                                        </button>
+                                    ` : '<span class="w-[14px]"></span>'}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        contentDiv.querySelector('#refresh-history-btn')?.addEventListener('click', fetchHistory);
+        contentDiv.querySelectorAll('.cmp-hist-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const targetId = e.currentTarget.dataset.qid;
+                // Switch to Compare tab and compare
+                activeTab = 'compare';
+                comparisonData = null; // Reset comparison data to force input form or we act smarter
+                // Pre-fill inputs? 
+                // Let's implement fetchComparison directly
+                fetchComparison(targetId, profileData.query_id);
+            });
+        });
+    };
+
     const render = () => {
         if (!profilerEnabled) {
             container.classList.add('hidden');
@@ -1013,13 +1535,43 @@ export function QueryProfiler() {
             }
         });
 
+        container.querySelector('#tab-compare')?.addEventListener('click', () => {
+            if (activeTab !== 'compare') {
+                activeTab = 'compare';
+                stopMonitor();
+                render();
+            }
+        });
+
+        container.querySelector('#tab-plan')?.addEventListener('click', () => {
+            if (activeTab !== 'plan') {
+                activeTab = 'plan';
+                stopMonitor();
+                render();
+            }
+        });
+
+        container.querySelector('#tab-history')?.addEventListener('click', () => {
+            if (activeTab !== 'history') {
+                activeTab = 'history';
+                stopMonitor();
+                render();
+            }
+        });
+
         // Initial content render
         if (activeTab === 'profile') {
             renderProfileContent();
         } else if (activeTab === 'monitor') {
             renderMonitorContent();
-        } else {
+        } else if (activeTab === 'locks') {
             renderLocksContent();
+        } else if (activeTab === 'compare') {
+            renderCompareContent();
+        } else if (activeTab === 'plan') {
+            renderPlanContent();
+        } else if (activeTab === 'history') {
+            renderHistoryContent();
         }
     };
 
@@ -1050,11 +1602,18 @@ export function QueryProfiler() {
     // Update profile with new data
     const updateProfile = (data) => {
         profileData = data;
-        if (activeTab === 'profile' && isVisible) renderProfileContent();
+        historyData = null; // Reset history
+        suggestionsData = null; // Reset suggestions
+        planData = null;
+        comparisonData = null;
+        if (activeTab === 'compare' || activeTab === 'plan' || activeTab === 'history') {
+            // Stay on tab but content will show "load" or empty
+        }
+        render();
     };
 
     // --- Event Handlers (Stored for cleanup) ---
-    const onQueryResult = (e) => {
+    const onQueryResult = async (e) => {
         const detail = e.detail;
         const resultsArray = Array.isArray(detail) ? detail : (detail ? [detail] : []);
         if (resultsArray.length === 0) return;
@@ -1063,16 +1622,37 @@ export function QueryProfiler() {
         const rowsReturned = (!Number.isNaN(originalRowCount) && originalRowCount >= 0)
             ? originalRowCount
             : (mainResult.rows?.length || 0);
-        updateProfile({
+
+        const basicData = {
             query: mainResult.query || 'Query',
             rowsReturned,
             duration: mainResult.duration || 0,
-            statusDiff: mainResult.statusDiff || null
-        });
+            statusDiff: mainResult.statusDiff || null,
+            query_id: mainResult.query_id
+        };
+
+        updateProfile(basicData);
 
         // Auto-show when result arrives if not already visible
         if (!isVisible) show();
         else if (activeTab === 'profile') render();
+
+        // Fetch detailed ClickHouse profile
+        if (getDbType() === 'clickhouse' && mainResult.query_id) {
+            try {
+                const stored = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+                const profile = await invoke('get_clickhouse_query_profile', {
+                    config: stored,
+                    queryId: mainResult.query_id
+                });
+                updateProfile({
+                    ...basicData,
+                    clickhouseProfile: profile
+                });
+            } catch (err) {
+                console.error("Failed to fetch ClickHouse profile", err);
+            }
+        }
     };
 
     const onQueryExecuting = () => {

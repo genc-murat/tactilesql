@@ -88,6 +88,8 @@ pub async fn export_table_csv(
     let mut first_result = results.into_iter().next().unwrap_or(QueryResult {
         columns: Vec::new(),
         rows: Vec::new(),
+        query_id: None,
+        statistics: None,
     });
     if first_result.columns.is_empty() {
         first_result.columns = schema_columns.into_iter().map(|c| c.name).collect();
@@ -171,6 +173,8 @@ pub async fn export_table_json(
     let mut first_result = results.into_iter().next().unwrap_or(QueryResult {
         columns: Vec::new(),
         rows: Vec::new(),
+        query_id: None,
+        statistics: None,
     });
     if first_result.columns.is_empty() {
         first_result.columns = schema_columns.into_iter().map(|c| c.name).collect();
@@ -259,6 +263,8 @@ pub async fn export_table_sql(
     let first_result = rows.into_iter().next().unwrap_or(QueryResult {
         columns: Vec::new(),
         rows: Vec::new(),
+        query_id: None,
+        statistics: None,
     });
     let inserts = build_insert_statements(&db_type, &database, &table, &first_result);
 

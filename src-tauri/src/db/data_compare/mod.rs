@@ -845,6 +845,8 @@ pub async fn load_table_rows_for_compare(
     let first_result = results.into_iter().next().unwrap_or(QueryResult {
         columns: Vec::new(),
         rows: Vec::new(),
+        query_id: None,
+        statistics: None,
     });
     query_result_to_row_maps(first_result, canonicals, label)
 }
