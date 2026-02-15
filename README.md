@@ -10,7 +10,7 @@ TactileSQL is a modern, desktop-first SQL workbench for MySQL, PostgreSQL, Click
 
 - **SQL Workbench** with multi-tab editor, syntax highlighting, auto-format, autocomplete, and **code folding**.
 - **First-Class MSSQL Support**: Deep integration with SQL Server featuring schema-qualified object browsing, automatic square bracket quoting, and MSSQL-optimized pagination. Includes the **Advanced Server Monitor** (uptime, batch requests, session termination), **Multi-View Visual Execution Plan** (Visual/Diagram, Tree/Hierarchical, and Raw/Source views with Cost/CPU/IO/Rows metrics), **Index Fragmentation & Maintenance** (Rebuild/Reorganize), **SQL Server Agent Job Manager**, and **Storage Visualization** for database files.
-- **Native ClickHouse Integration**: High-performance connectivity via native HTTP protocol (port 8123). Features rich SVG **Visual Explain Pipeline**, **Storage Analyzer** (compression & column usage), **Query Profiler** (execution timeline & comparison), **TTL Management** (visual policy editor & impact preview), Partition Explorer, Query Log Dashboard, Kafka Monitoring, **Merge & Mutation Monitor**, and **User & Settings Profile Management**.
+- **Native ClickHouse Integration**: High-performance connectivity via native HTTP protocol (port 8123). Features rich SVG **Visual Explain Pipeline**, **Storage Analyzer** (compression & column usage), **Query Profiler** (execution timeline & comparison), **TTL Management** (visual policy editor & impact preview), Partition Explorer, Query Log Dashboard, **System Metrics Dashboard**, Kafka Monitoring, **Merge & Mutation Monitor**, and **User & Settings Profile Management**.
 - **Advanced PostgreSQL Support**: Deep-dive monitoring with the **Server Activity Monitor** (session termination), **Lock Monitor** (visualize blocking chains), and **Extension Management** (install/uninstall extensions).
 - **Code Folding**: Collapse and expand code blocks (subqueries, CASE/END, BEGIN/END, block comments) for improved readability.
 - **Configurable SQL Execution Defaults**: Set default run mode (`current statement` / `selection first` / `run all`) and query timeout (`0 = unlimited`).
@@ -112,7 +112,7 @@ The Rust backend exposes a comprehensive set of commands for cross-database oper
 - `get_bloat_analysis` — Server-wide fragmentation/waste scanning
 
 ### ClickHouse & MSSQL Specifics
-- `get_clickhouse_partitions`, `manage_partition`, `get_clickhouse_merges`, `get_clickhouse_mutations`
+- `get_clickhouse_partitions`, `manage_partition`, `get_clickhouse_merges`, `get_clickhouse_mutations`, `get_clickhouse_system_metrics`
 - `get_clickhouse_users`, `create_clickhouse_user`, `delete_clickhouse_user`, `get_clickhouse_roles`, `grant_clickhouse_privilege`, `revoke_clickhouse_privilege` — ClickHouse User and Access Control management
 - `get_clickhouse_profiles`, `get_clickhouse_profile_details`, `create_clickhouse_profile`, `update_clickhouse_profile`, `delete_clickhouse_profile` — Settings Profile management for ClickHouse workloads
 - `get_index_fragmentation`, `maintain_index` — Analyze and optimize MSSQL index performance

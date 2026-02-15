@@ -12,6 +12,7 @@ import { showClickHouseTableDetails } from './ClickHouseTableDetails.js';
 import { showClickHouseQueryDashboard } from './ClickHouseQueryDashboard.js';
 import { showClickHouseKafkaMonitor } from './ClickHouseKafkaMonitor.js';
 import { showClickHouseMergeMonitor } from './ClickHouseMergeMonitor.js';
+import { showClickHouseMetricsDashboard } from './ClickHouseMetricsDashboard.js';
 import { showDataLineage } from './DataLineage.js';
 import { showTableMaintenanceModal } from '../UI/TableMaintenanceModal.js';
 import { showTableMaintenanceWizard } from '../UI/TableMaintenanceWizard.js';
@@ -1889,6 +1890,17 @@ export function ObjectExplorer() {
                             showClickHouseQueryDashboard(config);
                         } else {
                             Dialog.alert('Active connection not found', 'Error');
+                        }
+                    }
+                },
+                {
+                    label: 'System Metrics',
+                    icon: 'speed',
+                    iconColor: isDawn ? 'text-[#31748f]' : 'text-blue-500',
+                    onClick: () => {
+                        const config = connections.find(c => c.id === activeConnectionId);
+                        if (config) {
+                            showClickHouseMetricsDashboard(config);
                         }
                     }
                 },

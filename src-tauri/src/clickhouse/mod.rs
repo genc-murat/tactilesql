@@ -2001,3 +2001,80 @@ pub async fn delete_clickhouse_profile(config: ConnectionConfig, name: String) -
     execute_query_generic(&config, query).await?;
     Ok(format!("Profile {} deleted successfully", name))
 }
+#[derive(Serialize, Debug)]
+pub struct SystemMetric {
+    pub metric: String,
+    pub value: f64,
+    pub description: String,
+    pub category: String, // 'Metric', 'Event', or 'AsyncMetric'
+}
+
+#[tauri::command]
+pub async fn get_clickhouse_system_metrics(config: ConnectionConfig) -> Result<Vec<SystemMetric>, String> {
+    let mut all_metrics = Vec::new();
+
+    // 1. Get system.metrics
+    let query_metrics = "SELECT metric, value, description FROM system.metrics";
+    if let Ok(results) = execute_query_generic(&config, query_metrics.to_string()).await {
+        if let Some(first) = results.first() {
+            for row in &first.rows {
+                all_metrics.push(SystemMetric {
+                    metric: row.get(0).and_then(|v| v.as_str()).unwrap_or_default().to_string(),
+                    value: row.get(1).and_then(|v| {
+                        if v.is_f64() { v.as_f64() }
+                        else if v.is_u64() { v.as_u64().map(|u| u as f64) }
+                        else if v.is_i64() { v.as_i64().map(|i| i as f64) }
+                        else if v.is_string() { v.as_str().and_then(|s| s.parse::<f64>().ok()) }
+                        else { None }
+                    }).unwrap_or(0.0),
+                    description: row.get(2).and_then(|v| v.as_str()).unwrap_or_default().to_string(),
+                    category: "Metric".to_string(),
+                });
+            }
+        }
+    }
+
+    // 2. Get system.asynchronous_metrics
+    let query_async = "SELECT metric, value FROM system.asynchronous_metrics";
+    if let Ok(results) = execute_query_generic(&config, query_async.to_string()).await {
+        if let Some(first) = results.first() {
+            for row in &first.rows {
+                all_metrics.push(SystemMetric {
+                    metric: row.get(0).and_then(|v| v.as_str()).unwrap_or_default().to_string(),
+                    value: row.get(1).and_then(|v| {
+                        if v.is_f64() { v.as_f64() }
+                        else if v.is_u64() { v.as_u64().map(|u| u as f64) }
+                        else if v.is_i64() { v.as_i64().map(|i| i as f64) }
+                        else if v.is_string() { v.as_str().and_then(|s| s.parse::<f64>().ok()) }
+                        else { None }
+                    }).unwrap_or(0.0),
+                    description: String::new(),
+                    category: "AsyncMetric".to_string(),
+                });
+            }
+        }
+    }
+
+    // 3. Get system.events
+    let query_events = "SELECT event, value, description FROM system.events";
+    if let Ok(results) = execute_query_generic(&config, query_events.to_string()).await {
+        if let Some(first) = results.first() {
+            for row in &first.rows {
+                all_metrics.push(SystemMetric {
+                    metric: row.get(0).and_then(|v| v.as_str()).unwrap_or_default().to_string(),
+                    value: row.get(1).and_then(|v| {
+                        if v.is_f64() { v.as_f64() }
+                        else if v.is_u64() { v.as_u64().map(|u| u as f64) }
+                        else if v.is_i64() { v.as_i64().map(|i| i as f64) }
+                        else if v.is_string() { v.as_str().and_then(|s| s.parse::<f64>().ok()) }
+                        else { None }
+                    }).unwrap_or(0.0),
+                    description: row.get(2).and_then(|v| v.as_str()).unwrap_or_default().to_string(),
+                    category: "Event".to_string(),
+                });
+            }
+        }
+    }
+
+    Ok(all_metrics)
+}
