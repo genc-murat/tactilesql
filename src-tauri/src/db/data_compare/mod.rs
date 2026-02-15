@@ -847,6 +847,7 @@ pub async fn load_table_rows_for_compare(
         rows: Vec::new(),
         query_id: None,
         statistics: None,
+        warnings: vec![],
     });
     query_result_to_row_maps(first_result, canonicals, label)
 }

@@ -211,16 +211,24 @@ pub async fn execute_query(
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             
-            let normalized_query = {
+            let (normalized_query, warnings): (String, Vec<String>) = {
                 let version_guard = app_state.mysql_version.lock().await;
                 if let Some(version) = version_guard.as_ref() {
-                    mysql::normalize_mysql_query(&query, version)
+                    let normalized = mysql::normalize_mysql_query(&query, version);
+                    let warnings = mysql::validate_query_compatibility(&query, version);
+                    (normalized, warnings)
                 } else {
-                    query.clone()
+                    (query.clone(), vec![])
                 }
             };
             
-            mysql::execute_query(pool, normalized_query).await
+            let mut results = mysql::execute_query(pool, normalized_query).await?;
+            if !warnings.is_empty() {
+                for r in results.iter_mut() {
+                    r.warnings.extend(warnings.clone());
+                }
+            }
+            Ok(results)
         }
         DatabaseType::MSSQL => {
             let guard = app_state.mssql_pool.lock().await;
@@ -295,21 +303,30 @@ pub async fn execute_query_profiled(
             let guard = app_state.mysql_pool.lock().await;
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             
-            let normalized_query = {
+            let (normalized_query, warnings) = {
                 let version_guard = app_state.mysql_version.lock().await;
                 if let Some(version) = version_guard.as_ref() {
-                    mysql::normalize_mysql_query(&query, version)
+                    let normalized = mysql::normalize_mysql_query(&query, version);
+                    let warnings = mysql::validate_query_compatibility(&query, version);
+                    (normalized, warnings)
                 } else {
-                    query.clone()
+                    (query.clone(), vec![])
                 }
             };
             
-            mysql::execute_query_with_status_with_timeout(
+            let (mut results, status_diff) = mysql::execute_query_with_status_with_timeout(
                 pool,
                 normalized_query,
                 _query_timeout_seconds,
             )
-            .await?
+            .await?;
+
+            if !warnings.is_empty() {
+                for r in results.iter_mut() {
+                    r.warnings.extend(warnings.clone());
+                }
+            }
+            (results, status_diff)
         }
         DatabaseType::MSSQL => {
             let guard = app_state.mssql_pool.lock().await;

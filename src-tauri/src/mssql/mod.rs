@@ -127,6 +127,7 @@ pub async fn execute_query_with_timeout(
                         rows: current_rows.clone(),
                         query_id: None,
                         statistics: None,
+                        warnings: vec![],
                     });
                     current_rows.clear();
                     current_columns.clear();
@@ -142,11 +143,12 @@ pub async fn execute_query_with_timeout(
             rows: current_rows,
             query_id: None,
             statistics: None,
+            warnings: vec![],
         });
     }
 
     if results.is_empty() {
-        return Ok(vec![QueryResult { columns: vec![], rows: vec![], query_id: None, statistics: None }]);
+        return Ok(vec![QueryResult { columns: vec![], rows: vec![], query_id: None, statistics: None, warnings: vec![] }]);
     }
 
     Ok(results)

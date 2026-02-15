@@ -175,6 +175,7 @@ pub struct QueryResult {
     pub rows: Vec<Vec<serde_json::Value>>,
     pub query_id: Option<String>,
     pub statistics: Option<QueryStatistics>,
+    pub warnings: Vec<String>,
 }
 
 // --- Column Schema ---

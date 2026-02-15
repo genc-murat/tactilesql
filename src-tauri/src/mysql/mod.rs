@@ -179,32 +179,59 @@ pub(crate) fn parse_version_string(version: &str) -> (u8, u8, u8) {
     )
 }
 
-// --- Query Normalization ---
+// --- Query Compatibility ---
 
 pub fn normalize_mysql_query(query: &str, version: &MySqlVersion) -> String {
     let mut normalized = query.to_string();
 
-    // 1. Operator Normalization: && -> AND, || -> OR, ! -> NOT
-    // This is safer to do for newer versions where these might be disabled by sql_mode,
-    // but generally good for consistency. We use simple regex for now.
-    normalized = normalize_operators(&normalized);
+    // 1. Normalize C-style operators (&&, ||, !) in 8.0+
+    if version.major >= 8 {
+        normalized = normalize_operators(&normalized);
+    }
 
-    // 2. GROUP BY ASC/DESC Fix: Removed in MySQL 8.0
+    // 2. Fix GROUP BY ASC/DESC in 8.0+
     if version.major >= 8 {
         normalized = fix_group_by_syntax(&normalized);
     }
 
-    // 3. FLOAT(M,D) Deprecation: Strip (M,D) if found in certain contexts
+    // 3. Normalize FLOAT(M,D) and DOUBLE(M,D) in 8.0+
     if version.major >= 8 {
         normalized = normalize_float_double_syntax(&normalized);
     }
 
-    // 4. N'...' synonym for Unicode literals (MySQL 8.0+ changes)
-    if version.major >= 8 {
-        normalized = normalize_n_synonym(&normalized);
-    }
+    // 4. Normalize \N as NULL
+    normalized = normalize_n_synonym(&normalized);
 
     normalized
+}
+
+pub fn validate_query_compatibility(query: &str, version: &MySqlVersion) -> Vec<String> {
+    let mut warnings = Vec::new();
+
+    // 1. Check for C-style operators in 8.0+
+    if version.major >= 8 {
+        if query.contains(" && ") || query.contains(" || ") {
+            warnings.push("Use of '&&' and '||' as logical operators is deprecated and may be removed in future versions. Use 'AND' and 'OR' instead.".to_string());
+        }
+    }
+
+    // 2. Check for GROUP BY ASC/DESC in 8.0+
+    if version.major >= 8 {
+        let re = regex::Regex::new(r"(?i)GROUP\s+BY\s+.*?\s+(ASC|DESC)").unwrap();
+        if re.is_match(query) {
+            warnings.push("Sorting in GROUP BY (ASC/DESC) is removed in MySQL 8.0+. Use ORDER BY instead.".to_string());
+        }
+    }
+
+    // 3. Check for FLOAT(M,D) in 8.0+
+    if version.major >= 8 {
+        let re = regex::Regex::new(r"(?i)\b(FLOAT|DOUBLE)\s*\(\s*\d+\s*,\s*\d+\s*\)").unwrap();
+        if re.is_match(query) {
+            warnings.push("The (M,D) syntax for FLOAT and DOUBLE is deprecated in MySQL 8.0.17+.".to_string());
+        }
+    }
+
+    warnings
 }
 
 fn normalize_operators(query: &str) -> String {
@@ -271,6 +298,7 @@ where
             rows: vec![],
             query_id: None,
             statistics: None,
+            warnings: vec![],
         }]);
     }
 
@@ -298,6 +326,7 @@ where
                                     rows: current_rows.clone(),
                                     query_id: None,
                                     statistics: None,
+                                    warnings: vec![],
                                 });
                                 current_rows.clear();
                                 current_columns.clear();
@@ -382,6 +411,7 @@ where
                 rows: current_rows,
                 query_id: None,
                 statistics: None,
+                warnings: vec![],
             });
         }
 
@@ -402,6 +432,7 @@ where
             rows: vec![],
             query_id: None,
             statistics: None,
+            warnings: vec![],
         }]);
     }
 
@@ -458,6 +489,7 @@ pub async fn execute_query_with_status_with_timeout(
                 rows: vec![],
                 query_id: None,
                 statistics: None,
+                warnings: vec![],
             }],
             None,
         ));

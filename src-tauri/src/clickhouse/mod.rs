@@ -98,6 +98,7 @@ pub async fn execute_query_generic(config: &ConnectionConfig, query: String) -> 
             rows: vec![],
             query_id: None,
             statistics: None,
+            warnings: vec![],
         }]);
     }
 
@@ -110,6 +111,7 @@ pub async fn execute_query_generic(config: &ConnectionConfig, query: String) -> 
             rows: vec![vec![serde_json::Value::String(body)]],
             query_id,
             statistics: None,
+            warnings: vec![],
         }]);
     }
 
@@ -156,6 +158,7 @@ pub async fn execute_query_generic(config: &ConnectionConfig, query: String) -> 
         rows,
         query_id,
         statistics,
+        warnings: vec![],
     }])
 }
 

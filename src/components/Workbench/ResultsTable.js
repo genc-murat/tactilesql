@@ -154,6 +154,7 @@ export function ResultsTable(options = {}) {
         container.innerHTML = `
             ${toolbarHtml}
             ${tabsHtml}
+            <div id="warnings-banner" class="hidden"></div>
             <div class="flex-1 overflow-auto custom-scrollbar ${isLight ? 'bg-white' : (isDawn ? 'bg-[#faf4ed]' : (isOceanic ? 'bg-ocean-bg' : (isNeon ? 'bg-neon-bg' : 'bg-[#0f1115]')))}">
                 <table id="results-table" class="w-full text-left font-mono text-[11px] border-collapse">
                     <thead class="sticky top-0 ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel' : (isNeon ? 'bg-neon-panel' : 'bg-[#16191e]')))} z-10 transition-colors">
@@ -1037,6 +1038,24 @@ export function ResultsTable(options = {}) {
 
         // Hide loading overlay
         hideLoadingSkeleton();
+
+        // Show/Hide Warnings
+        const warningsBanner = container.querySelector('#warnings-banner');
+        if (warningsBanner) {
+            if (data.warnings && data.warnings.length > 0) {
+                warningsBanner.classList.remove('hidden');
+                warningsBanner.className = `px-4 py-2 border-b ${isLight ? 'bg-amber-50 border-amber-200' : (isDawn ? 'bg-[#ea9d34]/10 border-[#ea9d34]/30' : (isOceanic ? 'bg-amber-500/10 border-amber-500/30' : (isNeon ? 'bg-neon-accent/10 border-neon-accent/30' : 'bg-amber-500/10 border-amber-500/20')))} flex flex-col gap-1`;
+                warningsBanner.innerHTML = data.warnings.map(w => `
+                    <div class="flex items-start gap-2 text-[11px] ${isLight ? 'text-amber-800' : (isDawn ? 'text-[#ea9d34]' : (isOceanic ? 'text-amber-200' : (isNeon ? 'text-neon-text' : 'text-amber-200')))}">
+                        <span class="material-symbols-outlined text-sm mt-0.5">warning</span>
+                        <span>${escapeHtml(w)}</span>
+                    </div>
+                `).join('');
+            } else {
+                warningsBanner.classList.add('hidden');
+                warningsBanner.innerHTML = '';
+            }
+        }
 
         // Determine if we should use virtual scrolling based on FILTERED count
         useVirtualScroll = filteredRows.length > VIRTUAL_SCROLL_THRESHOLD;

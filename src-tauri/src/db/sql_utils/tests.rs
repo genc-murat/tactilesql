@@ -51,6 +51,7 @@ fn test_build_insert_statements() {
         ],
         query_id: None,
         statistics: None,
+        warnings: vec![],
     };
     
     let stmts = build_insert_statements(&DatabaseType::MySQL, "db", "t", &result);
