@@ -1151,6 +1151,18 @@ export class SmartAutocomplete {
                 suggestions.push(...await this.#getSetSuggestions(word));
                 break;
 
+            case CONTEXT.OVER:
+                suggestions.push(...this.#getOverClauseSuggestions(word));
+                break;
+
+            case CONTEXT.PARTITION_BY:
+                suggestions.push(...await this.#getPartitionBySuggestions(word));
+                break;
+
+            case CONTEXT.WINDOW_ORDER_BY:
+                suggestions.push(...await this.#getColumnSuggestions(word));
+                break;
+
             default:
                 suggestions.push(...await this.#getGeneralSuggestions(word));
         }
@@ -1391,6 +1403,12 @@ export class SmartAutocomplete {
         if (queryTables.length > 0) {
             const fkSuggestions = await this.#getFKRelatedTableSuggestions(word, queryTables);
             suggestions.push(...fkSuggestions);
+
+            // FK chain suggestions for multi-table JOINs
+            if (queryTables.length >= 1 && suggestions.length < 15) {
+                const chainSuggestions = await this.#getFKChainSuggestions(word, queryTables);
+                suggestions.push(...chainSuggestions);
+            }
         }
 
         // Add databases
@@ -1628,6 +1646,110 @@ export class SmartAutocomplete {
         return reverseFks;
     }
 
+    /**
+     * Get FK chain suggestions for multi-table JOINs
+     * Suggests complete JOIN chains: users → orders → order_items → products
+     */
+    async #getFKChainSuggestions(word, queryTables) {
+        const suggestions = [];
+        const wordLower = word.toLowerCase();
+        const maxChainLength = 3;
+        const seenChains = new Set();
+
+        if (queryTables.length === 0) return suggestions;
+
+        const buildChain = async (currentChain, visitedTables) => {
+            if (currentChain.length >= maxChainLength) return;
+            
+            const lastTable = currentChain[currentChain.length - 1];
+            const db = lastTable.database || this.#currentDb;
+            
+            try {
+                const fks = await this.loadForeignKeys(db, lastTable.table);
+                
+                for (const fk of fks) {
+                    const nextTable = fk.referenced_table_name || fk.referenced_table;
+                    
+                    if (!nextTable || visitedTables.has(nextTable.toLowerCase())) continue;
+                    if (wordLower && !matchesInput(wordLower, nextTable)) continue;
+                    
+                    const newVisited = new Set(visitedTables);
+                    newVisited.add(nextTable.toLowerCase());
+                    
+                    const chainTables = [...currentChain, {
+                        table: nextTable,
+                        fkColumn: fk.column_name,
+                        refColumn: fk.referenced_column_name || fk.referenced_column,
+                    }];
+                    
+                    if (chainTables.length >= 2) {
+                        const chainKey = chainTables.map(t => t.table).join('→');
+                        if (!seenChains.has(chainKey)) {
+                            seenChains.add(chainKey);
+                            const chainSuggestion = this.#buildJoinChain(chainTables, queryTables);
+                            if (chainSuggestion) {
+                                suggestions.push(chainSuggestion);
+                            }
+                        }
+                    }
+                    
+                    await buildChain(chainTables, newVisited);
+                }
+            } catch (e) {
+                // Skip on error
+            }
+        };
+
+        for (const startTable of queryTables) {
+            await buildChain([{
+                table: startTable.table,
+                database: startTable.database,
+                alias: startTable.alias,
+            }], new Set([startTable.table.toLowerCase()]));
+        }
+
+        return suggestions.slice(0, 5);
+    }
+
+    /**
+     * Build a JOIN chain suggestion from a list of tables
+     */
+    #buildJoinChain(chainTables, queryTables) {
+        if (chainTables.length < 2) return null;
+
+        const usedAliases = new Set(queryTables.map(t => (t.alias || t.table).toLowerCase()));
+        const joins = [];
+        const tableList = [];
+
+        let prevAlias = chainTables[0].alias || chainTables[0].table;
+
+        for (let i = 1; i < chainTables.length; i++) {
+            const current = chainTables[i];
+            const prev = chainTables[i - 1];
+            
+            const alias = this.#generateAlias(current.table, [...queryTables, ...tableList.map(t => ({ alias: t.alias }))]);
+            tableList.push({ table: current.table, alias });
+            usedAliases.add(alias.toLowerCase());
+
+            joins.push(`JOIN ${current.table} ${alias} ON ${prevAlias}.${current.fkColumn} = ${alias}.${current.refColumn}`);
+            prevAlias = alias;
+        }
+
+        const joinChain = joins.join(' ');
+        const tableNames = chainTables.map(t => t.table || t.table).join(' → ');
+
+        return {
+            type: 'fk_chain',
+            value: joinChain,
+            display: tableNames,
+            detail: `🔗 Chain: ${chainTables.length} tables`,
+            description: `Complete JOIN chain via foreign keys`,
+            icon: 'account_tree',
+            color: 'text-amber-400',
+            priority: 130,
+        };
+    }
+
     async #getJoinConditionSuggestions(word) {
         const suggestions = [];
         const wordLower = word.toLowerCase();
@@ -1790,6 +1912,61 @@ export class SmartAutocomplete {
                     const details = this.#getColumnDetail(db, ref.table, col);
                     suggestions.push(this.#createColumnSuggestion(col, details, `${col} = `));
                 }
+            }
+        }
+
+        return suggestions;
+    }
+
+    #getOverClauseSuggestions(word) {
+        const suggestions = [];
+        const wordLower = word.toLowerCase();
+
+        const overTemplates = [
+            { value: '()', display: '()', detail: 'Empty window', description: 'Window over entire result set' },
+            { value: '(ORDER BY )', display: 'ORDER BY', detail: 'Order window', description: 'Order rows within window' },
+            { value: '(PARTITION BY )', display: 'PARTITION BY', detail: 'Partition window', description: 'Divide rows into partitions' },
+            { value: '(PARTITION BY ORDER BY )', display: 'PARTITION + ORDER', detail: 'Full window', description: 'Partition and order within window' },
+        ];
+
+        for (const template of overTemplates) {
+            if (matchesInput(wordLower, template.display)) {
+                suggestions.push({
+                    type: 'snippet',
+                    value: template.value,
+                    display: template.display,
+                    detail: template.detail,
+                    description: template.description,
+                    icon: 'view_column',
+                    color: 'text-purple-400',
+                    isSnippet: true,
+                    priority: 100,
+                });
+            }
+        }
+
+        return suggestions;
+    }
+
+    async #getPartitionBySuggestions(word) {
+        const suggestions = [];
+        const wordLower = word.toLowerCase();
+
+        suggestions.push(...await this.#getColumnSuggestions(word));
+
+        suggestions.push(...this.#getKeywordSuggestions(word, ['ORDER', 'BY', 'ASC', 'DESC']));
+
+        const currentFuncs = this.#getCurrentFunctions();
+        for (const func of currentFuncs.aggregate || []) {
+            if (matchesInput(wordLower, func)) {
+                suggestions.push({
+                    type: 'function',
+                    value: `${func}()`,
+                    display: func,
+                    detail: 'Aggregate (for partitioning)',
+                    icon: 'functions',
+                    color: 'text-pink-400',
+                });
             }
         }
 

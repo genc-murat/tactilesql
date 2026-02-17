@@ -27,6 +27,10 @@ export const CONTEXT = {
     CREATE: 'create',
     ALTER: 'alter',
     UNKNOWN: 'unknown',
+    // Window function contexts
+    OVER: 'over',
+    PARTITION_BY: 'partition_by',
+    WINDOW_ORDER_BY: 'window_order_by',
 };
 
 // Data type to operators mapping
@@ -237,6 +241,19 @@ export const detectContext = (query, cursorPos) => {
 
     if (/\bVALUES\s*\(/i.test(beforeCursor)) {
         return CONTEXT.VALUES;
+    }
+
+    // Window function contexts - check after OVER keyword
+    if (/\bOVER\s*\(\s*ORDER\s+BY\s+[\w.,`\s]*$/i.test(beforeCursor)) {
+        return CONTEXT.WINDOW_ORDER_BY;
+    }
+
+    if (/\bOVER\s*\(\s*PARTITION\s+BY\s+[\w.,`\s]*$/i.test(beforeCursor)) {
+        return CONTEXT.PARTITION_BY;
+    }
+
+    if (/\bOVER\s*\(\s*$/i.test(beforeCursor)) {
+        return CONTEXT.OVER;
     }
 
     return CONTEXT.UNKNOWN;

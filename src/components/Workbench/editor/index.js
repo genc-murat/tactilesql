@@ -11,3 +11,4 @@ export * from './tabHistory.js';
 export * from './semanticValidator.js';
 export * from './quickInfo.js';
 export * from './signatureHelp.js';
+export * from './codeActions.js';
