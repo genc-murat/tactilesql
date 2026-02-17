@@ -876,13 +876,28 @@ pub struct KafkaConsumerInfo {
     pub assigned_partitions: Option<u64>,
     pub last_exception: String,
     pub last_exception_time: String,
-    pub lag: Option<u64>, 
+    pub lag: Option<u64>,
+    // New fields
+    pub brokers: Option<String>,
+    pub group_name: Option<String>,
+    pub format: Option<String>,
 }
 
 pub async fn get_kafka_consumers_impl(config: &ConnectionConfig) -> Result<Vec<KafkaConsumerInfo>, String> {
-    // NOTE: system.kafka_consumers might not exist if Kafka is not enabled/used.
-    let query = "SELECT * FROM system.kafka_consumers";
-    let results = execute_query_generic(config, query.to_string()).await.map_err(|e| format!("Failed to query system.kafka_consumers (Kafka might not be enabled): {}", e))?;
+    // We join system.kafka_consumers (runtime stats) with system.tables (configuration)
+    // Note: system.kafka_consumers contains active consumers. system.tables contains definition.
+    // LEFT JOIN to ensure we get stats even if table definition is somehow missing (though unlikely for active consumer)
+    // Using c.* to handle version differences (some versions have topic, others assignments.topic)
+    let query = "
+        SELECT 
+            c.*,
+            t.engine_full
+        FROM system.kafka_consumers c
+        LEFT JOIN system.tables t ON (c.database = t.database) AND (c.`table` = t.name)
+    ";
+
+    let results = execute_query_generic(config, query.to_string()).await
+        .map_err(|e| format!("Failed to query system.kafka_consumers: {}", e))?;
 
     let mut consumers = Vec::new();
     if let Some(first) = results.first() {
@@ -895,14 +910,14 @@ pub async fn get_kafka_consumers_impl(config: &ConnectionConfig) -> Result<Vec<K
          let table_idx = get_idx("table");
          let cid_idx = get_idx("consumer_id");
          
-         let topic_idx = get_idx("topic").or(get_idx("assignments.topic")); // Flattened?
-         let partition_idx = get_idx("partition").or(get_idx("assignments.partition"));
-         let cur_offset_idx = get_idx("current_offset").or(get_idx("assignments.current_offset"));
-         let commit_offset_idx = get_idx("last_committed_offset").or(get_idx("assignments.last_committed_offset"));
+         let topic_idx = get_idx("topic");
+         let partition_idx = get_idx("partition");
+         let cur_offset_idx = get_idx("current_offset");
+         let commit_offset_idx = get_idx("last_committed_offset");
          
-         // Exception info
          let exc_idx = get_idx("last_exception");
          let exc_time_idx = get_idx("last_exception_time");
+         let engine_full_idx = get_idx("engine_full");
 
          for row in &first.rows {
             let get_str = |idx: Option<usize>| idx.and_then(|i| row.get(i)).and_then(|v| v.as_str()).unwrap_or_default().to_string();
@@ -915,21 +930,87 @@ pub async fn get_kafka_consumers_impl(config: &ConnectionConfig) -> Result<Vec<K
             let cur = get_u64(cur_offset_idx);
             let com = get_u64(commit_offset_idx);
             let lag = if let (Some(c), Some(l)) = (cur, com) {
-                if c >= l { Some(c - l) } else { Some(0) } // Rough calc if names imply logic
+                if c >= l { Some(c - l) } else { Some(0) }
             } else { None };
+
+            // Parse engine_full for Kafka settings
+            let engine_full = get_str(engine_full_idx);
+            let mut brokers = None;
+            let mut group_name = None;
+            let mut format = None;
+
+            if !engine_full.is_empty() {
+                // regex might be heavy, simple string find/split
+                // Look for SETTINGS ...
+                // kafka_broker_list = '...'
+                // kafka_group_name = '...'
+                // kafka_format = '...'
+                
+                let extract_val = |haystack: &str, key: &str| -> Option<String> {
+                    if let Some(pos) = haystack.find(key) {
+                        // find '=' after key
+                        let after_key = &haystack[pos + key.len()..];
+                        if let Some(eq_pos) = after_key.find('=') {
+                            let after_eq = &after_key[eq_pos + 1..].trim();
+                            // Value might be quoted '...'
+                            if after_eq.starts_with('\'') {
+                                if let Some(end_quote) = after_eq[1..].find('\'') {
+                                    return Some(after_eq[1..end_quote + 1].to_string());
+                                }
+                            }
+                        }
+                    }
+                    None
+                };
+
+                brokers = extract_val(&engine_full, "kafka_broker_list");
+                group_name = extract_val(&engine_full, "kafka_group_name");
+                format = extract_val(&engine_full, "kafka_format");
+                
+                // Fallback for parameter style: Kafka('brokers', 'topic', 'group', 'format')
+                if brokers.is_none() && engine_full.to_uppercase().contains("KAFKA(") {
+                     // Extract args inside parenthesis
+                     if let Some(start) = engine_full.find('(') {
+                         if let Some(end) = engine_full.rfind(')') {
+                             let args_str = &engine_full[start+1..end];
+                             let mut args = Vec::new();
+                             let mut in_quote = false;
+                             let mut current_arg = String::new();
+                             for c in args_str.chars() {
+                                 if c == '\'' { in_quote = !in_quote; }
+                                 else if c == ',' && !in_quote {
+                                     args.push(current_arg.trim().replace('\'', ""));
+                                     current_arg.clear();
+                                 } else {
+                                     current_arg.push(c);
+                                 }
+                             }
+                             if !current_arg.is_empty() { args.push(current_arg.trim().replace('\'', "")); }
+                             
+                             if args.len() >= 1 { brokers = Some(args[0].clone()); }
+                             // args[1] is topic
+                             if args.len() >= 3 { group_name = Some(args[2].clone()); }
+                             if args.len() >= 4 { format = Some(args[3].clone()); }
+                         }
+                     }
+                }
+            }
 
             consumers.push(KafkaConsumerInfo {
                 database: get_str(db_idx),
                 table: get_str(table_idx),
                 consumer_id: get_str(cid_idx),
-                topic: get_str(topic_idx), // Might be empty if array
+                topic: get_str(topic_idx),
                 partition: get_u64(partition_idx),
                 current_offset: cur,
                 last_committed_offset: com,
-                assigned_partitions: None, // Logic for count if array?
+                assigned_partitions: None,
                 last_exception: get_str(exc_idx),
                 last_exception_time: get_str(exc_time_idx),
                 lag,
+                brokers,
+                group_name,
+                format,
             });
          }
     }
