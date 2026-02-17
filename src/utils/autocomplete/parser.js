@@ -1,6 +1,11 @@
 /**
- * SQL Query Parser
- * Extracts table references, aliases, CTEs from SQL queries
+ * SQL Query Parser v2
+ * Extracts table references, aliases, CTEs, and subquery scopes from SQL queries
+ * 
+ * Features:
+ * - Full alias tracking (table aliases, CTE names, subquery aliases)
+ * - Scope tree for nested queries
+ * - Position-aware table visibility
  */
 
 import { getSqlKeywords } from '../../database/index.js';
@@ -33,14 +38,24 @@ export const TYPE_OPERATORS = {
     blob: ['IS NULL', 'IS NOT NULL'],
 };
 
+const SQL_KEYWORDS = new Set([
+    'WHERE', 'AND', 'OR', 'ON', 'SET', 'VALUES', 'LEFT', 'RIGHT', 'INNER', 'OUTER', 
+    'CROSS', 'NATURAL', 'ORDER', 'GROUP', 'HAVING', 'LIMIT', 'OFFSET', 'AS', 'SELECT',
+    'FROM', 'JOIN', 'BY', 'DISTINCT', 'ALL', 'UNION', 'INTERSECT', 'EXCEPT', 'WITH',
+    'RECURSIVE', 'INSERT', 'INTO', 'UPDATE', 'DELETE', 'CREATE', 'ALTER', 'DROP',
+    'TABLE', 'INDEX', 'VIEW', 'DATABASE', 'SCHEMA', 'NULL', 'NOT', 'IN', 'BETWEEN',
+    'LIKE', 'IS', 'EXISTS', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'ASC', 'DESC',
+    'PRIMARY', 'KEY', 'FOREIGN', 'REFERENCES', 'CONSTRAINT', 'UNIQUE', 'DEFAULT',
+    'AUTO_INCREMENT', 'IDENTITY', 'CASCADE', 'RESTRICT', 'FULL', 'OUTER', 'USING',
+]);
+
 /**
  * Check if a word is a SQL keyword
  */
 export const isKeyword = (word) => {
     if (!word) return false;
     const upper = word.toUpperCase();
-    return getSqlKeywords().includes(upper) ||
-        ['WHERE', 'AND', 'OR', 'ON', 'SET', 'VALUES', 'LEFT', 'RIGHT', 'INNER', 'OUTER', 'CROSS', 'NATURAL', 'ORDER', 'GROUP', 'HAVING', 'LIMIT', 'OFFSET', 'AS'].includes(upper);
+    return getSqlKeywords().includes(upper) || SQL_KEYWORDS.has(upper);
 };
 
 /**
@@ -260,4 +275,245 @@ export const getPreviousWord = (query, cursorPos) => {
     const before = query.substring(0, cursorPos).trim();
     const words = before.split(/\s+/);
     return words.length >= 2 ? words[words.length - 2] : null;
+};
+
+/**
+ * Extract subquery scopes from a query
+ * Returns a tree of scopes with their visible tables
+ * 
+ * Example:
+ * WITH cte AS (SELECT * FROM users)
+ * SELECT * FROM cte WHERE id IN (SELECT id FROM orders)
+ * 
+ * Returns:
+ * {
+ *   type: 'root',
+ *   start: 0,
+ *   end: 100,
+ *   tables: [{name: 'cte', type: 'cte', alias: 'cte'}],
+ *   children: [
+ *     { type: 'cte', name: 'cte', start: 5, end: 35, tables: [{name: 'users', type: 'table'}] },
+ *     { type: 'subquery', start: 70, end: 95, tables: [{name: 'orders', type: 'table'}] }
+ *   ]
+ * }
+ */
+export const extractScopes = (query) => {
+    const scopes = {
+        type: 'root',
+        start: 0,
+        end: query.length,
+        tables: [],
+        ctes: [],
+        children: [],
+    };
+    
+    // First, extract CTEs
+    const cteRegex = /\bWITH\s+(?:RECURSIVE\s+)?([\s\S]+?)\s+AS\s*\(/gi;
+    let match;
+    let cteEndPositions = [];
+    
+    while ((match = cteRegex.exec(query)) !== null) {
+        const cteNames = match[1].split(',').map(n => n.trim().split(/\s+/)[0]);
+        const cteStart = match.index;
+        let parenDepth = 0;
+        let cteEnd = match.index + match[0].length;
+        let foundStart = false;
+        
+        // Find the matching closing paren for this CTE
+        for (let i = match.index + match[0].length - 1; i < query.length; i++) {
+            if (query[i] === '(') {
+                parenDepth++;
+                foundStart = true;
+            } else if (query[i] === ')') {
+                parenDepth--;
+                if (foundStart && parenDepth === 0) {
+                    cteEnd = i;
+                    break;
+                }
+            }
+        }
+        
+        for (const cteName of cteNames) {
+            if (!isKeyword(cteName)) {
+                const cteScope = {
+                    type: 'cte',
+                    name: cteName,
+                    start: cteStart,
+                    end: cteEnd,
+                    tables: parseTableReferences(query.substring(match[0].length, cteEnd)),
+                    parent: scopes,
+                };
+                scopes.children.push(cteScope);
+                scopes.ctes.push({ name: cteName, scope: cteScope });
+                cteEndPositions.push({ name: cteName, end: cteEnd });
+            }
+        }
+    }
+    
+    // Extract subqueries (SELECT ... FROM ... WHERE id IN (SELECT ...))
+    const subqueryRegex = /\(\s*SELECT\b/gi;
+    while ((match = subqueryRegex.exec(query)) !== null) {
+        const subqueryStart = match.index;
+        let parenDepth = 1;
+        let subqueryEnd = match.index;
+        
+        // Find matching closing paren
+        for (let i = match.index + 1; i < query.length; i++) {
+            if (query[i] === '(') parenDepth++;
+            else if (query[i] === ')') {
+                parenDepth--;
+                if (parenDepth === 0) {
+                    subqueryEnd = i;
+                    break;
+                }
+            }
+        }
+        
+        // Check if this subquery is already inside a CTE
+        const insideCTE = cteEndPositions.some(cte => 
+            subqueryStart > cte.end - 50 && subqueryStart < cte.end
+        );
+        
+        if (!insideCTE) {
+            const subqueryText = query.substring(match.index + 1, subqueryEnd);
+            const subqueryScope = {
+                type: 'subquery',
+                start: subqueryStart,
+                end: subqueryEnd,
+                tables: parseTableReferences(subqueryText),
+                parent: scopes,
+            };
+            scopes.children.push(subqueryScope);
+        }
+    }
+    
+    // Parse tables in root scope (outside CTEs and subqueries)
+    scopes.tables = parseTableReferences(query);
+    
+    return scopes;
+};
+
+/**
+ * Find the scope at a given cursor position
+ * Returns the innermost scope containing the position
+ */
+export const findScopeAtPosition = (scopes, position) => {
+    // Check children first (innermost scope)
+    for (const child of scopes.children || []) {
+        if (position >= child.start && position <= child.end) {
+            const deeper = findScopeAtPosition(child, position);
+            return deeper || child;
+        }
+    }
+    return null;
+};
+
+/**
+ * Get all visible tables at a given position
+ * Includes tables from current scope and parent scopes
+ */
+export const getVisibleTablesAtPosition = (query, position) => {
+    const scopes = extractScopes(query);
+    const currentScope = findScopeAtPosition(scopes, position) || scopes;
+    
+    const tables = [];
+    const seen = new Set();
+    
+    // Add tables from current scope
+    for (const t of currentScope.tables || []) {
+        const key = `${t.database || ''}.${t.table}`;
+        if (!seen.has(key)) {
+            seen.add(key);
+            tables.push(t);
+        }
+    }
+    
+    // Add CTEs as virtual tables (visible from root scope)
+    for (const cte of scopes.ctes || []) {
+        if (!seen.has(cte.name.toLowerCase())) {
+            seen.add(cte.name.toLowerCase());
+            tables.push({
+                table: cte.name,
+                type: 'cte',
+                alias: cte.name,
+            });
+        }
+    }
+    
+    // Walk up to parent scopes and add their tables
+    let parent = currentScope.parent;
+    while (parent) {
+        for (const t of parent.tables || []) {
+            const key = `${t.database || ''}.${t.table}`;
+            if (!seen.has(key)) {
+                seen.add(key);
+                tables.push({ ...t, inherited: true });
+            }
+        }
+        parent = parent.parent;
+    }
+    
+    return tables;
+};
+
+/**
+ * Resolve an alias to its source table
+ * Returns { table, database, type } or null if not found
+ */
+export const resolveAlias = (alias, parsedQuery, currentPosition = null) => {
+    if (!alias || !parsedQuery) return null;
+    
+    const aliasLower = alias.toLowerCase();
+    
+    // Check table aliases
+    for (const ref of parsedQuery.tables || []) {
+        if (ref.alias && ref.alias.toLowerCase() === aliasLower) {
+            return {
+                table: ref.table,
+                database: ref.database,
+                type: 'table',
+                alias: ref.alias,
+            };
+        }
+        if (ref.table.toLowerCase() === aliasLower) {
+            return {
+                table: ref.table,
+                database: ref.database,
+                type: 'table',
+            };
+        }
+    }
+    
+    // Check CTEs
+    for (const cte of parsedQuery.ctes || []) {
+        if (cte.name.toLowerCase() === aliasLower) {
+            return {
+                table: cte.name,
+                type: 'cte',
+            };
+        }
+    }
+    
+    return null;
+};
+
+/**
+ * Enhanced query parser with full scope awareness
+ */
+export const parseQueryWithScopes = (query, cursorPos = null) => {
+    const base = parseQuery(query);
+    const scopes = extractScopes(query);
+    
+    // If cursor position provided, get visible tables at that position
+    if (cursorPos !== null) {
+        base.visibleTables = getVisibleTablesAtPosition(query, cursorPos);
+        base.currentScope = findScopeAtPosition(scopes, cursorPos);
+    }
+    
+    base.scopes = scopes;
+    
+    // Build enhanced alias map with resolution info
+    base.resolveAlias = (alias) => resolveAlias(alias, base, cursorPos);
+    
+    return base;
 };

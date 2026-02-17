@@ -35,6 +35,7 @@ import {
     TYPE_OPERATORS,
     isKeyword,
     parseQuery,
+    parseQueryWithScopes,
     detectContext,
     getCurrentWord,
     isAfterDot,
@@ -42,7 +43,11 @@ import {
     getPreviousWord,
     parseTableReferences,
     parseCTEs,
-    detectQueryType
+    detectQueryType,
+    extractScopes,
+    findScopeAtPosition,
+    getVisibleTablesAtPosition,
+    resolveAlias,
 } from './autocomplete/parser.js';
 
 const STORAGE_KEYS = {
@@ -50,7 +55,189 @@ const STORAGE_KEYS = {
     FK_CACHE: 'tactilesql_fk_cache',
     HISTORY: 'tactilesql_query_history',
     SNIPPETS: 'tactilesql_user_snippets',
+    SUGGESTION_CACHE: 'tactilesql_suggestion_cache',
 };
+
+/**
+ * Fuzzy Matcher - Subsequence matching with scoring
+ * Matches "usrnm" → "username", "uid" → "user_id"
+ * 
+ * Scoring:
+ * - Consecutive matches: +5 per pair
+ * - Word boundary matches (after _, -, camelCase): +3
+ * - Prefix match: +10
+ * - Exact match: +50
+ */
+function fuzzyMatch(input, target) {
+    if (!input || !target) return { match: false, score: 0 };
+    
+    const inputLower = input.toLowerCase();
+    const targetLower = target.toLowerCase();
+    
+    if (targetLower === inputLower) return { match: true, score: 100 };
+    if (targetLower.startsWith(inputLower)) return { match: true, score: 80 + input.length };
+    
+    let inputIdx = 0;
+    let score = 0;
+    let prevWasBoundary = true;
+    
+    for (let i = 0; i < targetLower.length && inputIdx < inputLower.length; i++) {
+        const targetChar = targetLower[i];
+        const inputChar = inputLower[inputIdx];
+        
+        const isBoundary = i === 0 || 
+            target[i - 1] === '_' || 
+            target[i - 1] === '-' ||
+            (target[i - 1] && target[i - 1].toLowerCase() === target[i - 1] && target[i].toUpperCase() === target[i]);
+        
+        if (targetChar === inputChar) {
+            score += prevWasBoundary ? 3 : 1;
+            if (i > 0 && targetLower[i - 1] === inputChar) score += 5;
+            inputIdx++;
+        }
+        prevWasBoundary = isBoundary;
+    }
+    
+    if (inputIdx === inputLower.length) {
+        return { match: true, score: score + input.length };
+    }
+    
+    return { match: false, score: 0 };
+}
+
+/**
+ * Enhanced filter that checks prefix, abbreviation, and fuzzy matching
+ * Returns true if input matches target via any matching strategy
+ */
+export function matchesInputEnhanced(input, target) {
+    if (!input || !target) return false;
+    
+    const inputLower = input.toLowerCase();
+    const targetLower = target.toLowerCase();
+    
+    if (targetLower.startsWith(inputLower)) return true;
+    
+    if (matchesAbbreviation(inputLower, target)) return true;
+    
+    if (input.length >= 3) {
+        const fuzzy = fuzzyMatch(inputLower, targetLower);
+        if (fuzzy.match && fuzzy.score >= input.length * 2) return true;
+    }
+    
+    return false;
+}
+
+/**
+ * Get match score for ranking (higher = better match)
+ */
+export function getMatchScore(input, target) {
+    if (!input || !target) return 0;
+    
+    const inputLower = input.toLowerCase();
+    const targetLower = target.toLowerCase();
+    
+    if (targetLower === inputLower) return 100;
+    if (targetLower.startsWith(inputLower)) return 80 + input.length;
+    
+    const abbrev = getAbbreviation(target);
+    if (abbrev.startsWith(inputLower)) return 60 + input.length;
+    
+    if (input.length >= 3) {
+        const fuzzy = fuzzyMatch(inputLower, targetLower);
+        if (fuzzy.match) return fuzzy.score;
+    }
+    
+    return 0;
+}
+
+/**
+ * Suggestion Cache - Caches suggestions by context hash
+ * Invalidates on schema changes or connection switch
+ */
+class SuggestionCache {
+    #cache = new Map();
+    #maxSize = 200;
+    #ttl = 60000; // 1 minute TTL
+    
+    constructor() {
+        this.loadFromStorage();
+    }
+    
+    #hashContext(context, word, connectionId) {
+        return `${connectionId}:${context}:${word?.toLowerCase() || ''}`;
+    }
+    
+    get(context, word, connectionId) {
+        const hash = this.#hashContext(context, word, connectionId);
+        const entry = this.#cache.get(hash);
+        
+        if (entry && Date.now() - entry.timestamp < this.#ttl) {
+            return entry.suggestions;
+        }
+        
+        if (entry) {
+            this.#cache.delete(hash);
+        }
+        
+        return null;
+    }
+    
+    set(context, word, connectionId, suggestions) {
+        if (this.#cache.size >= this.#maxSize) {
+            const oldestKey = this.#cache.keys().next().value;
+            this.#cache.delete(oldestKey);
+        }
+        
+        const hash = this.#hashContext(context, word, connectionId);
+        this.#cache.set(hash, {
+            suggestions,
+            timestamp: Date.now(),
+        });
+        
+        this.saveToStorage();
+    }
+    
+    invalidate(connectionId) {
+        for (const [key] of this.#cache) {
+            if (key.startsWith(`${connectionId}:`)) {
+                this.#cache.delete(key);
+            }
+        }
+        this.saveToStorage();
+    }
+    
+    invalidateAll() {
+        this.#cache.clear();
+        this.saveToStorage();
+    }
+    
+    loadFromStorage() {
+        try {
+            const stored = localStorage.getItem(STORAGE_KEYS.SUGGESTION_CACHE);
+            if (stored) {
+                const data = JSON.parse(stored);
+                const now = Date.now();
+                
+                for (const [key, entry] of Object.entries(data)) {
+                    if (now - entry.timestamp < this.#ttl) {
+                        this.#cache.set(key, entry);
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('Failed to load suggestion cache:', e);
+        }
+    }
+    
+    saveToStorage() {
+        try {
+            const obj = Object.fromEntries(this.#cache);
+            localStorage.setItem(STORAGE_KEYS.SUGGESTION_CACHE, JSON.stringify(obj));
+        } catch (e) {
+            console.warn('Failed to save suggestion cache:', e);
+        }
+    }
+}
 
 /**
  * Abbreviation matching for autocomplete
@@ -207,6 +394,7 @@ export class SmartAutocomplete {
     #queryHistory = [];
     #userSnippets = [];
     #nGramModel = new NGramModel();
+    #suggestionCache = new SuggestionCache();
 
     // Parsed query state
     #query = '';
@@ -214,6 +402,7 @@ export class SmartAutocomplete {
     #currentDb = '';
     #mysqlVersion = null;
     #parsedQuery = null;
+    #connectionId = null; // For cache invalidation
 
     // Debounce timer
     #debounceTimer = null;
@@ -275,11 +464,16 @@ export class SmartAutocomplete {
 
     /**
      * Main entry point for getting suggestions
+     * Uses adaptive debounce and caching for performance
      */
     async getSuggestions(query, cursorPosition, currentDatabase) {
         if (this.#debounceTimer) clearTimeout(this.#debounceTimer);
 
         return new Promise((resolve, reject) => {
+            // Adaptive debounce: shorter for fast typers, longer for complex queries
+            const debounceMs = query.length > 500 ? 150 : 
+                              query.length > 200 ? 100 : 80;
+            
             this.#debounceTimer = setTimeout(async () => {
                 try {
                     const result = await this.#getSuggestionsInternal(query, cursorPosition, currentDatabase);
@@ -287,7 +481,7 @@ export class SmartAutocomplete {
                 } catch (e) {
                     reject(e);
                 }
-            }, 100); // 100ms debounce
+            }, debounceMs);
         });
     }
 
@@ -296,14 +490,23 @@ export class SmartAutocomplete {
             this.#query = query || '';
             this.#cursorPos = cursorPosition || query?.length || 0;
             this.#currentDb = currentDatabase || '';
+            this.#connectionId = currentDatabase || 'default';
 
-            // Parse the query to understand context (use imported parser)
-            this.#parsedQuery = parseQuery(this.#query);
+            this.#parsedQuery = parseQueryWithScopes(this.#query, this.#cursorPos);
 
             const word = getCurrentWord(this.#query, this.#cursorPos);
             const context = detectContext(this.#query, this.#cursorPos);
 
             console.log('SmartAutocomplete v3:', { word, context, parsedQuery: this.#parsedQuery });
+
+            // Check cache first (only for non-empty words)
+            if (word && word.length >= 2) {
+                const cached = this.#suggestionCache.get(context, word, this.#connectionId);
+                if (cached) {
+                    console.log('[Cache] Hit for', context, word);
+                    return cached;
+                }
+            }
 
             // Empty word? Check if after dot
             if (!word && isAfterDot(this.#query, this.#cursorPos)) {
@@ -329,10 +532,17 @@ export class SmartAutocomplete {
             // Get context-specific suggestions
             suggestions.push(...await this.#getContextSuggestions(word, context));
 
-            // Sort and deduplicate
+            // Sort and deduplicate with enhanced scoring
             suggestions = this.#sortAndDedupe(suggestions, word);
 
-            return suggestions.slice(0, 20);
+            const result = suggestions.slice(0, 25);
+            
+            // Cache result for future use (if word is long enough)
+            if (word.length >= 2 && result.length > 0) {
+                this.#suggestionCache.set(context, word, this.#connectionId, result);
+            }
+
+            return result;
         } catch (error) {
             console.error('SmartAutocomplete error:', error);
             return this.#getFallbackSuggestions();
@@ -566,7 +776,7 @@ export class SmartAutocomplete {
         this.#columnDetails = {};
         this.#foreignKeys = {};
         this.#indexes = {};
-        // Also clear centralized cache
+        this.#suggestionCache.invalidateAll();
         DatabaseCache.invalidateAll();
     }
 
@@ -1001,19 +1211,20 @@ export class SmartAutocomplete {
             return suggestions;
         }
 
-        // SECOND: Check if prefix is an alias
-        if (this.#parsedQuery?.aliases[prefixLower]) {
-            const tableName = this.#parsedQuery.aliases[prefixLower];
+        // SECOND: Check if prefix is an alias (use enhanced resolution)
+        const aliasInfo = this.#parsedQuery?.resolveAlias?.(prefix);
+        if (aliasInfo) {
+            const tableName = aliasInfo.table;
 
             // Handle CTE references
-            if (tableName.startsWith('__cte__')) {
+            if (aliasInfo.type === 'cte') {
                 return this.#getCTEColumnSuggestions(tableName, prefix, suffix);
             }
 
-            // Get database for this alias (or use current)
-            const db = this.#parsedQuery.aliasToDb[prefixLower] || this.#currentDb;
+            // Get database for this alias
+            const db = aliasInfo.database || this.#currentDb;
 
-            console.log(`Prefix is an alias: ${prefix} -> ${db}.${tableName}`);
+            console.log(`Prefix is an alias (resolved): ${prefix} -> ${db}.${tableName}`);
 
             const columns = await this.loadColumns(db, tableName);
             console.log(`Got ${columns.length} columns:`, columns);
@@ -1506,9 +1717,15 @@ export class SmartAutocomplete {
         const wordLower = word.toLowerCase();
         const addedCols = new Set();
 
-        for (const ref of this.#parsedQuery?.tables || []) {
+        // Use scope-aware visible tables if available
+        const tablesToCheck = this.#parsedQuery?.visibleTables || this.#parsedQuery?.tables || [];
+
+        for (const ref of tablesToCheck) {
             const alias = ref.alias || ref.table;
             const db = ref.database || this.#currentDb;
+
+            // Skip CTEs for now (would need to parse CTE columns)
+            if (ref.type === 'cte') continue;
 
             const columns = await this.loadColumns(db, ref.table);
             for (const col of columns) {
@@ -1519,6 +1736,9 @@ export class SmartAutocomplete {
                         const details = this.#getColumnDetail(db, ref.table, col);
                         const suggestion = this.#createColumnSuggestion(col, details, col);
                         suggestion.detail = `${alias} • ${details?.column_type || ''}`;
+                        if (ref.inherited) {
+                            suggestion.inherited = true;
+                        }
                         suggestions.push(suggestion);
                     }
                 }
@@ -1761,16 +1981,9 @@ export class SmartAutocomplete {
         const wordLower = word.toLowerCase();
         const valueLower = (suggestion.display || suggestion.value).toLowerCase();
 
-        // Exact match bonus
-        if (valueLower === wordLower) score += 100;
-
-        // Starts with bonus
-        if (valueLower.startsWith(wordLower)) score += 50;
-
-        // Abbreviation match bonus (slightly lower than prefix match)
-        else if (matchesAbbreviation(wordLower, suggestion.display || suggestion.value)) {
-            score += 40;
-        }
+        // Use enhanced fuzzy matching score
+        const matchScore = getMatchScore(wordLower, suggestion.display || suggestion.value);
+        score += matchScore;
 
         // Priority bonus (for FK hints, snippets, etc.)
         score += suggestion.priority || 0;
@@ -1792,9 +2005,9 @@ export class SmartAutocomplete {
         };
         score += typePriority[suggestion.type] || 0;
 
-        // Frequency bonus
+        // Frequency bonus (weighted higher for better UX)
         const freqKey = `${suggestion.type}:${suggestion.value}`;
-        score += (this.#frequencyData[freqKey] || 0) * 2;
+        score += Math.min((this.#frequencyData[freqKey] || 0) * 3, 30);
 
         // PK/FK bonus
         if (suggestion.isKey) score += 15;
