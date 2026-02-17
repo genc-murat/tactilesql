@@ -3,29 +3,29 @@ import { toastError } from '../../utils/Toast.js';
 
 export function showClickHouseKafkaMonitor(connection) {
     const overlay = document.createElement('div');
-    overlay.className = 'fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-8 text-sm';
+    overlay.className = 'fixed inset-0 bg-black/60 backdrop-blur-md z-[9999] flex items-center justify-center p-8 text-sm';
     overlay.id = 'clickhouse-kafka-monitor-modal';
 
     const modal = document.createElement('div');
-    modal.className = 'bg-white dark:bg-[#0f1115] w-full max-w-6xl h-[90vh] rounded-xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-white/10';
+    modal.className = 'bg-[var(--bg-secondary)] w-full max-w-6xl h-[90vh] rounded-xl shadow-2xl flex flex-col overflow-hidden border border-[var(--border-color)]';
     overlay.appendChild(modal);
 
     // --- Header ---
     const header = document.createElement('div');
-    header.className = 'flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-[#13161b]';
+    header.className = 'flex items-center justify-between px-6 py-4 border-b border-[var(--border-color)] bg-[var(--bg-tertiary)]';
     header.innerHTML = `
         <div class="flex items-center gap-3">
             <span class="material-symbols-outlined text-orange-500 text-xl">sync_alt</span>
             <div>
-                <h2 class="font-bold text-gray-800 dark:text-white uppercase tracking-tight">Kafka Engine Monitor</h2>
-                <p class="text-[10px] text-gray-500">Consumer lag and status from system.kafka_consumers</p>
+                <h2 class="font-bold text-[var(--text-primary)] uppercase tracking-tight">Kafka Engine Monitor</h2>
+                <p class="text-[10px] text-[var(--text-secondary)]">Consumer lag and status from system.kafka_consumers</p>
             </div>
         </div>
          <div class="flex items-center gap-3">
-            <button id="refresh-kafka" class="px-3 py-1.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded text-xs hover:opacity-80 transition-opacity font-medium flex items-center gap-1">
+            <button id="refresh-kafka" class="px-3 py-1.5 bg-blue-500/10 text-blue-400 rounded text-xs hover:bg-blue-500/20 transition-all font-bold uppercase tracking-wider flex items-center gap-1.5 border border-blue-500/20">
                 <span class="material-symbols-outlined text-sm">refresh</span> Refresh
             </button>
-            <button id="close-kafka" class="p-2 rounded hover:bg-gray-200 dark:hover:bg-white/10 transition-colors">
+            <button id="close-kafka" class="p-2 rounded hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
                 <span class="material-symbols-outlined">close</span>
             </button>
         </div>
@@ -34,7 +34,7 @@ export function showClickHouseKafkaMonitor(connection) {
 
     // --- Content Area ---
     const contentArea = document.createElement('div');
-    contentArea.className = 'flex-1 overflow-auto p-0 bg-white dark:bg-[#0f1115] relative';
+    contentArea.className = 'flex-1 overflow-auto p-0 bg-[var(--bg-secondary)] relative';
     modal.appendChild(contentArea);
 
     document.body.appendChild(overlay);
@@ -64,10 +64,10 @@ export function showClickHouseKafkaMonitor(connection) {
     const renderDashboard = (consumers) => {
         if (!consumers || consumers.length === 0) {
             contentArea.innerHTML = `
-                <div class="flex flex-col items-center justify-center h-full text-gray-500 space-y-4">
+                <div class="flex flex-col items-center justify-center h-full text-[var(--text-secondary)] space-y-4 bg-[var(--bg-tertiary)]/50">
                     <span class="material-symbols-outlined text-5xl opacity-20">cloud_off</span>
-                    <p>No active Kafka consumers found.</p>
-                    <p class="text-xs opacity-60">Ensure your Kafka tables are active and consuming.</p>
+                    <p class="font-bold uppercase tracking-widest text-xs opacity-60">No active Kafka consumers found</p>
+                    <p class="text-[10px] opacity-40">Ensure your Kafka tables are active and consuming.</p>
                 </div>
             `;
             return;
@@ -78,16 +78,16 @@ export function showClickHouseKafkaMonitor(connection) {
         table.className = 'w-full text-left text-xs border-collapse';
 
         const thead = `
-            <thead class="bg-gray-50 dark:bg-[#13161b] sticky top-0 z-10 font-bold text-gray-600 dark:text-gray-400">
+            <thead class="bg-[var(--bg-tertiary)] sticky top-0 z-10 font-black text-[9px] uppercase tracking-widest text-[var(--text-secondary)] border-b border-[var(--border-color)] opacity-80">
                 <tr>
-                    <th class="px-4 py-3 border-b border-gray-200 dark:border-white/10">Table</th>
-                    <th class="px-4 py-3 border-b border-gray-200 dark:border-white/10">Consumer Group</th>
-                    <th class="px-4 py-3 border-b border-gray-200 dark:border-white/10">Topic</th>
-                    <th class="px-4 py-3 border-b border-gray-200 dark:border-white/10 text-right">Partition</th>
-                    <th class="px-4 py-3 border-b border-gray-200 dark:border-white/10 text-right">Current Offset</th>
-                    <th class="px-4 py-3 border-b border-gray-200 dark:border-white/10 text-right">Committed</th>
-                    <th class="px-4 py-3 border-b border-gray-200 dark:border-white/10 text-right">Lag</th>
-                    <th class="px-4 py-3 border-b border-gray-200 dark:border-white/10">Last Exception</th>
+                    <th class="px-6 py-4">Table</th>
+                    <th class="px-6 py-4">Consumer Group</th>
+                    <th class="px-6 py-4">Topic</th>
+                    <th class="px-6 py-4 text-right">Partition</th>
+                    <th class="px-6 py-4 text-right">Current Offset</th>
+                    <th class="px-6 py-4 text-right">Committed</th>
+                    <th class="px-6 py-4 text-right">Lag</th>
+                    <th class="px-6 py-4">Last Exception</th>
                 </tr>
             </thead>
         `;
@@ -97,31 +97,31 @@ export function showClickHouseKafkaMonitor(connection) {
         consumers.forEach(c => {
             const hasLag = (c.lag || 0) > 1000;
             const hasException = c.last_exception && c.last_exception.length > 0;
-            const rowClass = hasException ? 'bg-red-50 dark:bg-red-900/10' : (hasLag ? 'bg-yellow-50 dark:bg-yellow-900/10' : '');
+            const rowClass = hasException ? 'bg-red-500/5' : (hasLag ? 'bg-yellow-500/5' : '');
 
             tbodyHTML += `
-                <tr class="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors ${rowClass}">
-                    <td class="px-4 py-3 font-medium text-gray-800 dark:text-gray-200">
+                <tr class="hover:bg-[var(--bg-tertiary)] transition-all group border-b border-[var(--border-color)]/50 ${rowClass}">
+                    <td class="px-6 py-4 font-bold text-[var(--text-primary)] text-xs">
                         <div class="flex flex-col">
                             <span>${c.table}</span>
-                            <span class="text-[10px] text-gray-400">${c.database}</span>
+                            <span class="text-[9px] text-[var(--text-secondary)] font-black uppercase tracking-widest opacity-60">${c.database}</span>
                         </div>
                     </td>
-                    <td class="px-4 py-3 text-gray-600 dark:text-gray-400 max-w-[150px] truncate" title="${c.consumer_id}">${c.consumer_id}</td>
-                    <td class="px-4 py-3 text-gray-600 dark:text-gray-400">${c.topic}</td>
-                    <td class="px-4 py-3 text-right font-mono">${c.partition !== null ? c.partition : '-'}</td>
-                    <td class="px-4 py-3 text-right font-mono text-gray-500">${c.current_offset !== null ? formatNumber(c.current_offset) : '-'}</td>
-                    <td class="px-4 py-3 text-right font-mono text-gray-500">${c.last_committed_offset !== null ? formatNumber(c.last_committed_offset) : '-'}</td>
-                    <td class="px-4 py-3 text-right font-mono font-bold ${hasLag ? 'text-red-500' : 'text-green-500'}">
+                    <td class="px-6 py-4 text-[var(--text-secondary)] max-w-[150px] truncate-fade text-[11px] font-mono" title="${c.consumer_id}">${c.consumer_id}</td>
+                    <td class="px-6 py-4 text-[var(--text-secondary)] text-[11px] font-bold">${c.topic}</td>
+                    <td class="px-6 py-4 text-right font-mono text-[var(--text-primary)] font-bold">${c.partition !== null ? c.partition : '-'}</td>
+                    <td class="px-6 py-4 text-right font-mono text-[var(--text-secondary)] opacity-60">${c.current_offset !== null ? formatNumber(c.current_offset) : '-'}</td>
+                    <td class="px-6 py-4 text-right font-mono text-[var(--text-secondary)] opacity-60">${c.last_committed_offset !== null ? formatNumber(c.last_committed_offset) : '-'}</td>
+                    <td class="px-6 py-4 text-right font-mono font-black text-xs ${hasLag ? 'text-red-400 glow-red' : 'text-emerald-400'}">
                         ${c.lag !== null ? formatNumber(c.lag) : '-'}
                     </td>
-                    <td class="px-4 py-3 max-w-[200px]">
+                    <td class="px-6 py-4 max-w-[200px]">
                         ${hasException
-                    ? `<div class="text-red-500 truncate text-[10px]" title="${c.last_exception_time}: ${c.last_exception}">
-                                 <span class="font-bold block">${c.last_exception_time}</span>
+                    ? `<div class="text-red-400 truncate text-[9px] font-medium leading-relaxed" title="${c.last_exception_time}: ${c.last_exception}">
+                                 <span class="font-black block uppercase tracking-tighter opacity-70 mb-0.5">${c.last_exception_time}</span>
                                  ${c.last_exception}
                                </div>`
-                    : '<span class="text-green-500 text-[10px]">OK</span>'}
+                    : '<span class="text-emerald-400 text-[10px] font-black uppercase tracking-widest opacity-80">Connected</span>'}
                     </td>
                 </tr>
             `;

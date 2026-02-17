@@ -3,40 +3,40 @@ import { toastError } from '../../utils/Toast.js';
 
 export function showClickHouseMetricsDashboard(connection) {
     const overlay = document.createElement('div');
-    overlay.className = 'fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-8 text-sm';
+    overlay.className = 'fixed inset-0 bg-black/60 backdrop-blur-md z-[9999] flex items-center justify-center p-8 text-sm';
     overlay.id = 'clickhouse-metrics-dashboard-modal';
 
     const modal = document.createElement('div');
-    modal.className = 'bg-white dark:bg-[#0f1115] w-full max-w-6xl h-[90vh] rounded-xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-white/10';
+    modal.className = 'bg-[var(--bg-secondary)] w-full max-w-6xl h-[90vh] rounded-xl shadow-2xl flex flex-col overflow-hidden border border-[var(--border-color)]';
     overlay.appendChild(modal);
 
     // --- Header ---
     const header = document.createElement('div');
-    header.className = 'flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-[#13161b]';
+    header.className = 'flex items-center justify-between px-6 py-4 border-b border-[var(--border-color)] bg-[var(--bg-tertiary)]';
     header.innerHTML = `
         <div class="flex items-center gap-3">
             <span class="material-symbols-outlined text-blue-500 text-xl">speed</span>
             <div>
-                <h2 class="font-bold text-gray-800 dark:text-white uppercase tracking-tight">System Metrics Dashboard</h2>
-                <p class="text-[10px] text-gray-500">Real-time metrics from system.metrics, events, and async_metrics</p>
+                <h2 class="font-bold text-[var(--text-primary)] uppercase tracking-tight">System Metrics Dashboard</h2>
+                <p class="text-[10px] text-[var(--text-secondary)]">Real-time metrics from system.metrics, events, and async_metrics</p>
             </div>
         </div>
         <div class="flex items-center gap-3">
             <div class="relative">
-                <span class="material-symbols-outlined absolute left-2 top-1.5 text-sm text-gray-400">search</span>
-                <input type="text" id="metrics-search" placeholder="Search metrics..." class="pl-8 pr-3 py-1.5 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded text-xs focus:outline-none focus:border-blue-500 w-64">
+                <span class="material-symbols-outlined absolute left-2 top-1.5 text-sm text-[var(--text-secondary)] opacity-50">search</span>
+                <input type="text" id="metrics-search" placeholder="Search metrics..." class="pl-8 pr-3 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded text-xs focus:outline-none focus:border-blue-500/50 w-64 text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 transition-all">
             </div>
-            <div class="flex items-center gap-2 bg-gray-100 dark:bg-white/5 px-3 py-1.5 rounded border border-gray-200 dark:border-white/10">
-                <span class="text-[10px] uppercase font-bold text-gray-500">Auto Refresh</span>
+            <div class="flex items-center gap-2 bg-[var(--bg-secondary)] px-3 py-1.5 rounded border border-[var(--border-color)]">
+                <span class="text-[9px] uppercase font-black tracking-widest text-[var(--text-secondary)] opacity-80">Auto Refresh</span>
                 <label class="relative inline-flex items-center cursor-pointer">
                     <input type="checkbox" id="auto-refresh-toggle" class="sr-only peer" checked>
-                    <div class="w-7 h-4 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-600"></div>
+                    <div class="w-7 h-4 bg-[var(--bg-tertiary)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-600"></div>
                 </label>
             </div>
-            <button id="refresh-metrics" class="px-3 py-1.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded text-xs hover:opacity-80 transition-opacity font-medium flex items-center gap-1">
+            <button id="refresh-metrics" class="px-3 py-1.5 bg-blue-500/10 text-blue-400 rounded text-xs hover:bg-blue-500/20 transition-all font-bold uppercase tracking-wider flex items-center gap-1.5 border border-blue-500/20">
                 <span class="material-symbols-outlined text-sm">refresh</span> Refresh
             </button>
-            <button id="close-dashboard" class="p-2 rounded hover:bg-gray-200 dark:hover:bg-white/10 transition-colors">
+            <button id="close-dashboard" class="p-2 rounded hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
                 <span class="material-symbols-outlined">close</span>
             </button>
         </div>
@@ -45,18 +45,18 @@ export function showClickHouseMetricsDashboard(connection) {
 
     // --- Tabs ---
     const tabsContainer = document.createElement('div');
-    tabsContainer.className = 'flex items-center gap-6 px-6 py-2 border-b border-gray-200 dark:border-white/10 bg-white dark:bg-[#0f1115]';
+    tabsContainer.className = 'flex items-center gap-6 px-6 py-2 border-b border-[var(--border-color)] bg-[var(--bg-secondary)]';
     tabsContainer.innerHTML = `
-        <button class="metrics-tab active border-b-2 border-blue-500 text-blue-600 pb-2 text-xs font-bold uppercase tracking-wider" data-category="ALL">All Metrics</button>
-        <button class="metrics-tab text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 pb-2 text-xs font-bold uppercase tracking-wider" data-category="Metric">Metrics</button>
-        <button class="metrics-tab text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 pb-2 text-xs font-bold uppercase tracking-wider" data-category="Event">Events</button>
-        <button class="metrics-tab text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 pb-2 text-xs font-bold uppercase tracking-wider" data-category="AsyncMetric">Async Metrics</button>
+        <button class="metrics-tab active border-b-2 border-blue-500 text-blue-400 py-2 text-[10px] font-black uppercase tracking-widest opacity-80" data-category="ALL">All Metrics</button>
+        <button class="metrics-tab text-[var(--text-secondary)] hover:text-[var(--text-primary)] py-2 text-[10px] font-black uppercase tracking-widest opacity-60 hover:opacity-100 transition-all" data-category="Metric">Metrics</button>
+        <button class="metrics-tab text-[var(--text-secondary)] hover:text-[var(--text-primary)] py-2 text-[10px] font-black uppercase tracking-widest opacity-60 hover:opacity-100 transition-all" data-category="Event">Events</button>
+        <button class="metrics-tab text-[var(--text-secondary)] hover:text-[var(--text-primary)] py-2 text-[10px] font-black uppercase tracking-widest opacity-60 hover:opacity-100 transition-all" data-category="AsyncMetric">Async Metrics</button>
     `;
     modal.appendChild(tabsContainer);
 
     // --- Content Area ---
     const contentArea = document.createElement('div');
-    contentArea.className = 'flex-1 overflow-auto p-6 bg-white dark:bg-[#0f1115]';
+    contentArea.className = 'flex-1 overflow-auto p-6 bg-[var(--bg-secondary)]';
     modal.appendChild(contentArea);
 
     document.body.appendChild(overlay);
@@ -100,8 +100,8 @@ export function showClickHouseMetricsDashboard(connection) {
 
         if (filtered.length === 0) {
             contentArea.innerHTML = `
-                <div class="text-center py-12 text-gray-500 bg-gray-50 dark:bg-white/5 rounded-lg border border-dashed border-gray-300 dark:border-gray-700">
-                    <span class="material-symbols-outlined text-4xl mb-4 text-gray-400">search_off</span>
+                <div class="text-center py-12 text-[var(--text-secondary)] bg-[var(--bg-tertiary)] rounded-lg border border-dashed border-[var(--border-color)]">
+                    <span class="material-symbols-outlined text-4xl mb-4 opacity-40">search_off</span>
                     <p>No metrics found matching your criteria.</p>
                 </div>
             `;
@@ -138,26 +138,26 @@ export function showClickHouseMetricsDashboard(connection) {
         };
 
         let html = `
-            <div class="overflow-x-auto">
+            <div class="overflow-x-auto tactile-card rounded-xl border border-[var(--border-color)]">
                 <table class="w-full text-left border-collapse">
                     <thead>
-                        <tr class="text-[10px] uppercase font-bold text-gray-400 border-b border-gray-200 dark:border-white/10">
-                            <th class="px-4 py-3 w-1/3">Metric Name</th>
-                            <th class="px-4 py-3 text-right">Value</th>
-                            <th class="px-4 py-3">Category</th>
-                            <th class="px-4 py-3">Description</th>
+                        <tr class="text-[9px] uppercase font-black tracking-widest text-[var(--text-secondary)] border-b border-[var(--border-color)] bg-[var(--bg-tertiary)] opacity-80">
+                            <th class="px-6 py-4 w-1/3">Metric Name</th>
+                            <th class="px-6 py-4 text-right">Value</th>
+                            <th class="px-6 py-4">Category</th>
+                            <th class="px-6 py-4">Description</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-gray-100 dark:divide-white/5">
+                    <tbody class="divide-y divide-[var(--border-color)]">
         `;
 
         filtered.forEach(m => {
             html += `
-                <tr class="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors group">
-                    <td class="px-4 py-2.5 font-mono text-xs text-gray-700 dark:text-gray-300 break-all font-medium">${m.metric}</td>
-                    <td class="px-4 py-2.5 text-right font-mono text-xs font-bold text-blue-600 dark:text-blue-400 whitespace-nowrap">${formatValue(m)}</td>
-                    <td class="px-4 py-2.5">${getCategoryBadge(m.category)}</td>
-                    <td class="px-4 py-2.5 text-[11px] text-gray-500 max-w-sm">${m.description || '-'}</td>
+                <tr class="hover:bg-[var(--bg-tertiary)] transition-all group">
+                    <td class="px-6 py-3 font-mono text-[11px] text-[var(--text-primary)] break-all font-bold opacity-90">${m.metric}</td>
+                    <td class="px-6 py-3 text-right font-mono text-xs font-black text-blue-400 whitespace-nowrap">${formatValue(m)}</td>
+                    <td class="px-6 py-3">${getCategoryBadge(m.category)}</td>
+                    <td class="px-6 py-3 text-[10px] text-[var(--text-secondary)] max-w-sm leading-relaxed">${m.description || '-'}</td>
                 </tr>
             `;
         });
@@ -183,11 +183,11 @@ export function showClickHouseMetricsDashboard(connection) {
     tabs.forEach(tab => {
         tab.addEventListener('click', () => {
             tabs.forEach(t => {
-                t.classList.remove('active', 'border-b-2', 'border-blue-500', 'text-blue-600');
-                t.classList.add('text-gray-500');
+                t.classList.remove('active', 'border-b-2', 'border-blue-500', 'text-blue-400', 'opacity-80');
+                t.classList.add('text-[var(--text-secondary)]', 'opacity-60');
             });
-            tab.classList.add('active', 'border-b-2', 'border-blue-500', 'text-blue-600');
-            tab.classList.remove('text-gray-500');
+            tab.classList.add('active', 'border-b-2', 'border-blue-500', 'text-blue-400', 'opacity-80');
+            tab.classList.remove('text-[var(--text-secondary)]', 'opacity-60');
             currentCategory = tab.dataset.category;
             renderMetrics();
         });
