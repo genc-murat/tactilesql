@@ -49,7 +49,7 @@ import {
     getVisibleTablesAtPosition,
     resolveAlias,
 } from './autocomplete/parser.js';
-import { TYPE_ICONS, getTypeInfo } from '../components/Workbench/editor/quickInfo.js';
+import { TYPE_ICONS, getTypeInfo, FUNCTION_SIGNATURES } from '../components/Workbench/editor/quickInfo.js';
 
 const STORAGE_KEYS = {
     FREQUENCY: 'tactilesql_autocomplete_frequency',
@@ -1867,11 +1867,13 @@ export class SmartAutocomplete {
         for (const [category, funcs] of Object.entries(currentFuncs)) {
             for (const func of funcs) {
                 if (matchesInput(wordLower, func)) {
+                    const funcInfo = FUNCTION_SIGNATURES[func.toUpperCase()];
                     suggestions.push({
                         type: 'function',
                         value: `${func}()`,
                         display: func,
                         detail: category,
+                        description: funcInfo?.description || null,
                         icon: 'functions',
                         color: 'text-pink-400',
                     });

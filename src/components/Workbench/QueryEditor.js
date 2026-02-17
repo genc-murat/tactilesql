@@ -180,6 +180,11 @@ export function QueryEditor() {
     let selectedIndex = 0;
     let autocompleteVisible = false;
 
+    // Snippet placeholder state
+    let snippetPlaceholders = [];
+    let currentPlaceholderIndex = 0;
+    let isSnippetMode = false;
+
     // Cache state
     let cachedDatabases = [];
     let cachedTables = {};
@@ -783,12 +788,21 @@ export function QueryEditor() {
         if (popup) popup.remove();
     };
 
+    const scrollToSelectedItem = () => {
+        const popup = container.querySelector('#autocomplete-popup');
+        if (!popup) return;
+        const selectedItem = popup.querySelector(`.autocomplete-item[data-index="${selectedIndex}"]`);
+        if (selectedItem) {
+            selectedItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+    };
+
     const renderAutocomplete = (textarea) => {
         let popup = container.querySelector('#autocomplete-popup');
         if (!popup) {
             popup = document.createElement('div');
             popup.id = 'autocomplete-popup';
-            popup.className = `absolute z-[100] ${isLight ? 'bg-white border-gray-200 shadow-xl' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-xl' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50 shadow-2xl' : (isNeon ? 'bg-neon-panel border border-neon-border/50 shadow-2xl' : 'bg-[#1a1d23] border border-white/10 shadow-2xl')))} rounded-lg py-1 min-w-[250px] max-w-[400px] max-h-[250px] overflow-y-auto custom-scrollbar transition-all duration-200`;
+            popup.className = `absolute z-[100] ${isLight ? 'bg-white border-gray-200 shadow-xl' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-xl' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50 shadow-2xl' : (isNeon ? 'bg-neon-panel border border-neon-border/50 shadow-2xl' : 'bg-[#1a1d23] border border-white/10 shadow-2xl')))} rounded-lg py-1 min-w-[280px] max-w-[450px] max-h-[280px] overflow-y-auto custom-scrollbar transition-all duration-200`;
             const editorContainer = container.querySelector('.neu-inset');
             if (editorContainer) {
                 editorContainer.style.position = 'relative';
@@ -798,18 +812,29 @@ export function QueryEditor() {
 
         const coords = getCaretCoordinates(textarea);
         popup.style.top = `${coords.top}px`;
-        popup.style.left = `${Math.min(coords.left, 300)}px`;
+        popup.style.left = `${Math.min(coords.left, 280)}px`;
 
-        popup.innerHTML = suggestions.map((s, i) => `
-            <div class="autocomplete-item px-3 py-1.5 flex items-center gap-2 cursor-pointer transition-colors ${i === selectedIndex ? (isLight ? 'bg-mysql-teal/10 text-mysql-teal' : (isDawn ? 'bg-[#ea9d34]/20 text-[#ea9d34]' : (isNeon ? 'bg-neon-accent/10 text-neon-accent' : 'bg-mysql-teal/20 text-white'))) : (isLight ? 'text-gray-700 hover:bg-gray-50' : (isDawn ? 'text-[#575279] hover:bg-[#faf4ed]' : (isNeon ? 'text-neon-text hover:bg-white/5' : 'text-gray-400 hover:bg-white/5')))}" data-index="${i}">
-                <span class="material-symbols-outlined text-sm ${s.color}">${s.icon}</span>
-                <div class="flex-1 min-w-0">
-                    <div class="font-mono text-[12px] truncate">${s.display || s.value}</div>
-                    ${s.detail ? `<div class="text-[9px] ${isLight ? 'text-gray-400' : (isNeon ? 'text-neon-text/40' : 'text-gray-500')} truncate">${s.detail}</div>` : ''}
+        const selectedSuggestion = suggestions[selectedIndex];
+        const hasDescription = selectedSuggestion?.description;
+
+        popup.innerHTML = `
+            ${suggestions.map((s, i) => `
+                <div class="autocomplete-item px-3 py-1.5 flex items-center gap-2 cursor-pointer transition-colors ${i === selectedIndex ? (isLight ? 'bg-mysql-teal/10 text-mysql-teal' : (isDawn ? 'bg-[#ea9d34]/20 text-[#ea9d34]' : (isNeon ? 'bg-neon-accent/10 text-neon-accent' : 'bg-mysql-teal/20 text-white'))) : (isLight ? 'text-gray-700 hover:bg-gray-50' : (isDawn ? 'text-[#575279] hover:bg-[#faf4ed]' : (isNeon ? 'text-neon-text hover:bg-white/5' : 'text-gray-400 hover:bg-white/5')))}" data-index="${i}">
+                    <span class="material-symbols-outlined text-sm ${s.color}">${s.icon}</span>
+                    <div class="flex-1 min-w-0">
+                        <div class="font-mono text-[12px] truncate">${s.display || s.value}</div>
+                        ${s.detail ? `<div class="text-[9px] ${isLight ? 'text-gray-400' : (isNeon ? 'text-neon-text/40' : 'text-gray-500')} truncate">${s.detail}</div>` : ''}
+                    </div>
+                    ${s.isSnippet ? '<span class="material-symbols-outlined text-[10px] text-emerald-400">code</span>' : ''}
+                    <span class="text-[9px] ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : (isNeon ? 'text-neon-text/40' : 'text-gray-600')))} uppercase flex-shrink-0">${s.type}</span>
                 </div>
-                <span class="text-[9px] ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : (isNeon ? 'text-neon-text/40' : 'text-gray-600')))} uppercase flex-shrink-0">${s.type}</span>
-            </div>
-        `).join('');
+            `).join('')}
+            ${hasDescription ? `
+                <div class="border-t ${isLight ? 'border-gray-100' : (isNeon ? 'border-neon-border/30' : 'border-white/5')} px-3 py-2 mt-1">
+                    <div class="text-[10px] ${isLight ? 'text-gray-500' : (isNeon ? 'text-neon-text/60' : 'text-gray-400')} leading-relaxed">${selectedSuggestion.description}</div>
+                </div>
+            ` : ''}
+        `;
 
         // Click handlers
         popup.querySelectorAll('.autocomplete-item').forEach(item => {
@@ -830,26 +855,65 @@ export function QueryEditor() {
         const word = getCurrentWord(textarea);
         const wordStart = cursorPos - word.length;
 
-        // Determine what to insert based on the suggestion type and current word
         let insertValue = suggestion.value;
 
-        // If user typed a dot pattern (e.g., "db." or "table."), and suggestion has a prefix,
-        // only insert the part after the dot if the suggestion display differs from value
         if (word.includes('.') && suggestion.display) {
-            // User already typed the prefix, so just add the suffix part
             const dotIndex = word.lastIndexOf('.');
-            const prefix = word.substring(0, dotIndex + 1); // includes the dot
+            const prefix = word.substring(0, dotIndex + 1);
             insertValue = prefix + suggestion.display;
         }
 
-        const newText = text.substring(0, wordStart) + insertValue + text.substring(cursorPos);
-        textarea.value = newText;
+        // Handle snippet placeholders: ${1:default} ${2:default}
+        const placeholderRegex = /\$\{(\d+):([^}]+)\}/g;
+        const placeholders = [];
+        let match;
+        let processedValue = insertValue;
+        let placeholderOffset = 0;
+        
+        while ((match = placeholderRegex.exec(insertValue)) !== null) {
+            const placeholderNum = parseInt(match[1]);
+            const defaultValue = match[2];
+            const startPos = match.index - placeholderOffset;
+            const endPos = startPos + defaultValue.length;
+            
+            placeholders.push({
+                number: placeholderNum,
+                start: startPos,
+                end: endPos,
+                default: defaultValue,
+            });
+            
+            // Replace ${n:default} with just 'default'
+            processedValue = processedValue.replace(match[0], defaultValue);
+            placeholderOffset += match[0].length - defaultValue.length;
+        }
 
-        const newCursorPos = wordStart + insertValue.length;
-        textarea.setSelectionRange(newCursorPos, newCursorPos);
+        const newText = text.substring(0, wordStart) + processedValue + text.substring(cursorPos);
+        textarea.value = newText;
 
         // Record selection for frequency learning
         smartAutocomplete.recordSelection(suggestion.value);
+
+        // Handle snippet mode vs regular insertion
+        if (placeholders.length > 0) {
+            snippetPlaceholders = placeholders.map(p => ({
+                ...p,
+                start: wordStart + p.start,
+                end: wordStart + p.end,
+            }));
+            snippetPlaceholders.sort((a, b) => a.number - b.number);
+            currentPlaceholderIndex = 0;
+            isSnippetMode = true;
+            
+            // Select first placeholder
+            const firstPlaceholder = snippetPlaceholders[0];
+            textarea.setSelectionRange(firstPlaceholder.start, firstPlaceholder.end);
+        } else {
+            const newCursorPos = wordStart + processedValue.length;
+            textarea.setSelectionRange(newCursorPos, newCursorPos);
+            isSnippetMode = false;
+            snippetPlaceholders = [];
+        }
 
         // Update tab content
         setActiveTabContent(newText, { forceSnapshot: true, historySource: 'autocomplete' });
@@ -859,8 +923,53 @@ export function QueryEditor() {
             requestSyntaxRender(textarea, syntaxHighlight, true);
         }
 
-        hideAutocomplete();
+        if (!isSnippetMode) {
+            hideAutocomplete();
+        }
         textarea.focus();
+    };
+
+    const navigateSnippetPlaceholder = (textarea, forward = true) => {
+        if (!isSnippetMode || snippetPlaceholders.length === 0) {
+            return false;
+        }
+
+        // Update current placeholder position based on text changes
+        const text = textarea.value;
+        const cursorPos = textarea.selectionStart;
+        
+        // Find which placeholder we're at or near
+        let currentIdx = -1;
+        for (let i = 0; i < snippetPlaceholders.length; i++) {
+            if (cursorPos >= snippetPlaceholders[i].start && cursorPos <= snippetPlaceholders[i].end) {
+                currentIdx = i;
+                break;
+            }
+        }
+
+        // Recalculate positions based on current text
+        let nextIdx;
+        if (currentIdx === -1) {
+            nextIdx = forward ? 0 : snippetPlaceholders.length - 1;
+        } else {
+            nextIdx = forward ? currentIdx + 1 : currentIdx - 1;
+        }
+
+        if (nextIdx >= snippetPlaceholders.length || nextIdx < 0) {
+            // Exit snippet mode
+            isSnippetMode = false;
+            snippetPlaceholders = [];
+            return false;
+        }
+
+        const nextPlaceholder = snippetPlaceholders[nextIdx];
+        if (nextPlaceholder && nextPlaceholder.start <= text.length) {
+            textarea.setSelectionRange(nextPlaceholder.start, nextPlaceholder.end);
+            currentPlaceholderIndex = nextIdx;
+            return true;
+        }
+
+        return false;
     };
 
 
@@ -2247,8 +2356,19 @@ export function QueryEditor() {
                 return;
             }
 
+            // Snippet Placeholder Navigation (Tab to next, Shift+Tab to previous)
+            if (isSnippetMode && e.key === 'Tab') {
+                e.preventDefault();
+                const navigated = navigateSnippetPlaceholder(textarea, !e.shiftKey);
+                if (!navigated) {
+                    isSnippetMode = false;
+                    snippetPlaceholders = [];
+                }
+                return;
+            }
+
             // Ghost Text Acceptance
-            if (isAutocompleteEnabled() && e.key === 'Tab' && currentGhostText && !autocompleteVisible) {
+            if (isAutocompleteEnabled() && e.key === 'Tab' && currentGhostText && !autocompleteVisible && !isSnippetMode) {
                 e.preventDefault();
 
                 const text = textarea.value;
@@ -2279,10 +2399,34 @@ export function QueryEditor() {
                     e.preventDefault();
                     selectedIndex = Math.min(selectedIndex + 1, suggestions.length - 1);
                     renderAutocomplete(textarea);
+                    scrollToSelectedItem(textarea);
                 } else if (e.key === 'ArrowUp') {
                     e.preventDefault();
                     selectedIndex = Math.max(selectedIndex - 1, 0);
                     renderAutocomplete(textarea);
+                    scrollToSelectedItem(textarea);
+                } else if (e.key === 'PageDown') {
+                    e.preventDefault();
+                    const pageSize = 10;
+                    selectedIndex = Math.min(selectedIndex + pageSize, suggestions.length - 1);
+                    renderAutocomplete(textarea);
+                    scrollToSelectedItem(textarea);
+                } else if (e.key === 'PageUp') {
+                    e.preventDefault();
+                    const pageSize = 10;
+                    selectedIndex = Math.max(selectedIndex - pageSize, 0);
+                    renderAutocomplete(textarea);
+                    scrollToSelectedItem(textarea);
+                } else if (e.key === 'Home') {
+                    e.preventDefault();
+                    selectedIndex = 0;
+                    renderAutocomplete(textarea);
+                    scrollToSelectedItem(textarea);
+                } else if (e.key === 'End') {
+                    e.preventDefault();
+                    selectedIndex = suggestions.length - 1;
+                    renderAutocomplete(textarea);
+                    scrollToSelectedItem(textarea);
                 } else if (e.key === 'Enter' || e.key === 'Tab') {
                     if (suggestions.length > 0) {
                         e.preventDefault();
