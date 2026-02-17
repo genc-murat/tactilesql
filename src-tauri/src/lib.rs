@@ -313,7 +313,10 @@ pub fn run() {
             clickhouse::modify_clickhouse_ttl,
             clickhouse::get_clickhouse_ttl_preview,
             clickhouse::get_clickhouse_ttl_audit,
+            clickhouse::get_clickhouse_ttl_audit,
             clickhouse::get_clickhouse_system_metrics,
+            clickhouse::get_top_queries,
+            clickhouse::get_query_metrics_history,
             // ClickHouse User Management
             clickhouse::get_clickhouse_users,
             clickhouse::create_clickhouse_user,

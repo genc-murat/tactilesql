@@ -1637,6 +1637,152 @@ pub async fn get_clickhouse_ttl_preview(config: ConnectionConfig, database: Stri
     Ok(TTLPreview { affected_rows, affected_bytes })
 }
 
+// --- Query Performance Stats ---
+
+#[derive(Serialize, Debug)]
+pub struct TopQueryInfo {
+    pub normalized_query_hash: String,
+    pub example_query: String,
+    pub execution_count: u64,
+    pub avg_duration_ms: f64,
+    pub total_duration_ms: f64,
+    pub avg_memory_usage_mb: f64,
+    pub avg_read_rows: f64,
+    pub avg_read_bytes_mb: f64,
+}
+
+#[derive(Serialize, Debug)]
+pub struct QueryThroughput {
+    pub time_bucket: String,
+    pub query_count: u64,
+    pub avg_duration_ms: f64,
+    pub p95_duration_ms: f64,
+    pub error_count: u64,
+}
+
+#[tauri::command]
+pub async fn get_top_queries(config: ConnectionConfig, order_by: String, limit: u64) -> Result<Vec<TopQueryInfo>, String> {
+    // order_by: "duration", "memory", "count", "io"
+    let order_clause = match order_by.as_str() {
+        "memory" => "avg(memory_usage) DESC",
+        "count" => "count() DESC",
+        "io" => "avg(read_bytes) DESC",
+        _ => "avg(query_duration_ms) DESC", // Default duration
+    };
+
+    let query = format!(
+        "SELECT 
+            normalized_query_hash,
+            any(query) as example,
+            count() as cnt,
+            avg(query_duration_ms) as avg_dur,
+            sum(query_duration_ms) as total_dur,
+            avg(memory_usage) / 1048576 as avg_mem,
+            avg(read_rows) as avg_rows,
+            avg(read_bytes) / 1048576 as avg_bytes
+        FROM system.query_log
+        WHERE type = 'QueryFinish' AND event_date >= today() - 1
+        GROUP BY normalized_query_hash
+        ORDER BY {}
+        LIMIT {}",
+        order_clause, limit
+    );
+
+    let results = execute_query_generic(&config, query).await?;
+    let mut top_queries = Vec::new();
+
+    if let Some(first) = results.first() {
+        for row in &first.rows {
+             let get_str = |idx: usize| row.get(idx).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+             let get_u64 = |idx: usize| row.get(idx).and_then(|v| {
+                if v.is_u64() { v.as_u64() }
+                else if v.is_string() { v.as_str().and_then(|s| s.parse::<u64>().ok()) }
+                else { None }
+             }).unwrap_or(0);
+             let get_f64 = |idx: usize| row.get(idx).and_then(|v| {
+                if v.is_f64() { v.as_f64() }
+                else if v.is_u64() { v.as_u64().map(|i| i as f64) }
+                else if v.is_string() { v.as_str().and_then(|s| s.parse::<f64>().ok()) }
+                else { None }
+             }).unwrap_or(0.0);
+             
+             // Handle normalized hash which is u64 usually, represented as string or number
+             let hash_val = row.get(0).and_then(|v| {
+                 if v.is_string() { v.as_str().map(|s| s.to_string()) }
+                 else if v.is_u64() { v.as_u64().map(|i| i.to_string()) }
+                 else { Some("".to_string()) }
+             }).unwrap_or_default();
+
+             top_queries.push(TopQueryInfo {
+                 normalized_query_hash: hash_val,
+                 example_query: get_str(1),
+                 execution_count: get_u64(2),
+                 avg_duration_ms: get_f64(3),
+                 total_duration_ms: get_f64(4),
+                 avg_memory_usage_mb: get_f64(5),
+                 avg_read_rows: get_f64(6),
+                 avg_read_bytes_mb: get_f64(7),
+             });
+        }
+    }
+
+    Ok(top_queries)
+}
+
+#[tauri::command]
+pub async fn get_query_metrics_history(config: ConnectionConfig, interval_minutes: u64) -> Result<Vec<QueryThroughput>, String> {
+    // Aggregate by time buckets (e.g. 1 minute, 10 minutes)
+    // Using toStartOfInterval if available or simpler rounding
+    let interval_sql = format!("toStartOfInterval(event_time, INTERVAL {} MINUTE)", interval_minutes);
+    
+    let query = format!(
+        "SELECT 
+            {} as bucket,
+            count() as total_queries,
+            avg(query_duration_ms) as avg_dur,
+            quantile(0.95)(query_duration_ms) as p95_dur,
+            countIf(type = 'Exception') as error_cnt
+        FROM system.query_log
+        WHERE event_date >= today() - 1 AND (type = 'QueryFinish' OR type = 'Exception')
+        GROUP BY bucket
+        ORDER BY bucket ASC",
+        interval_sql
+    );
+    
+    // Note: quantile assumes AggregateFunction or just enabled. If fails, fallback to avg.
+    // Default clickhouse installation usually supports quantile.
+
+    let results = execute_query_generic(&config, query).await?;
+    let mut history = Vec::new();
+
+    if let Some(first) = results.first() {
+        for row in &first.rows {
+            let get_str = |idx: usize| row.get(idx).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+            let get_u64 = |idx: usize| row.get(idx).and_then(|v| {
+                if v.is_u64() { v.as_u64() }
+                else if v.is_string() { v.as_str().and_then(|s| s.parse::<u64>().ok()) }
+                else { None }
+            }).unwrap_or(0);
+            let get_f64 = |idx: usize| row.get(idx).and_then(|v| {
+                if v.is_f64() { v.as_f64() }
+                else if v.is_u64() { v.as_u64().map(|i| i as f64) }
+                else if v.is_string() { v.as_str().and_then(|s| s.parse::<f64>().ok()) }
+                else { None }
+            }).unwrap_or(0.0);
+
+            history.push(QueryThroughput {
+                time_bucket: get_str(0),
+                query_count: get_u64(1),
+                avg_duration_ms: get_f64(2),
+                p95_duration_ms: get_f64(3),
+                error_count: get_u64(4),
+            });
+        }
+    }
+
+    Ok(history)
+}
+
 #[derive(Serialize, Debug)]
 pub struct TTLAudit {
     pub is_efficient: bool,

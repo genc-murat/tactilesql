@@ -4,6 +4,7 @@ import { renderClickHouseProfileManager } from '../components/Workbench/ClickHou
 import { renderClickHouseMetricsDashboard } from '../components/Workbench/ClickHouseMetricsDashboard.js';
 import { renderClickHouseKafkaMonitor } from '../components/Workbench/ClickHouseKafkaMonitor.js';
 import { renderClickHouseMergeMonitor } from '../components/Workbench/ClickHouseMergeMonitor.js';
+import { renderQueryPerformanceDashboard } from '../components/Workbench/QueryPerformanceDashboard.js';
 
 export function ClickHouseWorkbench() {
     let theme = ThemeManager.getCurrentTheme();
@@ -59,8 +60,9 @@ export function ClickHouseWorkbench() {
                     <!-- Sidebar Navigation -->
                     <div class="w-64 flex flex-col border-r ${isLight ? 'border-gray-200 bg-white' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3]' : (isOceanic ? 'border-ocean-border/30 bg-ocean-sidebar' : 'border-white/5 bg-[#0a0c10]'))}">
                         <div class="p-4 space-y-1">
-                            ${renderNavItem('query_dashboard', 'monitoring', 'Query Performance')}
-                            ${renderNavItem('metrics_dashboard', 'speed', 'System Metrics')}
+                            ${renderNavItem('query_dashboard', 'monitoring', 'Query Dashboard')}
+                            ${renderNavItem('performance_dashboard', 'speed', 'Query Performance')}
+                            ${renderNavItem('metrics_dashboard', 'bar_chart', 'System Metrics')}
                             ${renderNavItem('kafka_monitor', 'sync_alt', 'Kafka Engine')}
                             ${renderNavItem('merge_monitor', 'merge', 'Merges & Mutations')}
                             <div class="my-2 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}"></div>
@@ -140,6 +142,9 @@ export function ClickHouseWorkbench() {
         switch (activeTab) {
             case 'query_dashboard':
                 cleanupCurrentView = renderClickHouseQueryDashboard(contentContainer, connection);
+                break;
+            case 'performance_dashboard':
+                cleanupCurrentView = renderQueryPerformanceDashboard(contentContainer, connection);
                 break;
             case 'metrics_dashboard':
                 cleanupCurrentView = renderClickHouseMetricsDashboard(contentContainer, connection);
