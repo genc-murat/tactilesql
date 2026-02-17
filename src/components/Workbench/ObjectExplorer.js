@@ -170,16 +170,27 @@ export function ObjectExplorer() {
     let searchMatches = [];
     let currentMatchIndex = -1;
     let searchInputTimeout = null;
-    let searchContext = null; // normalized lookup maps for filtering & auto-expand
-    let highlightedId = null; // persistent highlight after search clear
+    let searchContext = null;
+    let highlightedId = null;
     let highlightTimeout = null;
-    let didStateChangeSinceLastTreeRender = true; // flag to force tree re-render
+    let didStateChangeSinceLastTreeRender = true;
+    let isSearchLoading = false;
+    let pendingSearchId = 0;
+    let showAllSearchResults = false;
+
+    const SEARCH_DEBOUNCE_MS = 300;
+    const getSearchMaxResults = () => SettingsManager.get(SETTINGS_PATHS.EXPLORER_SEARCH_MAX_RESULTS) ?? 50;
+    const getAutoExpandThreshold = () => SettingsManager.get(SETTINGS_PATHS.EXPLORER_SEARCH_AUTO_EXPAND_THRESHOLD) ?? 100;
 
     // --- Worker Setup ---
     const searchWorker = new Worker(new URL('../../workers/searchWorker.js', import.meta.url));
     const handleWorkerMessage = (e) => {
         const { type, payload } = e.data;
         if (type === 'SEARCH_COMPLETE') {
+            if (payload.searchId !== undefined && payload.searchId !== pendingSearchId) {
+                return;
+            }
+            isSearchLoading = false;
             searchMatches = payload.matches;
             // Reconstruct Sets/Maps from payload context
             if (payload.context) {
@@ -213,7 +224,8 @@ export function ObjectExplorer() {
                 const expandSet = (set, targetSet) => set.forEach(item => targetSet.add(item));
                 expandSet(searchContext.databases, expandedDbs);
                 // Only auto-expand tables if results are reasonable count
-                if (searchMatches.length <= 50) {
+                const autoExpandThreshold = getAutoExpandThreshold();
+                if (searchMatches.length <= autoExpandThreshold) {
                     searchContext.tables.forEach((tables, db) => {
                         expandedDbs.add(db);
                         tables.forEach(t => expandedTables.add(`${db}.${t}`));
@@ -1099,7 +1111,8 @@ export function ObjectExplorer() {
         const totalResults = searchMatches.length;
         const hasMatches = totalResults > 0;
         let renderedCount = 0;
-        const MAX_DISPLAY = 20;
+        const defaultMaxDisplay = getSearchMaxResults();
+        const MAX_DISPLAY = showAllSearchResults ? totalResults : defaultMaxDisplay;
 
         const headerText = isLight ? 'text-gray-500' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-500'));
         const subText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : 'text-gray-700'));
@@ -1149,7 +1162,8 @@ export function ObjectExplorer() {
                         <div class="flex items-center justify-between px-3 mb-3 sticky top-0 ${glassBg} py-2 border-b ${glassBorder} z-10 rounded-t-xl">
                             <div class="flex items-center gap-2">
                                 <span class="text-[9px] font-bold ${headerTextClass} tracking-tight">${totalResults} matching objects</span>
-                                ${totalResults > MAX_DISPLAY ? `<span class="text-[8px] px-1.5 py-0.5 rounded bg-white/5 border border-white/10 ${headerText}">Showing top ${MAX_DISPLAY}</span>` : ''}
+                                ${totalResults > defaultMaxDisplay && !showAllSearchResults ? `<button id="show-all-search-results" class="text-[8px] px-1.5 py-0.5 rounded bg-mysql-teal/20 hover:bg-mysql-teal/30 border border-mysql-teal/30 text-mysql-teal cursor-pointer transition-colors">Show all ${totalResults}</button>` : ''}
+                                ${showAllSearchResults && totalResults > defaultMaxDisplay ? `<button id="show-less-search-results" class="text-[8px] px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 border border-white/10 ${headerText} cursor-pointer transition-colors">Show less</button>` : ''}
                             </div>
                             <div class="flex items-center gap-3">
                                 <span class="text-[9px] ${headerText} opacity-60">↑↓ to navigate</span>
@@ -1313,21 +1327,28 @@ export function ObjectExplorer() {
     const updateSearchUI = () => {
         const searchWrapper = container.querySelector('#explorer-search-wrapper');
         if (searchWrapper) {
-            // Only update counts and buttons, avoidance full input re-render
             const controlsContainer = searchWrapper.querySelector('#search-controls-container');
             if (controlsContainer) {
                 const headerText = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500');
                 const iconColor = isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : 'text-gray-500');
 
-                controlsContainer.innerHTML = searchQuery ? `
-                    <span class="text-[9px] ${headerText} mr-1 whitespace-nowrap">${searchMatches.length > 0 ? `${currentMatchIndex + 1}/${searchMatches.length}` : '0/0'}</span>
-                    <button id="search-prev" class="material-symbols-outlined text-[14px] ${iconColor} hover:text-white cursor-pointer" title="Previous match">keyboard_arrow_up</button>
-                    <button id="search-next" class="material-symbols-outlined text-[14px] ${iconColor} hover:text-white cursor-pointer" title="Next match">keyboard_arrow_down</button>
-                    <button id="search-clear" class="material-symbols-outlined text-[14px] ${iconColor} hover:text-white cursor-pointer" title="Clear search">close</button>
-                ` : '';
+                if (isSearchLoading) {
+                    controlsContainer.innerHTML = `
+                        <span class="material-symbols-outlined text-[14px] ${iconColor} animate-spin">sync</span>
+                        <span class="text-[9px] ${headerText}">Searching...</span>
+                    `;
+                } else if (searchQuery) {
+                    controlsContainer.innerHTML = `
+                        <span class="text-[9px] ${headerText} mr-1 whitespace-nowrap">${searchMatches.length > 0 ? `${currentMatchIndex + 1}/${searchMatches.length}` : '0/0'}</span>
+                        <button id="search-prev" class="material-symbols-outlined text-[14px] ${iconColor} hover:text-white cursor-pointer" title="Previous match">keyboard_arrow_up</button>
+                        <button id="search-next" class="material-symbols-outlined text-[14px] ${iconColor} hover:text-white cursor-pointer" title="Next match">keyboard_arrow_down</button>
+                        <button id="search-clear" class="material-symbols-outlined text-[14px] ${iconColor} hover:text-white cursor-pointer" title="Clear search">close</button>
+                    `;
+                } else {
+                    controlsContainer.innerHTML = '';
+                }
             }
 
-            // Update toggles active state if needed
             const updateToggle = (id, isActive) => {
                 const btn = searchWrapper.querySelector(`#${id}`);
                 if (btn) {
@@ -1362,6 +1383,24 @@ export function ObjectExplorer() {
                 const idx = Number(searchItem.dataset.index);
                 await gotoMatch(idx);
                 clearSearch();
+                return;
+            }
+
+            const showAllResults = e.target.closest('#show-all-search-results');
+            if (showAllResults) {
+                e.stopPropagation();
+                showAllSearchResults = true;
+                didStateChangeSinceLastTreeRender = true;
+                render();
+                return;
+            }
+
+            const showLessResults = e.target.closest('#show-less-search-results');
+            if (showLessResults) {
+                e.stopPropagation();
+                showAllSearchResults = false;
+                didStateChangeSinceLastTreeRender = true;
+                render();
                 return;
             }
 
@@ -1575,7 +1614,7 @@ export function ObjectExplorer() {
             if (e.target.id === 'explorer-search') {
                 searchQuery = e.target.value;
                 if (searchInputTimeout) clearTimeout(searchInputTimeout);
-                searchInputTimeout = setTimeout(() => { performSearch(); }, 300);
+                searchInputTimeout = setTimeout(() => { performSearch(); }, SEARCH_DEBOUNCE_MS);
             }
         });
 
@@ -1636,6 +1675,8 @@ export function ObjectExplorer() {
         searchMatches = [];
         currentMatchIndex = -1;
         searchContext = null;
+        isSearchLoading = false;
+        showAllSearchResults = false;
         didStateChangeSinceLastTreeRender = true;
         searchWorker.postMessage({ type: 'CLEAR' });
         render();
@@ -1661,19 +1702,25 @@ export function ObjectExplorer() {
     };
 
     const performSearch = () => {
-        // Send search request to worker
-        // We also need to ensure worker has latest data. 
-        // We sync data on load/update, so here just send query.
+        if (!searchQuery.trim()) {
+            isSearchLoading = false;
+            updateSearchUI();
+            return;
+        }
+        isSearchLoading = true;
+        pendingSearchId++;
+        const searchId = pendingSearchId;
+        updateSearchUI();
         searchWorker.postMessage({
             type: 'SEARCH',
             payload: {
                 query: searchQuery,
                 isExact: isExactMatch,
                 isRegex: isRegexMatch,
-                isCaseSensitive: isCaseSensitive
+                isCaseSensitive: isCaseSensitive,
+                searchId
             }
         });
-        // Rendering happens in onmessage
     };
 
 

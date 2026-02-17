@@ -13,6 +13,7 @@ let searchQuery = '';
 let isExactMatch = false;
 let isRegexMatch = false;
 let isCaseSensitive = false;
+let currentSearchId = 0;
 
 // Helpers
 const normalize = (value = '') => value.toString().toLowerCase().trim();
@@ -33,47 +34,49 @@ self.onmessage = (e) => {
             if (payload.dbObjects) dbObjects = { ...dbObjects, ...payload.dbObjects };
             if (payload.tableDetails) tableDetails = { ...tableDetails, ...payload.tableDetails };
             // If we have a query, re-run search with new data
-            if (searchQuery) performSearch();
+            if (searchQuery) performSearch(currentSearchId);
             break;
 
         case 'UPDATE_DB_OBJECTS':
             // Payload: { db, objects }
             dbObjects[payload.db] = payload.objects;
-            if (searchQuery) performSearch();
+            if (searchQuery) performSearch(currentSearchId);
             break;
 
         case 'UPDATE_TABLE_DETAILS':
             // Payload: { key, details }
             tableDetails[payload.key] = payload.details;
-            if (searchQuery) performSearch();
+            if (searchQuery) performSearch(currentSearchId);
             break;
 
         case 'UPDATE_TABLE_DETAILS_BATCH':
             // Payload: { detailsMap } (key -> details)
             tableDetails = { ...tableDetails, ...payload.detailsMap };
-            if (searchQuery) performSearch();
+            if (searchQuery) performSearch(currentSearchId);
             break;
 
         case 'SEARCH':
-            // Payload: { query, isExact, isRegex, isCaseSensitive }
+            // Payload: { query, isExact, isRegex, isCaseSensitive, searchId }
             searchQuery = payload.query || '';
             isExactMatch = !!payload.isExact;
             isRegexMatch = !!payload.isRegex;
             isCaseSensitive = !!payload.isCaseSensitive;
-            performSearch();
+            currentSearchId = payload.searchId || Date.now();
+            performSearch(currentSearchId);
             break;
 
         case 'CLEAR':
             searchQuery = '';
             searchContext = null;
-            self.postMessage({ type: 'SEARCH_COMPLETE', payload: { matches: [], context: null } });
+            currentSearchId++;
+            self.postMessage({ type: 'SEARCH_COMPLETE', payload: { matches: [], context: null, searchId: currentSearchId } });
             break;
     }
 };
 
-const performSearch = () => {
+const performSearch = (searchId) => {
     if (!searchQuery.trim()) {
-        self.postMessage({ type: 'SEARCH_COMPLETE', payload: { matches: [], context: null } });
+        self.postMessage({ type: 'SEARCH_COMPLETE', payload: { matches: [], context: null, searchId } });
         return;
     }
 
@@ -85,7 +88,7 @@ const performSearch = () => {
             regex = new RegExp(searchQuery, isCaseSensitive ? '' : 'i');
         } catch (e) {
             // Invalid regex, return empty
-            self.postMessage({ type: 'SEARCH_COMPLETE', payload: { matches: [], context: null } });
+            self.postMessage({ type: 'SEARCH_COMPLETE', payload: { matches: [], context: null, searchId } });
             return;
         }
     }
@@ -222,5 +225,5 @@ const performSearch = () => {
         }
     });
 
-    self.postMessage({ type: 'SEARCH_COMPLETE', payload: { matches, context } });
+    self.postMessage({ type: 'SEARCH_COMPLETE', payload: { matches, context, searchId } });
 };

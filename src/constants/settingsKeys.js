@@ -9,6 +9,8 @@ export const SETTINGS_PATHS = Object.freeze({
     EXECUTION_QUERY_TIMEOUT_SECONDS: 'execution.queryTimeoutSeconds',
     RESULTS_MAX_ROWS_PER_QUERY: 'results.maxRowsPerQuery',
     EXPLORER_SHOW_SYSTEM_OBJECTS: 'explorer.showSystemObjects',
+    EXPLORER_SEARCH_MAX_RESULTS: 'explorer.searchMaxResults',
+    EXPLORER_SEARCH_AUTO_EXPAND_THRESHOLD: 'explorer.searchAutoExpandThreshold',
     PROFILER_ENABLED: 'profiler.enabled',
     PROFILER_EXPLAIN_ANALYZE: 'profiler.explainAnalyze',
     WORKBENCH_SNIPPETS: 'workbench.snippets',
@@ -37,6 +39,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
     }),
     explorer: Object.freeze({
         showSystemObjects: true,
+        searchMaxResults: 50,
+        searchAutoExpandThreshold: 100,
     }),
     profiler: Object.freeze({
         enabled: true,
@@ -59,6 +63,8 @@ export const SETTING_DEFAULTS = Object.freeze({
     [SETTINGS_PATHS.EXECUTION_QUERY_TIMEOUT_SECONDS]: 30,
     [SETTINGS_PATHS.RESULTS_MAX_ROWS_PER_QUERY]: 5000,
     [SETTINGS_PATHS.EXPLORER_SHOW_SYSTEM_OBJECTS]: true,
+    [SETTINGS_PATHS.EXPLORER_SEARCH_MAX_RESULTS]: 50,
+    [SETTINGS_PATHS.EXPLORER_SEARCH_AUTO_EXPAND_THRESHOLD]: 100,
     [SETTINGS_PATHS.PROFILER_ENABLED]: true,
     [SETTINGS_PATHS.PROFILER_EXPLAIN_ANALYZE]: true,
     [SETTINGS_PATHS.WORKBENCH_SNIPPETS]: true,
