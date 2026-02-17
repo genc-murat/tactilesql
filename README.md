@@ -29,6 +29,7 @@ TactileSQL is a modern, desktop-first SQL workbench for MySQL, PostgreSQL, Click
 - **Interactive Relational Data Exploration**: Navigate foreign keys directly from results with instant related data popups.
 - **Searchable Object Explorer**: Quickly find databases, tables, and columns with "Next/Prev" navigation, auto-expansion, and detailed **Column Tooltips**.
 - **Schema Designer** for columns, indexes, foreign keys, triggers, DDL, and stats.
+- **Cross-Connection Schema Diff**: Intelligent schema comparison across different host/connection configurations with **Alter Script Generation** and synchronization support.
 - **ER Diagram Editor**: Build schema relationship graphs, edit manual relations, and export as JSON/Mermaid/PNG/**GraphML**.
 - **Data Transfer/Migration Wizard**: Plan and run DB->DB and DB->file transfers with object-level controls, dry-run support, and run monitoring.
 - **Task Center**: End-to-end task orchestration for SQL scripts, backups, snapshots, and migrations with cron/interval triggers and DAG dependency support.
@@ -101,6 +102,8 @@ The Rust backend exposes a comprehensive set of commands for cross-database oper
 ### Database Schema
 - `get_databases`, `get_schemas`, `get_tables`, `get_views`
 - `get_table_schema`, `get_table_ddl`, `get_table_stats`
+- `get_table_schema_for_config`, `get_table_ddl_for_config` — Fetch metadata for specific configurations (used in Schema Diff)
+- `compare_schemas_cross_connection` — Deep-comparison of schemas across different database connections
 - `get_table_indexes`, `get_table_foreign_keys`, `get_table_primary_keys`
 - `get_procedures`, `get_functions`, `get_triggers`, `get_events`
 
