@@ -17,22 +17,31 @@ export function NavBar() {
         const navItems = [
             { path: '/workbench', label: 'WORKBENCH', icon: 'terminal' },
             {
-                label: 'INSIGHTS',
+                label: 'ANALYZE',
                 icon: 'analytics',
-                id: 'menu-insights',
+                id: 'menu-analyze',
                 children: [
-                    { type: 'header', label: 'Performance' },
                     { path: '/workload', label: 'WORKLOAD HUB', icon: 'speed' },
                     { path: '/anomalies', label: 'ANOMALIES', icon: 'warning' },
                     { path: '/index-lifecycle', label: 'INDEX LIFECYCLE', icon: 'timeline' },
-
-                    { type: 'header', label: 'Schema & Design' },
+                ]
+            },
+            {
+                label: 'DESIGN',
+                icon: 'design_services',
+                id: 'menu-design',
+                children: [
                     { path: '/schema-tracker', label: 'SCHEMA TRACKER', icon: 'history' },
                     { path: '/er-diagram', label: 'ER DIAGRAM', icon: 'schema' },
                     { path: '/schema', label: 'UI DESIGNER', icon: 'design_services' },
                     { path: '/diff', label: 'SCHEMA DIFF', icon: 'compare_arrows' },
-
-                    { type: 'header', label: 'Deep Analysis' },
+                ]
+            },
+            {
+                label: 'DEEP DIVE',
+                icon: 'account_tree',
+                id: 'menu-deepdive',
+                children: [
                     { path: '/quality-analyzer', label: 'QUALITY VUE', icon: 'fact_check' },
                     { path: '/stories', label: 'QUERY STORIES', icon: 'history_edu' },
                     { path: '/dependencies', label: 'DEP GRAPH', icon: 'account_tree' },
