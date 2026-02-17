@@ -1783,6 +1783,105 @@ pub async fn get_query_metrics_history(config: ConnectionConfig, interval_minute
     Ok(history)
 }
 
+// --- Part Manager ---
+
+#[derive(Serialize, Debug)]
+pub struct AdvancedPartInfo {
+    pub name: String,
+    pub partition: String,
+    pub active: bool,
+    pub rows: u64,
+    pub bytes_on_disk: u64,
+    pub modification_time: String,
+    pub disk_name: String,
+    pub path: String,
+}
+
+#[tauri::command]
+pub async fn get_clickhouse_parts(config: ConnectionConfig, database: String, table: String) -> Result<Vec<AdvancedPartInfo>, String> {
+    let query = format!(
+        "SELECT 
+            name, 
+            partition, 
+            active, 
+            rows, 
+            bytes_on_disk, 
+            toString(modification_time),
+            disk_name,
+            path 
+        FROM system.parts 
+        WHERE database = '{}' AND table = '{}'
+        ORDER BY modification_time DESC",
+        database.replace('\'', "\\'"),
+        table.replace('\'', "\\'")
+    );
+
+    let results = execute_query_generic(&config, query).await?;
+    let mut parts = Vec::new();
+
+    if let Some(first) = results.first() {
+        for row in &first.rows {
+            let get_str = |idx: usize| row.get(idx).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+            let get_u64 = |idx: usize| row.get(idx).and_then(|v| {
+                if v.is_u64() { v.as_u64() }
+                else if v.is_string() { v.as_str().and_then(|s| s.parse::<u64>().ok()) }
+                else { None }
+            }).unwrap_or(0);
+            let get_bool = |idx: usize| row.get(idx).and_then(|v| {
+                if v.is_boolean() { v.as_bool() } // If json boolean
+                else if v.is_u64() { Some(v.as_u64().unwrap_or(0) > 0) } // If ClickHouse active is 1/0
+                else { Some(false) }
+            }).unwrap_or(false);
+
+            parts.push(AdvancedPartInfo {
+                name: get_str(0),
+                partition: get_str(1),
+                active: get_bool(2),
+                rows: get_u64(3),
+                bytes_on_disk: get_u64(4),
+                modification_time: get_str(5),
+                disk_name: get_str(6),
+                path: get_str(7),
+            });
+        }
+    }
+
+    Ok(parts)
+}
+
+#[tauri::command]
+pub async fn manage_clickhouse_part(config: ConnectionConfig, database: String, table: String, partition_id: String, action: String) -> Result<String, String> {
+    // action: DROP, DETACH, ATTACH
+    let valid_actions = vec!["DROP", "DETACH", "ATTACH"];
+    let action_upper = action.to_uppercase();
+    
+    if !valid_actions.contains(&action_upper.as_str()) {
+        return Err(format!("Invalid action: {}", action));
+    }
+
+    // Safety: partition_id should be escaped or validated. 
+    // In ClickHouse PARTITION ID 'xxx' is safe if quoted properly.
+    // If using PART "name", it's slightly different.
+    // Let's assume user passes PARTITION ID for simplicity or PART name.
+    // The UI should clarify. Let's support PARTITION manipulation for now as it's safer/more common.
+    
+    // NOTE: 'partition_id' arg here is expected to be a valid partition expression or ID.
+    // If it's a PART name, the syntax is DROP PART 'name'.
+    // If it's a PARTITION ID, the syntax is DROP PARTITION ID 'id'.
+    // Let's assume we operate on PARTITIONS via their IDs for now.
+    
+    let query = format!(
+        "ALTER TABLE `{}`.`{}` {} PARTITION ID '{}'",
+        database.replace('`', "\\`"),
+        table.replace('`', "\\`"),
+        action_upper,
+        partition_id.replace('\'', "\\'")
+    );
+
+    execute_query_generic(&config, query).await?;
+    Ok(format!("Successfully performed {} on partition", action_upper))
+}
+
 #[derive(Serialize, Debug)]
 pub struct TTLAudit {
     pub is_efficient: bool,

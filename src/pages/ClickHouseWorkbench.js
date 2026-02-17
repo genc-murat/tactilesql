@@ -4,6 +4,7 @@ import { renderClickHouseProfileManager } from '../components/Workbench/ClickHou
 import { renderClickHouseMetricsDashboard } from '../components/Workbench/ClickHouseMetricsDashboard.js';
 import { renderClickHouseKafkaMonitor } from '../components/Workbench/ClickHouseKafkaMonitor.js';
 import { renderClickHouseMergeMonitor } from '../components/Workbench/ClickHouseMergeMonitor.js';
+import { renderClickHousePartManager } from '../components/Workbench/ClickHousePartManager.js';
 import { renderQueryPerformanceDashboard } from '../components/Workbench/QueryPerformanceDashboard.js';
 
 export function ClickHouseWorkbench() {
@@ -64,6 +65,7 @@ export function ClickHouseWorkbench() {
                             ${renderNavItem('performance_dashboard', 'speed', 'Query Performance')}
                             ${renderNavItem('metrics_dashboard', 'bar_chart', 'System Metrics')}
                             ${renderNavItem('kafka_monitor', 'sync_alt', 'Kafka Engine')}
+                            ${renderNavItem('part_manager', 'hard_drive', 'Storage & Parts')}
                             ${renderNavItem('merge_monitor', 'merge', 'Merges & Mutations')}
                             <div class="my-2 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}"></div>
                             ${renderNavItem('profiles', 'settings_account_box', 'Settings Profiles')}
@@ -151,6 +153,9 @@ export function ClickHouseWorkbench() {
                 break;
             case 'kafka_monitor':
                 cleanupCurrentView = renderClickHouseKafkaMonitor(contentContainer, connection);
+                break;
+            case 'part_manager':
+                cleanupCurrentView = renderClickHousePartManager(contentContainer, connection, context.database, context.table);
                 break;
             case 'merge_monitor':
                 cleanupCurrentView = renderClickHouseMergeMonitor(contentContainer, connection, context.database, context.table);

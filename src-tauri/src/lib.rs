@@ -317,6 +317,8 @@ pub fn run() {
             clickhouse::get_clickhouse_system_metrics,
             clickhouse::get_top_queries,
             clickhouse::get_query_metrics_history,
+            clickhouse::get_clickhouse_parts,
+            clickhouse::manage_clickhouse_part,
             // ClickHouse User Management
             clickhouse::get_clickhouse_users,
             clickhouse::create_clickhouse_user,
