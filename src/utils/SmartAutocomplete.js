@@ -49,6 +49,7 @@ import {
     getVisibleTablesAtPosition,
     resolveAlias,
 } from './autocomplete/parser.js';
+import { TYPE_ICONS, getTypeInfo } from '../components/Workbench/editor/quickInfo.js';
 
 const STORAGE_KEYS = {
     FREQUENCY: 'tactilesql_autocomplete_frequency',
@@ -71,11 +72,14 @@ const STORAGE_KEYS = {
 function fuzzyMatch(input, target) {
     if (!input || !target) return { match: false, score: 0 };
     
-    const inputLower = input.toLowerCase();
-    const targetLower = target.toLowerCase();
+    const inputStr = String(input);
+    const targetStr = String(target);
+    
+    const inputLower = inputStr.toLowerCase();
+    const targetLower = targetStr.toLowerCase();
     
     if (targetLower === inputLower) return { match: true, score: 100 };
-    if (targetLower.startsWith(inputLower)) return { match: true, score: 80 + input.length };
+    if (targetLower.startsWith(inputLower)) return { match: true, score: 80 + inputStr.length };
     
     let inputIdx = 0;
     let score = 0;
@@ -86,9 +90,9 @@ function fuzzyMatch(input, target) {
         const inputChar = inputLower[inputIdx];
         
         const isBoundary = i === 0 || 
-            target[i - 1] === '_' || 
-            target[i - 1] === '-' ||
-            (target[i - 1] && target[i - 1].toLowerCase() === target[i - 1] && target[i].toUpperCase() === target[i]);
+            targetStr[i - 1] === '_' || 
+            targetStr[i - 1] === '-' ||
+            (targetStr[i - 1] && targetStr[i - 1].toLowerCase() === targetStr[i - 1] && targetStr[i].toUpperCase() === targetStr[i]);
         
         if (targetChar === inputChar) {
             score += prevWasBoundary ? 3 : 1;
@@ -99,7 +103,7 @@ function fuzzyMatch(input, target) {
     }
     
     if (inputIdx === inputLower.length) {
-        return { match: true, score: score + input.length };
+        return { match: true, score: score + inputStr.length };
     }
     
     return { match: false, score: 0 };
@@ -112,16 +116,18 @@ function fuzzyMatch(input, target) {
 export function matchesInputEnhanced(input, target) {
     if (!input || !target) return false;
     
-    const inputLower = input.toLowerCase();
-    const targetLower = target.toLowerCase();
+    const inputStr = String(input);
+    const targetStr = String(target);
+    const inputLower = inputStr.toLowerCase();
+    const targetLower = targetStr.toLowerCase();
     
     if (targetLower.startsWith(inputLower)) return true;
     
-    if (matchesAbbreviation(inputLower, target)) return true;
+    if (matchesAbbreviation(inputLower, targetStr)) return true;
     
-    if (input.length >= 3) {
+    if (inputStr.length >= 3) {
         const fuzzy = fuzzyMatch(inputLower, targetLower);
-        if (fuzzy.match && fuzzy.score >= input.length * 2) return true;
+        if (fuzzy.match && fuzzy.score >= inputStr.length * 2) return true;
     }
     
     return false;
@@ -133,16 +139,18 @@ export function matchesInputEnhanced(input, target) {
 export function getMatchScore(input, target) {
     if (!input || !target) return 0;
     
-    const inputLower = input.toLowerCase();
-    const targetLower = target.toLowerCase();
+    const inputStr = String(input);
+    const targetStr = String(target);
+    const inputLower = inputStr.toLowerCase();
+    const targetLower = targetStr.toLowerCase();
     
     if (targetLower === inputLower) return 100;
-    if (targetLower.startsWith(inputLower)) return 80 + input.length;
+    if (targetLower.startsWith(inputLower)) return 80 + inputStr.length;
     
-    const abbrev = getAbbreviation(target);
-    if (abbrev.startsWith(inputLower)) return 60 + input.length;
+    const abbrev = getAbbreviation(targetStr);
+    if (abbrev.startsWith(inputLower)) return 60 + inputStr.length;
     
-    if (input.length >= 3) {
+    if (inputStr.length >= 3) {
         const fuzzy = fuzzyMatch(inputLower, targetLower);
         if (fuzzy.match) return fuzzy.score;
     }
@@ -252,25 +260,22 @@ class SuggestionCache {
  */
 function getAbbreviation(str) {
     if (!str) return '';
+    const strVal = String(str);
 
-    // Extract word boundaries: start char + chars after _, -, or uppercase transitions
     const abbrev = [];
     let prevWasLower = false;
 
-    for (let i = 0; i < str.length; i++) {
-        const char = str[i];
+    for (let i = 0; i < strVal.length; i++) {
+        const char = strVal[i];
         const isUpper = /[A-Z]/.test(char);
         const isSeparator = char === '_' || char === '-';
 
         if (i === 0 && !isSeparator) {
-            // Always include first character
             abbrev.push(char.toLowerCase());
         } else if (isSeparator) {
-            // Skip separator but mark next char as boundary
             prevWasLower = false;
             continue;
-        } else if ((prevWasLower && isUpper) || (i > 0 && (str[i - 1] === '_' || str[i - 1] === '-'))) {
-            // Boundary: lowercase→uppercase transition OR after separator
+        } else if ((prevWasLower && isUpper) || (i > 0 && (strVal[i - 1] === '_' || strVal[i - 1] === '-'))) {
             abbrev.push(char.toLowerCase());
         }
 
@@ -280,28 +285,21 @@ function getAbbreviation(str) {
     return abbrev.join('');
 }
 
-/**
- * Check if input matches target via abbreviation
- * @param {string} input - User's typed abbreviation (e.g., "gau")
- * @param {string} target - Full name to match against (e.g., "getActiveUsers")
- * @returns {boolean} - True if input matches the abbreviation pattern
- */
 export function matchesAbbreviation(input, target) {
     if (!input || !target) return false;
 
-    const inputLower = input.toLowerCase();
-    const targetLower = target.toLowerCase();
+    const inputStr = String(input);
+    const targetStr = String(target);
+    const inputLower = inputStr.toLowerCase();
+    const targetLower = targetStr.toLowerCase();
 
-    // First, check standard prefix match
     if (targetLower.startsWith(inputLower)) {
         return true;
     }
 
-    // Then check abbreviation match
-    const abbrev = getAbbreviation(target);
+    const abbrev = getAbbreviation(targetStr);
     const matches = abbrev.startsWith(inputLower);
 
-    // Abbreviation must start with input
     return matches;
 }
 
@@ -1163,11 +1161,49 @@ export class SmartAutocomplete {
     async #getDotSuggestions(word) {
         const suggestions = [];
         const parts = word.split('.');
+        const numParts = parts.filter(p => p !== '').length;
+        
+        console.log(`[DotSuggestions] word="${word}" parts=${parts.length} numParts=${numParts}`, parts);
+
+        if (numParts === 0) {
+            return suggestions;
+        }
+
+        if (numParts >= 2) {
+            const dbName = parts[0];
+            const tableName = parts[1];
+            const columnFilter = (parts[2] || '').toLowerCase();
+            
+            console.log(`[DotSuggestions] 3-part notation: db=${dbName}, table=${tableName}, filter=${columnFilter}`);
+            
+            const columns = await this.loadColumns(dbName, tableName);
+            console.log(`[DotSuggestions] Loaded ${columns.length} columns for ${dbName}.${tableName}`);
+            
+            for (const col of columns) {
+                if (!columnFilter || matchesInput(columnFilter, col)) {
+                    const details = this.#getColumnDetail(dbName, tableName, col);
+                    suggestions.push(this.#createColumnSuggestion(col, details, `${dbName}.${tableName}.${col}`));
+                }
+            }
+            
+            if (!columnFilter || '*'.startsWith(columnFilter)) {
+                suggestions.unshift({
+                    type: 'column',
+                    value: `${dbName}.${tableName}.*`,
+                    display: '*',
+                    detail: 'All columns',
+                    icon: 'select_all',
+                    color: 'text-gray-400',
+                });
+            }
+            
+            return suggestions;
+        }
+
         const prefix = parts[0];
         const prefixLower = prefix.toLowerCase();
         const suffix = (parts[1] || '').toLowerCase();
 
-        // FIRST: For PostgreSQL, check if prefix is a schema name
         if (isPostgreSQL()) {
             await this.loadSchemas();
             const matchedSchema = this.#schemas.find(s => s.toLowerCase() === prefixLower);
@@ -1190,7 +1226,6 @@ export class SmartAutocomplete {
             }
         }
 
-        // SECOND: Check if prefix is a database name (for MySQL)
         await this.loadDatabases();
         const matchedDb = this.#databases.find(d => d.toLowerCase() === prefixLower);
         if (matchedDb) {
@@ -1211,17 +1246,14 @@ export class SmartAutocomplete {
             return suggestions;
         }
 
-        // SECOND: Check if prefix is an alias (use enhanced resolution)
         const aliasInfo = this.#parsedQuery?.resolveAlias?.(prefix);
         if (aliasInfo) {
             const tableName = aliasInfo.table;
 
-            // Handle CTE references
             if (aliasInfo.type === 'cte') {
                 return this.#getCTEColumnSuggestions(tableName, prefix, suffix);
             }
 
-            // Get database for this alias
             const db = aliasInfo.database || this.#currentDb;
 
             console.log(`Prefix is an alias (resolved): ${prefix} -> ${db}.${tableName}`);
@@ -1236,7 +1268,6 @@ export class SmartAutocomplete {
                 }
             }
 
-            // Also add * option
             if ('*'.startsWith(suffix) || !suffix) {
                 suggestions.unshift({
                     type: 'column',
@@ -1251,7 +1282,6 @@ export class SmartAutocomplete {
             return suggestions;
         }
 
-        // THIRD: Check if prefix is a table in current database
         const tables = await this.loadTables(this.#currentDb);
         const matchedTable = tables.find(t => t.toLowerCase() === prefixLower);
         if (matchedTable) {
@@ -1264,7 +1294,6 @@ export class SmartAutocomplete {
                 }
             }
 
-            // Also add * option
             if ('*'.startsWith(suffix) || !suffix) {
                 suggestions.unshift({
                     type: 'column',
@@ -1917,9 +1946,13 @@ export class SmartAutocomplete {
         const isPK = details?.column_key === 'PRI';
         const isFK = details?.column_key === 'MUL';
         const isUnique = details?.column_key === 'UNI';
+        const columnType = details?.column_type || details?.data_type || '';
 
-        let icon = 'view_column';
-        let color = 'text-orange-400';
+        const typeInfo = getTypeInfo(columnType);
+
+        let icon = typeInfo.icon;
+        let color = typeInfo.color;
+        let typeCategory = typeInfo.category;
 
         if (isPK) {
             icon = 'key';
@@ -1936,12 +1969,14 @@ export class SmartAutocomplete {
             type: 'column',
             value: value,
             display: column,
-            detail: details?.column_type || '',
+            detail: columnType,
             icon,
             color,
             isKey: isPK,
             isFK,
             isNullable: details?.is_nullable === true,
+            typeCategory,
+            dataType: columnType,
         };
     }
 
@@ -1978,11 +2013,12 @@ export class SmartAutocomplete {
 
     #calculateScore(suggestion, word) {
         let score = 0;
-        const wordLower = word.toLowerCase();
-        const valueLower = (suggestion.display || suggestion.value).toLowerCase();
+        const wordLower = String(word || '').toLowerCase();
+        const displayValue = String(suggestion.display || suggestion.value || '');
+        const valueLower = displayValue.toLowerCase();
 
         // Use enhanced fuzzy matching score
-        const matchScore = getMatchScore(wordLower, suggestion.display || suggestion.value);
+        const matchScore = getMatchScore(wordLower, displayValue);
         score += matchScore;
 
         // Priority bonus (for FK hints, snippets, etc.)
