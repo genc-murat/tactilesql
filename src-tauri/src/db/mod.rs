@@ -60,3 +60,6 @@ pub use objects::*;
 pub mod users;
 pub use users::*;
 
+pub mod schema_compare;
+pub use schema_compare::*;
+

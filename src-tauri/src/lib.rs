@@ -476,6 +476,15 @@ pub fn run() {
             task_manager::commands::pause_scheduler,
             task_manager::commands::resume_scheduler,
             task_manager::commands::disable_scheduler,
+            // Schema Compare (Cross-Connection)
+            db::get_databases_for_config,
+            db::get_tables_for_config,
+            db::get_views_for_config,
+            db::get_triggers_for_config,
+            db::get_procedures_for_config,
+            db::compare_schemas_cross_connection,
+            db::get_table_schema_for_config,
+            db::get_table_ddl_for_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
