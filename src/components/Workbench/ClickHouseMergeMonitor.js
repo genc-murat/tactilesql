@@ -8,17 +8,8 @@ import { toastError } from '../../utils/Toast.js';
  * @param {string} [database] - optional database filter
  * @param {string} [table] - optional table filter
  */
-export function showClickHouseMergeMonitor(connection, database, table) {
-    const overlay = document.createElement('div');
-    overlay.className = 'fixed inset-0 bg-black/60 backdrop-blur-md z-[9999] flex items-center justify-center p-8 text-sm';
-    overlay.id = 'clickhouse-merge-monitor-modal';
-
-    // Remove if already open
-    document.getElementById('clickhouse-merge-monitor-modal')?.remove();
-
-    const modal = document.createElement('div');
-    modal.className = 'bg-[var(--bg-secondary)] w-full max-w-7xl h-[90vh] rounded-xl shadow-2xl flex flex-col overflow-hidden border border-[var(--border-color)]';
-    overlay.appendChild(modal);
+export function renderClickHouseMergeMonitor(container, connection, database, table) {
+    container.innerHTML = ''; // Clear previous
 
     // --- State ---
     let activeTab = 'merges';
@@ -47,12 +38,9 @@ export function showClickHouseMergeMonitor(connection, database, table) {
             <button id="refresh-merge" class="px-3 py-1.5 bg-emerald-500/10 text-emerald-400 rounded text-xs hover:bg-emerald-500/20 transition-all font-bold uppercase tracking-wider flex items-center gap-1.5 border border-emerald-500/20">
                 <span class="material-symbols-outlined text-sm">refresh</span> Refresh
             </button>
-            <button id="close-merge" class="p-2 rounded hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
-                <span class="material-symbols-outlined">close</span>
-            </button>
         </div>
     `;
-    modal.appendChild(header);
+    container.appendChild(header);
 
     // --- Tabs ---
     const tabBar = document.createElement('div');
@@ -75,7 +63,7 @@ export function showClickHouseMergeMonitor(connection, database, table) {
         });
         tabBar.appendChild(btn);
     });
-    modal.appendChild(tabBar);
+    container.appendChild(tabBar);
 
     const updateTabs = () => {
         tabBar.querySelectorAll('button').forEach(b => {
@@ -89,20 +77,7 @@ export function showClickHouseMergeMonitor(connection, database, table) {
     // --- Content ---
     const contentArea = document.createElement('div');
     contentArea.className = 'flex-1 overflow-auto p-0 bg-[var(--bg-secondary)] relative';
-    modal.appendChild(contentArea);
-
-    document.body.appendChild(overlay);
-
-    // --- Close handlers ---
-    const close = () => {
-        if (refreshTimer) clearInterval(refreshTimer);
-        overlay.remove();
-        document.removeEventListener('keydown', escHandler);
-    };
-    header.querySelector('#close-merge').addEventListener('click', close);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
-    const escHandler = (e) => { if (e.key === 'Escape') close(); };
-    document.addEventListener('keydown', escHandler);
+    container.appendChild(contentArea);
 
     // --- Auto-Refresh ---
     header.querySelector('#merge-auto-refresh').addEventListener('change', (e) => {
@@ -334,4 +309,8 @@ export function showClickHouseMergeMonitor(connection, database, table) {
     // --- Initialize ---
     loadData(false);
     if (autoRefresh) startAutoRefresh();
+
+    return () => {
+        if (refreshTimer) clearInterval(refreshTimer);
+    };
 }

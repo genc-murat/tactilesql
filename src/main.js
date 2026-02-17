@@ -178,6 +178,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 )
         },
         '/help': { component: lazyLoad(() => import('./pages/Help.js'), 'Help') },
+        '/clickhouse-workbench': { component: lazyLoad(() => import('./pages/ClickHouseWorkbench.js'), 'ClickHouseWorkbench') },
     };
 
     const router = new Router(routes, mainContent);

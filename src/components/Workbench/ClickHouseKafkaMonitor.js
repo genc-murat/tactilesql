@@ -1,14 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import { toastError } from '../../utils/Toast.js';
 
-export function showClickHouseKafkaMonitor(connection) {
-    const overlay = document.createElement('div');
-    overlay.className = 'fixed inset-0 bg-black/60 backdrop-blur-md z-[9999] flex items-center justify-center p-8 text-sm';
-    overlay.id = 'clickhouse-kafka-monitor-modal';
-
-    const modal = document.createElement('div');
-    modal.className = 'bg-[var(--bg-secondary)] w-full max-w-6xl h-[90vh] rounded-xl shadow-2xl flex flex-col overflow-hidden border border-[var(--border-color)]';
-    overlay.appendChild(modal);
+export function renderClickHouseKafkaMonitor(container, connection) {
+    container.innerHTML = ''; // Clear previous
 
     // --- Header ---
     const header = document.createElement('div');
@@ -25,25 +19,14 @@ export function showClickHouseKafkaMonitor(connection) {
             <button id="refresh-kafka" class="px-3 py-1.5 bg-blue-500/10 text-blue-400 rounded text-xs hover:bg-blue-500/20 transition-all font-bold uppercase tracking-wider flex items-center gap-1.5 border border-blue-500/20">
                 <span class="material-symbols-outlined text-sm">refresh</span> Refresh
             </button>
-            <button id="close-kafka" class="p-2 rounded hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
-                <span class="material-symbols-outlined">close</span>
-            </button>
         </div>
     `;
-    modal.appendChild(header);
+    container.appendChild(header);
 
     // --- Content Area ---
     const contentArea = document.createElement('div');
     contentArea.className = 'flex-1 overflow-auto p-0 bg-[var(--bg-secondary)] relative';
-    modal.appendChild(contentArea);
-
-    document.body.appendChild(overlay);
-
-    const close = () => overlay.remove();
-    header.querySelector('#close-kafka').addEventListener('click', close);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
-    const escHandler = (e) => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', escHandler); } };
-    document.addEventListener('keydown', escHandler);
+    container.appendChild(contentArea);
 
     // Logic
     const loadStats = async () => {

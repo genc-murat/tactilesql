@@ -3,14 +3,8 @@ import { Dialog } from '../UI/Dialog.js';
 import { toastSuccess, toastError } from '../../utils/Toast.js';
 import { ThemeManager } from '../../utils/ThemeManager.js';
 
-export function showClickHouseProfileManager(connection) {
-    const overlay = document.createElement('div');
-    overlay.className = 'fixed inset-0 bg-black/60 backdrop-blur-md z-[9999] flex items-center justify-center p-8 text-sm';
-    overlay.id = 'clickhouse-profile-manager-modal';
-
-    const modal = document.createElement('div');
-    modal.className = 'bg-[var(--bg-secondary)] w-full max-w-6xl h-[85vh] rounded-xl shadow-2xl flex flex-col overflow-hidden border border-[var(--border-color)]';
-    overlay.appendChild(modal);
+export function renderClickHouseProfileManager(container, connection) {
+    container.innerHTML = ''; // Clear previous
 
     // --- Header ---
     const header = document.createElement('div');
@@ -22,11 +16,8 @@ export function showClickHouseProfileManager(connection) {
             </div>
             <h2 class="font-bold text-[var(--text-primary)] uppercase tracking-tight">Settings Profiles</h2>
         </div>
-        <button id="close-btn" class="p-2 hover:bg-[var(--bg-secondary)] rounded-lg transition-colors text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
-            <span class="material-symbols-outlined">close</span>
-        </button>
     `;
-    modal.appendChild(header);
+    container.appendChild(header);
 
     // --- Toolbar ---
     const toolbar = document.createElement('div');
@@ -41,7 +32,7 @@ export function showClickHouseProfileManager(connection) {
             Refresh
         </button>
     `;
-    modal.appendChild(toolbar);
+    container.appendChild(toolbar);
 
     // --- Content ---
     const content = document.createElement('div');
@@ -75,16 +66,12 @@ export function showClickHouseProfileManager(connection) {
     `;
     content.appendChild(rightPanel);
 
-    modal.appendChild(content);
-    document.body.appendChild(overlay);
+    container.appendChild(content);
 
     // --- Logic ---
     let profiles = [];
     let selectedProfile = null;
 
-    const close = () => overlay.remove();
-    header.querySelector('#close-btn').onclick = close;
-    overlay.onclick = (e) => { if (e.target === overlay) close(); };
 
     const loadProfiles = async () => {
         const listContainer = leftPanel.querySelector('#profiles-list');

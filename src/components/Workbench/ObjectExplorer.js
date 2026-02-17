@@ -10,10 +10,6 @@ import { SETTINGS_PATHS } from '../../constants/settingsKeys.js';
 import { createContextMenu, removeContextMenu } from '../../utils/ContextMenu.js';
 import { smartAutocomplete } from '../../utils/SmartAutocomplete.js';
 import { showClickHouseTableDetails } from './ClickHouseTableDetails.js';
-import { showClickHouseQueryDashboard } from './ClickHouseQueryDashboard.js';
-import { showClickHouseKafkaMonitor } from './ClickHouseKafkaMonitor.js';
-import { showClickHouseMergeMonitor } from './ClickHouseMergeMonitor.js';
-import { showClickHouseMetricsDashboard } from './ClickHouseMetricsDashboard.js';
 import { showDataLineage } from './DataLineage.js';
 import { showTableMaintenanceModal } from '../UI/TableMaintenanceModal.js';
 import { showTableMaintenanceWizard } from '../UI/TableMaintenanceWizard.js';
@@ -26,7 +22,6 @@ import { showMssqlIndexManagerModal } from '../UI/MssqlIndexManagerModal.js';
 import { showMssqlAgentManagerModal } from '../UI/MssqlAgentManagerModal.js';
 import { showMssqlStorageModal } from '../UI/MssqlStorageModal.js';
 import { showClickHouseUserManager } from './ClickHouseUserManager.js';
-import { showClickHouseProfileManager } from './ClickHouseProfileManager.js';
 
 
 export function ObjectExplorer() {
@@ -1862,8 +1857,10 @@ export function ObjectExplorer() {
                         icon: 'settings_account_box',
                         iconColor: isDawn ? 'text-[#c4a7e7]' : 'text-purple-500',
                         onClick: () => {
-                            const config = connections.find(c => c.id === id);
-                            if (config) showClickHouseProfileManager(config);
+                            localStorage.setItem('clickhouse_workbench_tab', 'profiles');
+                            localStorage.removeItem('clickhouse_workbench_context');
+                            window.dispatchEvent(new CustomEvent('tactilesql:clickhouse-nav', { detail: { tab: 'profiles' } }));
+                            window.location.hash = '/clickhouse-workbench';
                         }
                     }
                 ] : []),
@@ -2028,13 +2025,10 @@ export function ObjectExplorer() {
                     icon: 'monitoring',
                     iconColor: isDawn ? 'text-[#c4a7e7]' : 'text-purple-500',
                     onClick: () => {
-                        // Find connection config
-                        const config = connections.find(c => c.id === activeConnectionId);
-                        if (config) {
-                            showClickHouseQueryDashboard(config);
-                        } else {
-                            Dialog.alert('Active connection not found', 'Error');
-                        }
+                        localStorage.setItem('clickhouse_workbench_tab', 'query_dashboard');
+                        localStorage.removeItem('clickhouse_workbench_context');
+                        window.dispatchEvent(new CustomEvent('tactilesql:clickhouse-nav', { detail: { tab: 'query_dashboard' } }));
+                        window.location.hash = '/clickhouse-workbench';
                     }
                 },
                 {
@@ -2042,10 +2036,10 @@ export function ObjectExplorer() {
                     icon: 'speed',
                     iconColor: isDawn ? 'text-[#31748f]' : 'text-blue-500',
                     onClick: () => {
-                        const config = connections.find(c => c.id === activeConnectionId);
-                        if (config) {
-                            showClickHouseMetricsDashboard(config);
-                        }
+                        localStorage.setItem('clickhouse_workbench_tab', 'metrics_dashboard');
+                        localStorage.removeItem('clickhouse_workbench_context');
+                        window.dispatchEvent(new CustomEvent('tactilesql:clickhouse-nav', { detail: { tab: 'metrics_dashboard' } }));
+                        window.location.hash = '/clickhouse-workbench';
                     }
                 },
                 {
@@ -2053,10 +2047,10 @@ export function ObjectExplorer() {
                     icon: 'sync_alt',
                     iconColor: isDawn ? 'text-[#ea9d34]' : 'text-orange-500',
                     onClick: () => {
-                        const config = connections.find(c => c.id === activeConnectionId);
-                        if (config) {
-                            showClickHouseKafkaMonitor(config);
-                        }
+                        localStorage.setItem('clickhouse_workbench_tab', 'kafka_monitor');
+                        localStorage.removeItem('clickhouse_workbench_context');
+                        window.dispatchEvent(new CustomEvent('tactilesql:clickhouse-nav', { detail: { tab: 'kafka_monitor' } }));
+                        window.location.hash = '/clickhouse-workbench';
                     }
                 },
                 {
@@ -2064,10 +2058,11 @@ export function ObjectExplorer() {
                     icon: 'merge',
                     iconColor: isDawn ? 'text-[#56949f]' : 'text-emerald-500',
                     onClick: () => {
-                        const config = connections.find(c => c.id === activeConnectionId);
-                        if (config) {
-                            showClickHouseMergeMonitor(config, dbName);
-                        }
+                        localStorage.setItem('clickhouse_workbench_tab', 'merge_monitor');
+                        const context = { database: dbName };
+                        localStorage.setItem('clickhouse_workbench_context', JSON.stringify(context));
+                        window.dispatchEvent(new CustomEvent('tactilesql:clickhouse-nav', { detail: { tab: 'merge_monitor', context } }));
+                        window.location.hash = '/clickhouse-workbench';
                     }
                 },
                 {
@@ -2230,10 +2225,9 @@ export function ObjectExplorer() {
                     icon: 'sync_alt',
                     iconColor: isDawn ? 'text-[#ea9d34]' : 'text-orange-500',
                     onClick: () => {
-                        const config = connections.find(c => c.id === activeConnectionId);
-                        if (config) {
-                            showClickHouseKafkaMonitor(config);
-                        }
+                        localStorage.setItem('clickhouse_workbench_tab', 'kafka_monitor');
+                        localStorage.removeItem('clickhouse_workbench_context');
+                        window.location.hash = '/clickhouse-workbench';
                     }
                 },
                 {
@@ -2241,10 +2235,11 @@ export function ObjectExplorer() {
                     icon: 'merge',
                     iconColor: isDawn ? 'text-[#56949f]' : 'text-emerald-500',
                     onClick: () => {
-                        const config = connections.find(c => c.id === activeConnectionId);
-                        if (config) {
-                            showClickHouseMergeMonitor(config, dbName, tableName);
-                        }
+                        localStorage.setItem('clickhouse_workbench_tab', 'merge_monitor');
+                        const context = { database: dbName, table: tableName };
+                        localStorage.setItem('clickhouse_workbench_context', JSON.stringify(context));
+                        window.dispatchEvent(new CustomEvent('tactilesql:clickhouse-nav', { detail: { tab: 'merge_monitor', context } }));
+                        window.location.hash = '/clickhouse-workbench';
                     }
                 },
                 {

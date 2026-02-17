@@ -45,6 +45,7 @@ export function NavBar() {
                 id: 'menu-ops',
                 children: [
                     ...((localStorage.getItem('activeDbType') === 'mysql' || localStorage.getItem('activeDbType') === 'postgresql') ? [{ path: '/monitor', label: 'MONITOR', icon: 'speed' }] : []),
+                    ...((localStorage.getItem('activeDbType') === 'clickhouse') ? [{ path: '/clickhouse-workbench', label: 'CH TOOLS', icon: 'analytics' }] : []),
                     { path: '/config', label: 'CONFIG', icon: 'tune' },
                     ...(taskCenterEnabled
                         ? [{ path: '/tasks', label: 'TASKS', icon: 'checklist' }]

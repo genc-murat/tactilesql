@@ -1,14 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import { toastError } from '../../utils/Toast.js';
 
-export function showClickHouseQueryDashboard(connection) {
-    const overlay = document.createElement('div');
-    overlay.className = 'fixed inset-0 bg-black/60 backdrop-blur-md z-[9999] flex items-center justify-center p-8 text-sm';
-    overlay.id = 'clickhouse-query-dashboard-modal';
-
-    const modal = document.createElement('div');
-    modal.className = 'bg-[var(--bg-secondary)] w-full max-w-6xl h-[90vh] rounded-xl shadow-2xl flex flex-col overflow-hidden border border-[var(--border-color)]';
-    overlay.appendChild(modal);
+export function renderClickHouseQueryDashboard(container, connection) {
+    container.innerHTML = ''; // Clear previous content
 
     // --- Header ---
     const header = document.createElement('div');
@@ -25,25 +19,14 @@ export function showClickHouseQueryDashboard(connection) {
             <button id="refresh-dashboard" class="px-3 py-1.5 bg-blue-500/10 text-blue-400 rounded text-xs hover:bg-blue-500/20 transition-all font-medium flex items-center gap-1 border border-blue-500/20">
                 <span class="material-symbols-outlined text-sm">refresh</span> Refresh
             </button>
-            <button id="close-dashboard" class="p-2 rounded hover:bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
-                <span class="material-symbols-outlined">close</span>
-            </button>
         </div>
     `;
-    modal.appendChild(header);
+    container.appendChild(header);
 
     // --- Content Area ---
     const contentArea = document.createElement('div');
     contentArea.className = 'flex-1 overflow-auto p-6 bg-[var(--bg-secondary)] space-y-8';
-    modal.appendChild(contentArea);
-
-    document.body.appendChild(overlay);
-
-    const close = () => overlay.remove();
-    header.querySelector('#close-dashboard').addEventListener('click', close);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
-    const escHandler = (e) => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', escHandler); } };
-    document.addEventListener('keydown', escHandler);
+    container.appendChild(contentArea);
 
     // Logic
     const loadStats = async () => {

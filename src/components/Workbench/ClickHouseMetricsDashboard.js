@@ -1,14 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import { toastError } from '../../utils/Toast.js';
 
-export function showClickHouseMetricsDashboard(connection) {
-    const overlay = document.createElement('div');
-    overlay.className = 'fixed inset-0 bg-black/60 backdrop-blur-md z-[9999] flex items-center justify-center p-8 text-sm';
-    overlay.id = 'clickhouse-metrics-dashboard-modal';
-
-    const modal = document.createElement('div');
-    modal.className = 'bg-[var(--bg-secondary)] w-full max-w-6xl h-[90vh] rounded-xl shadow-2xl flex flex-col overflow-hidden border border-[var(--border-color)]';
-    overlay.appendChild(modal);
+export function renderClickHouseMetricsDashboard(container, connection) {
+    container.innerHTML = ''; // Clear previous
 
     // --- Header ---
     const header = document.createElement('div');
@@ -36,12 +30,9 @@ export function showClickHouseMetricsDashboard(connection) {
             <button id="refresh-metrics" class="px-3 py-1.5 bg-blue-500/10 text-blue-400 rounded text-xs hover:bg-blue-500/20 transition-all font-bold uppercase tracking-wider flex items-center gap-1.5 border border-blue-500/20">
                 <span class="material-symbols-outlined text-sm">refresh</span> Refresh
             </button>
-            <button id="close-dashboard" class="p-2 rounded hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
-                <span class="material-symbols-outlined">close</span>
-            </button>
         </div>
     `;
-    modal.appendChild(header);
+    container.appendChild(header);
 
     // --- Tabs ---
     const tabsContainer = document.createElement('div');
@@ -52,30 +43,18 @@ export function showClickHouseMetricsDashboard(connection) {
         <button class="metrics-tab text-[var(--text-secondary)] hover:text-[var(--text-primary)] py-2 text-[10px] font-black uppercase tracking-widest opacity-60 hover:opacity-100 transition-all" data-category="Event">Events</button>
         <button class="metrics-tab text-[var(--text-secondary)] hover:text-[var(--text-primary)] py-2 text-[10px] font-black uppercase tracking-widest opacity-60 hover:opacity-100 transition-all" data-category="AsyncMetric">Async Metrics</button>
     `;
-    modal.appendChild(tabsContainer);
+    container.appendChild(tabsContainer);
 
     // --- Content Area ---
     const contentArea = document.createElement('div');
     contentArea.className = 'flex-1 overflow-auto p-6 bg-[var(--bg-secondary)]';
-    modal.appendChild(contentArea);
-
-    document.body.appendChild(overlay);
+    container.appendChild(contentArea);
 
     // State
     let allMetrics = [];
     let currentCategory = 'ALL';
     let searchQuery = '';
     let refreshInterval = null;
-
-    const close = () => {
-        if (refreshInterval) clearInterval(refreshInterval);
-        overlay.remove();
-    };
-
-    header.querySelector('#close-dashboard').addEventListener('click', close);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
-    const escHandler = (e) => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', escHandler); } };
-    document.addEventListener('keydown', escHandler);
 
     const loadMetrics = async () => {
         try {
@@ -206,4 +185,8 @@ export function showClickHouseMetricsDashboard(connection) {
     // Initial load
     loadMetrics();
     setupAutoRefresh();
+
+    return () => {
+        if (refreshInterval) clearInterval(refreshInterval);
+    };
 }
