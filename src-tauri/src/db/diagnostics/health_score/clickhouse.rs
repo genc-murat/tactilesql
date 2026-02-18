@@ -134,7 +134,7 @@ async fn collect_performance_metrics(config: &ConnectionConfig) -> Result<Catego
         raw_value: mark_cache_hit,
         unit: Some("%".to_string()),
         status: super::scoring::get_status(mark_cache_hit, 95.0, 85.0, false),
-        weight: 0.25,
+        weight: 0.15,
         threshold_warning: 95.0,
         threshold_critical: 85.0,
         description: Some("Mark cache efficiency for MergeTree tables".to_string()),
@@ -152,7 +152,7 @@ async fn collect_performance_metrics(config: &ConnectionConfig) -> Result<Catego
         raw_value: avg_query_duration,
         unit: Some("ms".to_string()),
         status: super::scoring::get_status(avg_query_duration, 500.0, 2000.0, true),
-        weight: 0.25,
+        weight: 0.15,
         threshold_warning: 500.0,
         threshold_critical: 2000.0,
         description: Some("Average query duration in last hour".to_string()),
@@ -172,7 +172,7 @@ async fn collect_performance_metrics(config: &ConnectionConfig) -> Result<Catego
         raw_value: memory_gb,
         unit: Some("GB".to_string()),
         status: "healthy".to_string(),
-        weight: 0.20,
+        weight: 0.10,
         threshold_warning: 16.0 * 1024.0 * 1024.0 * 1024.0,
         threshold_critical: 32.0 * 1024.0 * 1024.0 * 1024.0,
         description: Some("Current memory tracking value".to_string()),
@@ -192,7 +192,7 @@ async fn collect_performance_metrics(config: &ConnectionConfig) -> Result<Catego
         raw_value: read_vs_selected,
         unit: Some("%".to_string()),
         status: super::scoring::get_status(read_vs_selected, 200.0, 500.0, true),
-        weight: 0.15,
+        weight: 0.10,
         threshold_warning: 200.0,
         threshold_critical: 500.0,
         description: Some("Ratio of rows read to rows selected (lower is better)".to_string()),
@@ -212,10 +212,66 @@ async fn collect_performance_metrics(config: &ConnectionConfig) -> Result<Catego
         raw_value: slow_queries as f64,
         unit: None,
         status: super::scoring::get_status(slow_queries as f64, 10.0, 50.0, true),
-        weight: 0.15,
+        weight: 0.10,
         threshold_warning: 10.0,
         threshold_critical: 50.0,
         description: Some("Queries taking >10s in last hour".to_string()),
+    });
+
+    let index_efficiency = query_single_float(config,
+        "SELECT if(read > 0, selected / read * 100, 100) FROM (
+            SELECT sum(ProfileEvents['SelectedRows']) as selected,
+                   sum(ProfileEvents['ReadRows']) as read
+            FROM system.query_log WHERE type = 'QueryFinish' AND event_time > now() - INTERVAL 1 HOUR
+        )"
+    ).await.unwrap_or(100.0);
+    
+    metrics.push(HealthMetricDetail {
+        id: "perf_index_efficiency".to_string(),
+        label: "Index Efficiency".to_string(),
+        value: format!("{:.1}%", index_efficiency),
+        raw_value: index_efficiency,
+        unit: Some("%".to_string()),
+        status: super::scoring::get_status(index_efficiency, 80.0, 50.0, false),
+        weight: 0.13,
+        threshold_warning: 80.0,
+        threshold_critical: 50.0,
+        description: Some("Selected rows vs read rows ratio (higher is better)".to_string()),
+    });
+
+    let network_io = query_single_float(config,
+        "SELECT sum(read_bytes + written_bytes) / 1024 / 1024 / 1024 FROM system.query_log 
+         WHERE type = 'QueryFinish' AND event_time > now() - INTERVAL 1 HOUR"
+    ).await.unwrap_or(0.0);
+    
+    metrics.push(HealthMetricDetail {
+        id: "perf_network_io".to_string(),
+        label: "Network I/O (1h)".to_string(),
+        value: format!("{:.2} GB", network_io),
+        raw_value: network_io,
+        unit: Some("GB".to_string()),
+        status: super::scoring::get_status(network_io, 10.0, 50.0, true),
+        weight: 0.09,
+        threshold_warning: 10.0,
+        threshold_critical: 50.0,
+        description: Some("Total network I/O in last hour".to_string()),
+    });
+
+    let bg_tasks = query_single_int(config,
+        "SELECT value FROM system.metrics WHERE metric = 'BackgroundPoolTasks' LIMIT 1"
+    ).await.unwrap_or(0);
+    
+    metrics.push(HealthMetricDetail {
+        id: "perf_bg_tasks".to_string(),
+        label: "Background Pool Tasks".to_string(),
+        value: format!("{}", bg_tasks),
+        raw_value: bg_tasks as f64,
+        unit: None,
+        status: super::scoring::get_status(bg_tasks as f64, 50.0, 100.0, true),
+        weight: 0.08,
+        threshold_warning: 50.0,
+        threshold_critical: 100.0,
+        description: Some("Active background pool tasks".to_string()),
     });
     
     Ok(CategoryResult { metrics })
@@ -311,7 +367,7 @@ async fn collect_storage_metrics(config: &ConnectionConfig) -> Result<CategoryRe
         raw_value: total_parts as f64,
         unit: None,
         status: super::scoring::get_status(total_parts as f64, 10000.0, 50000.0, true),
-        weight: 0.25,
+        weight: 0.15,
         threshold_warning: 10000.0,
         threshold_critical: 50000.0,
         description: Some("Total active parts across all tables".to_string()),
@@ -330,7 +386,7 @@ async fn collect_storage_metrics(config: &ConnectionConfig) -> Result<CategoryRe
         raw_value: max_parts_per_table as f64,
         unit: None,
         status: super::scoring::get_status(max_parts_per_table as f64, 1000.0, 3000.0, true),
-        weight: 0.20,
+        weight: 0.12,
         threshold_warning: 1000.0,
         threshold_critical: 3000.0,
         description: Some("Maximum parts count in single table".to_string()),
@@ -351,7 +407,7 @@ async fn collect_storage_metrics(config: &ConnectionConfig) -> Result<CategoryRe
         raw_value: compression_ratio,
         unit: Some("x".to_string()),
         status: super::scoring::get_status(compression_ratio, 3.0, 1.5, false),
-        weight: 0.20,
+        weight: 0.12,
         threshold_warning: 3.0,
         threshold_critical: 1.5,
         description: Some("Data compression ratio (higher is better)".to_string()),
@@ -370,7 +426,7 @@ async fn collect_storage_metrics(config: &ConnectionConfig) -> Result<CategoryRe
         raw_value: size_gb,
         unit: Some("GB".to_string()),
         status: "healthy".to_string(),
-        weight: 0.20,
+        weight: 0.12,
         threshold_warning: 1000.0,
         threshold_critical: 5000.0,
         description: Some("Total compressed data size".to_string()),
@@ -387,10 +443,73 @@ async fn collect_storage_metrics(config: &ConnectionConfig) -> Result<CategoryRe
         raw_value: replication_queue as f64,
         unit: None,
         status: super::scoring::get_status(replication_queue as f64, 10.0, 100.0, true),
-        weight: 0.15,
+        weight: 0.10,
         threshold_warning: 10.0,
         threshold_critical: 100.0,
         description: Some("Pending replication tasks (if replicated)".to_string()),
+    });
+
+    let orphan_parts = query_single_int(config,
+        "SELECT count() FROM system.part_log 
+         WHERE event_type = 'RemovePart' 
+         AND reason = 'Abandoned' 
+         AND event_time > now() - INTERVAL 24 HOUR"
+    ).await.unwrap_or(0);
+    
+    metrics.push(HealthMetricDetail {
+        id: "stor_orphan_parts".to_string(),
+        label: "Orphaned Parts (24h)".to_string(),
+        value: format!("{}", orphan_parts),
+        raw_value: orphan_parts as f64,
+        unit: None,
+        status: super::scoring::get_status(orphan_parts as f64, 10.0, 50.0, true),
+        weight: 0.10,
+        threshold_warning: 10.0,
+        threshold_critical: 50.0,
+        description: Some("Abandoned parts in last 24 hours".to_string()),
+    });
+
+    let no_projection = query_single_int(config,
+        "SELECT count() FROM system.tables 
+         WHERE engine LIKE '%MergeTree%' 
+         AND database NOT IN ('system', 'information_schema')
+         AND total_rows > 1000000
+         AND NOT EXISTS (
+             SELECT 1 FROM system.projections 
+             WHERE database = system.tables.database 
+             AND table = system.tables.name
+         )"
+    ).await.unwrap_or(0);
+    
+    metrics.push(HealthMetricDetail {
+        id: "stor_no_projection".to_string(),
+        label: "Large Tables w/o Projections".to_string(),
+        value: format!("{}", no_projection),
+        raw_value: no_projection as f64,
+        unit: None,
+        status: super::scoring::get_status(no_projection as f64, 20.0, 50.0, true),
+        weight: 0.09,
+        threshold_warning: 20.0,
+        threshold_critical: 50.0,
+        description: Some("Large tables (>1M rows) without projections".to_string()),
+    });
+
+    let disk_space_info = query_single_float(config,
+        "SELECT sum(bytes_on_disk) / 1024 / 1024 / 1024 FROM system.parts 
+         WHERE active = 1 AND disk_name = 'default'"
+    ).await.unwrap_or(0.0);
+    
+    metrics.push(HealthMetricDetail {
+        id: "stor_disk_usage".to_string(),
+        label: "Default Disk Usage".to_string(),
+        value: format!("{:.2} GB", disk_space_info),
+        raw_value: disk_space_info,
+        unit: Some("GB".to_string()),
+        status: "healthy".to_string(),
+        weight: 0.10,
+        threshold_warning: 1000.0,
+        threshold_critical: 5000.0,
+        description: Some("Data size on default disk".to_string()),
     });
     
     Ok(CategoryResult { metrics })
@@ -410,7 +529,7 @@ async fn collect_maintenance_metrics(config: &ConnectionConfig) -> Result<Catego
         raw_value: active_merges as f64,
         unit: None,
         status: super::scoring::get_status(active_merges as f64, 10.0, 50.0, true),
-        weight: 0.25,
+        weight: 0.15,
         threshold_warning: 10.0,
         threshold_critical: 50.0,
         description: Some("Currently running merge operations".to_string()),
@@ -427,7 +546,7 @@ async fn collect_maintenance_metrics(config: &ConnectionConfig) -> Result<Catego
         raw_value: pending_mutations as f64,
         unit: None,
         status: super::scoring::get_status(pending_mutations as f64, 5.0, 20.0, true),
-        weight: 0.25,
+        weight: 0.15,
         threshold_warning: 5.0,
         threshold_critical: 20.0,
         description: Some("Mutations not yet completed".to_string()),
@@ -445,7 +564,7 @@ async fn collect_maintenance_metrics(config: &ConnectionConfig) -> Result<Catego
         raw_value: wide_parts as f64,
         unit: None,
         status: "healthy".to_string(),
-        weight: 0.15,
+        weight: 0.08,
         threshold_warning: f64::MAX,
         threshold_critical: f64::MAX,
         description: Some("Parts stored in wide format".to_string()),
@@ -462,7 +581,7 @@ async fn collect_maintenance_metrics(config: &ConnectionConfig) -> Result<Catego
         raw_value: detached_parts as f64,
         unit: None,
         status: super::scoring::get_status(detached_parts as f64, 10.0, 50.0, true),
-        weight: 0.20,
+        weight: 0.12,
         threshold_warning: 10.0,
         threshold_critical: 50.0,
         description: Some("Detached parts (may indicate issues)".to_string()),
@@ -482,10 +601,67 @@ async fn collect_maintenance_metrics(config: &ConnectionConfig) -> Result<Catego
         raw_value: tables_no_ttl as f64,
         unit: None,
         status: super::scoring::get_status(tables_no_ttl as f64, 20.0, 100.0, true),
-        weight: 0.15,
+        weight: 0.10,
         threshold_warning: 20.0,
         threshold_critical: 100.0,
         description: Some("MergeTree tables without TTL policy".to_string()),
+    });
+
+    let stale_parts = query_single_int(config,
+        "SELECT count() FROM system.parts 
+         WHERE active = 1 
+         AND modification_time < now() - INTERVAL 7 DAY"
+    ).await.unwrap_or(0);
+    
+    metrics.push(HealthMetricDetail {
+        id: "maint_stale_parts".to_string(),
+        label: "Stale Parts (>7d)".to_string(),
+        value: format!("{}", stale_parts),
+        raw_value: stale_parts as f64,
+        unit: None,
+        status: super::scoring::get_status(stale_parts as f64, 100.0, 500.0, true),
+        weight: 0.10,
+        threshold_warning: 100.0,
+        threshold_critical: 500.0,
+        description: Some("Parts older than 7 days (not merging)".to_string()),
+    });
+
+    let failed_merges = query_single_int(config,
+        "SELECT count() FROM system.part_log 
+         WHERE event_type = 'MergeFailed' 
+         AND event_time > now() - INTERVAL 24 HOUR"
+    ).await.unwrap_or(0);
+    
+    metrics.push(HealthMetricDetail {
+        id: "maint_failed_merges".to_string(),
+        label: "Failed Merges (24h)".to_string(),
+        value: format!("{}", failed_merges),
+        raw_value: failed_merges as f64,
+        unit: None,
+        status: super::scoring::get_status(failed_merges as f64, 5.0, 20.0, true),
+        weight: 0.10,
+        threshold_warning: 5.0,
+        threshold_critical: 20.0,
+        description: Some("Failed merge operations in last 24 hours".to_string()),
+    });
+
+    let ttl_pending = query_single_int(config,
+        "SELECT count() FROM system.parts 
+         WHERE active = 1 
+         AND ttl_info.rows > 0"
+    ).await.unwrap_or(0);
+    
+    metrics.push(HealthMetricDetail {
+        id: "maint_ttl_pending".to_string(),
+        label: "TTL Cleanup Pending".to_string(),
+        value: format!("{}", ttl_pending),
+        raw_value: ttl_pending as f64,
+        unit: None,
+        status: super::scoring::get_status(ttl_pending as f64, 1000.0, 5000.0, true),
+        weight: 0.10,
+        threshold_warning: 1000.0,
+        threshold_critical: 5000.0,
+        description: Some("Parts with expired TTL waiting cleanup".to_string()),
     });
     
     Ok(CategoryResult { metrics })
@@ -505,7 +681,7 @@ async fn collect_security_metrics(config: &ConnectionConfig) -> Result<CategoryR
         raw_value: user_count as f64,
         unit: None,
         status: "healthy".to_string(),
-        weight: 0.25,
+        weight: 0.15,
         threshold_warning: f64::MAX,
         threshold_critical: f64::MAX,
         description: Some("Number of configured users".to_string()),
@@ -524,7 +700,7 @@ async fn collect_security_metrics(config: &ConnectionConfig) -> Result<CategoryR
         raw_value: readonly as f64,
         unit: None,
         status: if readonly == 1 { "warning" } else { "healthy" }.to_string(),
-        weight: 0.25,
+        weight: 0.15,
         threshold_warning: 0.0,
         threshold_critical: 0.0,
         description: Some("Server readonly mode status".to_string()),
@@ -541,7 +717,7 @@ async fn collect_security_metrics(config: &ConnectionConfig) -> Result<CategoryR
         raw_value: roles_count as f64,
         unit: None,
         status: "healthy".to_string(),
-        weight: 0.20,
+        weight: 0.10,
         threshold_warning: f64::MAX,
         threshold_critical: f64::MAX,
         description: Some("Number of configured roles".to_string()),
@@ -558,7 +734,7 @@ async fn collect_security_metrics(config: &ConnectionConfig) -> Result<CategoryR
         raw_value: settings_profiles as f64,
         unit: None,
         status: "healthy".to_string(),
-        weight: 0.15,
+        weight: 0.08,
         threshold_warning: f64::MAX,
         threshold_critical: f64::MAX,
         description: Some("Number of settings profiles".to_string()),
@@ -575,10 +751,61 @@ async fn collect_security_metrics(config: &ConnectionConfig) -> Result<CategoryR
         raw_value: row_policies as f64,
         unit: None,
         status: "healthy".to_string(),
-        weight: 0.15,
+        weight: 0.07,
         threshold_warning: f64::MAX,
         threshold_critical: f64::MAX,
         description: Some("Number of row-level security policies".to_string()),
+    });
+
+    let passwordless = query_single_int(config,
+        "SELECT count() FROM system.users WHERE authentication_type = 'no_password'"
+    ).await.unwrap_or(0);
+    
+    metrics.push(HealthMetricDetail {
+        id: "sec_passwordless".to_string(),
+        label: "Passwordless Users".to_string(),
+        value: format!("{}", passwordless),
+        raw_value: passwordless as f64,
+        unit: None,
+        status: if passwordless > 0 { "critical" } else { "healthy" }.to_string(),
+        weight: 0.15,
+        threshold_warning: 0.0,
+        threshold_critical: 0.0,
+        description: Some("Users without password authentication".to_string()),
+    });
+
+    let excessive_grants = query_single_int(config,
+        "SELECT count() FROM system.grants WHERE access_type = 'ALL'"
+    ).await.unwrap_or(0);
+    
+    metrics.push(HealthMetricDetail {
+        id: "sec_excessive_grants".to_string(),
+        label: "Excessive Grants".to_string(),
+        value: format!("{}", excessive_grants),
+        raw_value: excessive_grants as f64,
+        unit: None,
+        status: super::scoring::get_status(excessive_grants as f64, 5.0, 10.0, true),
+        weight: 0.15,
+        threshold_warning: 5.0,
+        threshold_critical: 10.0,
+        description: Some("Number of 'ALL' privilege grants".to_string()),
+    });
+
+    let unique_ips = query_single_int(config,
+        "SELECT count(DISTINCT initial_address) FROM system.processes"
+    ).await.unwrap_or(0);
+    
+    metrics.push(HealthMetricDetail {
+        id: "sec_unique_ips".to_string(),
+        label: "Unique Client IPs".to_string(),
+        value: format!("{}", unique_ips),
+        raw_value: unique_ips as f64,
+        unit: None,
+        status: super::scoring::get_status(unique_ips as f64, 100.0, 500.0, true),
+        weight: 0.10,
+        threshold_warning: 100.0,
+        threshold_critical: 500.0,
+        description: Some("Distinct client IP addresses connected".to_string()),
     });
     
     Ok(CategoryResult { metrics })
