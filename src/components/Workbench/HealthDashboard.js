@@ -222,7 +222,7 @@ export function renderHealthDashboard(container, connection) {
                 <span class="material-symbols-outlined text-[var(--text-secondary)]">category</span>
                 Health Categories
             </h3>
-            <div class="grid grid-cols-5 gap-4">
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                 ${healthReport.categories.map(cat => {
                     const catColor = getStatusColor(cat.status);
                     return `

@@ -7,16 +7,18 @@ pub struct ClickhouseHealthConfig {
     pub stor_weight: f32,
     pub maint_weight: f32,
     pub sec_weight: f32,
+    pub query_cost_weight: f32,
 }
 
 impl Default for ClickhouseHealthConfig {
     fn default() -> Self {
         Self {
-            perf_weight: 0.35,
+            perf_weight: 0.30,
             conn_weight: 0.10,
-            stor_weight: 0.30,
+            stor_weight: 0.25,
             maint_weight: 0.15,
             sec_weight: 0.10,
+            query_cost_weight: 0.10,
         }
     }
 }
@@ -30,6 +32,7 @@ pub async fn collect_clickhouse_health_metrics(
     let storage = collect_storage_metrics(config).await?;
     let maintenance = collect_maintenance_metrics(config).await?;
     let security = collect_security_metrics(config).await?;
+    let query_cost = collect_query_cost_metrics(config).await?;
     
     Ok(vec![
         HealthCategory {
@@ -76,6 +79,15 @@ pub async fn collect_clickhouse_health_metrics(
             weight: health_config.sec_weight,
             metrics: security.metrics,
             icon: "lock".to_string(),
+        },
+        HealthCategory {
+            id: "query_cost".to_string(),
+            name: "Query Cost".to_string(),
+            score: super::scoring::calculate_category_score(&query_cost.metrics),
+            status: get_category_status(&query_cost.metrics),
+            weight: health_config.query_cost_weight,
+            metrics: query_cost.metrics,
+            icon: "analytics".to_string(),
         },
     ])
 }
@@ -806,6 +818,155 @@ async fn collect_security_metrics(config: &ConnectionConfig) -> Result<CategoryR
         threshold_warning: 100.0,
         threshold_critical: 500.0,
         description: Some("Distinct client IP addresses connected".to_string()),
+    });
+    
+    Ok(CategoryResult { metrics })
+}
+
+async fn collect_query_cost_metrics(config: &ConnectionConfig) -> Result<CategoryResult, String> {
+    let mut metrics = Vec::new();
+    
+    let high_cpu_queries = query_single_int(config,
+        "SELECT count() FROM system.query_log 
+         WHERE type = 'QueryFinish' 
+         AND event_time > now() - INTERVAL 1 HOUR
+         AND ProfileEvents['RealTimeMicroseconds'] > 5000000"
+    ).await.unwrap_or(0);
+    
+    metrics.push(HealthMetricDetail {
+        id: "qcost_high_cpu".to_string(),
+        label: "High CPU Queries (>5s)".to_string(),
+        value: format!("{}", high_cpu_queries),
+        raw_value: high_cpu_queries as f64,
+        unit: None,
+        status: super::scoring::get_status(high_cpu_queries as f64, 10.0, 50.0, true),
+        weight: 0.20,
+        threshold_warning: 10.0,
+        threshold_critical: 50.0,
+        description: Some("Queries with >5s CPU time in last hour".to_string()),
+    });
+
+    let high_mem_queries = query_single_int(config,
+        "SELECT count() FROM system.query_log 
+         WHERE type = 'QueryFinish' 
+         AND event_time > now() - INTERVAL 1 HOUR
+         AND memory_usage > 1073741824"
+    ).await.unwrap_or(0);
+    
+    metrics.push(HealthMetricDetail {
+        id: "qcost_high_mem".to_string(),
+        label: "High Memory Queries (>1GB)".to_string(),
+        value: format!("{}", high_mem_queries),
+        raw_value: high_mem_queries as f64,
+        unit: None,
+        status: super::scoring::get_status(high_mem_queries as f64, 5.0, 20.0, true),
+        weight: 0.18,
+        threshold_warning: 5.0,
+        threshold_critical: 20.0,
+        description: Some("Queries consuming >1GB memory in last hour".to_string()),
+    });
+
+    let high_io_queries = query_single_int(config,
+        "SELECT count() FROM system.query_log 
+         WHERE type = 'QueryFinish' 
+         AND event_time > now() - INTERVAL 1 HOUR
+         AND read_bytes > 10737418240"
+    ).await.unwrap_or(0);
+    
+    metrics.push(HealthMetricDetail {
+        id: "qcost_high_io".to_string(),
+        label: "High I/O Queries (>10GB)".to_string(),
+        value: format!("{}", high_io_queries),
+        raw_value: high_io_queries as f64,
+        unit: None,
+        status: super::scoring::get_status(high_io_queries as f64, 5.0, 20.0, true),
+        weight: 0.18,
+        threshold_warning: 5.0,
+        threshold_critical: 20.0,
+        description: Some("Queries reading >10GB data in last hour".to_string()),
+    });
+
+    let full_scan_queries = query_single_int(config,
+        "SELECT count() FROM system.query_log 
+         WHERE type = 'QueryFinish' 
+         AND event_time > now() - INTERVAL 1 HOUR
+         AND read_rows > 1000000
+         AND selected_rows = read_rows"
+    ).await.unwrap_or(0);
+    
+    metrics.push(HealthMetricDetail {
+        id: "qcost_full_scan".to_string(),
+        label: "Full Table Scans".to_string(),
+        value: format!("{}", full_scan_queries),
+        raw_value: full_scan_queries as f64,
+        unit: None,
+        status: super::scoring::get_status(full_scan_queries as f64, 10.0, 50.0, true),
+        weight: 0.15,
+        threshold_warning: 10.0,
+        threshold_critical: 50.0,
+        description: Some("Queries scanning >1M rows without filtering".to_string()),
+    });
+
+    let query_error_rate = query_single_float(config,
+        "SELECT if(total > 0, errors / total * 100, 0) FROM (
+            SELECT countIf(type = 'ExceptionWhileProcessing') as errors,
+                   count() as total
+            FROM system.query_log WHERE event_time > now() - INTERVAL 1 HOUR
+        )"
+    ).await.unwrap_or(0.0);
+    
+    metrics.push(HealthMetricDetail {
+        id: "qcost_error_rate".to_string(),
+        label: "Query Error Rate".to_string(),
+        value: format!("{:.2}%", query_error_rate),
+        raw_value: query_error_rate,
+        unit: Some("%".to_string()),
+        status: super::scoring::get_status(query_error_rate, 5.0, 15.0, true),
+        weight: 0.15,
+        threshold_warning: 5.0,
+        threshold_critical: 15.0,
+        description: Some("Percentage of failed queries in last hour".to_string()),
+    });
+
+    let avg_rows_per_query = query_single_float(config,
+        "SELECT avg(read_rows) FROM system.query_log 
+         WHERE type = 'QueryFinish' 
+         AND event_time > now() - INTERVAL 1 HOUR"
+    ).await.unwrap_or(0.0);
+    
+    let avg_rows_k = avg_rows_per_query / 1000.0;
+    
+    metrics.push(HealthMetricDetail {
+        id: "qcost_avg_rows".to_string(),
+        label: "Avg Rows Read/Query".to_string(),
+        value: format!("{:.1}K", avg_rows_k),
+        raw_value: avg_rows_k,
+        unit: Some("K rows".to_string()),
+        status: super::scoring::get_status(avg_rows_k, 100.0, 1000.0, true),
+        weight: 0.07,
+        threshold_warning: 100.0,
+        threshold_critical: 1000.0,
+        description: Some("Average rows read per query in last hour".to_string()),
+    });
+
+    let subqueries_count = query_single_int(config,
+        "SELECT count() FROM system.query_log 
+         WHERE type = 'QueryFinish' 
+         AND event_time > now() - INTERVAL 1 HOUR
+         AND has_subqueries = 1"
+    ).await.unwrap_or(0);
+    
+    metrics.push(HealthMetricDetail {
+        id: "qcost_subqueries".to_string(),
+        label: "Queries with Subqueries".to_string(),
+        value: format!("{}", subqueries_count),
+        raw_value: subqueries_count as f64,
+        unit: None,
+        status: super::scoring::get_status(subqueries_count as f64, 20.0, 100.0, true),
+        weight: 0.07,
+        threshold_warning: 20.0,
+        threshold_critical: 100.0,
+        description: Some("Queries containing subqueries in last hour".to_string()),
     });
     
     Ok(CategoryResult { metrics })
