@@ -7,6 +7,7 @@ import { Charting } from '../utils/Charting.js';
 import { showMySQLSlowQueryConfigModal } from '../components/UI/MySQLSlowQueryConfigModal.js';
 import { showDeadlockAnalyzerModal } from '../components/UI/DeadlockAnalyzerModal.js';
 import { showTableMaintenanceWizard } from '../components/UI/TableMaintenanceWizard.js';
+import { HealthScoreApi } from '../api/healthScore.js';
 
 export function ServerMonitor() {
     let theme = ThemeManager.getCurrentTheme();
@@ -33,6 +34,8 @@ export function ServerMonitor() {
     let healthMetrics = [];
     let alerts = [];
     let bloatData = [];
+    let healthScoreReport = null;
+    let healthScoreLoading = false;
     let isLoading = true;
     let isAnalyzingBloat = false;
     let autoRefresh = true;
@@ -342,8 +345,10 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
     const loadData = async () => {
         await LoadingManager.wrap('server-monitor', null, async () => {
             try {
-                // Load all data in a single unified call
                 const snapshot = await invoke('get_monitor_snapshot');
+                
+                loadHealthScore();
+                
                 const now = Date.now();
 
                 // Calculate rates
@@ -412,6 +417,119 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
         if (autoRefresh) {
             refreshInterval = setInterval(loadData, 3000); // Refresh every 3 seconds
         }
+    };
+
+    const loadHealthScore = async () => {
+        try {
+            healthScoreLoading = true;
+            healthScoreReport = await HealthScoreApi.getHealthReport();
+            healthScoreLoading = false;
+        } catch (error) {
+            console.error('Failed to load health score:', error);
+            healthScoreLoading = false;
+            healthScoreReport = null;
+        }
+    };
+
+    const getHealthScoreColor = (score) => {
+        if (score >= 90) return 'emerald';
+        if (score >= 80) return 'blue';
+        if (score >= 70) return 'yellow';
+        if (score >= 60) return 'orange';
+        return 'red';
+    };
+
+    const renderHealthScoreWidget = () => {
+        const isLight = theme === 'light';
+        const isDawn = theme === 'dawn';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+
+        if (healthScoreLoading || !healthScoreReport) {
+            const dbType = localStorage.getItem('activeDbType');
+            if (dbType === 'postgresql' || dbType === 'mssql' || dbType === 'clickhouse') {
+                return '';
+            }
+            return `
+                <div class="mb-6 rounded-xl p-4 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))} animate-pulse">
+                    <div class="flex items-center gap-4">
+                        <div class="w-20 h-20 rounded-full ${isLight ? 'bg-gray-100' : 'bg-white/5'}"></div>
+                        <div class="flex-1 space-y-2">
+                            <div class="h-4 ${isLight ? 'bg-gray-100' : 'bg-white/5'} rounded w-32"></div>
+                            <div class="h-3 ${isLight ? 'bg-gray-100' : 'bg-white/5'} rounded w-48"></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        const { overall_score, grade, critical_issues, warnings, trend } = healthScoreReport;
+        const scoreColor = getHealthScoreColor(overall_score);
+        const circumference = 2 * Math.PI * 35;
+        const strokeDasharray = `${(overall_score / 100) * circumference} ${circumference}`;
+
+        const trendIcon = trend === 'improving' ? 'trending_up' : trend === 'declining' ? 'trending_down' : 'flatware';
+        const trendColor = trend === 'improving' ? 'text-emerald-500' : trend === 'declining' ? 'text-red-500' : 'text-gray-400';
+
+        const colorHex = scoreColor === 'emerald' ? '#10b981' : 
+                        scoreColor === 'blue' ? '#3b82f6' : 
+                        scoreColor === 'yellow' ? '#eab308' : 
+                        scoreColor === 'orange' ? '#f97316' : '#ef4444';
+
+        return `
+            <div class="mb-6 rounded-xl p-4 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))} cursor-pointer hover:border-${scoreColor}-500/50 transition-all group" id="health-score-widget">
+                <div class="flex items-center gap-4">
+                    <div class="relative w-20 h-20 flex-shrink-0">
+                        <svg class="w-full h-full transform -rotate-90" viewBox="0 0 80 80">
+                            <circle cx="40" cy="40" r="35" stroke="${isLight ? '#e5e7eb' : (isDawn ? '#f2e9e1' : 'rgba(255,255,255,0.1)')}" stroke-width="6" fill="none"/>
+                            <circle cx="40" cy="40" r="35" stroke="${colorHex}" 
+                                stroke-width="6" fill="none" 
+                                stroke-linecap="round"
+                                stroke-dasharray="${strokeDasharray}"
+                                class="transition-all duration-1000"/>
+                        </svg>
+                        <div class="absolute inset-0 flex flex-col items-center justify-center">
+                            <span class="text-2xl font-black text-${scoreColor}-500">${overall_score}</span>
+                            <span class="text-[10px] font-bold ${isLight ? 'text-gray-500' : 'text-gray-400'}">${grade}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2">
+                            <p class="text-sm font-bold ${isLight ? 'text-gray-900' : 'text-white'}">Database Health</p>
+                            <span class="material-symbols-outlined text-sm ${trendColor}">${trendIcon}</span>
+                        </div>
+                        <div class="flex items-center gap-4 mt-1.5">
+                            ${critical_issues > 0 ? `
+                                <span class="flex items-center gap-1 text-xs text-red-500">
+                                    <span class="material-symbols-outlined text-sm">error</span>
+                                    ${critical_issues} Critical
+                                </span>
+                            ` : ''}
+                            ${warnings > 0 ? `
+                                <span class="flex items-center gap-1 text-xs text-yellow-500">
+                                    <span class="material-symbols-outlined text-sm">warning</span>
+                                    ${warnings} Warning${warnings > 1 ? 's' : ''}
+                                </span>
+                            ` : ''}
+                            ${critical_issues === 0 && warnings === 0 ? `
+                                <span class="flex items-center gap-1 text-xs text-emerald-500">
+                                    <span class="material-symbols-outlined text-sm">check_circle</span>
+                                    All systems healthy
+                                </span>
+                            ` : ''}
+                        </div>
+                        <p class="text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-400'} mt-1 capitalize">
+                            Trend: ${trend}
+                        </p>
+                    </div>
+                    
+                    <div class="flex items-center gap-1 text-emerald-500 text-xs font-bold group-hover:gap-2 transition-all">
+                        <span>Details</span>
+                        <span class="material-symbols-outlined text-sm">arrow_forward</span>
+                    </div>
+                </div>
+            </div>
+        `;
     };
 
     const render = () => {
@@ -663,6 +781,7 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
         const qps = history.qps.length > 0 ? history.qps[history.qps.length - 1] : 0;
 
         return `
+            ${renderHealthScoreWidget()}
             ${renderHealthMetrics()}
 
             <div class="grid grid-cols-4 gap-4 mb-6">
@@ -1753,6 +1872,11 @@ SET GLOBAL long_query_time = 1;</pre>
         // Back button
         container.querySelector('#back-btn')?.addEventListener('click', () => {
             window.location.hash = '/workbench';
+        });
+
+        // Health score widget
+        container.querySelector('#health-score-widget')?.addEventListener('click', () => {
+            window.location.hash = '/health';
         });
 
         // Tab switching
