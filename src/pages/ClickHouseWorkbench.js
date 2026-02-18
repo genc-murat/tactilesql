@@ -6,6 +6,12 @@ import { renderClickHouseKafkaMonitor } from '../components/Workbench/ClickHouse
 import { renderClickHouseMergeMonitor } from '../components/Workbench/ClickHouseMergeMonitor.js';
 import { renderClickHousePartManager } from '../components/Workbench/ClickHousePartManager.js';
 import { renderQueryPerformanceDashboard } from '../components/Workbench/QueryPerformanceDashboard.js';
+import { renderClickHouseQueryCacheMonitor } from '../components/Workbench/ClickHouseQueryCacheMonitor.js';
+import { renderClickHouseQueryQueueDashboard } from '../components/Workbench/ClickHouseQueryQueueDashboard.js';
+import { renderClickHouseProjectionManager } from '../components/Workbench/ClickHouseProjectionManager.js';
+import { renderClickHouseDictionaryManager } from '../components/Workbench/ClickHouseDictionaryManager.js';
+import { renderClickHouseMVManager } from '../components/Workbench/ClickHouseMVManager.js';
+import { renderClickHouseBackupManager } from '../components/Workbench/ClickHouseBackupManager.js';
 
 export function ClickHouseWorkbench() {
     let theme = ThemeManager.getCurrentTheme();
@@ -18,18 +24,6 @@ export function ClickHouseWorkbench() {
     };
     container.className = getContainerClass(theme);
 
-    // active connection config
-    // We assume the active connection is stored in localStorage or accessible globally.
-    // However, the previous modal functions took `connection` as an argument.
-    // We need to retrieve the active connection config.
-    // In `SqlWorkbench.js` or `ServerMonitor.js`, it usually fetches current config or expects it.
-    // Let's assume we can get it from localStorage 'activeConnection' or similar, 
-    // BUT `ServerMonitor.js` calls `invoke('get_monitor_snapshot')` which uses the active connection on the backend.
-    // The ClickHouse components take a `connection` object. 
-    // We should try to get the active connection details. 
-    // `ConnectionManager.js` saves it.
-    // Let's rely on `JSON.parse(localStorage.getItem('activeConnection') || '{}')`.
-
     let activeTab = localStorage.getItem('clickhouse_workbench_tab') || 'query_dashboard';
     let cleanupCurrentView = null;
 
@@ -37,7 +31,6 @@ export function ClickHouseWorkbench() {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
-        const isNeon = theme === 'neon';
 
         container.innerHTML = `
             <div class="h-full flex flex-col">
@@ -59,15 +52,30 @@ export function ClickHouseWorkbench() {
 
                 <div class="flex-1 flex overflow-hidden">
                     <!-- Sidebar Navigation -->
-                    <div class="w-64 flex flex-col border-r ${isLight ? 'border-gray-200 bg-white' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3]' : (isOceanic ? 'border-ocean-border/30 bg-ocean-sidebar' : 'border-white/5 bg-[#0a0c10]'))}">
+                    <div class="w-64 flex flex-col border-r ${isLight ? 'border-gray-200 bg-white' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3]' : (isOceanic ? 'border-ocean-border/30 bg-ocean-sidebar' : 'border-white/5 bg-[#0a0c10]'))} overflow-y-auto">
                         <div class="p-4 space-y-1">
+                            <div class="text-[9px] uppercase font-black tracking-widest text-[var(--text-secondary)] opacity-50 px-4 mb-2">Monitoring</div>
                             ${renderNavItem('query_dashboard', 'monitoring', 'Query Dashboard')}
                             ${renderNavItem('performance_dashboard', 'speed', 'Query Performance')}
                             ${renderNavItem('metrics_dashboard', 'bar_chart', 'System Metrics')}
-                            ${renderNavItem('kafka_monitor', 'sync_alt', 'Kafka Engine')}
+                            ${renderNavItem('query_cache', 'cached', 'Query Cache')}
+                            ${renderNavItem('query_queue', 'query_stats', 'Query Queues')}
+                            
+                            <div class="my-2 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}"></div>
+                            <div class="text-[9px] uppercase font-black tracking-widest text-[var(--text-secondary)] opacity-50 px-4 mb-2">Storage</div>
                             ${renderNavItem('part_manager', 'hard_drive', 'Storage & Parts')}
                             ${renderNavItem('merge_monitor', 'merge', 'Merges & Mutations')}
+                            ${renderNavItem('projections', 'view_column', 'Projections')}
+                            
                             <div class="my-2 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}"></div>
+                            <div class="text-[9px] uppercase font-black tracking-widest text-[var(--text-secondary)] opacity-50 px-4 mb-2">Objects</div>
+                            ${renderNavItem('mv_manager', 'view_agenda', 'Materialized Views')}
+                            ${renderNavItem('dict_manager', 'book', 'Dictionaries')}
+                            ${renderNavItem('kafka_monitor', 'sync_alt', 'Kafka Engine')}
+                            
+                            <div class="my-2 border-b ${isLight ? 'border-gray-100' : 'border-white/5'}"></div>
+                            <div class="text-[9px] uppercase font-black tracking-widest text-[var(--text-secondary)] opacity-50 px-4 mb-2">Operations</div>
+                            ${renderNavItem('backup', 'cloud_backup', 'Backup & Restore')}
                             ${renderNavItem('profiles', 'settings_account_box', 'Settings Profiles')}
                         </div>
                     </div>
@@ -102,8 +110,8 @@ export function ClickHouseWorkbench() {
         }
 
         return `
-            <button class="nav-item w-full flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-r-lg transition-all ${activeClass}" data-tab="${id}">
-                <span class="material-symbols-outlined text-[20px]">${icon}</span>
+            <button class="nav-item w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium rounded-r-lg transition-all ${activeClass}" data-tab="${id}">
+                <span class="material-symbols-outlined text-[18px]">${icon}</span>
                 ${label}
             </button>
         `;
@@ -114,7 +122,7 @@ export function ClickHouseWorkbench() {
             btn.addEventListener('click', () => {
                 activeTab = btn.dataset.tab;
                 localStorage.setItem('clickhouse_workbench_tab', activeTab);
-                render(); // Re-render sidebar active state
+                render();
             });
         });
 
@@ -130,7 +138,6 @@ export function ClickHouseWorkbench() {
         const contentContainer = container.querySelector('#workbench-content');
         if (!contentContainer) return;
 
-        // Cleanup previous view if exists
         if (cleanupCurrentView) {
             cleanupCurrentView();
             cleanupCurrentView = null;
@@ -151,6 +158,12 @@ export function ClickHouseWorkbench() {
             case 'metrics_dashboard':
                 cleanupCurrentView = renderClickHouseMetricsDashboard(contentContainer, connection);
                 break;
+            case 'query_cache':
+                cleanupCurrentView = renderClickHouseQueryCacheMonitor(contentContainer, connection);
+                break;
+            case 'query_queue':
+                cleanupCurrentView = renderClickHouseQueryQueueDashboard(contentContainer, connection);
+                break;
             case 'kafka_monitor':
                 cleanupCurrentView = renderClickHouseKafkaMonitor(contentContainer, connection);
                 break;
@@ -160,6 +173,18 @@ export function ClickHouseWorkbench() {
             case 'merge_monitor':
                 cleanupCurrentView = renderClickHouseMergeMonitor(contentContainer, connection, context.database, context.table);
                 break;
+            case 'projections':
+                cleanupCurrentView = renderClickHouseProjectionManager(contentContainer, connection);
+                break;
+            case 'mv_manager':
+                cleanupCurrentView = renderClickHouseMVManager(contentContainer, connection);
+                break;
+            case 'dict_manager':
+                cleanupCurrentView = renderClickHouseDictionaryManager(contentContainer, connection);
+                break;
+            case 'backup':
+                cleanupCurrentView = renderClickHouseBackupManager(contentContainer, connection);
+                break;
             case 'profiles':
                 cleanupCurrentView = renderClickHouseProfileManager(contentContainer, connection);
                 break;
@@ -168,9 +193,7 @@ export function ClickHouseWorkbench() {
         }
     };
 
-    // Navigation Event Listener
     const navHandler = (e) => {
-        // Self-cleanup if detached
         if (!container.isConnected) {
             window.removeEventListener('tactilesql:clickhouse-nav', navHandler);
             return;
@@ -180,7 +203,6 @@ export function ClickHouseWorkbench() {
     };
     window.addEventListener('tactilesql:clickhouse-nav', navHandler);
 
-    // Theme handling
     window.addEventListener('themechange', (e) => {
         theme = e.detail.theme;
         container.className = getContainerClass(theme);

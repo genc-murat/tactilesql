@@ -333,6 +333,30 @@ pub fn run() {
             clickhouse::create_clickhouse_profile,
             clickhouse::update_clickhouse_profile,
             clickhouse::delete_clickhouse_profile,
+            // Query Cache & Queue
+            clickhouse::get_clickhouse_query_cache_stats,
+            clickhouse::get_clickhouse_query_cache_entries,
+            clickhouse::clear_clickhouse_query_cache,
+            clickhouse::get_clickhouse_query_queues,
+            // Projections
+            clickhouse::get_clickhouse_projections,
+            clickhouse::get_all_clickhouse_projections,
+            clickhouse::create_clickhouse_projection,
+            clickhouse::drop_clickhouse_projection,
+            clickhouse::materialize_clickhouse_projection,
+            clickhouse::clear_clickhouse_projection,
+            // Dictionaries
+            clickhouse::get_clickhouse_dictionaries_detailed,
+            clickhouse::reload_clickhouse_dictionary,
+            // Materialized Views
+            clickhouse::get_clickhouse_materialized_views,
+            clickhouse::drop_clickhouse_mv,
+            clickhouse::refresh_clickhouse_mv,
+            // Backup
+            clickhouse::get_clickhouse_backups,
+            clickhouse::create_clickhouse_backup,
+            clickhouse::restore_clickhouse_backup,
+            clickhouse::drop_clickhouse_backup,
             // Database/Table Operations
             db::get_databases,
             db::get_schemas,

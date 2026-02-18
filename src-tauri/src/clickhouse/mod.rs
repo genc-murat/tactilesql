@@ -2498,3 +2498,688 @@ pub async fn get_clickhouse_system_metrics(config: ConnectionConfig) -> Result<V
 
     Ok(all_metrics)
 }
+
+// =====================================================
+// QUERY CACHE MONITOR
+// =====================================================
+
+#[derive(Serialize, Debug)]
+pub struct QueryCacheStats {
+    pub size: u64,
+    pub entries: u64,
+    pub hits: u64,
+    pub misses: u64,
+    pub hit_ratio: f64,
+    pub bytes_saved: u64,
+}
+
+#[derive(Serialize, Debug)]
+pub struct QueryCacheEntry {
+    pub query: String,
+    pub result_size: u64,
+    pub stale: bool,
+    pub shared: bool,
+    pub expires_at: String,
+    pub key_hash: String,
+}
+
+#[tauri::command]
+pub async fn get_clickhouse_query_cache_stats(config: ConnectionConfig) -> Result<QueryCacheStats, String> {
+    let get_u64 = |val: Option<&Value>| -> u64 {
+        val.and_then(|v| {
+            if v.is_u64() { v.as_u64() }
+            else if v.is_string() { v.as_str().and_then(|s| s.parse::<u64>().ok()) }
+            else if v.is_f64() { v.as_f64().map(|f| f as u64) }
+            else { None }
+        }).unwrap_or(0)
+    };
+
+    // Try detailed query first (CH 23+)
+    let detailed_query = "SELECT sum(size) as size, count() as entries, sum(hits) as hits, sum(misses) as misses FROM system.query_cache";
+    if let Ok(results) = execute_query_generic(&config, detailed_query.to_string()).await {
+        if let Some(first) = results.first() {
+            if let Some(row) = first.rows.first() {
+                let size = get_u64(row.get(0));
+                let entries = get_u64(row.get(1));
+                let hits = get_u64(row.get(2));
+                let misses = get_u64(row.get(3));
+                let total = hits + misses;
+                let hit_ratio = if total > 0 { (hits as f64 / total as f64) * 100.0 } else { 0.0 };
+                return Ok(QueryCacheStats { size, entries, hits, misses, hit_ratio, bytes_saved: size * hits });
+            }
+        }
+    }
+
+    // Fallback: simple count
+    let simple_query = "SELECT count() as entries FROM system.query_cache";
+    if let Ok(results) = execute_query_generic(&config, simple_query.to_string()).await {
+        if let Some(first) = results.first() {
+            if let Some(row) = first.rows.first() {
+                return Ok(QueryCacheStats {
+                    size: 0,
+                    entries: get_u64(row.get(0)),
+                    hits: 0,
+                    misses: 0,
+                    hit_ratio: 0.0,
+                    bytes_saved: 0,
+                });
+            }
+        }
+    }
+    
+    Err("Query cache not available".to_string())
+}
+
+#[tauri::command]
+pub async fn get_clickhouse_query_cache_entries(config: ConnectionConfig) -> Result<Vec<QueryCacheEntry>, String> {
+    let detailed_query = "SELECT query, result_size, stale, shared, toString(expires_at) as expires_at, key_hash FROM system.query_cache ORDER BY result_size DESC LIMIT 500";
+    if let Ok(Some(results)) = execute_system_query(&config, detailed_query.to_string()).await {
+        if let Some(first) = results.first() {
+            let mut entries = Vec::new();
+            for row in &first.rows {
+                let get_str = |idx: usize| row.get(idx).and_then(|v: &Value| v.as_str()).unwrap_or_default().to_string();
+                let get_u64 = |idx: usize| row.get(idx).and_then(|v: &Value| {
+                    if v.is_u64() { v.as_u64() } else if v.is_string() { v.as_str().and_then(|s: &str| s.parse::<u64>().ok()) } else { None }
+                }).unwrap_or(0);
+                let get_bool = |idx: usize| row.get(idx).and_then(|v: &Value| {
+                    if v.is_boolean() { v.as_bool() } else if v.is_u64() { Some(v.as_u64().unwrap_or(0) == 1) } else { None }
+                }).unwrap_or(false);
+                
+                entries.push(QueryCacheEntry {
+                    query: get_str(0), result_size: get_u64(1), stale: get_bool(2),
+                    shared: get_bool(3), expires_at: get_str(4), key_hash: get_str(5),
+                });
+            }
+            return Ok(entries);
+        }
+    }
+    Ok(vec![])
+}
+
+#[tauri::command]
+pub async fn clear_clickhouse_query_cache(config: ConnectionConfig) -> Result<String, String> {
+    let query = "SYSTEM DROP QUERY CACHE";
+    execute_query_generic(&config, query.to_string()).await?;
+    Ok("Query cache cleared successfully".to_string())
+}
+
+// =====================================================
+// QUERY QUEUE MONITOR
+// =====================================================
+
+#[derive(Serialize, Debug)]
+pub struct QueryQueueInfo {
+    pub name: String,
+    pub database: String,
+    pub pending_queries: u64,
+    pub active_queries: u64,
+    pub total_queries: u64,
+    pub avg_wait_time_ms: f64,
+    pub max_threads: u64,
+}
+
+#[tauri::command]
+pub async fn get_clickhouse_query_queues(config: ConnectionConfig) -> Result<Vec<QueryQueueInfo>, String> {
+    let get_str = |row: &Vec<Value>, idx: usize| row.get(idx).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+    let get_u64 = |row: &Vec<Value>, idx: usize| row.get(idx).and_then(|v| {
+        if v.is_u64() { v.as_u64() } else if v.is_string() { v.as_str().and_then(|s| s.parse::<u64>().ok()) } else if v.is_f64() { v.as_f64().map(|f| f as u64) } else { None }
+    }).unwrap_or(0);
+    let get_f64 = |row: &Vec<Value>, idx: usize| row.get(idx).and_then(|v| {
+        if v.is_f64() { v.as_f64() } else if v.is_u64() { v.as_u64().map(|i| i as f64) } else if v.is_string() { v.as_str().and_then(|s| s.parse::<f64>().ok()) } else { None }
+    }).unwrap_or(0.0);
+
+    // Try CH 24+ format
+    let query_v24 = "SELECT name, database, pending_queries, active_queries, total_queries, avg_query_wait_time_ms, max_threads FROM system.query_queues ORDER BY database, name";
+    if let Ok(Some(results)) = execute_system_query(&config, query_v24.to_string()).await {
+        if let Some(first) = results.first() {
+            if !first.rows.is_empty() {
+                let mut queues = Vec::new();
+                for row in &first.rows {
+                    queues.push(QueryQueueInfo {
+                        name: get_str(row, 0), database: get_str(row, 1), pending_queries: get_u64(row, 2),
+                        active_queries: get_u64(row, 3), total_queries: get_u64(row, 4), avg_wait_time_ms: get_f64(row, 5), max_threads: get_u64(row, 6),
+                    });
+                }
+                return Ok(queues);
+            }
+        }
+    }
+
+    // Try alternative format
+    let query_alt = "SELECT name, '' as database, 0 as pending, 0 as active, 0 as total, 0.0 as avg_wait, 0 as max_threads FROM system.query_queues";
+    if let Ok(Some(results)) = execute_system_query(&config, query_alt.to_string()).await {
+        if let Some(first) = results.first() {
+            let mut queues = Vec::new();
+            for row in &first.rows {
+                queues.push(QueryQueueInfo {
+                    name: get_str(row, 0), database: get_str(row, 1), pending_queries: get_u64(row, 2),
+                    active_queries: get_u64(row, 3), total_queries: get_u64(row, 4), avg_wait_time_ms: get_f64(row, 5), max_threads: get_u64(row, 6),
+                });
+            }
+            return Ok(queues);
+        }
+    }
+
+    Ok(vec![])
+}
+
+// =====================================================
+// PROJECTION MANAGER
+// =====================================================
+
+#[derive(Serialize, Debug)]
+pub struct ProjectionInfo {
+    pub name: String,
+    pub database: String,
+    pub table: String,
+    pub query: String,
+    pub compressed_bytes: u64,
+    pub uncompressed_bytes: u64,
+    pub rows: u64,
+    pub status: String,
+}
+
+#[tauri::command]
+pub async fn get_clickhouse_projections(config: ConnectionConfig, database: String, table: String) -> Result<Vec<ProjectionInfo>, String> {
+    let get_str = |row: &Vec<Value>, idx: usize| row.get(idx).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+    let get_u64 = |row: &Vec<Value>, idx: usize| row.get(idx).and_then(|v| {
+        if v.is_u64() { v.as_u64() } else if v.is_string() { v.as_str().and_then(|s| s.parse::<u64>().ok()) } else if v.is_f64() { v.as_f64().map(|f| f as u64) } else { None }
+    }).unwrap_or(0);
+
+    // Try system.projections (CH 22+)
+    let query_v22 = format!(
+        "SELECT name, query, sum(data_compressed_bytes), sum(data_uncompressed_bytes), sum(rows) FROM system.projections WHERE database = '{}' AND table = '{}' GROUP BY name, query ORDER BY sum(data_compressed_bytes) DESC",
+        database.replace('\'', "\\'"), table.replace('\'', "\\'")
+    );
+    if let Ok(Some(results)) = execute_system_query(&config, query_v22).await {
+        if let Some(first) = results.first() {
+            if !first.rows.is_empty() {
+                let mut projections = Vec::new();
+                for row in &first.rows {
+                    projections.push(ProjectionInfo {
+                        name: get_str(row, 0), database: database.clone(), table: table.clone(),
+                        query: get_str(row, 1), compressed_bytes: get_u64(row, 2), uncompressed_bytes: get_u64(row, 3),
+                        rows: get_u64(row, 4), status: "Active".to_string(),
+                    });
+                }
+                return Ok(projections);
+            }
+        }
+    }
+
+    // Fallback: system.parts with projection_name
+    let query_parts = format!(
+        "SELECT projection_name, '', sum(bytes_on_disk), sum(bytes_on_disk), sum(rows) FROM system.parts WHERE database = '{}' AND table = '{}' AND active = 1 AND projection_name != '' GROUP BY projection_name ORDER BY sum(bytes_on_disk) DESC",
+        database.replace('\'', "\\'"), table.replace('\'', "\\'")
+    );
+    if let Ok(Some(results)) = execute_system_query(&config, query_parts).await {
+        if let Some(first) = results.first() {
+            let mut projections = Vec::new();
+            for row in &first.rows {
+                projections.push(ProjectionInfo {
+                    name: get_str(row, 0), database: database.clone(), table: table.clone(),
+                    query: get_str(row, 1), compressed_bytes: get_u64(row, 2), uncompressed_bytes: get_u64(row, 3),
+                    rows: get_u64(row, 4), status: "Active".to_string(),
+                });
+            }
+            return Ok(projections);
+        }
+    }
+    Ok(vec![])
+}
+
+#[tauri::command]
+pub async fn get_all_clickhouse_projections(config: ConnectionConfig) -> Result<Vec<ProjectionInfo>, String> {
+    let get_str = |row: &Vec<Value>, idx: usize| row.get(idx).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+    let get_u64 = |row: &Vec<Value>, idx: usize| row.get(idx).and_then(|v| {
+        if v.is_u64() { v.as_u64() } else if v.is_string() { v.as_str().and_then(|s| s.parse::<u64>().ok()) } else if v.is_f64() { v.as_f64().map(|f| f as u64) } else { None }
+    }).unwrap_or(0);
+
+    // Try system.projections (CH 22+)
+    let query_v22 = "SELECT name, database, table, query, sum(data_compressed_bytes), sum(data_uncompressed_bytes), sum(rows) FROM system.projections GROUP BY name, database, table, query ORDER BY database, table, sum(data_compressed_bytes) DESC";
+    if let Ok(Some(results)) = execute_system_query(&config, query_v22.to_string()).await {
+        if let Some(first) = results.first() {
+            if !first.rows.is_empty() {
+                let mut projections = Vec::new();
+                for row in &first.rows {
+                    projections.push(ProjectionInfo {
+                        name: get_str(row, 0), database: get_str(row, 1), table: get_str(row, 2),
+                        query: get_str(row, 3), compressed_bytes: get_u64(row, 4), uncompressed_bytes: get_u64(row, 5),
+                        rows: get_u64(row, 6), status: "Active".to_string(),
+                    });
+                }
+                return Ok(projections);
+            }
+        }
+    }
+
+    // Fallback: system.parts
+    let query_parts = "SELECT projection_name, database, table, '', sum(bytes_on_disk), sum(bytes_on_disk), sum(rows) FROM system.parts WHERE active = 1 AND projection_name != '' GROUP BY projection_name, database, table ORDER BY database, table, sum(bytes_on_disk) DESC";
+    if let Ok(Some(results)) = execute_system_query(&config, query_parts.to_string()).await {
+        if let Some(first) = results.first() {
+            let mut projections = Vec::new();
+            for row in &first.rows {
+                projections.push(ProjectionInfo {
+                    name: get_str(row, 0), database: get_str(row, 1), table: get_str(row, 2),
+                    query: get_str(row, 3), compressed_bytes: get_u64(row, 4), uncompressed_bytes: get_u64(row, 5),
+                    rows: get_u64(row, 6), status: "Active".to_string(),
+                });
+            }
+            return Ok(projections);
+        }
+    }
+    Ok(vec![])
+}
+
+#[tauri::command]
+pub async fn create_clickhouse_projection(
+    config: ConnectionConfig,
+    database: String,
+    table: String,
+    name: String,
+    query: String,
+) -> Result<String, String> {
+    let ddl = format!(
+        "ALTER TABLE `{}`.`{}` ADD PROJECTION `{}` ({})",
+        database.replace('`', "\\`"),
+        table.replace('`', "\\`"),
+        name.replace('`', "\\`"),
+        query
+    );
+    
+    execute_query_generic(&config, ddl).await?;
+    Ok(format!("Projection '{}' created successfully", name))
+}
+
+#[tauri::command]
+pub async fn drop_clickhouse_projection(
+    config: ConnectionConfig,
+    database: String,
+    table: String,
+    name: String,
+) -> Result<String, String> {
+    let ddl = format!(
+        "ALTER TABLE `{}`.`{}` DROP PROJECTION `{}`",
+        database.replace('`', "\\`"),
+        table.replace('`', "\\`"),
+        name.replace('`', "\\`")
+    );
+    
+    execute_query_generic(&config, ddl).await?;
+    Ok(format!("Projection '{}' dropped successfully", name))
+}
+
+#[tauri::command]
+pub async fn materialize_clickhouse_projection(
+    config: ConnectionConfig,
+    database: String,
+    table: String,
+    name: String,
+) -> Result<String, String> {
+    let ddl = format!(
+        "ALTER TABLE `{}`.`{}` MATERIALIZE PROJECTION `{}`",
+        database.replace('`', "\\`"),
+        table.replace('`', "\\`"),
+        name.replace('`', "\\`")
+    );
+    
+    execute_query_generic(&config, ddl).await?;
+    Ok(format!("Projection '{}' materialization started", name))
+}
+
+#[tauri::command]
+pub async fn clear_clickhouse_projection(
+    config: ConnectionConfig,
+    database: String,
+    table: String,
+    name: String,
+) -> Result<String, String> {
+    let ddl = format!(
+        "ALTER TABLE `{}`.`{}` CLEAR PROJECTION `{}`",
+        database.replace('`', "\\`"),
+        table.replace('`', "\\`"),
+        name.replace('`', "\\`")
+    );
+    
+    execute_query_generic(&config, ddl).await?;
+    Ok(format!("Projection '{}' cleared", name))
+}
+
+// =====================================================
+// DICTIONARY MANAGER
+// =====================================================
+
+#[derive(Serialize, Debug)]
+pub struct DictInfoDetailed {
+    pub name: String,
+    pub database: String,
+    pub status: String,
+    pub origin: String,
+    pub origin_entry_count: u64,
+    pub bytes_allocated: u64,
+    pub source: String,
+    pub lifetime_min: u64,
+    pub lifetime_max: u64,
+    pub last_successful_update_time: String,
+    pub last_exception: String,
+    pub loading_duration: f64,
+}
+
+#[tauri::command]
+pub async fn get_clickhouse_dictionaries_detailed(config: ConnectionConfig) -> Result<Vec<DictInfoDetailed>, String> {
+    let get_str = |row: &Vec<Value>, idx: usize| row.get(idx).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+    let get_u64 = |row: &Vec<Value>, idx: usize| row.get(idx).and_then(|v| {
+        if v.is_u64() { v.as_u64() } else if v.is_string() { v.as_str().and_then(|s| s.parse::<u64>().ok()) } else if v.is_f64() { v.as_f64().map(|f| f as u64) } else { None }
+    }).unwrap_or(0);
+    let get_f64 = |row: &Vec<Value>, idx: usize| row.get(idx).and_then(|v| {
+        if v.is_f64() { v.as_f64() } else if v.is_u64() { v.as_u64().map(|i| i as f64) } else { None }
+    }).unwrap_or(0.0);
+
+    // Try full schema (older versions)
+    let query_full = "SELECT name, database, status, origin, origin_entry_count, bytes_allocated, source, lifetime_min, lifetime_max, toString(last_successful_update_time), last_exception, loading_duration FROM system.dictionaries ORDER BY database, name";
+    if let Ok(Some(results)) = execute_system_query(&config, query_full.to_string()).await {
+        if let Some(first) = results.first() {
+            if !first.rows.is_empty() && first.rows[0].len() >= 12 {
+                let mut dicts = Vec::new();
+                for row in &first.rows {
+                    dicts.push(DictInfoDetailed {
+                        name: get_str(row, 0), database: get_str(row, 1), status: get_str(row, 2),
+                        origin: get_str(row, 3), origin_entry_count: get_u64(row, 4), bytes_allocated: get_u64(row, 5),
+                        source: get_str(row, 6), lifetime_min: get_u64(row, 7), lifetime_max: get_u64(row, 8),
+                        last_successful_update_time: get_str(row, 9), last_exception: get_str(row, 10), loading_duration: get_f64(row, 11),
+                    });
+                }
+                return Ok(dicts);
+            }
+        }
+    }
+
+    // Fallback: simplified schema (CH 26+)
+    let query_simple = "SELECT name, database, status, origin, bytes_allocated, source, toString(last_successful_update_time), last_exception FROM system.dictionaries ORDER BY database, name";
+    if let Ok(Some(results)) = execute_system_query(&config, query_simple.to_string()).await {
+        if let Some(first) = results.first() {
+            let mut dicts = Vec::new();
+            for row in &first.rows {
+                dicts.push(DictInfoDetailed {
+                    name: get_str(row, 0), database: get_str(row, 1), status: get_str(row, 2),
+                    origin: get_str(row, 3), origin_entry_count: 0, bytes_allocated: get_u64(row, 4),
+                    source: get_str(row, 5), lifetime_min: 0, lifetime_max: 0,
+                    last_successful_update_time: get_str(row, 6), last_exception: get_str(row, 7), loading_duration: 0.0,
+                });
+            }
+            return Ok(dicts);
+        }
+    }
+    Ok(vec![])
+}
+
+#[tauri::command]
+pub async fn reload_clickhouse_dictionary(config: ConnectionConfig, database: String, name: String) -> Result<String, String> {
+    let query = format!("SYSTEM RELOAD DICTIONARY `{}`.`{}`", database.replace('`', "\\`"), name.replace('`', "\\`"));
+    execute_query_generic(&config, query).await?;
+    Ok(format!("Dictionary '{}.{}' reload initiated", database, name))
+}
+
+// =====================================================
+// MATERIALIZED VIEW MANAGER
+// =====================================================
+
+#[derive(Serialize, Debug)]
+pub struct MVInfo {
+    pub name: String,
+    pub database: String,
+    pub source_table: String,
+    pub destination_table: String,
+    pub query: String,
+    pub engine: String,
+    pub rows_read: u64,
+    pub bytes_read: u64,
+    pub is_populated: bool,
+    pub create_time: String,
+    pub dependencies: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn get_clickhouse_materialized_views(config: ConnectionConfig, database: Option<String>) -> Result<Vec<MVInfo>, String> {
+    let get_str = |row: &Vec<Value>, idx: usize| row.get(idx).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+    let get_u64 = |row: &Vec<Value>, idx: usize| row.get(idx).and_then(|v| {
+        if v.is_u64() { v.as_u64() } else if v.is_string() { v.as_str().and_then(|s| s.parse::<u64>().ok()) } else if v.is_f64() { v.as_f64().map(|f| f as u64) } else { None }
+    }).unwrap_or(0);
+
+    // Try with create_time (older versions)
+    let mut query_ct = String::from("SELECT name, database, engine, total_rows, total_bytes, create_table_query, toString(create_time) FROM system.tables WHERE engine = 'MaterializedView'");
+    if let Some(db) = &database { query_ct.push_str(&format!(" AND database = '{}'", db.replace('\'', "\\'"))); }
+    query_ct.push_str(" ORDER BY database, name");
+    
+    if let Ok(results) = execute_query_generic(&config, query_ct).await {
+        if let Some(first) = results.first() {
+            if !first.rows.is_empty() && first.rows[0].len() >= 7 {
+                let mut mvs = Vec::new();
+                for row in &first.rows {
+                    let create_query = get_str(row, 5);
+                    let (source_table, dest_table, is_populated) = parse_mv_create_query(&create_query);
+                    mvs.push(MVInfo {
+                        name: get_str(row, 0), database: get_str(row, 1), source_table, destination_table: dest_table,
+                        query: create_query, engine: get_str(row, 2), rows_read: get_u64(row, 3), bytes_read: get_u64(row, 4),
+                        is_populated, create_time: get_str(row, 6), dependencies: vec![],
+                    });
+                }
+                return Ok(mvs);
+            }
+        }
+    }
+
+    // Fallback: with metadata_modification_time (CH 26+)
+    let mut query_mt = String::from("SELECT name, database, engine, total_rows, total_bytes, create_table_query, toString(metadata_modification_time) FROM system.tables WHERE engine = 'MaterializedView'");
+    if let Some(db) = &database { query_mt.push_str(&format!(" AND database = '{}'", db.replace('\'', "\\'"))); }
+    query_mt.push_str(" ORDER BY database, name");
+    
+    if let Ok(results) = execute_query_generic(&config, query_mt).await {
+        if let Some(first) = results.first() {
+            let mut mvs = Vec::new();
+            for row in &first.rows {
+                let create_query = get_str(row, 5);
+                let (source_table, dest_table, is_populated) = parse_mv_create_query(&create_query);
+                mvs.push(MVInfo {
+                    name: get_str(row, 0), database: get_str(row, 1), source_table, destination_table: dest_table,
+                    query: create_query, engine: get_str(row, 2), rows_read: get_u64(row, 3), bytes_read: get_u64(row, 4),
+                    is_populated, create_time: get_str(row, 6), dependencies: vec![],
+                });
+            }
+            return Ok(mvs);
+        }
+    }
+    Ok(vec![])
+}
+
+fn parse_mv_create_query(create_query: &str) -> (String, String, bool) {
+    let upper = create_query.to_uppercase();
+    let is_populated = upper.contains("POPULATE");
+    
+    let mut source_table = String::new();
+    let mut dest_table = String::new();
+    
+    if let Some(from_pos) = upper.find(" FROM ") {
+        let after_from = &create_query[from_pos + 6..];
+        if let Some(select_pos) = after_from.to_uppercase().find("SELECT") {
+            source_table = after_from[..select_pos].trim().to_string();
+        } else {
+            let end_chars = [' ', '\n', '\r', '\t', ')', ';'];
+            if let Some(end_pos) = after_from.find(|c| end_chars.contains(&c)) {
+                source_table = after_from[..end_pos].trim().to_string();
+            }
+        }
+    }
+    
+    if let Some(to_pos) = upper.find(" TO ") {
+        let after_to = &create_query[to_pos + 4..];
+        let end_chars = [' ', '\n', '\r', '\t', '(', ')', ';'];
+        if let Some(end_pos) = after_to.find(|c| end_chars.contains(&c)) {
+            dest_table = after_to[..end_pos].trim().to_string();
+        } else {
+            dest_table = after_to.trim().to_string();
+        }
+    }
+    
+    (source_table, dest_table, is_populated)
+}
+
+#[tauri::command]
+pub async fn drop_clickhouse_mv(config: ConnectionConfig, database: String, name: String) -> Result<String, String> {
+    let query = format!("DROP TABLE `{}`.`{}`", database.replace('`', "\\`"), name.replace('`', "\\`"));
+    execute_query_generic(&config, query).await?;
+    Ok(format!("Materialized view '{}.{}' dropped", database, name))
+}
+
+#[tauri::command]
+pub async fn refresh_clickhouse_mv(config: ConnectionConfig, database: String, name: String) -> Result<String, String> {
+    let query = format!(
+        "SYSTEM REFRESH VIEW `{}`.`{}`",
+        database.replace('`', "\\`"),
+        name.replace('`', "\\`")
+    );
+    execute_query_generic(&config, query).await?;
+    Ok(format!("Materialized view '{}.{}' refresh initiated", database, name))
+}
+
+// =====================================================
+// BACKUP MANAGER (Native SQL Backup)
+// =====================================================
+
+#[derive(Serialize, Debug)]
+pub struct BackupInfo {
+    pub name: String,
+    pub status: String,
+    pub size: u64,
+    pub tables: Vec<String>,
+    pub created_at: String,
+    pub location: String,
+    pub base_backup: Option<String>,
+}
+
+#[derive(Serialize, Debug)]
+pub struct BackupResult {
+    pub backup_name: String,
+    pub status: String,
+    pub message: String,
+}
+
+#[tauri::command]
+pub async fn get_clickhouse_backups(config: ConnectionConfig) -> Result<Vec<BackupInfo>, String> {
+    let get_str = |row: &Vec<Value>, idx: usize| row.get(idx).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+    let get_u64 = |row: &Vec<Value>, idx: usize| row.get(idx).and_then(|v| {
+        if v.is_u64() { v.as_u64() } else if v.is_string() { v.as_str().and_then(|s| s.parse::<u64>().ok()) } else if v.is_f64() { v.as_f64().map(|f| f as u64) } else { None }
+    }).unwrap_or(0);
+    let get_opt_str = |row: &Vec<Value>, idx: usize| row.get(idx).and_then(|v| v.as_str()).map(|s| s.to_string()).filter(|s| !s.is_empty());
+
+    // Try with create_time (older CH versions)
+    let query_ct = "SELECT name, status, num_files, total_size, toString(create_time), base_backup_name FROM system.backups ORDER BY create_time DESC LIMIT 100";
+    if let Ok(Some(results)) = execute_system_query(&config, query_ct.to_string()).await {
+        if let Some(first) = results.first() {
+            if !first.rows.is_empty() && first.rows[0].len() >= 6 {
+                let mut backups = Vec::new();
+                for row in &first.rows {
+                    backups.push(BackupInfo {
+                        name: get_str(row, 0), status: get_str(row, 1), size: get_u64(row, 3),
+                        tables: vec![], created_at: get_str(row, 4), location: String::new(), base_backup: get_opt_str(row, 5),
+                    });
+                }
+                return Ok(backups);
+            }
+        }
+    }
+
+    // Fallback: simplified (CH 26+)
+    let query_simple = "SELECT name, status, 0, 0, '', '' FROM system.backups ORDER BY name DESC LIMIT 100";
+    if let Ok(Some(results)) = execute_system_query(&config, query_simple.to_string()).await {
+        if let Some(first) = results.first() {
+            let mut backups = Vec::new();
+            for row in &first.rows {
+                backups.push(BackupInfo {
+                    name: get_str(row, 0), status: get_str(row, 1), size: get_u64(row, 3),
+                    tables: vec![], created_at: get_str(row, 4), location: String::new(), base_backup: get_opt_str(row, 5),
+                });
+            }
+            return Ok(backups);
+        }
+    }
+    Ok(vec![])
+}
+
+#[tauri::command]
+pub async fn create_clickhouse_backup(
+    config: ConnectionConfig,
+    backup_name: String,
+    tables: Option<Vec<String>>,
+    settings: Option<std::collections::HashMap<String, String>>,
+) -> Result<BackupResult, String> {
+    let mut query = format!("BACKUP {}", backup_name.replace('\'', "\\'"));
+    
+    if let Some(t) = &tables {
+        if !t.is_empty() {
+            let tables_str: Vec<String> = t.iter()
+                .map(|tbl| format!("`{}`", tbl.replace('`', "\\`")))
+                .collect();
+            query = format!("BACKUP {}", tables_str.join(", "));
+        }
+    }
+    
+    query.push_str(&format!(" TO '{}'", backup_name.replace('\'', "\\'")));
+    
+    if let Some(s) = &settings {
+        if !s.is_empty() {
+            let settings_str: Vec<String> = s.iter()
+                .map(|(k, v)| format!("{} = {}", k, v))
+                .collect();
+            query.push_str(&format!(" SETTINGS {}", settings_str.join(", ")));
+        }
+    }
+    
+    match execute_query_generic(&config, query).await {
+        Ok(_) => Ok(BackupResult {
+            backup_name: backup_name.clone(),
+            status: "CREATED".to_string(),
+            message: format!("Backup '{}' created successfully", backup_name),
+        }),
+        Err(e) => {
+            if e.contains("not found") || e.contains("BACKUP") {
+                Err("BACKUP command not supported. Requires ClickHouse 23.6+ with backup engine configured.".to_string())
+            } else {
+                Err(e)
+            }
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn restore_clickhouse_backup(
+    config: ConnectionConfig,
+    backup_name: String,
+    tables: Option<Vec<String>>,
+    as_attach: bool,
+) -> Result<String, String> {
+    let mut query = if as_attach {
+        format!("ATTACH FROM '{}'", backup_name.replace('\'', "\\'"))
+    } else {
+        format!("RESTORE FROM '{}'", backup_name.replace('\'', "\\'"))
+    };
+    
+    if let Some(t) = &tables {
+        if !t.is_empty() {
+            let tables_str: Vec<String> = t.iter()
+                .map(|tbl| format!("`{}`", tbl.replace('`', "\\`")))
+                .collect();
+            query.push_str(&format!(" TABLES {}", tables_str.join(", ")));
+        }
+    }
+    
+    execute_query_generic(&config, query).await?;
+    Ok(format!("Restore from '{}' initiated", backup_name))
+}
+
+#[tauri::command]
+pub async fn drop_clickhouse_backup(config: ConnectionConfig, backup_name: String) -> Result<String, String> {
+    let query = format!("DROP BACKUP '{}'", backup_name.replace('\'', "\\'"));
+    execute_query_generic(&config, query).await?;
+    Ok(format!("Backup '{}' dropped", backup_name))
+}
