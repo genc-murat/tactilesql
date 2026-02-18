@@ -17,52 +17,42 @@ export function NavBar() {
         const navItems = [
             { path: '/workbench', label: 'WORKBENCH', icon: 'terminal' },
             {
-                label: 'ANALYZE',
-                icon: 'analytics',
-                id: 'menu-analyze',
+                label: 'SCHEMA',
+                icon: 'schema',
+                id: 'menu-schema',
                 children: [
-                    { path: '/workload', label: 'WORKLOAD HUB', icon: 'speed' },
-                    { path: '/anomalies', label: 'ANOMALIES', icon: 'warning' },
-                    { path: '/index-lifecycle', label: 'INDEX LIFECYCLE', icon: 'timeline' },
+                    { path: '/schema', label: 'Schema Designer', icon: 'design_services' },
+                    { path: '/er-diagram', label: 'ER Diagram', icon: 'hub' },
+                    { path: '/diff', label: 'Schema Diff', icon: 'compare_arrows' },
+                    { path: '/schema-tracker', label: 'Schema Tracker', icon: 'history' },
+                    { path: '/dependencies', label: 'Dependencies', icon: 'account_tree' },
                 ]
             },
             {
-                label: 'DESIGN',
-                icon: 'design_services',
-                id: 'menu-design',
+                label: 'INSIGHTS',
+                icon: 'insights',
+                id: 'menu-insights',
                 children: [
-                    { path: '/schema-tracker', label: 'SCHEMA TRACKER', icon: 'history' },
-                    { path: '/er-diagram', label: 'ER DIAGRAM', icon: 'schema' },
-                    { path: '/schema', label: 'UI DESIGNER', icon: 'design_services' },
-                    { path: '/diff', label: 'SCHEMA DIFF', icon: 'compare_arrows' },
+                    { path: '/workload', label: 'Workload Insights', icon: 'speed' },
+                    { path: '/anomalies', label: 'Anomalies', icon: 'warning' },
+                    { path: '/index-lifecycle', label: 'Index Analysis', icon: 'timeline' },
+                    { path: '/quality-analyzer', label: 'Code Quality', icon: 'fact_check' },
+                    { path: '/stories', label: 'Query Stories', icon: 'history_edu' },
+                    { path: '/lineage', label: 'Data Lineage', icon: 'device_hub' },
                 ]
             },
             {
-                label: 'DEEP DIVE',
-                icon: 'account_tree',
-                id: 'menu-deepdive',
+                label: 'MONITOR',
+                icon: 'monitoring',
+                id: 'menu-monitor',
                 children: [
-                    { path: '/quality-analyzer', label: 'QUALITY VUE', icon: 'fact_check' },
-                    { path: '/stories', label: 'QUERY STORIES', icon: 'history_edu' },
-                    { path: '/dependencies', label: 'DEP GRAPH', icon: 'account_tree' },
-                    { path: '/lineage', label: 'DATA LINEAGE', icon: 'device_hub' },
-                ]
-            },
-            {
-                label: 'OPS',
-                icon: 'settings_suggest',
-                id: 'menu-ops',
-                children: [
-                    ...((localStorage.getItem('activeDbType') === 'mysql' || localStorage.getItem('activeDbType') === 'postgresql') ? [{ path: '/monitor', label: 'MONITOR', icon: 'speed' }] : []),
-                    ...((localStorage.getItem('activeDbType') === 'clickhouse') ? [{ path: '/clickhouse-workbench', label: 'CH TOOLS', icon: 'analytics' }] : []),
-                    { path: '/health', label: 'HEALTH', icon: 'monitoring' },
-                    { path: '/config', label: 'CONFIG', icon: 'tune' },
+                    ...((localStorage.getItem('activeDbType') === 'mysql' || localStorage.getItem('activeDbType') === 'postgresql') ? [{ path: '/monitor', label: 'Server Monitor', icon: 'speed' }] : []),
+                    ...((localStorage.getItem('activeDbType') === 'clickhouse') ? [{ path: '/clickhouse-workbench', label: 'ClickHouse Tools', icon: 'analytics' }] : []),
+                    { path: '/health', label: 'Health Dashboard', icon: 'favorite' },
+                    { path: '/audit', label: 'Audit Trail', icon: 'visibility' },
                     ...(taskCenterEnabled
-                        ? [{ path: '/tasks', label: 'TASKS', icon: 'checklist' }]
+                        ? [{ path: '/tasks', label: 'Task Manager', icon: 'checklist' }]
                         : []),
-                    { path: '/data-tools', label: 'TOOLS', icon: 'build' },
-                    { path: '/capacity', label: 'CAPACITY', icon: 'data_usage' },
-                    { path: '/audit', label: 'AUDIT', icon: 'visibility' },
                 ]
             },
             {
@@ -70,8 +60,11 @@ export function NavBar() {
                 icon: 'admin_panel_settings',
                 id: 'menu-admin',
                 children: [
-                    { path: '/access-control', label: 'USERS', icon: 'group' },
-                    { path: '/connections', label: 'CONNECT', icon: 'cable' },
+                    { path: '/connections', label: 'Connections', icon: 'cable' },
+                    { path: '/access-control', label: 'Users & Access', icon: 'group' },
+                    { path: '/config', label: 'Configuration', icon: 'tune' },
+                    { path: '/data-tools', label: 'Data Tools', icon: 'build' },
+                    { path: '/capacity', label: 'Capacity Planner', icon: 'data_usage' },
                 ]
             }
         ];
