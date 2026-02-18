@@ -633,6 +633,219 @@ fn generate_metric_recommendation(
             })
         },
         
+        // ClickHouse-specific recommendations
+        "perf_mark_cache" if metric.raw_value < 95.0 => {
+            let severity = if metric.raw_value < 85.0 { "critical" } else { "high" };
+            Some(HealthRecommendation {
+                id: "ch_mark_cache_low".to_string(),
+                category: category.to_string(),
+                severity: severity.to_string(),
+                title: "Low Mark Cache Hit Ratio".to_string(),
+                description: format!("Mark cache hit ratio is {:.1}%, below optimal 95%.", metric.raw_value),
+                impact: "Increasing mark_cache_size improves MergeTree query performance.".to_string(),
+                effort: "Medium".to_string(),
+                action_sql: Some("SET GLOBAL mark_cache_size = 5368709120;".to_string()),
+                action_type: "config".to_string(),
+                related_metrics: vec!["perf_mark_cache".to_string()],
+                documentation_url: Some("https://clickhouse.com/docs/en/operations/server-configuration-parameters/settings#mark_cache_size".to_string()),
+            })
+        },
+        
+        "perf_query_duration" if metric.raw_value > 500.0 => {
+            let severity = if metric.raw_value > 2000.0 { "critical" } else { "high" };
+            Some(HealthRecommendation {
+                id: "ch_slow_queries".to_string(),
+                category: category.to_string(),
+                severity: severity.to_string(),
+                title: "High Average Query Duration".to_string(),
+                description: format!("Average query duration is {:.0}ms in the last hour.", metric.raw_value),
+                impact: "Analyze slow queries and optimize with indexes or materialized views.".to_string(),
+                effort: "High".to_string(),
+                action_sql: None,
+                action_type: "monitor".to_string(),
+                related_metrics: vec!["perf_query_duration".to_string()],
+                documentation_url: Some("https://clickhouse.com/docs/en/operations/query-cache".to_string()),
+            })
+        },
+        
+        "perf_slow_queries" if metric.raw_value > 10.0 => {
+            Some(HealthRecommendation {
+                id: "ch_slow_queries_count".to_string(),
+                category: category.to_string(),
+                severity: "high".to_string(),
+                title: "Many Slow Queries Detected".to_string(),
+                description: format!("{} queries took longer than 10s in the last hour.", metric.raw_value as i32),
+                impact: "Optimize queries or add indexes to improve performance.".to_string(),
+                effort: "High".to_string(),
+                action_sql: None,
+                action_type: "monitor".to_string(),
+                related_metrics: vec!["perf_slow_queries".to_string()],
+                documentation_url: Some("https://clickhouse.com/docs/en/operations/optimization".to_string()),
+            })
+        },
+        
+        "conn_active" if metric.raw_value > 50.0 => {
+            Some(HealthRecommendation {
+                id: "ch_active_queries_high".to_string(),
+                category: category.to_string(),
+                severity: "high".to_string(),
+                title: "High Concurrent Query Count".to_string(),
+                description: format!("{} queries currently running.", metric.raw_value as i32),
+                impact: "Consider increasing max_threads or optimizing long-running queries.".to_string(),
+                effort: "Medium".to_string(),
+                action_sql: Some("SET GLOBAL max_threads = 16;".to_string()),
+                action_type: "config".to_string(),
+                related_metrics: vec!["conn_active".to_string()],
+                documentation_url: Some("https://clickhouse.com/docs/en/operations/settings/settings#max_threads".to_string()),
+            })
+        },
+        
+        "stor_parts" if metric.raw_value > 10000.0 => {
+            let severity = if metric.raw_value > 50000.0 { "critical" } else { "high" };
+            Some(HealthRecommendation {
+                id: "ch_too_many_parts".to_string(),
+                category: category.to_string(),
+                severity: severity.to_string(),
+                title: "Too Many Parts".to_string(),
+                description: format!("{} active parts across all tables.", metric.raw_value as i32),
+                impact: "Too many parts can cause performance issues. Check merge settings.".to_string(),
+                effort: "Medium".to_string(),
+                action_sql: Some("SET GLOBAL max_parts_in_total = 100000;".to_string()),
+                action_type: "config".to_string(),
+                related_metrics: vec!["stor_parts".to_string()],
+                documentation_url: Some("https://clickhouse.com/docs/en/operations/settings/merge-tree-settings#max-parts-in-total".to_string()),
+            })
+        },
+        
+        "stor_max_parts" if metric.raw_value > 1000.0 => {
+            let severity = if metric.raw_value > 3000.0 { "critical" } else { "high" };
+            Some(HealthRecommendation {
+                id: "ch_table_parts_high".to_string(),
+                category: category.to_string(),
+                severity: severity.to_string(),
+                title: "High Parts Count in Table".to_string(),
+                description: format!("One table has {} parts. Consider OPTIMIZE or partitioning.", metric.raw_value as i32),
+                impact: "Running OPTIMIZE TABLE will merge parts and improve performance.".to_string(),
+                effort: "Low".to_string(),
+                action_sql: Some("OPTIMIZE TABLE table_name FINAL;".to_string()),
+                action_type: "maintenance".to_string(),
+                related_metrics: vec!["stor_max_parts".to_string()],
+                documentation_url: Some("https://clickhouse.com/docs/en/sql-reference/statements/optimize".to_string()),
+            })
+        },
+        
+        "stor_compression" if metric.raw_value < 3.0 => {
+            Some(HealthRecommendation {
+                id: "ch_compression_low".to_string(),
+                category: category.to_string(),
+                severity: "medium".to_string(),
+                title: "Low Compression Ratio".to_string(),
+                description: format!("Compression ratio is {:.1}x. Consider column codecs.", metric.raw_value),
+                impact: "Adding compression codecs reduces storage and I/O.".to_string(),
+                effort: "High".to_string(),
+                action_sql: Some("ALTER TABLE table_name MODIFY COLUMN col_name CODEC(ZSTD);".to_string()),
+                action_type: "sql".to_string(),
+                related_metrics: vec!["stor_compression".to_string()],
+                documentation_url: Some("https://clickhouse.com/docs/en/sql-reference/statements/alter/column#compression-codecs".to_string()),
+            })
+        },
+        
+        "stor_replication" if metric.raw_value > 10.0 => {
+            Some(HealthRecommendation {
+                id: "ch_replication_lag".to_string(),
+                category: category.to_string(),
+                severity: "high".to_string(),
+                title: "Replication Queue Growing".to_string(),
+                description: format!("{} tasks pending in replication queue.", metric.raw_value as i32),
+                impact: "Check replica connectivity and network latency.".to_string(),
+                effort: "Medium".to_string(),
+                action_sql: None,
+                action_type: "monitor".to_string(),
+                related_metrics: vec!["stor_replication".to_string()],
+                documentation_url: Some("https://clickhouse.com/docs/en/engines/table-engines/mergetree-family/replication".to_string()),
+            })
+        },
+        
+        "maint_merges" if metric.raw_value > 10.0 => {
+            Some(HealthRecommendation {
+                id: "ch_merges_high".to_string(),
+                category: category.to_string(),
+                severity: "medium".to_string(),
+                title: "High Merge Activity".to_string(),
+                description: format!("{} merge operations running.", metric.raw_value as i32),
+                impact: "Consider increasing background_pool_size if merges are slow.".to_string(),
+                effort: "Medium".to_string(),
+                action_sql: Some("SET GLOBAL background_pool_size = 16;".to_string()),
+                action_type: "config".to_string(),
+                related_metrics: vec!["maint_merges".to_string()],
+                documentation_url: Some("https://clickhouse.com/docs/en/operations/server-configuration-parameters/settings#background_pool_size".to_string()),
+            })
+        },
+        
+        "maint_mutations" if metric.raw_value > 5.0 => {
+            Some(HealthRecommendation {
+                id: "ch_mutations_pending".to_string(),
+                category: category.to_string(),
+                severity: "high".to_string(),
+                title: "Pending Mutations Detected".to_string(),
+                description: format!("{} mutations not completed.", metric.raw_value as i32),
+                impact: "Check system.mutations for stuck mutations. Consider KILL MUTATION.".to_string(),
+                effort: "Medium".to_string(),
+                action_sql: Some("KILL MUTATION WHERE database = 'db' AND table = 'table' AND mutation_id = 'id';".to_string()),
+                action_type: "sql".to_string(),
+                related_metrics: vec!["maint_mutations".to_string()],
+                documentation_url: Some("https://clickhouse.com/docs/en/sql-reference/statements/alter/mutation".to_string()),
+            })
+        },
+        
+        "maint_detached" if metric.raw_value > 10.0 => {
+            Some(HealthRecommendation {
+                id: "ch_detached_parts".to_string(),
+                category: category.to_string(),
+                severity: "medium".to_string(),
+                title: "Detached Parts Found".to_string(),
+                description: format!("{} detached parts detected.", metric.raw_value as i32),
+                impact: "Check system.detached_parts. May indicate disk issues or manual detach.".to_string(),
+                effort: "Low".to_string(),
+                action_sql: Some("ALTER TABLE table_name ATTACH PART 'part_name';".to_string()),
+                action_type: "maintenance".to_string(),
+                related_metrics: vec!["maint_detached".to_string()],
+                documentation_url: Some("https://clickhouse.com/docs/en/sql-reference/statements/alter/partition#attach-partitionpart".to_string()),
+            })
+        },
+        
+        "maint_no_ttl" if metric.raw_value > 20.0 => {
+            Some(HealthRecommendation {
+                id: "ch_no_ttl".to_string(),
+                category: category.to_string(),
+                severity: "low".to_string(),
+                title: "Tables Without TTL".to_string(),
+                description: format!("{} MergeTree tables have no TTL policy.", metric.raw_value as i32),
+                impact: "Adding TTL helps manage data lifecycle and storage.".to_string(),
+                effort: "Medium".to_string(),
+                action_sql: Some("ALTER TABLE table_name MODIFY TTL date_column + INTERVAL 30 DAY;".to_string()),
+                action_type: "sql".to_string(),
+                related_metrics: vec!["maint_no_ttl".to_string()],
+                documentation_url: Some("https://clickhouse.com/docs/en/engines/table-engines/mergetree-family/mergetree#table_engine-mergetree-ttl".to_string()),
+            })
+        },
+        
+        "sec_readonly" if metric.raw_value > 0.0 => {
+            Some(HealthRecommendation {
+                id: "ch_readonly_mode".to_string(),
+                category: category.to_string(),
+                severity: "medium".to_string(),
+                title: "Server in Readonly Mode".to_string(),
+                description: "ClickHouse server is in readonly mode.".to_string(),
+                impact: "No writes are allowed. Check disk space and ZooKeeper connectivity.".to_string(),
+                effort: "Medium".to_string(),
+                action_sql: None,
+                action_type: "monitor".to_string(),
+                related_metrics: vec!["sec_readonly".to_string()],
+                documentation_url: Some("https://clickhouse.com/docs/en/operations/server-configuration-parameters/settings#read_only".to_string()),
+            })
+        },
+        
         _ => None,
     }
 }

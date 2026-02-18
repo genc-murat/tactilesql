@@ -2,12 +2,13 @@ mod scoring;
 mod mysql;
 mod mssql;
 mod postgres;
+mod clickhouse;
 mod recommendations;
 mod persistence;
 
 use crate::db_types::{
     AppState, DatabaseType, DatabaseHealthReport, HealthRecommendation,
-    ScoreHistoryPoint, ApplyRecommendationResult,
+    ScoreHistoryPoint, ApplyRecommendationResult, ConnectionConfig,
 };
 use tauri::State;
 use serde::{Deserialize, Serialize};
@@ -54,7 +55,11 @@ pub async fn get_database_health_report(
             generate_mssql_health_report(pool, &app_state, &connection_id).await
         }
         DatabaseType::ClickHouse => {
-            Err("Health Score for ClickHouse is not yet implemented. Coming soon!".to_string())
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+            
+            let connection_id = get_connection_id(&app_state).await;
+            generate_clickhouse_health_report(config, &app_state, &connection_id).await
         }
         DatabaseType::Disconnected => Err("No database connection established".to_string()),
     }
@@ -167,6 +172,56 @@ async fn generate_postgres_health_report(
 ) -> Result<DatabaseHealthReport, String> {
     let config = postgres::PostgresHealthConfig::default();
     let categories = postgres::collect_postgres_health_metrics(pool, &config).await?;
+    
+    let overall_score = scoring::calculate_overall_score(&categories);
+    let grade = scoring::score_to_grade(overall_score);
+    let (critical_issues, warnings) = scoring::count_issues(&categories);
+    
+    let previous_scores = get_previous_scores(app_state, connection_id, 30).await;
+    let trend = if !previous_scores.is_empty() {
+        scoring::determine_trend(overall_score, &previous_scores.iter().map(|s| s.score).collect::<Vec<_>>())
+    } else {
+        "stable".to_string()
+    };
+    
+    let category_scores_json = serde_json::to_string(
+        &categories.iter().map(|c| CategoryScoreJson {
+            id: c.id.clone(),
+            score: c.score,
+        }).collect::<Vec<_>>()
+    ).unwrap_or_else(|_| "[]".to_string());
+    
+    if let Some(sqlite_pool) = app_state.local_db_pool.lock().await.as_ref() {
+        let _ = persistence::save_health_score(
+            sqlite_pool,
+            connection_id,
+            overall_score,
+            &grade,
+            &category_scores_json,
+            critical_issues,
+            warnings,
+        ).await;
+    }
+    
+    Ok(DatabaseHealthReport {
+        overall_score,
+        grade,
+        trend,
+        categories,
+        critical_issues,
+        warnings,
+        last_updated: Utc::now().to_rfc3339(),
+        previous_scores,
+    })
+}
+
+async fn generate_clickhouse_health_report(
+    config: &ConnectionConfig,
+    app_state: &AppState,
+    connection_id: &str,
+) -> Result<DatabaseHealthReport, String> {
+    let health_config = clickhouse::ClickhouseHealthConfig::default();
+    let categories = clickhouse::collect_clickhouse_health_metrics(config, &health_config).await?;
     
     let overall_score = scoring::calculate_overall_score(&categories);
     let grade = scoring::score_to_grade(overall_score);
