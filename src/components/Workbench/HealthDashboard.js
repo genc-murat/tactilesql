@@ -1,5 +1,6 @@
 import { HealthScoreApi } from '../../api/healthScore.js';
 import { toastError, toastSuccess } from '../../utils/Toast.js';
+import { HealthAiModal } from '../UI/HealthAiModal.js';
 
 export function renderHealthDashboard(container, connection) {
     container.innerHTML = '';
@@ -20,6 +21,9 @@ export function renderHealthDashboard(container, connection) {
             </div>
         </div>
         <div class="flex items-center gap-3">
+            <button id="ai-analysis-btn" class="px-3 py-1.5 bg-purple-500/10 text-purple-400 rounded text-xs hover:bg-purple-500/20 transition-all font-bold uppercase tracking-wider flex items-center gap-1.5 border border-purple-500/20">
+                <span class="material-symbols-outlined text-sm">auto_awesome</span> AI Analysis
+            </button>
             <select id="severity-filter" class="bg-[var(--bg-primary)] border border-[var(--border-color)] text-[var(--text-primary)] text-xs rounded px-2 py-1.5 focus:outline-none focus:border-emerald-500/50">
                 <option value="all">All Severities</option>
                 <option value="critical">Critical</option>
@@ -321,11 +325,16 @@ export function renderHealthDashboard(container, connection) {
                                         </div>
                                     ` : ''}
                                 </div>
-                                ${rec.action_sql ? `
-                                    <button class="apply-recommendation px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded text-[10px] font-bold uppercase transition-all" data-rec-id="${rec.id}">
-                                        Apply
+                                <div class="flex flex-col gap-1.5">
+                                    <button class="ai-fix-recommendation px-3 py-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 rounded text-[10px] font-bold uppercase transition-all flex items-center gap-1" data-rec-id="${rec.id}" title="Get detailed AI fix guide">
+                                        <span class="material-symbols-outlined text-sm">auto_awesome</span>
                                     </button>
-                                ` : ''}
+                                    ${rec.action_sql ? `
+                                        <button class="apply-recommendation px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded text-[10px] font-bold uppercase transition-all" data-rec-id="${rec.id}">
+                                            Apply
+                                        </button>
+                                    ` : ''}
+                                </div>
                             </div>
                         </div>
                     `;
@@ -390,6 +399,12 @@ export function renderHealthDashboard(container, connection) {
     const attachEventListeners = () => {
         header.querySelector('#refresh-health')?.addEventListener('click', loadData);
         
+        header.querySelector('#ai-analysis-btn')?.addEventListener('click', () => {
+            if (healthReport) {
+                HealthAiModal.show(healthReport, recommendations, connection);
+            }
+        });
+        
         header.querySelector('#severity-filter')?.addEventListener('change', (e) => {
             filterSeverity = e.target.value;
             renderDashboard();
@@ -423,6 +438,52 @@ export function renderHealthDashboard(container, connection) {
                     toastError(`Failed to apply: ${error}`);
                     btn.disabled = false;
                     btn.innerHTML = 'Apply';
+                }
+            });
+        });
+
+        contentArea.querySelectorAll('.ai-fix-recommendation').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const recId = btn.dataset.recId;
+                const rec = recommendations.find(r => r.id === recId);
+                if (!rec) return;
+
+                btn.disabled = true;
+                btn.innerHTML = '<span class="animate-spin material-symbols-outlined text-sm">progress_activity</span>';
+
+                try {
+                    const dbType = localStorage.getItem('activeDbType') || 'mysql';
+                    const fixGuide = await HealthAiModal.generateFix(rec, healthReport, dbType);
+                    
+                    const modal = document.createElement('div');
+                    modal.className = 'fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-center justify-center p-4';
+                    modal.innerHTML = `
+                        <div class="bg-[var(--bg-primary)] rounded-xl border border-[var(--border-color)] shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+                            <div class="px-6 py-4 border-b border-[var(--border-color)] bg-[var(--bg-tertiary)] flex items-center justify-between rounded-t-xl">
+                                <div class="flex items-center gap-3">
+                                    <span class="material-symbols-outlined text-purple-500">auto_awesome</span>
+                                    <h3 class="font-bold text-[var(--text-primary)]">AI Fix Guide: ${rec.title}</h3>
+                                </div>
+                                <button class="close-fix-modal text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
+                                    <span class="material-symbols-outlined">close</span>
+                                </button>
+                            </div>
+                            <div class="flex-1 overflow-auto p-6 prose prose-sm max-w-none prose-invert">
+                                ${fixGuide}
+                            </div>
+                        </div>
+                    `;
+                    document.body.appendChild(modal);
+
+                    modal.querySelector('.close-fix-modal').addEventListener('click', () => modal.remove());
+                    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+
+                } catch (error) {
+                    toastError(`Failed to generate fix: ${error.message}`);
+                } finally {
+                    btn.disabled = false;
+                    btn.innerHTML = '<span class="material-symbols-outlined text-sm">auto_awesome</span>';
                 }
             });
         });

@@ -420,6 +420,15 @@ Focus on practical risk prioritization, likely root causes, and verifiable remed
 Return concise markdown with short bullets and concrete SQL checks when relevant.`;
         }
 
+        if (mode === 'HEALTH') {
+            return `You are a senior database administrator (DBA) specializing in database health and performance.
+Analyze the provided health report data and give actionable recommendations.
+Use only the supplied metrics and context. Do not invent data.
+Be specific about commands, configuration changes, and expected impact.
+Return concise markdown with clear sections and short bullets.
+Prioritize production safety in all recommendations.`;
+        }
+
         return `You are an expert SQL assistant. 
 Your task is to generate valid SQL queries based on the user's natural language request and the provided database schema.
 
@@ -435,7 +444,7 @@ STRICT EXECUTION RULES:
     }
 
     static getTemperature(mode = "GEN") {
-        if (mode === 'GEN' || mode === 'IMPACT' || mode === 'QUALITY') {
+        if (mode === 'GEN' || mode === 'IMPACT' || mode === 'QUALITY' || mode === 'HEALTH') {
             return 0.1;
         }
         return 0.3;
@@ -711,4 +720,209 @@ STRICT EXECUTION RULES:
 
         return 'Unknown';
     }
+
+    static async analyzeHealthReport(provider, apiKey, model, healthInput = {}) {
+        const context = this.buildHealthContext(healthInput);
+        const prompt = `
+Analyze this database health report and provide actionable insights.
+
+Return concise markdown in this structure:
+
+## Executive Summary
+2-3 sentences summarizing overall health status and trend.
+
+## Top 3 Priority Actions
+List the most critical actions to take, with specific commands when applicable.
+Format: **Action Name**: Brief description
+- Recommended command: SQL or config change
+- Expected impact: Quantified improvement
+
+## Risk Assessment
+- **Data Loss Risk**: LOW/MEDIUM/HIGH - reason
+- **Performance Risk**: LOW/MEDIUM/HIGH - reason  
+- **Security Risk**: LOW/MEDIUM/HIGH - reason
+
+## Recommended Timeline
+- **Immediate** (today): ...
+- **This Week**: ...
+- **Ongoing**: ...
+
+Keep recommendations specific to the provided metrics and database type.
+`;
+
+        const response = await this.generateResponse(provider, apiKey, model, prompt, "HEALTH", context);
+        return response;
+    }
+
+    static async explainMetric(provider, apiKey, model, metricInput = {}) {
+        const context = this.buildMetricContext(metricInput);
+        const prompt = `
+Explain this database metric in plain language for a DBA or developer.
+
+1. What does this metric measure? (1-2 sentences)
+2. Why is the current value a concern? (if status is warning/critical)
+3. What are common causes for this issue?
+4. What are the recommended fixes?
+
+Keep the explanation concise (max 150 words) and actionable.
+Use markdown formatting with short bullets.
+`;
+
+        const response = await this.generateResponse(provider, apiKey, model, prompt, "EXPLAIN", context);
+        return response;
+    }
+
+    static async generateFixRecommendation(provider, apiKey, model, recInput = {}) {
+        const context = this.buildRecommendationContext(recInput);
+        const prompt = `
+Generate a detailed fix guide for this database health recommendation.
+
+Provide:
+1. **Step-by-Step Fix Instructions** - numbered list of exact steps
+2. **Pre-flight Checks** - what to verify before applying the fix
+3. **Rollback Plan** - how to undo if something goes wrong
+4. **Verification Query** - SQL to confirm the fix worked
+5. **Post-fix Monitoring** - what to watch after applying
+
+Use markdown formatting. Include actual SQL commands where applicable.
+Keep it production-safe with clear warnings for destructive operations.
+`;
+
+        const response = await this.generateResponse(provider, apiKey, model, prompt, "FIX", context);
+        return response;
+    }
+
+    static async answerHealthQuestion(provider, apiKey, model, question, healthInput = {}) {
+        const context = this.buildHealthContext(healthInput);
+        const prompt = `
+Answer this question about the database health report:
+
+"${question}"
+
+Base your answer ONLY on the provided health data. Be specific and actionable.
+If the question cannot be answered from the available data, say so.
+Use markdown formatting. Keep response under 200 words.
+`;
+
+        const response = await this.generateResponse(provider, apiKey, model, prompt, "HEALTH", context);
+        return response;
+    }
+
+    static buildHealthContext(healthInput = {}) {
+        const report = healthInput.healthReport || {};
+        const connection = healthInput.connection || {};
+        const categories = Array.isArray(report.categories) ? report.categories : [];
+        const previousScores = Array.isArray(report.previous_scores) ? report.previous_scores : [];
+
+        const lines = [
+            `Database Type: ${(connection.dbType || connection.db_type || 'unknown').toString()}`,
+            `Connection Name: ${(connection.name || 'unknown').toString()}`,
+            `Overall Score: ${report.overall_score ?? 0} (Grade: ${report.grade || 'N/A'})`,
+            `Trend: ${report.trend || 'unknown'}`,
+            `Critical Issues: ${report.critical_issues ?? 0}`,
+            `Warnings: ${report.warnings ?? 0}`,
+            `Last Updated: ${report.last_updated || 'unknown'}`,
+            ''
+        ];
+
+        lines.push('=== CATEGORY DETAILS ===');
+        categories.forEach(cat => {
+            lines.push(`\n[${cat.name}] Score: ${cat.score} (${cat.status})`);
+            if (Array.isArray(cat.metrics)) {
+                cat.metrics.forEach(m => {
+                    if (m.status !== 'healthy') {
+                        lines.push(`  - ${m.label}: ${m.value} (${m.status})`);
+                        if (m.description) {
+                            lines.push(`    ${m.description}`);
+                        }
+                    }
+                });
+            }
+        });
+
+        if (previousScores.length > 0) {
+            lines.push('\n=== SCORE HISTORY (last 7 days) ===');
+            previousScores.slice(0, 7).forEach(s => {
+                lines.push(`- ${s.date || 'unknown'}: ${s.score} (${s.grade})`);
+            });
+        }
+
+        const recommendations = healthInput.recommendations || [];
+        if (recommendations.length > 0) {
+            lines.push('\n=== RECOMMENDATIONS ===');
+            recommendations.slice(0, 10).forEach(rec => {
+                lines.push(`- [${rec.severity}] ${rec.title}: ${rec.description}`);
+                if (rec.action_sql) {
+                    lines.push(`  SQL: ${rec.action_sql}`);
+                }
+            });
+        }
+
+        return lines.join('\n').trim();
+    }
+
+    static buildMetricContext(metricInput = {}) {
+        const metric = metricInput.metric || {};
+        const dbType = metricInput.dbType || 'unknown';
+
+        const lines = [
+            `Database Type: ${dbType}`,
+            '',
+            '=== METRIC DETAILS ===',
+            `ID: ${metric.id || 'unknown'}`,
+            `Label: ${metric.label || 'unknown'}`,
+            `Current Value: ${metric.value || 'unknown'}`,
+            `Raw Value: ${metric.raw_value ?? 'N/A'}`,
+            `Status: ${metric.status || 'unknown'}`,
+            `Weight: ${metric.weight ?? 'N/A'}`,
+            `Warning Threshold: ${metric.threshold_warning ?? 'N/A'}`,
+            `Critical Threshold: ${metric.threshold_critical ?? 'N/A'}`,
+        ];
+
+        if (metric.description) {
+            lines.push(`Description: ${metric.description}`);
+        }
+
+        if (metric.unit) {
+            lines.push(`Unit: ${metric.unit}`);
+        }
+
+        return lines.join('\n').trim();
+    }
+
+    static buildRecommendationContext(recInput = {}) {
+        const recommendation = recInput.recommendation || {};
+        const healthReport = recInput.healthReport || {};
+        const dbType = recInput.dbType || 'unknown';
+
+        const lines = [
+            `Database Type: ${dbType}`,
+            `Current Health Score: ${healthReport.overall_score ?? 'N/A'}`,
+            '',
+            '=== RECOMMENDATION ===',
+            `ID: ${recommendation.id || 'unknown'}`,
+            `Category: ${recommendation.category || 'unknown'}`,
+            `Severity: ${recommendation.severity || 'unknown'}`,
+            `Title: ${recommendation.title || 'unknown'}`,
+            `Description: ${recommendation.description || 'No description'}`,
+            `Impact: ${recommendation.impact || 'Unknown impact'}`,
+            `Effort: ${recommendation.effort || 'Unknown effort'}`,
+            `Action Type: ${recommendation.action_type || 'unknown'}`,
+        ];
+
+        if (recommendation.action_sql) {
+            lines.push(`Suggested SQL: ${recommendation.action_sql}`);
+        }
+
+        if (recommendation.documentation_url) {
+            lines.push(`Documentation: ${recommendation.documentation_url}`);
+        }
+
+        if (Array.isArray(recommendation.related_metrics)) {
+            lines.push(`Related Metrics: ${recommendation.related_metrics.join(', ')}`);
+        }
+
+        return lines.join('\n').trim();
+    }
 }
+
