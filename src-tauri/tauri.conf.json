@@ -46,6 +46,7 @@
         "height": 400,
         "decorations": false,
         "transparent": true,
+        "backgroundColor": "#050505",
         "center": true,
         "resizable": false,
         "alwaysOnTop": true,
