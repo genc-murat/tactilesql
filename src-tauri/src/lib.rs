@@ -397,6 +397,13 @@ pub fn run() {
             db::stop_agent_job,
             db::get_agent_jobs,
             db::get_storage_stats,
+            // Health Score
+            db::get_database_health_report,
+            db::get_health_recommendations,
+            db::apply_recommendation,
+            db::get_health_score_history,
+            db::refresh_health_score,
+            db::get_quick_fix_recommendations,
 
             // PostgreSQL Specific
             db::get_sequences,

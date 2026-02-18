@@ -679,3 +679,77 @@ pub struct StorageStats {
     pub free_mb: f64,
     pub physical_name: String,
 }
+
+// --- Health Score Types ---
+
+#[derive(Serialize, Debug, Clone)]
+pub struct DatabaseHealthReport {
+    pub overall_score: i32,
+    pub grade: String,
+    pub trend: String,
+    pub categories: Vec<HealthCategory>,
+    pub critical_issues: i32,
+    pub warnings: i32,
+    pub last_updated: String,
+    pub previous_scores: Vec<ScoreHistoryPoint>,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct HealthCategory {
+    pub id: String,
+    pub name: String,
+    pub score: i32,
+    pub status: String,
+    pub weight: f32,
+    pub metrics: Vec<HealthMetricDetail>,
+    pub icon: String,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct HealthMetricDetail {
+    pub id: String,
+    pub label: String,
+    pub value: String,
+    pub raw_value: f64,
+    pub unit: Option<String>,
+    pub status: String,
+    pub weight: f32,
+    pub threshold_warning: f64,
+    pub threshold_critical: f64,
+    pub description: Option<String>,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct HealthRecommendation {
+    pub id: String,
+    pub category: String,
+    pub severity: String,
+    pub title: String,
+    pub description: String,
+    pub impact: String,
+    pub effort: String,
+    pub action_sql: Option<String>,
+    pub action_type: String,
+    pub related_metrics: Vec<String>,
+    pub documentation_url: Option<String>,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct ScoreHistoryPoint {
+    pub date: String,
+    pub score: i32,
+    pub grade: String,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct HealthScoreHistory {
+    pub connection_id: String,
+    pub records: Vec<ScoreHistoryPoint>,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct ApplyRecommendationResult {
+    pub success: bool,
+    pub message: String,
+    pub updated_score: Option<i32>,
+}

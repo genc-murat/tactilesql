@@ -169,6 +169,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         '/anomalies': { component: lazyLoad(() => import('./pages/Anomalies.js'), 'Anomalies') },
         '/workload': { component: lazyLoad(() => import('./pages/WorkloadInsights.js'), 'WorkloadInsights') },
         '/audit': { component: lazyLoad(() => import('./pages/AuditTrail.js'), 'AuditTrail') },
+        '/health': { component: lazyLoad(() => import('./pages/HealthDashboard.js'), 'HealthDashboardPage') },
         '/tasks': {
             component: taskCenterEnabled
                 ? lazyLoad(() => import('./pages/TaskManager.js'), 'TaskManager')
