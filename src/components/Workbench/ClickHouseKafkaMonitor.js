@@ -111,7 +111,7 @@ export function renderClickHouseKafkaMonitor(container, connection) {
                 };
             }
             acc[key].consumers.push(c);
-            acc[key].totalLag += (c.lag || 0);
+            acc[key].totalLag += (c.lag ?? 0);
             if (c.last_exception) acc[key].exceptions++;
             return acc;
         }, {});
@@ -171,7 +171,7 @@ export function renderClickHouseKafkaMonitor(container, connection) {
                         <th class="px-6 py-3 w-24">Partition</th>
                         <th class="px-6 py-3">Consumer ID</th>
                         <th class="px-6 py-3 text-right">Current Offset</th>
-                        <th class="px-6 py-3 text-right">Committed</th>
+                        <th class="px-6 py-3 text-right" title="Pushed but not yet committed messages">Pending</th>
                         <th class="px-6 py-3 text-right w-32">Lag</th>
                         <th class="px-6 py-3">Status / Exception</th>
                     </tr>
@@ -181,18 +181,18 @@ export function renderClickHouseKafkaMonitor(container, connection) {
             let tbodyHTML = '<tbody class="divide-y divide-[var(--border-color)]/30">';
 
             // Sort by partition
-            group.consumers.sort((a, b) => (a.partition || 0) - (b.partition || 0)).forEach(c => {
-                const hasLag = (c.lag || 0) > 0;
+            group.consumers.sort((a, b) => (a.partition ?? -1) - (b.partition ?? -1)).forEach(c => {
+                const hasLag = (c.lag ?? 0) > 0;
                 const hasException = c.last_exception && c.last_exception.length > 0;
 
                 tbodyHTML += `
                     <tr class="hover:bg-[var(--bg-tertiary)]/20 transition-all group">
-                        <td class="px-6 py-3 font-mono text-[var(--text-primary)] font-bold">${c.partition !== null ? c.partition : '-'}</td>
+                        <td class="px-6 py-3 font-mono text-[var(--text-primary)] font-bold">${c.partition !== null && c.partition !== undefined ? c.partition : '-'}</td>
                         <td class="px-6 py-3 text-[var(--text-secondary)] max-w-[200px] truncate-fade text-[10px] font-mono" title="${c.consumer_id}">${c.consumer_id}</td>
-                        <td class="px-6 py-3 text-right font-mono text-[var(--text-secondary)] opacity-80">${c.current_offset !== null ? formatNumber(c.current_offset) : '-'}</td>
-                        <td class="px-6 py-3 text-right font-mono text-[var(--text-secondary)] opacity-80">${c.last_committed_offset !== null ? formatNumber(c.last_committed_offset) : '-'}</td>
+                        <td class="px-6 py-3 text-right font-mono text-[var(--text-secondary)] opacity-80">${c.current_offset !== null && c.current_offset !== undefined ? formatNumber(c.current_offset) : '-'}</td>
+                        <td class="px-6 py-3 text-right font-mono text-[var(--text-secondary)] opacity-80" title="Pushed but not yet committed messages">${c.intent_size !== null && c.intent_size !== undefined ? formatNumber(c.intent_size) : '-'}</td>
                          <td class="px-6 py-3 text-right">
-                             ${c.lag !== null ?
+                             ${c.lag !== null && c.lag !== undefined ?
                         `<span class="font-mono font-bold ${hasLag ? 'text-orange-400' : 'text-emerald-500 opacity-50'}">${formatNumber(c.lag)}</span>`
                         : '-'}
                         </td>

@@ -870,24 +870,20 @@ pub struct KafkaConsumerInfo {
     pub table: String,
     pub consumer_id: String,
     pub topic: String,
-    pub partition: Option<u64>,
-    pub current_offset: Option<u64>,
-    pub last_committed_offset: Option<u64>,
+    pub partition: Option<i32>,
+    pub current_offset: Option<i64>,
+    pub last_committed_offset: Option<i64>,
+    pub intent_size: Option<i64>,
     pub assigned_partitions: Option<u64>,
     pub last_exception: String,
     pub last_exception_time: String,
-    pub lag: Option<u64>,
-    // New fields
+    pub lag: Option<i64>,
     pub brokers: Option<String>,
     pub group_name: Option<String>,
     pub format: Option<String>,
 }
 
 pub async fn get_kafka_consumers_impl(config: &ConnectionConfig) -> Result<Vec<KafkaConsumerInfo>, String> {
-    // We join system.kafka_consumers (runtime stats) with system.tables (configuration)
-    // Note: system.kafka_consumers contains active consumers. system.tables contains definition.
-    // LEFT JOIN to ensure we get stats even if table definition is somehow missing (though unlikely for active consumer)
-    // Using c.* to handle version differences (some versions have topic, others assignments.topic)
     let query = "
         SELECT 
             c.*,
@@ -901,58 +897,126 @@ pub async fn get_kafka_consumers_impl(config: &ConnectionConfig) -> Result<Vec<K
 
     let mut consumers = Vec::new();
     if let Some(first) = results.first() {
-         if first.rows.is_empty() { return Ok(consumers); }
-         
-         // Helper to find column index
-         let get_idx = |name: &str| first.columns.iter().position(|c| c == name);
-         
-         let db_idx = get_idx("database");
-         let table_idx = get_idx("table");
-         let cid_idx = get_idx("consumer_id");
-         
-         let topic_idx = get_idx("topic");
-         let partition_idx = get_idx("partition");
-         let cur_offset_idx = get_idx("current_offset");
-         let commit_offset_idx = get_idx("last_committed_offset");
-         
-         let exc_idx = get_idx("last_exception");
-         let exc_time_idx = get_idx("last_exception_time");
-         let engine_full_idx = get_idx("engine_full");
+        if first.rows.is_empty() { return Ok(consumers); }
+        
+        let get_idx = |names: &[&str]| -> Option<usize> {
+            for name in names {
+                if let Some(idx) = first.columns.iter().position(|c| c == *name) {
+                    return Some(idx);
+                }
+            }
+            None
+        };
+        
+        let db_idx = get_idx(&["database"]);
+        let table_idx = get_idx(&["table"]);
+        let cid_idx = get_idx(&["consumer_id"]);
+        
+        let topic_arr_idx = get_idx(&["assignments.topic", "topic"]);
+        let partition_arr_idx = get_idx(&["assignments.partition_id", "partition", "partition_id"]);
+        let cur_offset_arr_idx = get_idx(&["assignments.current_offset", "current_offset"]);
+        let intent_size_arr_idx = get_idx(&["assignments.intent_size", "intent_size"]);
+        
+        let exc_time_arr_idx = get_idx(&["exceptions.time", "last_exception_time"]);
+        let exc_text_arr_idx = get_idx(&["exceptions.text", "last_exception"]);
+        let engine_full_idx = get_idx(&["engine_full"]);
 
-         for row in &first.rows {
+        for row in &first.rows {
             let get_str = |idx: Option<usize>| idx.and_then(|i| row.get(i)).and_then(|v| v.as_str()).unwrap_or_default().to_string();
-            let get_u64 = |idx: Option<usize>| idx.and_then(|i| row.get(i)).and_then(|v| {
-                if v.is_u64() { v.as_u64() }
-                else if v.is_string() { v.as_str().and_then(|s| s.parse::<u64>().ok()) }
-                else { None }
-            });
             
-            let cur = get_u64(cur_offset_idx);
-            let com = get_u64(commit_offset_idx);
-            let lag = if let (Some(c), Some(l)) = (cur, com) {
-                if c >= l { Some(c - l) } else { Some(0) }
-            } else { None };
+            let get_value_or_array_str = |idx: Option<usize>| -> Vec<String> {
+                idx.and_then(|i| row.get(i))
+                    .map(|v| {
+                        if let Some(arr) = v.as_array() {
+                            arr.iter().filter_map(|item| item.as_str().map(|s| s.to_string())).collect()
+                        } else if let Some(s) = v.as_str() {
+                            vec![s.to_string()]
+                        } else {
+                            Vec::new()
+                        }
+                    })
+                    .unwrap_or_default()
+            };
+            
+            let get_value_or_array_i32 = |idx: Option<usize>| -> Vec<i32> {
+                idx.and_then(|i| row.get(i))
+                    .map(|v| {
+                        if let Some(arr) = v.as_array() {
+                            arr.iter().filter_map(|item| {
+                                if item.is_i64() { item.as_i64().map(|n| n as i32) }
+                                else if item.is_u64() { item.as_u64().map(|n| n as i32) }
+                                else if item.is_string() { item.as_str().and_then(|s| s.parse::<i32>().ok()) }
+                                else { None }
+                            }).collect()
+                        } else if v.is_i64() {
+                            vec![v.as_i64().unwrap() as i32]
+                        } else if v.is_u64() {
+                            vec![v.as_u64().unwrap() as i32]
+                        } else if let Some(s) = v.as_str() {
+                            s.parse::<i32>().map(|n| vec![n]).unwrap_or_default()
+                        } else {
+                            Vec::new()
+                        }
+                    })
+                    .unwrap_or_default()
+            };
+            
+            let get_value_or_array_i64 = |idx: Option<usize>| -> Vec<i64> {
+                idx.and_then(|i| row.get(i))
+                    .map(|v| {
+                        if let Some(arr) = v.as_array() {
+                            arr.iter().filter_map(|item| {
+                                if item.is_i64() { item.as_i64() }
+                                else if item.is_u64() { item.as_u64().map(|n| n as i64) }
+                                else if item.is_string() { item.as_str().and_then(|s| s.parse::<i64>().ok()) }
+                                else { None }
+                            }).collect()
+                        } else if v.is_i64() {
+                            vec![v.as_i64().unwrap()]
+                        } else if v.is_u64() {
+                            vec![v.as_u64().unwrap() as i64]
+                        } else if let Some(s) = v.as_str() {
+                            s.parse::<i64>().map(|n| vec![n]).unwrap_or_default()
+                        } else {
+                            Vec::new()
+                        }
+                    })
+                    .unwrap_or_default()
+            };
 
-            // Parse engine_full for Kafka settings
+            let topics = get_value_or_array_str(topic_arr_idx);
+            let partitions = get_value_or_array_i32(partition_arr_idx);
+            let current_offsets = get_value_or_array_i64(cur_offset_arr_idx);
+            let intent_sizes = get_value_or_array_i64(intent_size_arr_idx);
+            
+            let (last_exception, last_exception_time) = if let Some(idx) = exc_time_arr_idx {
+                if let Some(arr) = row.get(idx).and_then(|v| v.as_array()) {
+                    let times: Vec<String> = arr.iter().filter_map(|item| item.as_str().map(|s| s.to_string())).collect();
+                    let texts = get_value_or_array_str(exc_text_arr_idx);
+                    (
+                        texts.last().map(|s| s.as_str()).unwrap_or("").to_string(),
+                        times.last().map(|s| s.as_str()).unwrap_or("").to_string()
+                    )
+                } else {
+                    let time_str = exc_time_arr_idx.and_then(|i| row.get(i)).and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let text_str = exc_text_arr_idx.and_then(|i| row.get(i)).and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    (text_str, time_str)
+                }
+            } else {
+                (String::new(), String::new())
+            };
+
             let engine_full = get_str(engine_full_idx);
             let mut brokers = None;
             let mut group_name = None;
             let mut format = None;
 
             if !engine_full.is_empty() {
-                // regex might be heavy, simple string find/split
-                // Look for SETTINGS ...
-                // kafka_broker_list = '...'
-                // kafka_group_name = '...'
-                // kafka_format = '...'
-                
                 let extract_val = |haystack: &str, key: &str| -> Option<String> {
                     if let Some(pos) = haystack.find(key) {
-                        // find '=' after key
                         let after_key = &haystack[pos + key.len()..];
                         if let Some(eq_pos) = after_key.find('=') {
                             let after_eq = &after_key[eq_pos + 1..].trim();
-                            // Value might be quoted '...'
                             if after_eq.starts_with('\'') {
                                 if let Some(end_quote) = after_eq[1..].find('\'') {
                                     return Some(after_eq[1..end_quote + 1].to_string());
@@ -967,52 +1031,79 @@ pub async fn get_kafka_consumers_impl(config: &ConnectionConfig) -> Result<Vec<K
                 group_name = extract_val(&engine_full, "kafka_group_name");
                 format = extract_val(&engine_full, "kafka_format");
                 
-                // Fallback for parameter style: Kafka('brokers', 'topic', 'group', 'format')
                 if brokers.is_none() && engine_full.to_uppercase().contains("KAFKA(") {
-                     // Extract args inside parenthesis
-                     if let Some(start) = engine_full.find('(') {
-                         if let Some(end) = engine_full.rfind(')') {
-                             let args_str = &engine_full[start+1..end];
-                             let mut args = Vec::new();
-                             let mut in_quote = false;
-                             let mut current_arg = String::new();
-                             for c in args_str.chars() {
-                                 if c == '\'' { in_quote = !in_quote; }
-                                 else if c == ',' && !in_quote {
-                                     args.push(current_arg.trim().replace('\'', ""));
-                                     current_arg.clear();
-                                 } else {
-                                     current_arg.push(c);
-                                 }
-                             }
-                             if !current_arg.is_empty() { args.push(current_arg.trim().replace('\'', "")); }
-                             
-                             if args.len() >= 1 { brokers = Some(args[0].clone()); }
-                             // args[1] is topic
-                             if args.len() >= 3 { group_name = Some(args[2].clone()); }
-                             if args.len() >= 4 { format = Some(args[3].clone()); }
-                         }
-                     }
+                    if let Some(start) = engine_full.find('(') {
+                        if let Some(end) = engine_full.rfind(')') {
+                            let args_str = &engine_full[start+1..end];
+                            let mut args = Vec::new();
+                            let mut in_quote = false;
+                            let mut current_arg = String::new();
+                            for c in args_str.chars() {
+                                if c == '\'' { in_quote = !in_quote; }
+                                else if c == ',' && !in_quote {
+                                    args.push(current_arg.trim().replace('\'', ""));
+                                    current_arg.clear();
+                                } else {
+                                    current_arg.push(c);
+                                }
+                            }
+                            if !current_arg.is_empty() { args.push(current_arg.trim().replace('\'', "")); }
+                            
+                            if args.len() >= 1 { brokers = Some(args[0].clone()); }
+                            if args.len() >= 3 { group_name = Some(args[2].clone()); }
+                            if args.len() >= 4 { format = Some(args[3].clone()); }
+                        }
+                    }
                 }
             }
 
-            consumers.push(KafkaConsumerInfo {
-                database: get_str(db_idx),
-                table: get_str(table_idx),
-                consumer_id: get_str(cid_idx),
-                topic: get_str(topic_idx),
-                partition: get_u64(partition_idx),
-                current_offset: cur,
-                last_committed_offset: com,
-                assigned_partitions: None,
-                last_exception: get_str(exc_idx),
-                last_exception_time: get_str(exc_time_idx),
-                lag,
-                brokers,
-                group_name,
-                format,
-            });
-         }
+            let max_len = topics.len().max(partitions.len()).max(current_offsets.len());
+            
+            if max_len == 0 {
+                consumers.push(KafkaConsumerInfo {
+                    database: get_str(db_idx),
+                    table: get_str(table_idx),
+                    consumer_id: get_str(cid_idx),
+                    topic: String::new(),
+                    partition: None,
+                    current_offset: None,
+                    last_committed_offset: None,
+                    intent_size: None,
+                    assigned_partitions: None,
+                    last_exception,
+                    last_exception_time,
+                    lag: None,
+                    brokers: brokers.clone(),
+                    group_name: group_name.clone(),
+                    format: format.clone(),
+                });
+            } else {
+                for i in 0..max_len {
+                    let topic = topics.get(i).cloned().unwrap_or_default();
+                    let partition = partitions.get(i).copied();
+                    let current_offset = current_offsets.get(i).copied();
+                    let intent_size = intent_sizes.get(i).copied();
+                    
+                    consumers.push(KafkaConsumerInfo {
+                        database: get_str(db_idx),
+                        table: get_str(table_idx),
+                        consumer_id: get_str(cid_idx),
+                        topic,
+                        partition,
+                        current_offset,
+                        last_committed_offset: None,
+                        intent_size,
+                        assigned_partitions: None,
+                        last_exception: last_exception.clone(),
+                        last_exception_time: last_exception_time.clone(),
+                        lag: intent_size,
+                        brokers: brokers.clone(),
+                        group_name: group_name.clone(),
+                        format: format.clone(),
+                    });
+                }
+            }
+        }
     }
     
     Ok(consumers)

@@ -27,7 +27,11 @@ fn test_comparison_logic() {
     let calc_diff = |a: u64, b: u64| -> (i64, f64) {
         let diff = (b as i64) - (a as i64);
         let percent = if a == 0 {
-            if b == 0 { 0.0 } else { 100.0 }
+            if b == 0 {
+                0.0
+            } else {
+                100.0
+            }
         } else {
             (diff as f64 / a as f64) * 100.0
         };
@@ -58,13 +62,21 @@ fn test_comparison_logic() {
 #[test]
 fn test_system_error_handling() {
     // Should ignore
-    assert!(should_ignore_system_error("Code: 60. DB::Exception: Table system.query_log doesn't exist"));
-    assert!(should_ignore_system_error("Code: 47. DB::Exception: Missing column is_cancelled"));
-    assert!(should_ignore_system_error("Unknown identifier: is_cancelled"));
+    assert!(should_ignore_system_error(
+        "Code: 60. DB::Exception: Table system.query_log doesn't exist"
+    ));
+    assert!(should_ignore_system_error(
+        "Code: 47. DB::Exception: Missing column is_cancelled"
+    ));
+    assert!(should_ignore_system_error(
+        "Unknown identifier: is_cancelled"
+    ));
     assert!(should_ignore_system_error("Access denied for user"));
 
     // Should NOT ignore
-    assert!(!should_ignore_system_error("Code: 1. DB::Exception: Syntax error"));
+    assert!(!should_ignore_system_error(
+        "Code: 1. DB::Exception: Syntax error"
+    ));
     assert!(!should_ignore_system_error("Connection refused"));
     assert!(!should_ignore_system_error("Timeout exceeded"));
 }
@@ -103,13 +115,18 @@ fn test_kafka_consumer_info_serialization() {
         topic: "topic".to_string(),
         partition: Some(0),
         current_offset: Some(100),
-        last_committed_offset: Some(90),
+        last_committed_offset: None,
+        intent_size: Some(10),
         assigned_partitions: None,
         last_exception: "".to_string(),
         last_exception_time: "".to_string(),
         lag: Some(10),
+        brokers: Some("localhost:9092".to_string()),
+        group_name: Some("test-group".to_string()),
+        format: Some("JSONEachRow".to_string()),
     };
     let json = serde_json::to_string(&kafka).unwrap();
     assert!(json.contains("client-1"));
     assert!(json.contains("lag"));
+    assert!(json.contains("intent_size"));
 }
