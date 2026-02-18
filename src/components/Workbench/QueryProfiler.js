@@ -37,6 +37,8 @@ export function QueryProfiler() {
     let lockWaitDetailsSupported = true;
     let lockAnalysisSupported = true;
     let lockSupportWarningShown = false;
+    let clickhouseProfileError = null;
+    let clickhouseProfileRetrying = false;
 
     let theme = ThemeManager.getCurrentTheme();
     let isLight = theme === 'light';
@@ -344,10 +346,61 @@ export function QueryProfiler() {
     // ClickHouse Render Logic
     const renderClickHouseProfile = (contentDiv, data) => {
         const { duration, rowsReturned, query, clickhouseProfile } = data;
+        const labelColor = (isLight || isDawn) ? 'text-gray-500' : 'text-gray-400';
+        const valueColor = isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-200');
+        const gridBg = isLight ? 'bg-gray-50/80' : (isDawn ? 'bg-[#fffaf3]/80' : 'bg-white/5');
+
+        if (clickhouseProfileRetrying) {
+            contentDiv.innerHTML = `
+                <div class="h-32 flex flex-col items-center justify-center text-center ${labelColor}">
+                    <span class="material-symbols-outlined text-3xl animate-spin opacity-50 mb-1">sync</span>
+                    <span class="text-xs font-medium uppercase tracking-wider">Retrying profile fetch...</span>
+                </div>
+            `;
+            return;
+        }
+
+        if (clickhouseProfileError) {
+            contentDiv.innerHTML = `
+                <div class="flex items-start gap-3 mb-3">
+                    <div class="w-12 h-12 rounded-full flex items-center justify-center border-2 border-mysql-teal/20 bg-mysql-teal/10 shrink-0">
+                        <span class="material-symbols-outlined text-mysql-teal">speed</span>
+                    </div>
+                    
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-baseline justify-between">
+                            <span class="text-xs font-bold ${valueColor} truncate" title="Duration">Duration</span>
+                            <span class="text-lg font-black bg-clip-text text-transparent bg-gradient-to-r from-mysql-teal to-cyan-400">${formatDuration(duration)}</span>
+                        </div>
+                        <div class="text-[10px] ${labelColor} truncate font-mono mt-0.5" title="${escapeHtml(query)}">${escapeHtml(query) || 'Unknown Query'}</div>
+                    </div>
+                </div>
+
+                <div class="p-3 rounded-lg border ${isLight ? 'bg-yellow-50 border-yellow-200' : 'bg-yellow-500/10 border-yellow-500/20'}">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="material-symbols-outlined text-yellow-500 text-sm">warning</span>
+                        <span class="text-[10px] font-black uppercase tracking-wider text-yellow-600">Profile Unavailable</span>
+                    </div>
+                    <div class="text-[9px] ${isLight ? 'text-yellow-800' : 'text-yellow-200/80'} mb-2 leading-relaxed">
+                        ${escapeHtml(clickhouseProfileError)}
+                    </div>
+                    <div class="text-[8px] ${isLight ? 'text-yellow-600' : 'text-yellow-300/70'} mb-2">
+                        This can happen if system.query_log is disabled or the query log hasn't flushed yet.
+                    </div>
+                    <button id="retry-profile-btn" class="w-full py-1.5 rounded bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-600 text-[10px] font-bold uppercase tracking-wider transition-all border border-yellow-500/30">
+                        <span class="material-symbols-outlined text-sm align-middle mr-1">refresh</span>
+                        Retry
+                    </button>
+                </div>
+            `;
+
+            contentDiv.querySelector('#retry-profile-btn')?.addEventListener('click', () => {
+                retryClickHouseProfile(data.query_id);
+            });
+            return;
+        }
 
         if (!clickhouseProfile) {
-            // Loading state or basic info
-            const labelColor = (isLight || isDawn) ? 'text-gray-500' : 'text-gray-400';
             contentDiv.innerHTML = `
                 <div class="h-32 flex flex-col items-center justify-center text-center ${labelColor}">
                     <span class="material-symbols-outlined text-3xl animate-spin opacity-50 mb-1">sync</span>
@@ -361,12 +414,6 @@ export function QueryProfiler() {
             read_rows, read_bytes, memory_usage, result_rows, result_bytes, total_rows_approx, timeline
         } = clickhouseProfile;
 
-        // Styling helpers
-        const labelColor = (isLight || isDawn) ? 'text-gray-500' : 'text-gray-400';
-        const valueColor = isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-gray-200');
-        const gridBg = isLight ? 'bg-gray-50/80' : (isDawn ? 'bg-[#fffaf3]/80' : 'bg-white/5');
-
-        // Main Stats (replacing Score for now as we don't have a heuristic yet)
         const formatMem = (bytes) => formatBytes(bytes);
 
         contentDiv.innerHTML = `
@@ -1612,6 +1659,61 @@ ${escapeHtml(planData)}
         render();
     };
 
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    const fetchClickHouseProfileWithRetry = async (queryId, maxRetries = 3, initialDelay = 500) => {
+        const stored = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+        let lastError = null;
+        
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+                if (attempt > 0) {
+                    clickhouseProfileRetrying = true;
+                    if (activeTab === 'profile') render();
+                    const delay = initialDelay * Math.pow(2, attempt - 1);
+                    await sleep(delay);
+                }
+                
+                const profile = await invoke('get_clickhouse_query_profile', {
+                    config: stored,
+                    queryId: queryId
+                });
+                
+                clickhouseProfileError = null;
+                clickhouseProfileRetrying = false;
+                return profile;
+            } catch (err) {
+                lastError = err;
+                console.warn(`ClickHouse profile fetch attempt ${attempt + 1} failed:`, err);
+            }
+        }
+        
+        clickhouseProfileRetrying = false;
+        throw lastError;
+    };
+
+    const retryClickHouseProfile = async (queryId) => {
+        if (!queryId) return;
+        
+        clickhouseProfileError = null;
+        clickhouseProfileRetrying = true;
+        if (activeTab === 'profile') render();
+        
+        try {
+            const profile = await fetchClickHouseProfileWithRetry(queryId, 3, 500);
+            updateProfile({
+                ...profileData,
+                clickhouseProfile: profile
+            });
+        } catch (err) {
+            clickhouseProfileError = err?.message || err?.toString() || 'Failed to fetch query profile';
+            updateProfile({
+                ...profileData,
+                clickhouseProfile: null
+            });
+        }
+    };
+
     // --- Event Handlers (Stored for cleanup) ---
     const onQueryResult = async (e) => {
         const detail = e.detail;
@@ -1631,26 +1733,36 @@ ${escapeHtml(planData)}
             query_id: mainResult.query_id
         };
 
+        clickhouseProfileError = null;
+        clickhouseProfileRetrying = false;
         updateProfile(basicData);
 
-        // Auto-show when result arrives if not already visible
         if (!isVisible) show();
         else if (activeTab === 'profile') render();
 
-        // Fetch detailed ClickHouse profile
-        if (getDbType() === 'clickhouse' && mainResult.query_id) {
-            try {
-                const stored = JSON.parse(localStorage.getItem('activeConnection') || '{}');
-                const profile = await invoke('get_clickhouse_query_profile', {
-                    config: stored,
-                    queryId: mainResult.query_id
+        if (getDbType() === 'clickhouse') {
+            if (!mainResult.query_id) {
+                clickhouseProfileError = 'Query ID not available. Profile data may be limited for this query type.';
+                updateProfile({
+                    ...basicData,
+                    clickhouseProfile: null
                 });
+                return;
+            }
+
+            try {
+                const profile = await fetchClickHouseProfileWithRetry(mainResult.query_id, 3, 500);
                 updateProfile({
                     ...basicData,
                     clickhouseProfile: profile
                 });
             } catch (err) {
-                console.error("Failed to fetch ClickHouse profile", err);
+                console.error("Failed to fetch ClickHouse profile after retries", err);
+                clickhouseProfileError = err?.message || err?.toString() || 'Failed to fetch query profile from system.query_log';
+                updateProfile({
+                    ...basicData,
+                    clickhouseProfile: null
+                });
             }
         }
     };
