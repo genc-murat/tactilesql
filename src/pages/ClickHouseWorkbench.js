@@ -19,7 +19,7 @@ export function ClickHouseWorkbench() {
     const getContainerClass = (t) => {
         const isLight = t === 'light';
         const isDawn = t === 'dawn';
-        const isOceanic = t === 'oceanic' || t === 'ember' || t === 'aurora';
+        const isOceanic = t === 'oceanic' || t === 'ember' || t === 'aurora' || t === 'copper';
         return `flex-1 flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]'))} transition-all duration-300`;
     };
     container.className = getContainerClass(theme);
@@ -30,7 +30,7 @@ export function ClickHouseWorkbench() {
     const render = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
         container.innerHTML = `
             <div class="h-full flex flex-col">
@@ -96,7 +96,7 @@ export function ClickHouseWorkbench() {
         const isActive = activeTab === id;
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
         let activeClass = '';
         if (isActive) {

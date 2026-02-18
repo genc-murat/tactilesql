@@ -164,7 +164,7 @@ export function QueryEditor() {
     let theme = ThemeManager.getCurrentTheme();
     let isLight = theme === 'light';
     let isDawn = theme === 'dawn';
-    let isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+    let isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
     let isNeon = theme === 'neon';
     const container = document.createElement('div');
     container.className = `flex flex-col h-full border-b ${isLight ? 'border-gray-200 bg-white' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3]' : (isOceanic ? 'border-ocean-border/50 bg-ocean-bg' : (isNeon ? 'border-neon-border/50 bg-neon-bg' : 'border-white/5 bg-[#0f1115]')))}`;
@@ -1686,7 +1686,7 @@ export function QueryEditor() {
         const theme = ThemeManager.getCurrentTheme();
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
         const overlay = document.createElement('div');
         overlay.id = 'whatif-optimizer-modal';
@@ -3197,7 +3197,7 @@ export function QueryEditor() {
         theme = e.detail.theme;
         isLight = theme === 'light';
         isDawn = theme === 'dawn';
-        isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         isNeon = theme === 'neon';
         container.className = `flex flex-col h-full border-b ${isLight ? 'border-gray-200 bg-white' : (isDawn ? 'border-[#f2e9e1] bg-[#fffaf3]' : (isOceanic ? 'border-ocean-border/50 bg-ocean-bg' : (isNeon ? 'border-neon-border/50 bg-neon-bg' : 'border-white/5 bg-[#0f1115]')))}`;
         render();

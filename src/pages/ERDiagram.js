@@ -166,7 +166,7 @@ const mergeGraphWithOverrides = (baseGraph, overrides) => {
 const getClasses = (theme) => {
     const isLight = theme === 'light';
     const isDawn = theme === 'dawn';
-    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
     const isNeon = theme === 'neon';
 
     return {

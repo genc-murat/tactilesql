@@ -15,7 +15,7 @@ export function QualityDashboard() {
     const getClasses = (t) => {
         const isLight = t === 'light';
         const isDawn = t === 'dawn';
-        const isOceanic = t === 'oceanic';
+        const isOceanic = t === 'oceanic' || t === 'ember' || t === 'aurora' || t === 'copper';
         const isEmber = t === 'ember';
         const isAurora = t === 'aurora';
         const isNeon = t === 'neon';

@@ -47,7 +47,7 @@ export class VirtualScroller {
         this.theme = ThemeManager.getCurrentTheme();
         this.isLight = this.theme === 'light';
         this.isDawn = this.theme === 'dawn';
-        this.isOceanic = this.theme === 'oceanic' || this.theme === 'ember' || this.theme === 'aurora';
+        this.isOceanic = this.theme === 'oceanic' || this.theme === 'ember' || this.theme === 'aurora' || this.theme === 'copper';
         
         // Bound handlers
         this._scrollHandler = this._handleScroll.bind(this);
@@ -281,7 +281,7 @@ export class VirtualScroller {
         this.theme = e.detail.theme;
         this.isLight = this.theme === 'light';
         this.isDawn = this.theme === 'dawn';
-        this.isOceanic = this.theme === 'oceanic' || this.theme === 'ember' || this.theme === 'aurora';
+        this.isOceanic = this.theme === 'oceanic' || this.theme === 'ember' || this.theme === 'aurora' || this.theme === 'copper';
         
         // Force re-render all visible rows
         for (const el of this._activeRows.values()) {
@@ -631,7 +631,7 @@ export function createVirtualTable(options = {}) {
 
     const theme = ThemeManager.getCurrentTheme();
     let isLight = theme === 'light';
-    let isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+    let isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
     let selectedRows = new Set();
     let scroller = null;
 

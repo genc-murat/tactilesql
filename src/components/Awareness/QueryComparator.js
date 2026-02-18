@@ -16,7 +16,7 @@ export function QueryComparator() {
     const getModalClass = (t) => {
         const isL = t === 'light';
         const isD = t === 'dawn';
-        const isO = t === 'oceanic';
+        const isO = t === 'oceanic' || t === 'ember' || t === 'aurora' || t === 'copper';
         const isE = t === 'ember';
         const isA = t === 'aurora';
         const isN = t === 'neon';

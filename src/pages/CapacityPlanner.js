@@ -10,7 +10,7 @@ export function CapacityPlanner() {
     const getClasses = (t) => {
         const isLight = t === 'light';
         const isDawn = t === 'dawn';
-        const isOceanic = t === 'oceanic' || t === 'ember' || t === 'aurora';
+        const isOceanic = t === 'oceanic' || t === 'ember' || t === 'aurora' || t === 'copper';
         const isNeon = t === 'neon';
         return {
             container: `flex-1 flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isNeon ? 'bg-neon-bg' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]')))} transition-colors duration-300`,

@@ -7,7 +7,7 @@ export class Dialog {
         const theme = ThemeManager.getCurrentTheme();
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         const isNeon = theme === 'neon';
 
         const overlay = document.createElement('div');
@@ -47,7 +47,7 @@ export class Dialog {
         const theme = ThemeManager.getCurrentTheme();
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         const isNeon = theme === 'neon';
 
         // Update main container theme
@@ -190,7 +190,7 @@ export class Dialog {
             const theme = ThemeManager.getCurrentTheme();
             const isLight = theme === 'light';
             const isDawn = theme === 'dawn';
-            const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+            const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
             const isNeon = theme === 'neon';
 
             this.title.textContent = title;
@@ -277,7 +277,7 @@ export class Dialog {
             const theme = ThemeManager.getCurrentTheme();
             const isLight = theme === 'light';
             const isDawn = theme === 'dawn';
-            const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+            const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
             const isNeon = theme === 'neon';
 
             this.title.textContent = title;
@@ -436,7 +436,7 @@ export class Dialog {
             const theme = ThemeManager.getCurrentTheme();
             const isLight = theme === 'light';
             const isDawn = theme === 'dawn';
-            const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+            const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
             const isNeon = theme === 'neon';
 
             this.dialog.style.width = '480px';

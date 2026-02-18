@@ -10,9 +10,10 @@ export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGen
     const theme = ThemeManager.getCurrentTheme();
     const isLight = theme === 'light';
     const isDawn = theme === 'dawn';
-    const isOceanic = theme === 'oceanic';
+    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
     const isEmber = theme === 'ember';
     const isAurora = theme === 'aurora';
+    const isCopper = theme === 'copper';
     const isNeon = theme === 'neon';
 
     const container = document.createElement('div');

@@ -10,7 +10,7 @@ export function showDeadlockAnalyzerModal(deadlockHistory) {
     const theme = ThemeManager.getCurrentTheme();
     const isLight = theme === 'light';
     const isDawn = theme === 'dawn';
-    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
     const overlay = document.createElement('div');
     overlay.className = 'fixed inset-0 bg-black/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 md:p-8';
@@ -104,7 +104,7 @@ export function showDeadlockAnalyzerModal(deadlockHistory) {
 function renderDeadlockDetail(deadlock, theme) {
     const isLight = theme === 'light';
     const isDawn = theme === 'dawn';
-    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
     
     const border = isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/50' : 'border-white/10'));
     const text = isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-white');

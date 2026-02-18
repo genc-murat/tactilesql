@@ -8,7 +8,7 @@ export async function showMssqlAgentManagerModal() {
     const isLight = theme === 'light';
     const isDawn = theme === 'dawn';
     const isNeon = theme === 'neon';
-    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
     // Theme tokens
     const panelBg = isLight ? 'bg-white' : isDawn ? 'bg-[#fffaf3]' : isOceanic ? 'bg-ocean-panel' : isNeon ? 'bg-neon-panel' : 'bg-[#0f1115]';

@@ -11,9 +11,9 @@ export function ConnectionManager() {
     const getContainerClass = (t) => {
         const isLight = t === 'light';
         const isDawn = t === 'dawn';
-        const isOceanic = t === 'oceanic' || t === 'ember' || t === 'aurora';
+        const isOceanic = t === 'oceanic' || t === 'ember' || t === 'aurora' || t === 'copper';
         const isNeon = t === 'neon';
-        return `flex h-full w-full overflow-hidden ${isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : (isNeon ? 'bg-neon-bg' : (isOceanic ? 'bg-[#2E3440]' : 'bg-[#0a0c10]')))} selection:bg-mysql-cyan/30 transition-all duration-300`;
+        return `flex h-full w-full overflow-hidden ${isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : (isNeon ? 'bg-neon-bg' : 'bg-[#0a0c10]')))} selection:bg-mysql-cyan/30 transition-all duration-300`;
     };
     container.className = getContainerClass(theme);
 
@@ -61,7 +61,7 @@ export function ConnectionManager() {
 
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         const isNeon = theme === 'neon';
         const isPostgres = config.dbType === 'postgresql';
         const isMssql = config.dbType === 'mssql';

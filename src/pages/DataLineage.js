@@ -299,7 +299,7 @@ export function DataLineage() {
     const getClasses = (currentTheme) => {
         const isLight = currentTheme === 'light';
         const isDawn = currentTheme === 'dawn';
-        const isOceanic = currentTheme === 'oceanic' || currentTheme === 'ember' || currentTheme === 'aurora';
+        const isOceanic = currentTheme === 'oceanic' || currentTheme === 'ember' || currentTheme === 'aurora' || currentTheme === 'copper';
         const isNeon = currentTheme === 'neon';
 
         return {

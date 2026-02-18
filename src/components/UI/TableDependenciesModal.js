@@ -8,7 +8,7 @@ export function showTableDependenciesModal(database, tableName, dbType) {
     const theme = ThemeManager.getCurrentTheme();
     const isLight = theme === 'light';
     const isDawn = theme === 'dawn';
-    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
     const isNeon = theme === 'neon';
 
     const overlay = document.createElement('div');

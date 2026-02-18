@@ -117,7 +117,7 @@ export function TaskManager() {
         const isLight = currentTheme === 'light';
         const isDawn = currentTheme === 'dawn';
         const isOceanic =
-            currentTheme === 'oceanic' || currentTheme === 'ember' || currentTheme === 'aurora';
+            currentTheme === 'oceanic' || currentTheme === 'ember' || currentTheme === 'aurora' || currentTheme === 'copper';
         const isNeon = currentTheme === 'neon';
         return `h-full overflow-hidden flex flex-col p-4 lg:p-6 ${isLight
             ? 'bg-gray-50'
@@ -1445,7 +1445,7 @@ export function TaskManager() {
     const render = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         const isNeon = theme === 'neon';
         const task = selectedTask();
         const isCompositeTask = task?.taskType === 'composite';

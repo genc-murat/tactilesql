@@ -13,7 +13,7 @@ export function IndexLifecycle() {
     const getClasses = (t) => {
         const isLight = t === 'light';
         const isDawn = t === 'dawn';
-        const isOceanic = t === 'oceanic' || t === 'ember' || t === 'aurora';
+        const isOceanic = t === 'oceanic' || t === 'ember' || t === 'aurora' || t === 'copper';
         const isNeon = t === 'neon';
 
         return {

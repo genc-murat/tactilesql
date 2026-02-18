@@ -138,6 +138,7 @@ export function Settings() {
         if (t === 'ember') return 'bg-[#140c12]';
         if (t === 'aurora') return 'bg-[#0b1214]';
         if (t === 'neon') return 'bg-neon-bg';
+        if (t === 'copper') return 'bg-copper-bg';
         return 'bg-base-dark';
     };
     container.className = `h-full overflow-auto custom-scrollbar ${getBgClass(theme)} transition-colors duration-300`;
@@ -148,6 +149,7 @@ export function Settings() {
     let isEmber = theme === 'ember';
     let isAurora = theme === 'aurora';
     let isNeon = theme === 'neon';
+    let isCopper = theme === 'copper';
 
     const snapshotContractReport = buildCommandContractReport(
         commandContractSnapshot?.frontendCommands,
@@ -169,6 +171,7 @@ export function Settings() {
         isEmber = theme === 'ember';
         isAurora = theme === 'aurora';
         isNeon = theme === 'neon';
+        isCopper = theme === 'copper';
     };
 
     const render = () => {
@@ -323,14 +326,18 @@ export function Settings() {
                                     <span class="material-symbols-outlined text-lg">electric_bolt</span>
                                     Neon
                                 </button>
+                                <button id="theme-copper" class="theme-btn flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${currentTheme === 'copper' ? 'bg-gradient-to-r from-mysql-teal to-mysql-cyan text-white shadow-lg shadow-mysql-teal/30' : (isLight ? 'text-gray-600 hover:text-gray-800' : 'text-gray-400 hover:text-gray-200')}">
+                                    <span class="material-symbols-outlined text-lg">coffee</span>
+                                    Copper
+                                </button>
                             </div>
                         </div>
 
                         <!-- Theme Preview -->
                         <div class="mt-4">
                             <h4 class="text-xs font-medium ${isLight ? 'text-gray-600' : 'text-gray-400'} uppercase tracking-wider mb-3">Preview</h4>
-                            <div id="theme-preview" class="rounded-xl p-4 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : (isEmber ? 'bg-[#1d141c] border border-[#2c1c27]' : (isAurora ? 'bg-[#0f1a1d] border border-[#1b2e33]' : (isNeon ? 'bg-neon-panel border border-neon-border' : 'bg-[#13161b] border border-white/10')))))}">
-                                ${currentTheme === 'dark' ? getDarkPreview() : (currentTheme === 'light' ? getLightPreview() : (currentTheme === 'dawn' ? getDawnPreview() : (currentTheme === 'oceanic' ? getOceanicPreview() : (currentTheme === 'ember' ? getEmberPreview() : (currentTheme === 'aurora' ? getAuroraPreview() : getNeonPreview())))))}
+                            <div id="theme-preview" class="rounded-xl p-4 ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : (isEmber ? 'bg-[#1d141c] border border-[#2c1c27]' : (isAurora ? 'bg-[#0f1a1d] border border-[#1b2e33]' : (isNeon ? 'bg-neon-panel border border-neon-border' : (isCopper ? 'bg-copper-panel border border-copper-border' : 'bg-[#13161b] border border-white/10'))))))}">
+                                ${currentTheme === 'dark' ? getDarkPreview() : (currentTheme === 'light' ? getLightPreview() : (currentTheme === 'dawn' ? getDawnPreview() : (currentTheme === 'oceanic' ? getOceanicPreview() : (currentTheme === 'ember' ? getEmberPreview() : (currentTheme === 'aurora' ? getAuroraPreview() : (currentTheme === 'neon' ? getNeonPreview() : getCopperPreview()))))))}
                             </div>
                         </div>
                     </div>
@@ -948,7 +955,7 @@ export function Settings() {
         const searchableItems = Array.from(container.querySelectorAll('[data-settings-item]'));
 
         const isLight = theme === 'light' || theme === 'dawn';
-        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         const isEmber = theme === 'ember';
         const isAurora = theme === 'aurora';
         const searchableItemsBySection = new Map(
@@ -1047,9 +1054,9 @@ export function Settings() {
             const getInactiveClass = (t) => (t === 'light' || t === 'dawn') ? 'text-gray-600 hover:text-gray-800' : (t === 'oceanic' ? 'text-ocean-text/60 hover:text-ocean-text' : 'text-gray-400 hover:text-gray-200');
             const inactiveClass = getInactiveClass(newTheme);
 
-            [darkBtn, lightBtn, dawnBtn, oceanicBtn, emberBtn, auroraBtn, neonBtn].forEach(btn => btn && (btn.className = `theme-btn flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${inactiveClass}`));
+            [darkBtn, lightBtn, dawnBtn, oceanicBtn, emberBtn, auroraBtn, neonBtn, copperBtn].forEach(btn => btn && (btn.className = `theme-btn flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${inactiveClass}`));
 
-            const activeBtn = newTheme === 'dark' ? darkBtn : (newTheme === 'light' ? lightBtn : (newTheme === 'dawn' ? dawnBtn : (newTheme === 'oceanic' ? oceanicBtn : (newTheme === 'ember' ? emberBtn : (newTheme === 'aurora' ? auroraBtn : neonBtn)))));
+            const activeBtn = newTheme === 'dark' ? darkBtn : (newTheme === 'light' ? lightBtn : (newTheme === 'dawn' ? dawnBtn : (newTheme === 'oceanic' ? oceanicBtn : (newTheme === 'ember' ? emberBtn : (newTheme === 'aurora' ? auroraBtn : (newTheme === 'neon' ? neonBtn : copperBtn))))));
             if (activeBtn) {
                 activeBtn.className = `theme-btn flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${activeClass}`;
             }
@@ -1060,7 +1067,8 @@ export function Settings() {
             else if (newTheme === 'oceanic') preview.innerHTML = getOceanicPreview();
             else if (newTheme === 'ember') preview.innerHTML = getEmberPreview();
             else if (newTheme === 'aurora') preview.innerHTML = getAuroraPreview();
-            else preview.innerHTML = getNeonPreview();
+            else if (newTheme === 'neon') preview.innerHTML = getNeonPreview();
+            else preview.innerHTML = getCopperPreview();
         };
 
         darkBtn?.addEventListener('click', () => {
@@ -1097,6 +1105,12 @@ export function Settings() {
         neonBtn?.addEventListener('click', () => {
             ThemeManager.setTheme('neon');
             updateAllButtons('neon');
+        });
+
+        const copperBtn = container.querySelector('#theme-copper');
+        copperBtn?.addEventListener('click', () => {
+            ThemeManager.setTheme('copper');
+            updateAllButtons('copper');
         });
 
         settingsSearchInput?.addEventListener('input', applySearchFilter);
@@ -2374,6 +2388,28 @@ function getNeonPreview() {
                     <span class="text-[#ff0099] font-semibold">FROM</span>
                     <span class="text-white"> users</span>
                     <span class="text-[#00f3ff]">;</span>
+                </code>
+            </div>
+        </div>
+    `;
+}
+
+function getCopperPreview() {
+    return `
+        <div class="bg-[#1a0f0a] p-4 copper">
+            <div class="flex items-center gap-2 mb-3">
+                <div class="w-3 h-3 rounded-full bg-[#cd7f32]"></div>
+                <div class="w-3 h-3 rounded-full bg-[#e8a87c]"></div>
+                <div class="w-3 h-3 rounded-full bg-[#8b6f5c]"></div>
+                <span class="ml-2 text-xs text-[#c9a88f]">Copper Theme Preview</span>
+            </div>
+            <div class="bg-[#241510] rounded-lg p-3 border border-[#3d2218]">
+                <code class="text-sm font-mono">
+                    <span class="syntax-keyword font-semibold">SELECT</span>
+                    <span class="text-[#f5e6dc]"> * </span>
+                    <span class="syntax-keyword font-semibold">FROM</span>
+                    <span class="syntax-string"> users</span>
+                    <span class="text-[#f5e6dc]">;</span>
                 </code>
             </div>
         </div>

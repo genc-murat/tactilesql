@@ -26,7 +26,7 @@ export function showTableMaintenanceModal(operation, database, table, results) {
     const theme = ThemeManager.getCurrentTheme();
     const isLight = theme === 'light';
     const isDawn = theme === 'dawn';
-    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
     const isNeon = theme === 'neon';
 
     const opConfig = OP_COLORS[operation.toLowerCase()] || OP_COLORS.analyze;

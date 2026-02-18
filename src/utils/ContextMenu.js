@@ -35,7 +35,7 @@ export const createContextMenu = (x, y, items, options = {}) => {
     const isLight = theme === 'light';
     const isDawn = theme === 'dawn';
     const isNeon = theme === 'neon';
-    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
     const menu = document.createElement('div');
     menu.id = 'tactilesql-context-menu';

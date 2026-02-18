@@ -19,25 +19,26 @@ export function GraphViewer(graphData, theme, qualityMap, options = {}) {
 
     const isLight = theme === 'light';
     const isDawn = theme === 'dawn';
-    const isOceanic = theme === 'oceanic';
+    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
     const isEmber = theme === 'ember';
     const isAurora = theme === 'aurora';
+    const isCopper = theme === 'copper';
     const isNeon = theme === 'neon';
 
     const colors = {
-        nodeBg: isLight ? '#fff' : (isDawn ? '#fffaf3' : (isOceanic ? '#2E3440' : (isEmber ? '#140c12' : (isAurora ? '#0b1214' : (isNeon ? '#000000' : '#1f2937'))))),
-        nodeBorder: isLight ? '#9ca3af' : (isDawn ? '#d7821a' : (isOceanic ? '#4C566A' : (isEmber ? '#2c1c27' : (isAurora ? '#1b2e33' : (isNeon ? '#00f3ff' : '#4b5563'))))),
-        edge: isLight ? '#cbd5e1' : (isDawn ? '#f2e9e1' : (isOceanic ? '#4C566A' : (isEmber ? '#2c1c27' : (isAurora ? '#1b2e33' : (isNeon ? '#00f3ff30' : '#374151'))))),
-        text: isLight ? '#1f2937' : (isDawn ? '#575279' : (isNeon ? '#00f3ff' : '#f3f4f6')),
-        highlight: isDawn ? '#ea9d34' : (isNeon ? '#ff00ff' : '#0ea5e9'),
-        selection: isDawn ? '#d7821a' : (isNeon ? '#00f3ff' : '#3b82f6'),
-        upstream: isNeon ? '#ff00ff' : '#ef4444',
-        downstream: isNeon ? '#00f3ff' : '#10b981',
-        panelBg: isLight ? 'rgba(255,255,255,0.95)' : (isDawn ? 'rgba(255,250,243,0.95)' : (isNeon ? 'rgba(0,0,0,0.85)' : 'rgba(12,14,18,0.80)')),
-        panelBorder: isLight ? '#d1d5db' : (isDawn ? '#f2e9e1' : (isNeon ? '#00f3ff40' : 'rgba(255,255,255,0.15)')),
-        panelText: isLight ? '#374151' : (isDawn ? '#575279' : (isNeon ? '#00f3ff' : '#e5e7eb')),
-        miniMapNode: isLight ? '#64748b' : (isNeon ? '#00f3ff' : '#d1d5db'),
-        miniMapEdge: isLight ? 'rgba(100,116,139,0.35)' : (isNeon ? 'rgba(0,243,255,0.2)' : 'rgba(226,232,240,0.25)')
+        nodeBg: isLight ? '#fff' : (isDawn ? '#fffaf3' : (isOceanic ? '#241510' : (isNeon ? '#000000' : '#1f2937'))),
+        nodeBorder: isLight ? '#9ca3af' : (isDawn ? '#d7821a' : (isOceanic ? '#3d2218' : (isNeon ? '#00f3ff' : '#4b5563'))),
+        edge: isLight ? '#cbd5e1' : (isDawn ? '#f2e9e1' : (isOceanic ? '#3d2218' : (isNeon ? '#00f3ff30' : '#374151'))),
+        text: isLight ? '#1f2937' : (isDawn ? '#575279' : (isCopper ? '#f5e6dc' : (isNeon ? '#00f3ff' : '#f3f4f6'))),
+        highlight: isDawn ? '#ea9d34' : (isCopper ? '#cd7f32' : (isNeon ? '#ff00ff' : '#0ea5e9')),
+        selection: isDawn ? '#d7821a' : (isCopper ? '#cd7f32' : (isNeon ? '#00f3ff' : '#3b82f6')),
+        upstream: isCopper ? '#e8a87c' : (isNeon ? '#ff00ff' : '#ef4444'),
+        downstream: isCopper ? '#cd7f32' : (isNeon ? '#00f3ff' : '#10b981'),
+        panelBg: isLight ? 'rgba(255,255,255,0.95)' : (isDawn ? 'rgba(255,250,243,0.95)' : (isCopper ? 'rgba(36,21,16,0.95)' : (isNeon ? 'rgba(0,0,0,0.85)' : 'rgba(12,14,18,0.80)'))),
+        panelBorder: isLight ? '#d1d5db' : (isDawn ? '#f2e9e1' : (isCopper ? '#3d2218' : (isNeon ? '#00f3ff40' : 'rgba(255,255,255,0.15)'))),
+        panelText: isLight ? '#374151' : (isDawn ? '#575279' : (isCopper ? '#f5e6dc' : (isNeon ? '#00f3ff' : '#e5e7eb'))),
+        miniMapNode: isLight ? '#64748b' : (isCopper ? '#cd7f32' : (isNeon ? '#00f3ff' : '#d1d5db')),
+        miniMapEdge: isLight ? 'rgba(100,116,139,0.35)' : (isCopper ? 'rgba(205,127,50,0.2)' : (isNeon ? 'rgba(0,243,255,0.2)' : 'rgba(226,232,240,0.25)'))
     };
 
     const nodeCount = graphData.nodes?.length || 0;

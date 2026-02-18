@@ -11,7 +11,7 @@ export function QueryStories() {
         const isLight = t === 'light';
         const isDawn = t === 'dawn';
         const isNeon = t === 'neon';
-        const isNord = t === 'oceanic' || t === 'ember' || t === 'aurora';
+        const isNord = t === 'oceanic' || t === 'ember' || t === 'aurora' || t === 'copper';
 
         return {
             container: `flex-1 flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isNord ? 'bg-ocean-bg' : (isNeon ? 'bg-neon-bg' : 'bg-[#0a0c10]')))} transition-colors duration-300`,

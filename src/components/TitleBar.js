@@ -6,7 +6,7 @@ export function TitleBar() {
     let theme = ThemeManager.getCurrentTheme();
     let isLight = theme === 'light';
     let isDawn = theme === 'dawn';
-    let isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+    let isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
     const container = document.createElement('div');
     container.className = `h-8 ${isLight ? 'bg-gray-100 border-gray-200' : (isDawn ? 'bg-[#f2e9e1] border-[#eaddd0]' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50' : 'bg-[#0a0c10] border-white/5'))} flex items-center relative select-none z-[100] border-b w-full shrink-0 transition-all duration-300`;

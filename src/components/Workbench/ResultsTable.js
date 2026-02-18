@@ -17,7 +17,7 @@ export function ResultsTable(options = {}) {
     let theme = ThemeManager.getCurrentTheme();
     let isLight = theme === 'light';
     let isDawn = theme === 'dawn';
-    let isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+    let isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
     let isNeon = theme === 'neon';
     const container = document.createElement('div');
     container.className = "flex flex-col flex-1 min-h-[300px] max-h-full min-w-[600px] bg-transparent"; // bg-transparent ensures no flicker? Controls set bg.
@@ -1775,7 +1775,7 @@ export function ResultsTable(options = {}) {
         theme = e.detail.theme;
         isLight = theme === 'light';
         isDawn = theme === 'dawn';
-        isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         isNeon = theme === 'neon';
 
         // Update Theme Colors

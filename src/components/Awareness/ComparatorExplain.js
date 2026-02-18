@@ -4,7 +4,7 @@ export function ComparatorExplain(planA, planB) {
     const theme = ThemeManager.getCurrentTheme();
     const isLight = theme === 'light';
     const isDawn = theme === 'dawn';
-    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
     const container = document.createElement('div');
     container.className = 'w-full h-full flex flex-col gap-4 p-4 overflow-y-auto custom-scrollbar';

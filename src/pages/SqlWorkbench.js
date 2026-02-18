@@ -15,7 +15,7 @@ export function SqlWorkbench() {
     const theme = ThemeManager.getCurrentTheme();
     const isLight = theme === 'light';
     const isDawn = theme === 'dawn';
-    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
     const isNeon = theme === 'neon';
     const container = document.createElement('div');
     container.className = `flex-1 flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#faf4ed]' : (isOceanic ? 'bg-ocean-bg' : (isNeon ? 'bg-neon-bg' : '')))}`;
@@ -219,7 +219,7 @@ export function SqlWorkbench() {
         const theme = e.detail.theme;
         const isLightNew = theme === 'light';
         const isDawnNew = theme === 'dawn';
-        const isOceanicNew = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isOceanicNew = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         const isNeonNew = theme === 'neon';
 
         container.className = `flex-1 flex flex-col h-full overflow-hidden transition-all duration-300 ${isLightNew ? 'bg-gray-50' : (isDawnNew ? 'bg-[#faf4ed]' : (isOceanicNew ? 'bg-ocean-bg' : (isNeonNew ? 'bg-neon-bg' : '')))}`;

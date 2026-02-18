@@ -15,7 +15,7 @@ export function ServerMonitor() {
     const getContainerClass = (t) => {
         const isLight = t === 'light';
         const isDawn = t === 'dawn';
-        const isOceanic = t === 'oceanic';
+        const isOceanic = t === 'oceanic' || t === 'ember' || t === 'aurora' || t === 'copper';
         return `flex-1 flex flex-col h-full overflow-auto custom-scrollbar ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : 'bg-[#0a0c10]'))} p-6 transition-all duration-300`;
     };
     container.className = getContainerClass(theme);
@@ -442,7 +442,7 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
     const renderHealthScoreWidget = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
         if (healthScoreLoading || !healthScoreReport) {
             const dbType = localStorage.getItem('activeDbType');
@@ -535,7 +535,7 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
     const render = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
         container.innerHTML = `
             <div class="h-full flex flex-col">
@@ -662,7 +662,7 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
     const renderMaintenance = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
         if (isAnalyzingBloat) {
             return `
@@ -773,7 +773,7 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
     const renderOverview = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         const s = serverStatus;
 
         if (!s) return '<p class="text-gray-500">No data available</p>';
@@ -955,7 +955,7 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
     const renderProcesses = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
         return `
             <div class="rounded-xl ${isLight ? 'bg-white border border-gray-200' : (isDawn ? 'bg-[#fffaf3] border border-[#f2e9e1] shadow-sm' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50' : 'bg-[#13161b] border border-white/10'))} overflow-hidden flex flex-col flex-1 h-full">
@@ -1012,7 +1012,7 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
     const renderInnoDB = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         const i = innodbStatus;
 
         if (!i || !i.row_operations) return '<p class="text-gray-500 p-6">No structured InnoDB data available (or parsing failed)</p>';
@@ -1092,7 +1092,7 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
     const renderSlowQueries = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         const activeDbType = localStorage.getItem('activeDbType') || 'mysql';
         const isPostgres = activeDbType === 'postgresql';
         const totalSlowQueries = serverStatus?.slow_queries || 0;
@@ -1228,7 +1228,7 @@ SET GLOBAL long_query_time = 1;</pre>
     const renderLocks = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
         const analysisEdges = Array.isArray(lockAnalysis?.edges) ? lockAnalysis.edges : [];
         const analysisChains = Array.isArray(lockAnalysis?.chains) ? lockAnalysis.chains : [];
@@ -1478,7 +1478,7 @@ SET GLOBAL long_query_time = 1;</pre>
     const renderDeadlocks = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
         if (deadlockHistory.length === 0) {
             return `
@@ -1536,7 +1536,7 @@ SET GLOBAL long_query_time = 1;</pre>
     const renderReplication = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         const r = replicationStatus;
 
         if (!r || !r.is_replica) {
@@ -1598,7 +1598,7 @@ SET GLOBAL long_query_time = 1;</pre>
     const renderPostgresReplication = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         const r = replicationStatus;
 
         if (!r || !r.replicas || r.replicas.length === 0) {
@@ -1776,7 +1776,7 @@ SET GLOBAL long_query_time = 1;</pre>
     const renderAlerts = () => {
         const isLight = theme === 'light';
         const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
         return `
             <div class="space-y-6">

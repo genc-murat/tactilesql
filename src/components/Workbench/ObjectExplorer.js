@@ -35,13 +35,13 @@ export function ObjectExplorer() {
     let isLight = theme === 'light';
     let isDawn = theme === 'dawn';
     let isNeon = theme === 'neon';
-    let isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+    let isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
     const explorer = document.createElement('div');
     const getExplorerClass = (t) => {
         const isL = t === 'light';
         const isD = t === 'dawn';
-        const isO = t === 'oceanic' || t === 'ember' || t === 'aurora';
+        const isO = t === 'oceanic' || t === 'ember' || t === 'aurora' || t === 'copper';
         const isN = t === 'neon';
         return `h-full border-r ${isL ? 'bg-white border-gray-200' : (isD ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isO ? 'bg-ocean-panel border-ocean-border' : (isN ? 'bg-neon-bg border-neon-border/50' : 'bg-[#0f1115] border-white/5')))} flex flex-col p-2 gap-4 overflow-hidden relative`;
     };
@@ -3243,7 +3243,7 @@ export function ObjectExplorer() {
         theme = e.detail.theme;
         isLight = theme === 'light';
         isDawn = theme === 'dawn';
-        isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+        isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         isNeon = theme === 'neon';
         explorer.className = getExplorerClass(theme);
 

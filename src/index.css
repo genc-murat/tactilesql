@@ -98,6 +98,17 @@
         --accent-color: #ff0099;
     }
 
+    html.copper {
+        background-color: #1a0f0a;
+        --bg-primary: #1a0f0a;
+        --bg-secondary: #241510;
+        --bg-tertiary: #2d1a12;
+        --text-primary: #f5e6dc;
+        --text-secondary: #c9a88f;
+        --border-color: #3d2218;
+        --accent-color: #cd7f32;
+    }
+
     /* AI Side Drawer Animations */
     @keyframes slide-in-right {
         from {
@@ -245,6 +256,11 @@
         box-shadow: 0 4px 30px rgba(0, 243, 255, 0.1);
     }
 
+    .copper .glass-header {
+        background: rgba(36, 21, 16, 0.85);
+        border-bottom: 1px solid rgba(205, 127, 50, 0.15);
+    }
+
     .tactile-card {
         background: linear-gradient(145deg, #16191e, #111418);
         border: 1px solid rgba(255, 255, 255, 0.03);
@@ -290,6 +306,13 @@
         border: 1px solid #2a2a40;
         box-shadow: 0 0 15px rgba(0, 243, 255, 0.1),
             inset 0 0 20px rgba(0, 243, 255, 0.05);
+    }
+
+    .copper .tactile-card {
+        background: #241510;
+        border: 1px solid #3d2218;
+        box-shadow: 6px 6px 14px rgba(10, 5, 3, 0.55),
+            -1px -1px 2px rgba(245, 230, 220, 0.04);
     }
 
     .tactile-card-inset {
@@ -764,6 +787,231 @@
         box-shadow: 0 0 12px rgba(34, 211, 238, 0.45) !important;
     }
 
+    .copper .bg-ocean-bg {
+        background-color: #1a0f0a !important;
+    }
+
+    .copper .bg-ocean-bg\/50 {
+        background-color: rgba(26, 15, 10, 0.5) !important;
+    }
+
+    .copper .bg-ocean-bg\/80 {
+        background-color: rgba(26, 15, 10, 0.8) !important;
+    }
+
+    .copper .bg-ocean-panel {
+        background-color: #241510 !important;
+    }
+
+    .copper .bg-ocean-panel\/90 {
+        background-color: rgba(36, 21, 16, 0.9) !important;
+    }
+
+    .copper .bg-ocean-panel\/95 {
+        background-color: rgba(36, 21, 16, 0.95) !important;
+    }
+
+    .copper .bg-ocean-bg-dark {
+        background-color: #120a08 !important;
+    }
+
+    .copper .bg-ocean-bg-hover {
+        background-color: #2d1a12 !important;
+    }
+
+    .copper .bg-ocean-accent {
+        background-color: #cd7f32 !important;
+    }
+
+    .copper .bg-ocean-accent\/10 {
+        background-color: rgba(205, 127, 50, 0.1) !important;
+    }
+
+    .copper .bg-ocean-border\/50 {
+        background-color: rgba(61, 34, 24, 0.5) !important;
+    }
+
+    .copper .bg-ocean-border\/40 {
+        background-color: rgba(61, 34, 24, 0.4) !important;
+    }
+
+    .copper .bg-ocean-border\/30 {
+        background-color: rgba(61, 34, 24, 0.3) !important;
+    }
+
+    .copper .bg-ocean-border\/20 {
+        background-color: rgba(61, 34, 24, 0.2) !important;
+    }
+
+    .copper .bg-ocean-mint\/20 {
+        background-color: rgba(232, 168, 124, 0.2) !important;
+    }
+
+    .copper .bg-ocean-frost\/20 {
+        background-color: rgba(205, 127, 50, 0.2) !important;
+    }
+
+    .copper .bg-ocean-frost\/30 {
+        background-color: rgba(205, 127, 50, 0.3) !important;
+    }
+
+    .copper .border-ocean-border {
+        border-color: #3d2218 !important;
+    }
+
+    .copper .border-ocean-border\/50 {
+        border-color: rgba(61, 34, 24, 0.5) !important;
+    }
+
+    .copper .border-ocean-border\/40 {
+        border-color: rgba(61, 34, 24, 0.4) !important;
+    }
+
+    .copper .border-ocean-border\/30 {
+        border-color: rgba(61, 34, 24, 0.3) !important;
+    }
+
+    .copper .border-ocean-border\/20 {
+        border-color: rgba(61, 34, 24, 0.2) !important;
+    }
+
+    .copper .border-ocean-accent {
+        border-color: #cd7f32 !important;
+    }
+
+    .copper .border-ocean-accent\/20 {
+        border-color: rgba(205, 127, 50, 0.2) !important;
+    }
+
+    .copper .border-ocean-mint\/30 {
+        border-color: rgba(232, 168, 124, 0.3) !important;
+    }
+
+    .copper .border-ocean-frost {
+        border-color: #cd7f32 !important;
+    }
+
+    .copper .border-ocean-frost\/30 {
+        border-color: rgba(205, 127, 50, 0.3) !important;
+    }
+
+    .copper .text-ocean-text {
+        color: #f5e6dc !important;
+    }
+
+    .copper .text-ocean-text\/80 {
+        color: rgba(245, 230, 220, 0.8) !important;
+    }
+
+    .copper .text-ocean-text\/70 {
+        color: rgba(245, 230, 220, 0.7) !important;
+    }
+
+    .copper .text-ocean-text\/60 {
+        color: rgba(245, 230, 220, 0.6) !important;
+    }
+
+    .copper .text-ocean-text\/50 {
+        color: rgba(245, 230, 220, 0.5) !important;
+    }
+
+    .copper .text-ocean-text\/40 {
+        color: rgba(245, 230, 220, 0.4) !important;
+    }
+
+    .copper .text-ocean-text\/30 {
+        color: rgba(245, 230, 220, 0.3) !important;
+    }
+
+    .copper .text-ocean-frost {
+        color: #cd7f32 !important;
+    }
+
+    .copper .text-ocean-mint {
+        color: #e8a87c !important;
+    }
+
+    .copper .text-ocean-lavender {
+        color: #d4a574 !important;
+    }
+
+    .copper .text-ocean-accent {
+        color: #cd7f32 !important;
+    }
+
+    .copper .text-ocean-accent\/60 {
+        color: rgba(205, 127, 50, 0.6) !important;
+    }
+
+    .copper .from-ocean-accent\/10 {
+        --tw-gradient-from: rgba(205, 127, 50, 0.1) var(--tw-gradient-from-position) !important;
+    }
+
+    .copper .from-ocean-frost {
+        --tw-gradient-from: #cd7f32 var(--tw-gradient-from-position) !important;
+    }
+
+    .copper .to-ocean-mint {
+        --tw-gradient-to: #e8a87c var(--tw-gradient-to-position) !important;
+    }
+
+    .copper .via-ocean-frost\/5 {
+        --tw-gradient-to: rgba(205, 127, 50, 0) var(--tw-gradient-to-position) !important;
+        --tw-gradient-stops: var(--tw-gradient-from), rgba(205, 127, 50, 0.05) var(--tw-gradient-via-position), var(--tw-gradient-to) !important;
+    }
+
+    .copper .to-ocean-frost\/10 {
+        --tw-gradient-to: rgba(205, 127, 50, 0.1) var(--tw-gradient-to-position) !important;
+    }
+
+    .copper .hover\:bg-ocean-bg:hover {
+        background-color: #1a0f0a !important;
+    }
+
+    .copper .hover\:bg-ocean-panel:hover {
+        background-color: #241510 !important;
+    }
+
+    .copper .hover\:bg-ocean-bg\/50:hover {
+        background-color: rgba(26, 15, 10, 0.5) !important;
+    }
+
+    .copper .hover\:bg-ocean-frost\/30:hover {
+        background-color: rgba(205, 127, 50, 0.3) !important;
+    }
+
+    .copper .hover\:text-ocean-frost:hover {
+        color: #cd7f32 !important;
+    }
+
+    .copper .hover\:border-ocean-frost:hover {
+        border-color: #cd7f32 !important;
+    }
+
+    .copper .hover\:border-ocean-frost\/20:hover {
+        border-color: rgba(205, 127, 50, 0.2) !important;
+    }
+
+    .copper .hover\:border-ocean-accent\/20:hover {
+        border-color: rgba(205, 127, 50, 0.2) !important;
+    }
+
+    .copper .placeholder-ocean-text\/50::placeholder {
+        color: rgba(245, 230, 220, 0.5) !important;
+    }
+
+    .copper .placeholder-ocean-text\/40::placeholder {
+        color: rgba(245, 230, 220, 0.4) !important;
+    }
+
+    .copper .caret-ocean-frost {
+        caret-color: #cd7f32 !important;
+    }
+
+    .copper .glow-ocean-accent {
+        box-shadow: 0 0 12px rgba(205, 127, 50, 0.45) !important;
+    }
+
     .ember .tactile-card-inset {
         background: #160f17;
         box-shadow: inset 2px 2px 6px rgba(6, 3, 5, 0.6),
@@ -780,6 +1028,12 @@
         background: #050510;
         box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.8),
             inset 0 0 5px rgba(0, 243, 255, 0.1);
+    }
+
+    .copper .tactile-card-inset {
+        background: #150d0a;
+        box-shadow: inset 2px 2px 6px rgba(8, 4, 3, 0.6),
+            inset -1px -1px 2px rgba(245, 230, 220, 0.03);
     }
 
     .neon-cyan {
@@ -870,6 +1124,10 @@
         border: 1px solid rgba(0, 243, 255, 0.1);
     }
 
+    .copper .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: rgba(205, 127, 50, 0.3);
+    }
+
     /* Workbench Utilities */
     .neu-inset {
         box-shadow: inset 4px 4px 10px rgba(0, 0, 0, 0.5),
@@ -893,6 +1151,11 @@
     .aurora .neu-inset {
         box-shadow: inset 3px 3px 8px rgba(5, 10, 12, 0.6),
             inset -1px -1px 2px rgba(230, 247, 248, 0.04);
+    }
+
+    .copper .neu-inset {
+        box-shadow: inset 3px 3px 8px rgba(8, 4, 3, 0.6),
+            inset -1px -1px 2px rgba(245, 230, 220, 0.04);
     }
 
     .neu-flat {
@@ -924,6 +1187,12 @@
             -1px -1px 3px rgba(230, 247, 248, 0.04);
     }
 
+    .copper .neu-flat {
+        background: #1f1410;
+        box-shadow: 6px 6px 14px rgba(8, 4, 3, 0.55),
+            -1px -1px 3px rgba(245, 230, 220, 0.04);
+    }
+
     .neu-card {
         background: #16191e;
         border: 1px solid rgba(255, 255, 255, 0.05);
@@ -952,6 +1221,12 @@
         background: #0f1a1d;
         border: 1px solid #1b2e33;
         box-shadow: 8px 8px 18px rgba(5, 10, 12, 0.55);
+    }
+
+    .copper .neu-card {
+        background: #241510;
+        border: 1px solid #3d2218;
+        box-shadow: 8px 8px 18px rgba(8, 4, 3, 0.55);
     }
 
     .glow-cyan {
@@ -1007,6 +1282,10 @@
         @apply bg-[#0c171a] border-[#1b2e33] text-[#e6f7f8] placeholder:text-[#7fa4ab];
     }
 
+    .copper .tactile-input {
+        @apply bg-[#1a0f0a] border-[#3d2218] text-[#f5e6dc] placeholder:text-[#8b6f5c];
+    }
+
     .tactile-select {
         @apply tactile-input appearance-none pr-10 cursor-pointer;
         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='rgba(156, 163, 175, 0.5)'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
@@ -1033,6 +1312,10 @@
 
     .aurora .tactile-select {
         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2322d3ee'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+    }
+
+    .copper .tactile-select {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23cd7f32'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
     }
 
     .gloss-btn-cyan {
@@ -1224,6 +1507,36 @@
 
     .aurora .sql-function {
         color: #5eead4;
+    }
+
+    /* Copper Syntax Highlighting */
+    .copper .syntax-keyword {
+        color: #cd7f32;
+        font-weight: 600;
+    }
+
+    .copper .syntax-string {
+        color: #e8a87c;
+    }
+
+    .copper .syntax-function {
+        color: #d4a574;
+    }
+
+    .copper .syntax-operator {
+        color: #b87333;
+    }
+
+    .copper .sql-keyword {
+        color: #cd7f32;
+    }
+
+    .copper .sql-string {
+        color: #e8a87c;
+    }
+
+    .copper .sql-function {
+        color: #d4a574;
     }
 
     /* Animations */

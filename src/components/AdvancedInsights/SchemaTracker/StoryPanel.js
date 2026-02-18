@@ -4,13 +4,14 @@ export function StoryPanel({ story, isLoading }) {
     const theme = ThemeManager.getCurrentTheme();
     const isLight = theme === 'light';
     const isDawn = theme === 'dawn';
-    const isOceanic = theme === 'oceanic';
+    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
     const isEmber = theme === 'ember';
     const isAurora = theme === 'aurora';
+    const isCopper = theme === 'copper';
     const isNeon = theme === 'neon';
 
     const container = document.createElement('div');
-    container.className = `flex-1 flex flex-col h-full overflow-hidden transition-colors duration-300 ${isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : (isNeon ? 'bg-neon-bg' : (isOceanic ? 'bg-[#2E3440]' : (isEmber ? 'bg-[#140c12]' : (isAurora ? 'bg-[#0b1214]' : 'bg-[#0f1115]')))))} animate-fade-in`;
+    container.className = `flex-1 flex flex-col h-full overflow-hidden transition-colors duration-300 ${isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-panel' : (isNeon ? 'bg-neon-bg' : 'bg-[#0f1115]')))} animate-fade-in`;
 
     if (isLoading) {
         container.innerHTML = `
@@ -34,7 +35,7 @@ export function StoryPanel({ story, isLoading }) {
 
     // Header
     const header = document.createElement('div');
-    header.className = `p-6 pb-4 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : (isNeon ? 'border-neon-border/20' : (isOceanic ? 'border-[#4C566A]' : (isEmber ? 'border-[#2c1c27]' : (isAurora ? 'border-[#1b2e33]' : 'border-white/5')))))}`;
+    header.className = `p-6 pb-4 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/50' : (isNeon ? 'border-neon-border/20' : 'border-white/5')))}`;
     header.innerHTML = `
         <div class="flex items-center gap-3 mb-2">
             <div class="p-2 rounded-lg ${isDawn ? 'bg-[#ea9d34]/10 text-[#ea9d34]' : (isNeon ? 'bg-neon-pink/10 text-neon-pink' : 'bg-indigo-500/10 text-indigo-500')}">

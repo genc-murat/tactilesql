@@ -14,7 +14,7 @@ export function AnomalyDashboard() {
     const getModalClass = (t) => {
         const isL = t === 'light';
         const isD = t === 'dawn';
-        const isO = t === 'oceanic';
+        const isO = t === 'oceanic' || t === 'ember' || t === 'aurora' || t === 'copper';
         const isE = t === 'ember';
         const isA = t === 'aurora';
         return `w-full max-w-5xl h-[80vh] flex flex-col rounded-xl shadow-2xl overflow-hidden transition-colors duration-300 ${isL

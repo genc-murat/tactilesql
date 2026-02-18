@@ -38,6 +38,14 @@ export default {
                 "neon-text": "#00f3ff",
                 "neon-accent": "#ff0099",
                 "neon-highlight": "#fff",
+                // Copper (Bronze) Palette
+                "copper-bg": "#1a0f0a",
+                "copper-panel": "#241510",
+                "copper-border": "#3d2218",
+                "copper-text": "#f5e6dc",
+                "copper-accent": "#cd7f32",
+                "copper-highlight": "#e8a87c",
+                "copper-muted": "#8b6f5c",
             },
             fontFamily: {
                 "mono": ["JetBrains Mono", "monospace"],
