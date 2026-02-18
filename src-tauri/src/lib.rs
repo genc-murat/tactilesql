@@ -492,6 +492,18 @@ pub fn run() {
             db::compare_schemas_cross_connection,
             db::get_table_schema_for_config,
             db::get_table_ddl_for_config,
+            // Table Operations
+            db::truncate_table,
+            db::drop_table,
+            db::rename_table,
+            db::duplicate_table,
+            db::vacuum_table,
+            db::reindex_table,
+            db::get_table_dependencies,
+            db::drop_view,
+            db::drop_trigger,
+            db::drop_database,
+            db::create_database,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

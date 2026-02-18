@@ -63,3 +63,6 @@ pub use users::*;
 pub mod schema_compare;
 pub use schema_compare::*;
 
+pub mod table_ops;
+pub use table_ops::*;
+

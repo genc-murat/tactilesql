@@ -28,6 +28,7 @@ TactileSQL is a modern, desktop-first SQL workbench for MySQL, PostgreSQL, Click
 - **Editable Results Grid** with virtual scrolling, column visibility, CSV export, and clipboard copy.
 - **Interactive Relational Data Exploration**: Navigate foreign keys directly from results with instant related data popups.
 - **Searchable Object Explorer**: Quickly find databases, tables, and columns with "Next/Prev" navigation, auto-expansion, and detailed **Column Tooltips**.
+- **Rich Context Menus**: Comprehensive right-click menus for tables, views, and databases with 30+ operations including Export/Import Data, Duplicate Table, Rename Table, Truncate/Drop (with safe confirmation), Table Dependencies, Trigger Manager, Foreign Key Manager, Vacuum/Reindex (PostgreSQL), and Generate SQL templates.
 - **Schema Designer** for columns, indexes, foreign keys, triggers, DDL, and stats.
 - **Cross-Connection Schema Diff**: Intelligent schema comparison across different host/connection configurations with **Alter Script Generation** and synchronization support.
 - **ER Diagram Editor**: Build schema relationship graphs, edit manual relations, and export as JSON/Mermaid/PNG/**GraphML**.
@@ -107,6 +108,12 @@ The Rust backend exposes a comprehensive set of commands for cross-database oper
 - `get_table_indexes`, `get_table_foreign_keys`, `get_table_primary_keys`
 - `get_procedures`, `get_functions`, `get_triggers`, `get_events`
 
+### Table Operations
+- `truncate_table`, `drop_table`, `rename_table`, `duplicate_table` — Safe table lifecycle operations with cross-database support
+- `drop_view`, `drop_trigger`, `drop_database`, `create_database` — Object management commands
+- `get_table_dependencies` — Foreign key dependency analysis (tables this table depends on and tables that reference it)
+- `vacuum_table`, `reindex_table` — PostgreSQL/MySQL maintenance operations
+
 ### Monitoring & Performance
 - `get_server_status` — Real-time metrics and engine status
 - `get_process_list` — Active backend/session monitoring
@@ -156,6 +163,28 @@ Common shortcuts (see the in-app help with `F1`):
 - `Ctrl+Shift+O` — Focus Object Explorer
 - `Ctrl+Shift+Q` — Focus Query Editor
 - `Ctrl+Shift+R` — Focus Results
+
+## Object Explorer Context Menus
+
+Right-click on any object in the Object Explorer to access powerful operations:
+
+### Table Context Menu
+- **Data Operations**: Select Top 200, Export Data (CSV/JSON/SQL), Import Data
+- **Copy to Clipboard**: Table name, SELECT statement, INSERT template
+- **Table Actions**: Duplicate Table, Rename Table, Table Dependencies
+- **Maintenance**: Analyze, Check, Optimize, Repair (MySQL), Vacuum/Reindex (PostgreSQL)
+- **Management**: Trigger Manager, Foreign Key Manager, Schema Design, Partition Management (MySQL)
+- **Generate SQL**: Select, Insert, Update, Delete, Merge, DDL Script
+- **Dangerous Operations**: Truncate Table, Drop Table (requires typing table name to confirm)
+
+### View Context Menu
+- View Source, Select *, Copy to Clipboard, View Dependencies, Drop View
+
+### Database Context Menu
+- **Create New**: Table wizard, View wizard
+- **Operations**: Import Data, Properties, Refresh
+- **Database-specific**: Storage Visualization (MSSQL), Extensions (PostgreSQL), Vacuum/Analyze/Reindex (PostgreSQL), Check/Optimize All Tables (MySQL)
+- **Dangerous Operations**: Drop Database (requires typing database name to confirm)
 
 ## Data Storage
 - **Connection profiles** are stored in the **Tauri app data directory** as `connections.json`.

@@ -428,4 +428,92 @@ export class Dialog {
         this.actions.appendChild(copyBtn);
         this.actions.appendChild(closeBtn);
     }
+
+    static async confirmDangerousAction(message, title, requiredInput) {
+        return new Promise((resolve) => {
+            this.init();
+
+            const theme = ThemeManager.getCurrentTheme();
+            const isLight = theme === 'light';
+            const isDawn = theme === 'dawn';
+            const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora';
+            const isNeon = theme === 'neon';
+
+            this.dialog.style.width = '480px';
+            this.title.textContent = title;
+
+            this.iconContainer.className = `mx-auto size-12 rounded-full flex items-center justify-center mb-4 border ${isLight ? 'border-red-200' : 'border-red-500/30'} bg-red-500/10`;
+            this.icon.textContent = 'warning';
+            this.icon.className = "material-symbols-outlined text-2xl text-red-500";
+
+            const contentContainer = document.createElement('div');
+            contentContainer.className = "mt-2 space-y-4 text-left";
+            contentContainer.innerHTML = `
+                <p class="text-[11px] ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : 'text-gray-300')} font-mono leading-relaxed">${message}</p>
+                <div class="p-3 rounded-lg ${isLight ? 'bg-red-50 border-red-200' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1]' : 'bg-red-500/10 border-red-500/20')} border">
+                    <p class="text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-red-600' : 'text-red-400'} mb-2">
+                        Type <span class="font-mono bg-black/20 px-1.5 py-0.5 rounded">${requiredInput}</span> to confirm:
+                    </p>
+                    <input type="text" id="danger-confirm-input" class="w-full ${isLight ? 'bg-white border-red-200 text-gray-800 focus:border-red-500' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279] focus:border-red-400' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text focus:border-red-400' : (isNeon ? 'bg-neon-bg border-neon-border/30 text-neon-text focus:border-red-400' : 'bg-[#0b0d11] border border-red-500/30 text-gray-300 focus:border-red-400')))} rounded p-2 text-xs outline-none transition-colors font-mono" placeholder="" autocomplete="off" />
+                </div>
+            `;
+
+            this.message.innerHTML = '';
+            this.message.appendChild(contentContainer);
+
+            this.actions.innerHTML = '';
+
+            const cancelBtn = document.createElement('button');
+            cancelBtn.className = "px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider text-gray-400 hover:text-white hover:bg-white/10 transition-colors";
+            cancelBtn.textContent = "Cancel";
+
+            const confirmBtn = document.createElement('button');
+            confirmBtn.className = "px-4 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-[10px] font-bold uppercase tracking-wider text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-30 disabled:cursor-not-allowed";
+            confirmBtn.textContent = "Confirm";
+            confirmBtn.disabled = true;
+
+            const input = contentContainer.querySelector('#danger-confirm-input');
+
+            input.addEventListener('input', () => {
+                confirmBtn.disabled = input.value !== requiredInput;
+            });
+
+            cancelBtn.onclick = () => {
+                this.dialog.style.width = '400px';
+                this.close();
+                resolve(false);
+            };
+
+            confirmBtn.onclick = () => {
+                if (input.value === requiredInput) {
+                    this.dialog.style.width = '400px';
+                    this.close();
+                    resolve(true);
+                }
+            };
+
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && input.value === requiredInput) {
+                    this.dialog.style.width = '400px';
+                    this.close();
+                    resolve(true);
+                }
+                if (e.key === 'Escape') {
+                    this.dialog.style.width = '400px';
+                    this.close();
+                    resolve(false);
+                }
+            });
+
+            this.actions.appendChild(cancelBtn);
+            this.actions.appendChild(confirmBtn);
+
+            this.overlay.classList.remove('hidden');
+            void this.overlay.offsetWidth;
+            this.overlay.classList.remove('opacity-0');
+            this.dialog.classList.remove('scale-95');
+
+            setTimeout(() => input.focus(), 50);
+        });
+    }
 }

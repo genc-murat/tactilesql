@@ -22,6 +22,12 @@ import { showMssqlIndexManagerModal } from '../UI/MssqlIndexManagerModal.js';
 import { showMssqlAgentManagerModal } from '../UI/MssqlAgentManagerModal.js';
 import { showMssqlStorageModal } from '../UI/MssqlStorageModal.js';
 import { showClickHouseUserManager } from './ClickHouseUserManager.js';
+import { showTriggerManagerModal } from '../UI/TriggerManagerModal.js';
+import { showForeignKeyManagerModal } from '../UI/ForeignKeyManagerModal.js';
+import { showDuplicateTableModal } from '../UI/DuplicateTableModal.js';
+import { showTableDependenciesModal } from '../UI/TableDependenciesModal.js';
+import { showCreateTableModal } from '../UI/CreateTableModal.js';
+import { showCreateViewModal } from '../UI/CreateViewModal.js';
 
 
 export function ObjectExplorer() {
@@ -1960,10 +1966,68 @@ export function ObjectExplorer() {
                 }
             },
             {
-                label: 'Copy Name',
+                type: 'submenu',
+                label: 'Copy to Clipboard',
                 icon: 'content_copy',
-                iconColor: isDawn ? 'text-[#9893a5]' : 'text-gray-500',
-                onClick: () => navigator.clipboard.writeText(viewName)
+                iconColor: isDawn ? 'text-[#9893a5]' : 'text-gray-400',
+                items: [
+                    { 
+                        label: 'View Name', 
+                        icon: 'label', 
+                        iconColor: 'text-gray-400',
+                        onClick: () => {
+                            navigator.clipboard.writeText(viewName);
+                            toastSuccess('View name copied');
+                        }
+                    },
+                    { 
+                        label: 'SELECT Statement', 
+                        icon: 'abc', 
+                        iconColor: 'text-cyan-400',
+                        onClick: () => {
+                            const quotedDb = quoteIdentifier(dbName, dbType);
+                            const quotedView = quoteIdentifier(viewName, dbType);
+                            const sql = dbType === 'mssql' 
+                                ? `SELECT * FROM ${quotedDb}.${quotedView};`
+                                : `SELECT * FROM ${quotedDb}.${quotedView} LIMIT 1000;`;
+                            navigator.clipboard.writeText(sql);
+                            toastSuccess('SELECT statement copied');
+                        }
+                    }
+                ]
+            },
+            { type: 'separator' },
+            {
+                label: 'View Dependencies',
+                icon: 'account_tree',
+                iconColor: isDawn ? 'text-[#56949f]' : 'text-cyan-400',
+                onClick: () => showTableDependenciesModal(dbName, viewName, dbType)
+            },
+            { type: 'separator' },
+            {
+                label: 'Drop View',
+                icon: 'delete_forever',
+                iconColor: 'text-red-400',
+                onClick: async () => {
+                    const confirmed = await Dialog.confirmDangerousAction(
+                        `This will permanently delete view "${viewName}". This action cannot be undone.`,
+                        'Drop View',
+                        viewName
+                    );
+                    if (!confirmed) return;
+                    
+                    try {
+                        await invoke('drop_view', {
+                            database: dbName,
+                            view: viewName,
+                            schema: dbType === 'postgresql' ? dbName : null
+                        });
+                        Dialog.alert(`View "${viewName}" dropped successfully`, 'Success');
+                        window.dispatchEvent(new CustomEvent('schema:changed', { detail: { database: dbName } }));
+                    } catch (error) {
+                        Dialog.alert(`Failed to drop view: ${error}`, 'Error');
+                    }
+                }
             }
         ];
 
@@ -1982,14 +2046,6 @@ export function ObjectExplorer() {
                 iconColor: isDawn ? 'text-[#286983]' : 'text-blue-400',
                 onClick: async () => {
                     try {
-                        // TODO: Refactor this to be more robust for non-active connections?
-                        // For now we assume we are opening script for the connection this DB belongs to.
-                        // But `activeConfig` below comes from localStorage.
-                        // If we right click a DB in a NON-active connection, `activeConfig` would be wrong!
-                        // This logic inherently assumes we can only act on the active connection or we need to switch.
-                        // Ideally we should switch connection if needed.
-                        // For now keeping existing behavior but noting the limitation/risk.
-
                         const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
                         if (!activeConfig.username) {
                             Dialog.alert("Session lost. Please reconnect.", "Session Error");
@@ -2023,10 +2079,37 @@ export function ObjectExplorer() {
             },
             { type: 'separator' },
             {
+                type: 'submenu',
+                label: 'Create New',
+                icon: 'add_circle',
+                iconColor: isDawn ? 'text-[#56949f]' : 'text-green-400',
+                items: [
+                    { 
+                        label: 'Table', 
+                        icon: 'table', 
+                        iconColor: 'text-cyan-400',
+                        onClick: () => showCreateTableModal(dbName, dbType)
+                    },
+                    { 
+                        label: 'View', 
+                        icon: 'visibility', 
+                        iconColor: 'text-purple-400',
+                        onClick: () => showCreateViewModal(dbName, dbType)
+                    }
+                ]
+            },
+            {
+                label: 'Import Data',
+                icon: 'upload',
+                iconColor: isDawn ? 'text-[#3e8fb0]' : 'text-blue-400',
+                onClick: () => window.location.hash = `/data-tools?tab=import&db=${encodeURIComponent(dbName)}`
+            },
+            { type: 'separator' },
+            {
                 label: 'Properties',
                 icon: 'info',
                 iconColor: isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal',
-                onClick: () => showDatabaseProperties(dbName) // This func currently uses global activeDbType, might need update
+                onClick: () => showDatabaseProperties(dbName)
             },
             {
                 label: 'Refresh',
@@ -2063,6 +2146,92 @@ export function ObjectExplorer() {
                     icon: 'extension',
                     iconColor: isDawn ? 'text-[#c4a7e7]' : 'text-purple-500',
                     onClick: () => showPostgresExtensionsModal()
+                },
+                {
+                    type: 'submenu',
+                    label: 'Database Operations',
+                    icon: 'build',
+                    iconColor: isDawn ? 'text-[#ea9d34]' : 'text-amber-400',
+                    items: [
+                        { 
+                            label: 'Vacuum Database', 
+                            icon: 'cleaning_services', 
+                            iconColor: 'text-teal-400',
+                            onClick: async () => {
+                                const confirmed = await Dialog.confirm('Run VACUUM on all tables in this schema?', 'Vacuum Database');
+                                if (!confirmed) return;
+                                try {
+                                    await invoke('execute_query', { query: `VACUUM` });
+                                    toastSuccess('Vacuum completed');
+                                } catch (e) { Dialog.alert(`Vacuum failed: ${e}`, 'Error'); }
+                            }
+                        },
+                        { 
+                            label: 'Analyze Database', 
+                            icon: 'analytics', 
+                            iconColor: 'text-cyan-400',
+                            onClick: async () => {
+                                const confirmed = await Dialog.confirm('Run ANALYZE on all tables in this schema?', 'Analyze Database');
+                                if (!confirmed) return;
+                                try {
+                                    await invoke('execute_query', { query: `ANALYZE` });
+                                    toastSuccess('Analyze completed');
+                                } catch (e) { Dialog.alert(`Analyze failed: ${e}`, 'Error'); }
+                            }
+                        },
+                        { 
+                            label: 'Reindex Database', 
+                            icon: 'refresh', 
+                            iconColor: 'text-blue-400',
+                            onClick: async () => {
+                                const confirmed = await Dialog.confirm('Run REINDEX DATABASE on this schema?', 'Reindex Database');
+                                if (!confirmed) return;
+                                try {
+                                    await invoke('execute_query', { query: `REINDEX DATABASE ${dbName}` });
+                                    toastSuccess('Reindex completed');
+                                } catch (e) { Dialog.alert(`Reindex failed: ${e}`, 'Error'); }
+                            }
+                        }
+                    ]
+                }
+            ] : []),
+            ...(dbType === 'mysql' ? [
+                { type: 'separator' },
+                {
+                    type: 'submenu',
+                    label: 'Database Operations',
+                    icon: 'build',
+                    iconColor: isDawn ? 'text-[#ea9d34]' : 'text-amber-400',
+                    items: [
+                        { 
+                            label: 'Check All Tables', 
+                            icon: 'verified', 
+                            iconColor: 'text-emerald-400',
+                            onClick: async () => {
+                                try {
+                                    const tables = await invoke('get_tables', { database: dbName });
+                                    if (!tables.length) { Dialog.alert('No tables found', 'Info'); return; }
+                                    const tableList = tables.map(t => `\`${dbName}\`.\`${t}\``).join(', ');
+                                    await invoke('execute_query', { query: `CHECK TABLE ${tableList}` });
+                                    toastSuccess('Check completed');
+                                } catch (e) { Dialog.alert(`Check failed: ${e}`, 'Error'); }
+                            }
+                        },
+                        { 
+                            label: 'Optimize All Tables', 
+                            icon: 'speed', 
+                            iconColor: 'text-violet-400',
+                            onClick: async () => {
+                                try {
+                                    const tables = await invoke('get_tables', { database: dbName });
+                                    if (!tables.length) { Dialog.alert('No tables found', 'Info'); return; }
+                                    const tableList = tables.map(t => `\`${dbName}\`.\`${t}\``).join(', ');
+                                    await invoke('execute_query', { query: `OPTIMIZE TABLE ${tableList}` });
+                                    toastSuccess('Optimize completed');
+                                } catch (e) { Dialog.alert(`Optimize failed: ${e}`, 'Error'); }
+                            }
+                        }
+                    ]
                 }
             ] : []),
             ...(dbType === 'clickhouse' ? [
@@ -2123,7 +2292,30 @@ export function ObjectExplorer() {
                         }
                     }
                 }
-            ] : [])
+            ] : []),
+            { type: 'separator' },
+            {
+                label: 'Drop Database',
+                icon: 'delete_forever',
+                iconColor: 'text-red-400',
+                onClick: async () => {
+                    const confirmed = await Dialog.confirmDangerousAction(
+                        `This will permanently delete database "${dbName}" and ALL its data. This action cannot be undone.`,
+                        'Drop Database',
+                        dbName
+                    );
+                    if (!confirmed) return;
+                    
+                    try {
+                        await invoke('drop_database', { database: dbName });
+                        Dialog.alert(`Database "${dbName}" dropped successfully`, 'Success');
+                        window.dispatchEvent(new CustomEvent('schema:changed', { detail: {} }));
+                        await loadDatabases();
+                    } catch (error) {
+                        Dialog.alert(`Failed to drop database: ${error}`, 'Error');
+                    }
+                }
+            }
         ];
 
         createContextMenu(x, y, items, { header: dbName });
@@ -2239,12 +2431,10 @@ export function ObjectExplorer() {
                         query = `SELECT * FROM ${quotedDb}.${quotedTable} LIMIT 200`;
                     }
 
-                    // Update query editor content
                     window.dispatchEvent(new CustomEvent('tactilesql:set-query', { detail: { query } }));
 
                     try {
                         const result = await invoke('execute_query', { query });
-                        // Dispatch result directly to results table
                         result.query = query;
                         window.dispatchEvent(new CustomEvent('tactilesql:query-result', { detail: result }));
                     } catch (error) {
@@ -2252,7 +2442,126 @@ export function ObjectExplorer() {
                     }
                 }
             },
-
+            {
+                type: 'submenu',
+                label: 'Export Data',
+                icon: 'download',
+                iconColor: isDawn ? 'text-[#56949f]' : 'text-green-400',
+                items: [
+                    { 
+                        label: 'Export as CSV', 
+                        icon: 'table', 
+                        iconColor: 'text-green-400',
+                        onClick: () => window.location.hash = `/data-tools?tab=export&db=${encodeURIComponent(dbName)}&table=${encodeURIComponent(tableName)}`
+                    },
+                    { 
+                        label: 'Export as JSON', 
+                        icon: 'data_object', 
+                        iconColor: 'text-blue-400',
+                        onClick: () => window.location.hash = `/data-tools?tab=export&db=${encodeURIComponent(dbName)}&table=${encodeURIComponent(tableName)}`
+                    },
+                    { 
+                        label: 'Export as SQL', 
+                        icon: 'code', 
+                        iconColor: 'text-purple-400',
+                        onClick: () => window.location.hash = `/data-tools?tab=export&db=${encodeURIComponent(dbName)}&table=${encodeURIComponent(tableName)}`
+                    }
+                ]
+            },
+            {
+                label: 'Import Data',
+                icon: 'upload',
+                iconColor: isDawn ? 'text-[#3e8fb0]' : 'text-blue-400',
+                onClick: () => window.location.hash = `/data-tools?tab=import&db=${encodeURIComponent(dbName)}&table=${encodeURIComponent(tableName)}`
+            },
+            { type: 'separator' },
+            {
+                type: 'submenu',
+                label: 'Copy to Clipboard',
+                icon: 'content_copy',
+                iconColor: isDawn ? 'text-[#9893a5]' : 'text-gray-400',
+                items: [
+                    { 
+                        label: 'Table Name', 
+                        icon: 'label', 
+                        iconColor: 'text-gray-400',
+                        onClick: () => {
+                            navigator.clipboard.writeText(tableName);
+                            toastSuccess('Table name copied');
+                        }
+                    },
+                    { 
+                        label: 'SELECT Statement', 
+                        icon: 'abc', 
+                        iconColor: 'text-cyan-400',
+                        onClick: async () => {
+                            const quotedDb = quoteIdentifier(dbName, dbType);
+                            const quotedTable = quoteIdentifier(tableName, dbType);
+                            const sql = dbType === 'mssql' 
+                                ? `SELECT * FROM ${quotedDb}.${quotedTable};`
+                                : `SELECT * FROM ${quotedDb}.${quotedTable} LIMIT 1000;`;
+                            navigator.clipboard.writeText(sql);
+                            toastSuccess('SELECT statement copied');
+                        }
+                    },
+                    { 
+                        label: 'INSERT Template', 
+                        icon: 'add_circle', 
+                        iconColor: 'text-green-400',
+                        onClick: async () => {
+                            try {
+                                const key = `${dbName}.${tableName}`;
+                                let cols = tableDetails[key]?.columns || await invoke('get_table_schema', { database: dbName, table: tableName });
+                                const quotedDb = quoteIdentifier(dbName, dbType);
+                                const quotedTable = quoteIdentifier(tableName, dbType);
+                                const colList = cols.map(c => quoteIdentifier(c.name, dbType)).join(', ');
+                                const params = cols.map(() => '?').join(', ');
+                                const sql = `INSERT INTO ${quotedDb}.${quotedTable}\n(${colList})\nVALUES\n(${params});`;
+                                navigator.clipboard.writeText(sql);
+                                toastSuccess('INSERT template copied');
+                            } catch (e) {
+                                Dialog.alert(`Failed to generate: ${e}`, 'Error');
+                            }
+                        }
+                    }
+                ]
+            },
+            { type: 'separator' },
+            {
+                label: 'Duplicate Table',
+                icon: 'content_copy',
+                iconColor: isDawn ? 'text-[#c4a7e7]' : 'text-purple-400',
+                onClick: () => showDuplicateTableModal(dbName, tableName, dbType)
+            },
+            {
+                label: 'Rename Table',
+                icon: 'edit',
+                iconColor: isDawn ? 'text-[#ea9d34]' : 'text-amber-400',
+                onClick: async () => {
+                    const newName = await Dialog.prompt('Enter new table name:', 'Rename Table', tableName);
+                    if (!newName || newName === tableName) return;
+                    
+                    try {
+                        await invoke('rename_table', {
+                            database: dbName,
+                            table: tableName,
+                            newName,
+                            schema: dbType === 'postgresql' ? dbName : null
+                        });
+                        Dialog.alert(`Table renamed to "${newName}" successfully`, 'Success');
+                        window.dispatchEvent(new CustomEvent('schema:changed', { detail: { database: dbName } }));
+                    } catch (error) {
+                        Dialog.alert(`Failed to rename table: ${error}`, 'Error');
+                    }
+                }
+            },
+            {
+                label: 'Table Dependencies',
+                icon: 'account_tree',
+                iconColor: isDawn ? 'text-[#56949f]' : 'text-cyan-400',
+                onClick: () => showTableDependenciesModal(dbName, tableName, dbType)
+            },
+            { type: 'separator' },
             ...(dbType === 'clickhouse' ? [
                 {
                     label: 'Advanced Inspector',
@@ -2260,11 +2569,8 @@ export function ObjectExplorer() {
                     iconColor: isDawn ? 'text-[#ebbcba]' : 'text-pink-400',
                     onClick: () => {
                         const config = connections.find(c => c.id === activeConnectionId);
-                        if (config) {
-                            showClickHouseTableDetails(config, dbName, tableName);
-                        } else {
-                            Dialog.alert('Active connection not found', 'Error');
-                        }
+                        if (config) showClickHouseTableDetails(config, dbName, tableName);
+                        else Dialog.alert('Active connection not found', 'Error');
                     }
                 },
                 {
@@ -2304,50 +2610,35 @@ export function ObjectExplorer() {
                     iconColor: isDawn ? 'text-[#ea9d34]' : 'text-amber-400',
                     items: [
                         ...(dbType === 'mysql' ? [
-                            {
-                                label: 'Maintenance Wizard',
-                                icon: 'magic_button',
-                                iconColor: 'text-indigo-400',
-                                onClick: () => showTableMaintenanceWizard(dbName, tableName)
-                            },
+                            { label: 'Maintenance Wizard', icon: 'magic_button', iconColor: 'text-indigo-400', onClick: () => showTableMaintenanceWizard(dbName, tableName) },
                             { type: 'separator' }
                         ] : []),
                         ...(dbType === 'mssql' ? [
-                            {
-                                label: 'Index Manager',
-                                icon: 'handyman',
-                                iconColor: 'text-orange-400',
-                                onClick: () => showMssqlIndexManagerModal(dbName, tableName)
-                            },
+                            { label: 'Index Manager', icon: 'handyman', iconColor: 'text-orange-400', onClick: () => showMssqlIndexManagerModal(dbName, tableName) },
                             { type: 'separator' }
                         ] : []),
-                        {
-                            label: 'Analyze Table',
-                            icon: 'analytics',
-                            iconColor: 'text-cyan-400',
-                            onClick: () => runMaintenance('analyze', dbName, tableName, dbType)
-                        },
+                        { label: 'Analyze Table', icon: 'analytics', iconColor: 'text-cyan-400', onClick: () => runMaintenance('analyze', dbName, tableName, dbType) },
                         ...(dbType !== 'postgresql' ? [
-                            {
-                                label: 'Check Table',
-                                icon: 'verified',
-                                iconColor: 'text-emerald-400',
-                                onClick: () => runMaintenance('check', dbName, tableName, dbType)
-                            }
+                            { label: 'Check Table', icon: 'verified', iconColor: 'text-emerald-400', onClick: () => runMaintenance('check', dbName, tableName, dbType) }
                         ] : []),
-                        {
-                            label: dbType === 'postgresql' ? 'Vacuum Full' : 'Optimize Table',
-                            icon: 'speed',
-                            iconColor: 'text-violet-400',
-                            onClick: () => runMaintenance('optimize', dbName, tableName, dbType)
-                        },
+                        { label: dbType === 'postgresql' ? 'Vacuum Full' : 'Optimize Table', icon: 'speed', iconColor: 'text-violet-400', onClick: () => runMaintenance('optimize', dbName, tableName, dbType) },
                         ...(dbType !== 'postgresql' ? [
-                            {
-                                label: 'Repair Table',
-                                icon: 'build',
-                                iconColor: 'text-orange-400',
-                                onClick: () => runMaintenance('repair', dbName, tableName, dbType)
-                            }
+                            { label: 'Repair Table', icon: 'build', iconColor: 'text-orange-400', onClick: () => runMaintenance('repair', dbName, tableName, dbType) }
+                        ] : []),
+                        ...(dbType === 'postgresql' ? [
+                            { type: 'separator' },
+                            { label: 'Vacuum Analyze', icon: 'cleaning_services', iconColor: 'text-teal-400', onClick: async () => {
+                                try {
+                                    await invoke('vacuum_table', { database: dbName, schema: dbName, table: tableName, full: false, analyze: true });
+                                    toastSuccess('Vacuum Analyze completed');
+                                } catch (e) { Dialog.alert(`Vacuum failed: ${e}`, 'Error'); }
+                            }},
+                            { label: 'Reindex Table', icon: 'refresh', iconColor: 'text-blue-400', onClick: async () => {
+                                try {
+                                    await invoke('reindex_table', { database: dbName, schema: dbName, table: tableName });
+                                    toastSuccess('Reindex completed');
+                                } catch (e) { Dialog.alert(`Reindex failed: ${e}`, 'Error'); }
+                            }}
                         ] : [])
                     ]
                 }
@@ -2364,6 +2655,22 @@ export function ObjectExplorer() {
                     icon: 'grid_view',
                     iconColor: isDawn ? 'text-[#ea9d34]' : 'text-mysql-teal',
                     onClick: () => showPartitionManagementModal(dbName, tableName)
+                }
+            ] : []),
+            ...(dbType === 'mysql' || dbType === 'postgresql' ? [
+                {
+                    label: 'Trigger Manager',
+                    icon: 'bolt',
+                    iconColor: isDawn ? 'text-[#f6c177]' : 'text-yellow-400',
+                    onClick: () => showTriggerManagerModal(dbName, tableName, dbType)
+                }
+            ] : []),
+            ...(dbType === 'mysql' || dbType === 'postgresql' || dbType === 'mssql' ? [
+                {
+                    label: 'Foreign Key Manager',
+                    icon: 'link',
+                    iconColor: isDawn ? 'text-[#9ccfd8]' : 'text-blue-400',
+                    onClick: () => showForeignKeyManagerModal(dbName, tableName, dbType)
                 }
             ] : []),
             {
@@ -2392,6 +2699,58 @@ export function ObjectExplorer() {
                     delete tableDetails[key];
                     await loadTableDetails(dbName, tableName);
                     toastSuccess(`Table ${tableName} refreshed`);
+                }
+            },
+            { type: 'separator' },
+            {
+                label: 'Truncate Table',
+                icon: 'delete_sweep',
+                iconColor: 'text-orange-400',
+                onClick: async () => {
+                    const confirmed = await Dialog.confirmDangerousAction(
+                        `This will delete ALL data in "${tableName}" permanently. The table structure will remain.`,
+                        'Truncate Table',
+                        tableName
+                    );
+                    if (!confirmed) return;
+                    
+                    try {
+                        await invoke('truncate_table', {
+                            database: dbName,
+                            table: tableName,
+                            schema: dbType === 'postgresql' ? dbName : null
+                        });
+                        Dialog.alert(`Table "${tableName}" truncated successfully`, 'Success');
+                        window.dispatchEvent(new CustomEvent('schema:changed', { detail: { database: dbName } }));
+                    } catch (error) {
+                        Dialog.alert(`Failed to truncate table: ${error}`, 'Error');
+                    }
+                }
+            },
+            {
+                label: 'Drop Table',
+                icon: 'delete_forever',
+                iconColor: 'text-red-400',
+                onClick: async () => {
+                    const confirmed = await Dialog.confirmDangerousAction(
+                        `This will permanently delete table "${tableName}" and all its data. This action cannot be undone.`,
+                        'Drop Table',
+                        tableName
+                    );
+                    if (!confirmed) return;
+                    
+                    try {
+                        await invoke('drop_table', {
+                            database: dbName,
+                            table: tableName,
+                            cascade: false,
+                            schema: dbType === 'postgresql' ? dbName : null
+                        });
+                        Dialog.alert(`Table "${tableName}" dropped successfully`, 'Success');
+                        window.dispatchEvent(new CustomEvent('schema:changed', { detail: { database: dbName } }));
+                    } catch (error) {
+                        Dialog.alert(`Failed to drop table: ${error}`, 'Error');
+                    }
                 }
             }
         ];
@@ -2916,6 +3275,29 @@ export function ObjectExplorer() {
         await loadConnections();
     };
     window.addEventListener('tactilesql:connection-changed', onConnectionChanged);
+
+    // Listen for schema changes (table create/drop/etc.)
+    const onSchemaChanged = async (e) => {
+        const changedDb = e.detail?.database;
+        if (changedDb) {
+            // Invalidate cache and reload the specific database objects
+            DatabaseCache.invalidateByDatabase(changedDb);
+            delete dbObjects[changedDb];
+            await loadDatabaseObjects(changedDb, true);
+            didStateChangeSinceLastTreeRender = true;
+            render();
+        } else {
+            // No specific database - reload all expanded databases
+            for (const db of expandedDbs) {
+                DatabaseCache.invalidateByDatabase(db);
+                delete dbObjects[db];
+                await loadDatabaseObjects(db, true);
+            }
+            didStateChangeSinceLastTreeRender = true;
+            render();
+        }
+    };
+    window.addEventListener('schema:changed', onSchemaChanged);
 
     const onSettingsChanged = (e) => {
         const changedPath = e.detail?.path || e.detail?.key;
