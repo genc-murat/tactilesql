@@ -532,6 +532,10 @@ export function ConnectionManager() {
     };
 
     const handleConnect = async () => {
+        if (!config.name || !config.name.trim()) {
+            Dialog.alert('Please provide a name for this connection.', 'Name Required');
+            return;
+        }
         const btn = container.querySelector('#connect-btn');
         const originalText = btn.innerHTML;
         btn.innerHTML = 'Connecting...';
