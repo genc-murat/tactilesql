@@ -1,6 +1,7 @@
 mod scoring;
 mod mysql;
 mod mssql;
+mod postgres;
 mod recommendations;
 mod persistence;
 
@@ -13,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use chrono::Utc;
 use sqlx::{MySql, Pool};
 use deadpool_tiberius::Pool as MssqlPool;
+use sqlx::Postgres;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CategoryScoreJson {
@@ -38,7 +40,11 @@ pub async fn get_database_health_report(
             generate_mysql_health_report(pool, &app_state, &connection_id).await
         }
         DatabaseType::PostgreSQL => {
-            Err("Health Score for PostgreSQL is not yet implemented. Coming soon!".to_string())
+            let guard = app_state.postgres_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No PostgreSQL connection established")?;
+            
+            let connection_id = get_connection_id(&app_state).await;
+            generate_postgres_health_report(pool, &app_state, &connection_id).await
         }
         DatabaseType::MSSQL => {
             let guard = app_state.mssql_pool.lock().await;
@@ -111,6 +117,56 @@ async fn generate_mssql_health_report(
 ) -> Result<DatabaseHealthReport, String> {
     let config = mssql::MssqlHealthConfig::default();
     let categories = mssql::collect_mssql_health_metrics(pool, &config).await?;
+    
+    let overall_score = scoring::calculate_overall_score(&categories);
+    let grade = scoring::score_to_grade(overall_score);
+    let (critical_issues, warnings) = scoring::count_issues(&categories);
+    
+    let previous_scores = get_previous_scores(app_state, connection_id, 30).await;
+    let trend = if !previous_scores.is_empty() {
+        scoring::determine_trend(overall_score, &previous_scores.iter().map(|s| s.score).collect::<Vec<_>>())
+    } else {
+        "stable".to_string()
+    };
+    
+    let category_scores_json = serde_json::to_string(
+        &categories.iter().map(|c| CategoryScoreJson {
+            id: c.id.clone(),
+            score: c.score,
+        }).collect::<Vec<_>>()
+    ).unwrap_or_else(|_| "[]".to_string());
+    
+    if let Some(sqlite_pool) = app_state.local_db_pool.lock().await.as_ref() {
+        let _ = persistence::save_health_score(
+            sqlite_pool,
+            connection_id,
+            overall_score,
+            &grade,
+            &category_scores_json,
+            critical_issues,
+            warnings,
+        ).await;
+    }
+    
+    Ok(DatabaseHealthReport {
+        overall_score,
+        grade,
+        trend,
+        categories,
+        critical_issues,
+        warnings,
+        last_updated: Utc::now().to_rfc3339(),
+        previous_scores,
+    })
+}
+
+async fn generate_postgres_health_report(
+    pool: &Pool<Postgres>,
+    app_state: &AppState,
+    connection_id: &str,
+) -> Result<DatabaseHealthReport, String> {
+    let config = postgres::PostgresHealthConfig::default();
+    let categories = postgres::collect_postgres_health_metrics(pool, &config).await?;
     
     let overall_score = scoring::calculate_overall_score(&categories);
     let grade = scoring::score_to_grade(overall_score);

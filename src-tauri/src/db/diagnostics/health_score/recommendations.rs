@@ -419,6 +419,220 @@ fn generate_metric_recommendation(
             })
         },
         
+        // PostgreSQL-specific recommendations
+        "perf_cache_hit" if metric.raw_value < 95.0 => {
+            let severity = if metric.raw_value < 85.0 { "critical" } else { "high" };
+            Some(HealthRecommendation {
+                id: "postgres_cache_hit_low".to_string(),
+                category: category.to_string(),
+                severity: severity.to_string(),
+                title: "Low Cache Hit Ratio".to_string(),
+                description: format!("Cache hit ratio is {:.1}%, below optimal 95%. Consider increasing shared_buffers.", metric.raw_value),
+                impact: "Increasing shared_buffers could reduce disk I/O by 50-70% and improve query performance.".to_string(),
+                effort: "Medium".to_string(),
+                action_sql: Some("ALTER SYSTEM SET shared_buffers = '256MB'; SELECT pg_reload_conf();".to_string()),
+                action_type: "config".to_string(),
+                related_metrics: vec!["perf_cache_hit".to_string()],
+                documentation_url: Some("https://www.postgresql.org/docs/current/runtime-config-resource.html".to_string()),
+            })
+        },
+        
+        "perf_index_usage" if metric.raw_value < 90.0 => {
+            let severity = if metric.raw_value < 70.0 { "critical" } else { "high" };
+            Some(HealthRecommendation {
+                id: "postgres_index_usage_low".to_string(),
+                category: category.to_string(),
+                severity: severity.to_string(),
+                title: "Low Index Usage".to_string(),
+                description: format!("Index usage ratio is {:.1}%. Many sequential scans suggest missing indexes.", metric.raw_value),
+                impact: "Adding appropriate indexes could improve query performance by 50-90%.".to_string(),
+                effort: "High".to_string(),
+                action_sql: None,
+                action_type: "index".to_string(),
+                related_metrics: vec!["perf_index_usage".to_string()],
+                documentation_url: Some("https://www.postgresql.org/docs/current/indexes.html".to_string()),
+            })
+        },
+        
+        "perf_dead_tuples" if metric.raw_value > 10.0 => {
+            let severity = if metric.raw_value > 25.0 { "critical" } else { "high" };
+            Some(HealthRecommendation {
+                id: "postgres_dead_tuples_high".to_string(),
+                category: category.to_string(),
+                severity: severity.to_string(),
+                title: "High Dead Tuple Ratio".to_string(),
+                description: format!("Dead tuple ratio is {:.1}%. Tables need vacuuming.", metric.raw_value),
+                impact: "Running VACUUM will reclaim space and improve query performance.".to_string(),
+                effort: "Low".to_string(),
+                action_sql: Some("VACUUM ANALYZE;".to_string()),
+                action_type: "maintenance".to_string(),
+                related_metrics: vec!["perf_dead_tuples".to_string()],
+                documentation_url: Some("https://www.postgresql.org/docs/current/routine-vacuuming.html".to_string()),
+            })
+        },
+        
+        "conn_usage" if metric.raw_value > 70.0 => {
+            let severity = if metric.raw_value > 90.0 { "critical" } else { "high" };
+            Some(HealthRecommendation {
+                id: "postgres_connections_high".to_string(),
+                category: category.to_string(),
+                severity: severity.to_string(),
+                title: "High Connection Usage".to_string(),
+                description: format!("Connection usage is at {:.1}%. Consider connection pooling.", metric.raw_value),
+                impact: "Connection pooling reduces overhead and improves scalability.".to_string(),
+                effort: "Medium".to_string(),
+                action_sql: Some("ALTER SYSTEM SET max_connections = 200; SELECT pg_reload_conf();".to_string()),
+                action_type: "config".to_string(),
+                related_metrics: vec!["conn_usage".to_string()],
+                documentation_url: Some("https://www.postgresql.org/docs/current/runtime-config-connection.html".to_string()),
+            })
+        },
+        
+        "conn_idle" if metric.raw_value > 20.0 => {
+            Some(HealthRecommendation {
+                id: "postgres_idle_connections".to_string(),
+                category: category.to_string(),
+                severity: "medium".to_string(),
+                title: "Many Idle Connections".to_string(),
+                description: format!("{} connections have been idle for more than 5 minutes.", metric.raw_value as i32),
+                impact: "Terminating idle connections frees resources for active queries.".to_string(),
+                effort: "Low".to_string(),
+                action_sql: Some("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE state = 'idle' AND query_start < NOW() - INTERVAL '10 minutes';".to_string()),
+                action_type: "sql".to_string(),
+                related_metrics: vec!["conn_idle".to_string()],
+                documentation_url: None,
+            })
+        },
+        
+        "stor_bloat" if metric.raw_value > 15.0 => {
+            let severity = if metric.raw_value > 30.0 { "high" } else { "medium" };
+            Some(HealthRecommendation {
+                id: "postgres_bloat_high".to_string(),
+                category: category.to_string(),
+                severity: severity.to_string(),
+                title: "High Table Bloat".to_string(),
+                description: format!("Estimated bloat is {:.1}%. Tables need vacuuming.", metric.raw_value),
+                impact: "Full vacuum or pg_repack can reclaim wasted space.".to_string(),
+                effort: "Medium".to_string(),
+                action_sql: Some("VACUUM FULL table_name;".to_string()),
+                action_type: "maintenance".to_string(),
+                related_metrics: vec!["stor_bloat".to_string()],
+                documentation_url: Some("https://www.postgresql.org/docs/current/sql-vacuum.html".to_string()),
+            })
+        },
+        
+        "maint_autovacuum" if metric.raw_value < 50.0 => {
+            Some(HealthRecommendation {
+                id: "postgres_autovacuum_disabled".to_string(),
+                category: category.to_string(),
+                severity: "high".to_string(),
+                title: "Autovacuum Disabled".to_string(),
+                description: "Autovacuum is disabled. Manual vacuuming is required to prevent table bloat.".to_string(),
+                impact: "Enabling autovacuum automates maintenance and prevents performance degradation.".to_string(),
+                effort: "Low".to_string(),
+                action_sql: Some("ALTER SYSTEM SET autovacuum = on; SELECT pg_reload_conf();".to_string()),
+                action_type: "config".to_string(),
+                related_metrics: vec!["maint_autovacuum".to_string()],
+                documentation_url: Some("https://www.postgresql.org/docs/current/routine-vacuuming.html#AUTOVACUUM".to_string()),
+            })
+        },
+        
+        "maint_stale_vacuum" if metric.raw_value > 50.0 => {
+            Some(HealthRecommendation {
+                id: "postgres_vacuum_stale".to_string(),
+                category: category.to_string(),
+                severity: "medium".to_string(),
+                title: "Tables Need Vacuuming".to_string(),
+                description: format!("{} tables haven't been vacuumed in 7+ days.", metric.raw_value as i32),
+                impact: "Running vacuum will update statistics and reclaim dead space.".to_string(),
+                effort: "Low".to_string(),
+                action_sql: Some("VACUUM ANALYZE;".to_string()),
+                action_type: "maintenance".to_string(),
+                related_metrics: vec!["maint_stale_vacuum".to_string()],
+                documentation_url: Some("https://www.postgresql.org/docs/current/sql-vacuum.html".to_string()),
+            })
+        },
+        
+        "maint_no_pk" if metric.raw_value > 0.0 => {
+            Some(HealthRecommendation {
+                id: "postgres_add_pk".to_string(),
+                category: category.to_string(),
+                severity: "medium".to_string(),
+                title: "Add Primary Keys".to_string(),
+                description: format!("{} tables lack a primary key.", metric.raw_value as i32),
+                impact: "Primary keys enable efficient row lookups and are required for replication.".to_string(),
+                effort: "Medium".to_string(),
+                action_sql: Some("ALTER TABLE table_name ADD PRIMARY KEY (column);".to_string()),
+                action_type: "sql".to_string(),
+                related_metrics: vec!["maint_no_pk".to_string()],
+                documentation_url: Some("https://www.postgresql.org/docs/current/ddl-constraints.html".to_string()),
+            })
+        },
+        
+        "maint_unused_idx" if metric.raw_value > 10.0 => {
+            Some(HealthRecommendation {
+                id: "postgres_unused_indexes".to_string(),
+                category: category.to_string(),
+                severity: "low".to_string(),
+                title: "Remove Unused Indexes".to_string(),
+                description: format!("{} indexes have never been used.", metric.raw_value as i32),
+                impact: "Removing unused indexes reduces write overhead and storage.".to_string(),
+                effort: "Low".to_string(),
+                action_sql: Some("DROP INDEX index_name;".to_string()),
+                action_type: "sql".to_string(),
+                related_metrics: vec!["maint_unused_idx".to_string()],
+                documentation_url: Some("https://www.postgresql.org/docs/current/sql-dropindex.html".to_string()),
+            })
+        },
+        
+        "sec_superusers" if metric.raw_value > 3.0 => {
+            Some(HealthRecommendation {
+                id: "postgres_superusers_high".to_string(),
+                category: category.to_string(),
+                severity: "medium".to_string(),
+                title: "Review Superuser Roles".to_string(),
+                description: format!("{} superuser roles exist. Review for principle of least privilege.", metric.raw_value as i32),
+                impact: "Reducing superuser accounts limits potential damage from compromised accounts.".to_string(),
+                effort: "Medium".to_string(),
+                action_sql: Some("ALTER ROLE rolename NOSUPERUSER;".to_string()),
+                action_type: "sql".to_string(),
+                related_metrics: vec!["sec_superusers".to_string()],
+                documentation_url: Some("https://www.postgresql.org/docs/current/role-attributes.html".to_string()),
+            })
+        },
+        
+        "sec_ssl" if metric.raw_value < 50.0 => {
+            Some(HealthRecommendation {
+                id: "postgres_ssl_disabled".to_string(),
+                category: category.to_string(),
+                severity: "medium".to_string(),
+                title: "Enable SSL Connections".to_string(),
+                description: "SSL is not enabled for database connections.".to_string(),
+                impact: "SSL encrypts data in transit, preventing eavesdropping.".to_string(),
+                effort: "Medium".to_string(),
+                action_sql: Some("ALTER SYSTEM SET ssl = on; SELECT pg_reload_conf();".to_string()),
+                action_type: "config".to_string(),
+                related_metrics: vec!["sec_ssl".to_string()],
+                documentation_url: Some("https://www.postgresql.org/docs/current/ssl-tcp.html".to_string()),
+            })
+        },
+        
+        "sec_public" if metric.raw_value > 10.0 => {
+            Some(HealthRecommendation {
+                id: "postgres_public_grants".to_string(),
+                category: category.to_string(),
+                severity: "medium".to_string(),
+                title: "Revoke Public Schema Access".to_string(),
+                description: format!("{} tables have PUBLIC access grants.", metric.raw_value as i32),
+                impact: "Revoking PUBLIC access follows principle of least privilege.".to_string(),
+                effort: "Medium".to_string(),
+                action_sql: Some("REVOKE ALL ON SCHEMA public FROM PUBLIC;".to_string()),
+                action_type: "sql".to_string(),
+                related_metrics: vec!["sec_public".to_string()],
+                documentation_url: Some("https://www.postgresql.org/docs/current/ddl-priv.html".to_string()),
+            })
+        },
+        
         _ => None,
     }
 }
