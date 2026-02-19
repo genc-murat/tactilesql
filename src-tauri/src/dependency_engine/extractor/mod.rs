@@ -244,18 +244,37 @@ pub async fn build_dependency_graph_postgres(
     table_name: Option<String>,
     hop_depth: Option<usize>,
 ) -> Result<DependencyGraph, String> {
+    println!(
+        "DEBUG: [PostgreSQL Extractor] Starting build for db: {:?}",
+        database
+    );
     let mut graph = DependencyGraph::new();
 
-    // 1) Tables
-    let mut tables_query = "SELECT table_schema, table_name FROM information_schema.tables WHERE table_schema NOT IN ('information_schema', 'pg_catalog')".to_string();
-    if let Some(ref db) = database {
-        tables_query.push_str(&format!(" AND table_schema = '{}'", db));
-    }
+    let schema_filter = match &database {
+        Some(db) if !db.is_empty() => format!(" = '{}'", db),
+        _ => " NOT IN ('information_schema', 'pg_catalog')".to_string(),
+    };
 
-    let table_rows = sqlx::query(&tables_query)
-        .fetch_all(pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    // 1) Tables
+    println!("DEBUG: [PostgreSQL Extractor] Fetching tables...");
+    let tables_query = format!(
+        "SELECT table_schema, table_name FROM information_schema.tables WHERE table_schema {}",
+        schema_filter
+    );
+
+    let table_rows = timeout(
+        Duration::from_secs(15),
+        sqlx::query(&tables_query).fetch_all(pool),
+    )
+    .await
+    .map_err(|_| "Fetching tables timed out after 15s".to_string())?
+    .map_err(|e| {
+        println!(
+            "DEBUG ERROR: [PostgreSQL Extractor] Fetching tables failed: {}",
+            e
+        );
+        e.to_string()
+    })?;
 
     for row in table_rows {
         tokio::task::yield_now().await;
@@ -265,15 +284,25 @@ pub async fn build_dependency_graph_postgres(
     }
 
     // 2) Views
-    let mut views_query = "SELECT table_schema, table_name, view_definition FROM information_schema.views WHERE table_schema NOT IN ('information_schema', 'pg_catalog')".to_string();
-    if let Some(ref db) = database {
-        views_query.push_str(&format!(" AND table_schema = '{}'", db));
-    }
+    println!("DEBUG: [PostgreSQL Extractor] Fetching views...");
+    let views_query = format!(
+        "SELECT table_schema, table_name, view_definition FROM information_schema.views WHERE table_schema {}",
+        schema_filter
+    );
 
-    let view_rows = sqlx::query(&views_query)
-        .fetch_all(pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    let view_rows = timeout(
+        Duration::from_secs(15),
+        sqlx::query(&views_query).fetch_all(pool),
+    )
+    .await
+    .map_err(|_| "Fetching views timed out after 15s".to_string())?
+    .map_err(|e| {
+        println!(
+            "DEBUG ERROR: [PostgreSQL Extractor] Fetching views failed: {}",
+            e
+        );
+        e.to_string()
+    })?;
 
     for row in view_rows {
         tokio::task::yield_now().await;
@@ -281,25 +310,49 @@ pub async fn build_dependency_graph_postgres(
         let name: String = row.get("table_name");
         let definition: String = row.get("view_definition");
 
-        let view_id = graph.add_node(Some(schema.clone()), name, NodeType::View);
+        let view_id = graph.add_node(Some(schema.clone()), name.clone(), NodeType::View);
         if definition.trim().is_empty() {
             continue;
         }
 
-        let parser_result = extract_dependencies(&definition, DbDialect::PostgreSQL);
+        let parser_result = match timeout(Duration::from_millis(700), async {
+            extract_dependencies(&definition, DbDialect::PostgreSQL)
+        })
+        .await
+        {
+            Ok(result) => result,
+            Err(_) => {
+                println!(
+                    "DEBUG WARNING: [PostgreSQL Extractor] Skipping complex view parsing for {}",
+                    name
+                );
+                continue;
+            }
+        };
+
         add_dependency_edges(&mut graph, &view_id, &schema, parser_result.dependencies);
     }
 
     // 3) Routines
-    let mut routines_query = "SELECT routine_schema, routine_name, routine_type, routine_definition FROM information_schema.routines WHERE routine_schema NOT IN ('information_schema', 'pg_catalog')".to_string();
-    if let Some(ref db) = database {
-        routines_query.push_str(&format!(" AND routine_schema = '{}'", db));
-    }
+    println!("DEBUG: [PostgreSQL Extractor] Fetching routines...");
+    let routines_query = format!(
+        "SELECT routine_schema, routine_name, routine_type, routine_definition FROM information_schema.routines WHERE routine_schema {}",
+        schema_filter
+    );
 
-    let routine_rows = sqlx::query(&routines_query)
-        .fetch_all(pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    let routine_rows = timeout(
+        Duration::from_secs(20),
+        sqlx::query(&routines_query).fetch_all(pool),
+    )
+    .await
+    .map_err(|_| "Fetching routines timed out after 20s".to_string())?
+    .map_err(|e| {
+        println!(
+            "DEBUG ERROR: [PostgreSQL Extractor] Fetching routines failed: {}",
+            e
+        );
+        e.to_string()
+    })?;
 
     let mut routines = Vec::new();
     for row in routine_rows {
@@ -325,12 +378,28 @@ pub async fn build_dependency_graph_postgres(
             continue;
         }
 
-        let parser_result = extract_dependencies(&definition, DbDialect::PostgreSQL);
+        let parser_result = match timeout(Duration::from_millis(900), async {
+            extract_dependencies(&definition, DbDialect::PostgreSQL)
+        })
+        .await
+        {
+            Ok(result) => result,
+            Err(_) => {
+                println!(
+                    "DEBUG WARNING: [PostgreSQL Extractor] Skipping complex routine parsing for {}",
+                    routine_id
+                );
+                continue;
+            }
+        };
+
         add_dependency_edges(&mut graph, &routine_id, &schema, parser_result.dependencies);
     }
 
     // 4) Foreign keys
-    let mut fks_query = r#"
+    println!("DEBUG: [PostgreSQL Extractor] Fetching foreign keys...");
+    let fks_query = format!(
+        r#"
             SELECT
                 tc.table_schema, tc.table_name, ccu.table_schema, ccu.table_name
             FROM
@@ -340,17 +409,24 @@ pub async fn build_dependency_graph_postgres(
                 JOIN information_schema.constraint_column_usage AS ccu
                   ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
             WHERE tc.constraint_type = 'FOREIGN KEY'
-        "#
-    .to_string();
+            AND tc.table_schema {}
+        "#,
+        schema_filter
+    );
 
-    if let Some(ref db) = database {
-        fks_query.push_str(&format!(" AND tc.table_schema = '{}'", db));
-    }
-
-    let fk_rows = sqlx::query(&fks_query)
-        .fetch_all(pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    let fk_rows = timeout(
+        Duration::from_secs(30),
+        sqlx::query(&fks_query).fetch_all(pool),
+    )
+    .await
+    .map_err(|_| "Fetching foreign keys timed out after 30s".to_string())?
+    .map_err(|e| {
+        println!(
+            "DEBUG ERROR: [PostgreSQL Extractor] Fetching FKs failed: {}",
+            e
+        );
+        e.to_string()
+    })?;
 
     for row in fk_rows {
         tokio::task::yield_now().await;
@@ -367,9 +443,14 @@ pub async fn build_dependency_graph_postgres(
     // 5) Optional focused neighborhood
     if let Some(target) = table_name {
         let hops = hop_depth.unwrap_or(2).max(1);
+        println!(
+            "DEBUG: [PostgreSQL Extractor] Filtering neighborhood for {} with {} hops",
+            target, hops
+        );
         graph.filter_neighborhood(&target, database.as_deref(), hops);
     }
 
+    println!("DEBUG: [PostgreSQL Extractor] Build complete");
     Ok(graph)
 }
 
@@ -383,7 +464,10 @@ pub async fn build_dependency_graph_mssql(
     let mut graph = DependencyGraph::new();
     let target_db = database.clone().unwrap_or_else(|| "master".to_string());
 
+    println!("DEBUG: [MSSQL Extractor] Starting build for db: {}", target_db);
+
     // 1) Tables and Views
+    println!("DEBUG: [MSSQL Extractor] Fetching tables and views...");
     let tables_query = format!(
         "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE FROM [{}].INFORMATION_SCHEMA.TABLES",
         target_db
@@ -404,16 +488,82 @@ pub async fn build_dependency_graph_mssql(
         }
     }
 
-    // 2) Expression Dependencies (Views, Stored Procedures, etc.)
-    // Note: This relies on sys.sql_expression_dependencies which is per-database
+    // 2) Stored Procedures and Functions
+    println!("DEBUG: [MSSQL Extractor] Fetching routines...");
+    let routines_query = format!(
+        "SELECT \
+            s.name AS schema_name, \
+            o.name AS routine_name, \
+            o.type AS routine_type, \
+            m.definition \
+         FROM [{}].sys.objects o \
+         INNER JOIN [{}].sys.schemas s ON o.schema_id = s.schema_id \
+         LEFT JOIN [{}].sys.sql_modules m ON o.object_id = m.object_id \
+         WHERE o.type IN ('P', 'FN', 'TF', 'IF')",
+        target_db, target_db, target_db
+    );
+
+    let mut routines = Vec::new();
+    if let Ok(res) = mssql::execute_query(pool, routines_query).await {
+        if let Some(first) = res.get(0) {
+            for row in &first.rows {
+                let schema = row[0].as_str().unwrap_or("dbo").to_string();
+                let name = row[1].as_str().unwrap_or("").to_string();
+                let routine_type = row[2].as_str().unwrap_or("").to_string();
+                let definition = row[3].as_str().unwrap_or("").to_string();
+
+                if name.is_empty() {
+                    continue;
+                }
+
+                let node_type = if routine_type == "P" {
+                    NodeType::Procedure
+                } else {
+                    NodeType::Function
+                };
+
+                let routine_id = graph.add_node(Some(schema.clone()), name, node_type);
+                if !definition.is_empty() {
+                    routines.push((schema, routine_id, definition.to_string()));
+                }
+            }
+        }
+    }
+
+    // Parse routine definitions for dependencies
+    for (schema, routine_id, definition) in routines {
+        tokio::task::yield_now().await;
+        let parser_result = match timeout(Duration::from_millis(900), async {
+            extract_dependencies(&definition, DbDialect::MsSql)
+        })
+        .await
+        {
+            Ok(result) => result,
+            Err(_) => {
+                println!(
+                    "DEBUG WARNING: [MSSQL Extractor] Skipping complex routine parsing for {}",
+                    routine_id
+                );
+                continue;
+            }
+        };
+
+        add_dependency_edges(&mut graph, &routine_id, &schema, parser_result.dependencies);
+    }
+
+    // 3) Expression Dependencies (Views, etc.)
+    println!("DEBUG: [MSSQL Extractor] Fetching expression dependencies...");
     let dep_query = format!(
         "SELECT \
-            OBJECT_SCHEMA_NAME(referencing_id) AS referencing_schema, \
-            OBJECT_NAME(referencing_id) AS referencing_name, \
-            referenced_schema_name, \
-            referenced_entity_name \
-         FROM [{}].sys.sql_expression_dependencies",
-        target_db
+            s.name AS source_schema, \
+            o.name AS source_name, \
+            COALESCE(sed.referenced_schema_name, 'dbo') AS target_schema, \
+            sed.referenced_entity_name AS target_name \
+         FROM [{}].sys.sql_expression_dependencies sed \
+         INNER JOIN [{}].sys.objects o ON sed.referencing_id = o.object_id \
+         INNER JOIN [{}].sys.schemas s ON o.schema_id = s.schema_id \
+         WHERE sed.referenced_entity_name IS NOT NULL",
+        target_db, target_db, target_db
     );
     
     if let Ok(res) = mssql::execute_query(pool, dep_query).await {
@@ -433,42 +583,50 @@ pub async fn build_dependency_graph_mssql(
         }
     }
 
-    // 3) Foreign Keys
+    // 4) Foreign Keys - Fixed: Use direct JOINs instead of OBJECT_NAME()
+    println!("DEBUG: [MSSQL Extractor] Fetching foreign keys...");
     let fk_query = format!(
         "SELECT \
-            SCHEMA_NAME(fk.schema_id) AS schema_name, \
-            fk.name AS fk_name, \
-            OBJECT_NAME(fk.parent_object_id) AS table_name, \
-            SCHEMA_NAME(ref_t.schema_id) AS referenced_schema, \
-            ref_t.name AS referenced_table \
+            s1.name AS source_schema, \
+            t1.name AS source_table, \
+            s2.name AS target_schema, \
+            t2.name AS target_table \
          FROM [{}].sys.foreign_keys fk \
-         INNER JOIN [{}].sys.tables ref_t ON fk.referenced_object_id = ref_t.object_id",
-        target_db, target_db
+         INNER JOIN [{}].sys.tables t1 ON fk.parent_object_id = t1.object_id \
+         INNER JOIN [{}].sys.schemas s1 ON t1.schema_id = s1.schema_id \
+         INNER JOIN [{}].sys.tables t2 ON fk.referenced_object_id = t2.object_id \
+         INNER JOIN [{}].sys.schemas s2 ON t2.schema_id = s2.schema_id",
+        target_db, target_db, target_db, target_db, target_db
     );
 
     if let Ok(res) = mssql::execute_query(pool, fk_query).await {
         if let Some(first) = res.get(0) {
             for row in &first.rows {
-                let schema = row[0].as_str().unwrap_or("dbo");
-                let table = row[2].as_str().unwrap_or("");
-                let ref_schema = row[3].as_str().unwrap_or("dbo");
-                let ref_table = row[4].as_str().unwrap_or("");
+                let source_schema = row[0].as_str().unwrap_or("dbo");
+                let source_table = row[1].as_str().unwrap_or("");
+                let target_schema = row[2].as_str().unwrap_or("dbo");
+                let target_table = row[3].as_str().unwrap_or("");
 
-                if !table.is_empty() && !ref_table.is_empty() {
-                    let source_id = format!("{}.{}", schema, table);
-                    let target_id = format!("{}.{}", ref_schema, ref_table);
+                if !source_table.is_empty() && !target_table.is_empty() {
+                    let source_id = format!("{}.{}", source_schema, source_table);
+                    let target_id = format!("{}.{}", target_schema, target_table);
                     graph.add_edge(&source_id, &target_id, EdgeType::ForeignKey);
                 }
             }
         }
     }
 
-    // 4) Optional focused neighborhood
+    // 5) Optional focused neighborhood
     if let Some(target) = table_name {
         let hops = hop_depth.unwrap_or(2).max(1);
+        println!(
+            "DEBUG: [MSSQL Extractor] Filtering neighborhood for {} with {} hops",
+            target, hops
+        );
         graph.filter_neighborhood(&target, database.as_deref(), hops);
     }
 
+    println!("DEBUG: [MSSQL Extractor] Build complete");
     Ok(graph)
 }
 
@@ -490,13 +648,25 @@ pub async fn build_dependency_graph_clickhouse(
     println!("DEBUG: [ClickHouse Extractor] Starting build for db: {}", target_db);
 
     // 1) Fetch ALL tables (including views) to establish nodes
-    // Using system.tables to get everything in one go
+    println!("DEBUG: [ClickHouse Extractor] Fetching tables...");
     let query = format!(
         "SELECT name, engine, create_table_query FROM system.tables WHERE database = '{}'",
         target_db.replace('\'', "\\'")
     );
 
-    let results = crate::clickhouse::execute_query_generic(config, query).await?;
+    let results = timeout(
+        Duration::from_secs(30),
+        crate::clickhouse::execute_query_generic(config, query),
+    )
+    .await
+    .map_err(|_| "Fetching tables timed out after 30s".to_string())?
+    .map_err(|e| {
+        println!(
+            "DEBUG ERROR: [ClickHouse Extractor] Fetching tables failed: {}",
+            e
+        );
+        e
+    })?;
     
     // Process results
     if let Some(first) = results.first() {
@@ -505,6 +675,7 @@ pub async fn build_dependency_graph_clickhouse(
         let query_idx = first.columns.iter().position(|c| c == "create_table_query");
 
         for row in &first.rows {
+            tokio::task::yield_now().await;
             let name = name_idx.and_then(|i| row.get(i)).and_then(|v| v.as_str()).unwrap_or_default().to_string();
             let engine = engine_idx.and_then(|i| row.get(i)).and_then(|v| v.as_str()).unwrap_or_default().to_string();
             let create_query = query_idx.and_then(|i| row.get(i)).and_then(|v| v.as_str()).unwrap_or_default().to_string();
@@ -520,7 +691,21 @@ pub async fn build_dependency_graph_clickhouse(
             // If it's a view (or MaterializedView), parse the Create Query for dependencies
             if node_type == NodeType::View && !create_query.is_empty() {
                 // Parse SELECT dependencies (source tables)
-                let parser_result = extract_dependencies(&create_query, DbDialect::ClickHouse);
+                let parser_result = match timeout(Duration::from_millis(700), async {
+                    extract_dependencies(&create_query, DbDialect::ClickHouse)
+                })
+                .await
+                {
+                    Ok(result) => result,
+                    Err(_) => {
+                        println!(
+                            "DEBUG WARNING: [ClickHouse Extractor] Skipping complex view parsing for {}",
+                            name
+                        );
+                        continue;
+                    }
+                };
+                
                 add_dependency_edges(&mut graph, &node_id, &target_db, parser_result.dependencies);
                 
                 // For MaterializedView, also extract TO clause (target table)
@@ -539,9 +724,14 @@ pub async fn build_dependency_graph_clickhouse(
     // 2) Optional focused neighborhood
     if let Some(target) = table_name {
         let hops = hop_depth.unwrap_or(2).max(1);
+        println!(
+            "DEBUG: [ClickHouse Extractor] Filtering neighborhood for {} with {} hops",
+            target, hops
+        );
         graph.filter_neighborhood(&target, Some(&target_db), hops);
     }
 
+    println!("DEBUG: [ClickHouse Extractor] Build complete");
     Ok(graph)
 }
 

@@ -2,7 +2,7 @@ use sqlparser::ast::{
     Delete, Expr, FromTable, Function, FunctionArg, FunctionArgExpr, FunctionArguments, ObjectName,
     Select, SetExpr, Statement, TableFactor, TableWithJoins,
 };
-use sqlparser::dialect::{Dialect, MySqlDialect, PostgreSqlDialect};
+use sqlparser::dialect::{Dialect, MsSqlDialect, MySqlDialect, PostgreSqlDialect};
 use sqlparser::parser::Parser;
 
 use super::graph::{EdgeType, SchemaQualifiedName};
@@ -11,6 +11,7 @@ pub enum DbDialect {
     MySQL,
     PostgreSQL,
     ClickHouse,
+    MsSql,
 }
 
 pub struct ParsingResult {
@@ -21,8 +22,8 @@ pub fn extract_dependencies(sql: &str, dialect_type: DbDialect) -> ParsingResult
     let dialect: Box<dyn Dialect> = match dialect_type {
         DbDialect::MySQL => Box::new(MySqlDialect {}),
         DbDialect::PostgreSQL => Box::new(PostgreSqlDialect {}),
-        // ClickHouse uses backticks for identifiers similar to MySQL
         DbDialect::ClickHouse => Box::new(MySqlDialect {}),
+        DbDialect::MsSql => Box::new(MsSqlDialect {}),
     };
 
     let ast = Parser::parse_sql(&*dialect, sql);
@@ -60,7 +61,12 @@ fn visit_statement(stmt: &Statement, deps: &mut Vec<(SchemaQualifiedName, EdgeTy
                 visit_query(query, deps);
             }
         }
-        Statement::Update { table, from, selection, .. } => {
+        Statement::Update {
+            table,
+            from,
+            selection,
+            ..
+        } => {
             visit_table_factor_with_edge(&table.relation, EdgeType::Update, deps);
 
             // JOIN/FROM sources inside UPDATE are reads.
