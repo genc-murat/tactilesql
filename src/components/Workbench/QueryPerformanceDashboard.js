@@ -1,14 +1,17 @@
 import { invoke } from '@tauri-apps/api/core';
 import { toastError } from '../../utils/Toast.js';
+import { CustomDropdown } from '../UI/CustomDropdown.js';
+import { ThemeManager } from '../../utils/ThemeManager.js';
 
 export function renderQueryPerformanceDashboard(container, connection) {
     container.innerHTML = '';
 
-    // --- State ---
-    let timeRange = '60'; // minutes
-    let topQueryMetric = 'duration'; // duration, memory, io, count
+    const theme = ThemeManager.getCurrentTheme();
+    
+    let timeRange = '60';
+    let topQueryMetric = 'duration';
+    let timeRangeDropdown = null;
 
-    // --- Header ---
     const header = document.createElement('div');
     header.className = 'flex items-center justify-between px-6 py-4 border-b border-[var(--border-color)] bg-[var(--bg-tertiary)]';
     header.innerHTML = `
@@ -20,17 +23,31 @@ export function renderQueryPerformanceDashboard(container, connection) {
             </div>
         </div>
         <div class="flex items-center gap-3">
-             <select id="time-range" class="bg-[var(--bg-primary)] border border-[var(--border-color)] text-[var(--text-primary)] text-xs rounded px-2 py-1.5 focus:outline-none focus:border-purple-500/50">
-                <option value="60">Last 1 Hour</option>
-                <option value="360">Last 6 Hours</option>
-                <option value="1440">Last 24 Hours</option>
-            </select>
-            <button id="refresh-perf" class="px-3 py-1.5 bg-purple-500/10 text-purple-400 rounded text-xs hover:bg-purple-500/20 transition-all font-bold uppercase tracking-wider flex items-center gap-1.5 border border-purple-500/20">
-                <span class="material-symbols-outlined text-sm">refresh</span> Refresh
-            </button>
+             <div id="time-range-container" class="w-32"></div>
+             <button id="refresh-perf" class="px-3 py-1.5 bg-purple-500/10 text-purple-400 rounded text-xs hover:bg-purple-500/20 transition-all font-bold uppercase tracking-wider flex items-center gap-1.5 border border-purple-500/20">
+                 <span class="material-symbols-outlined text-sm">refresh</span> Refresh
+             </button>
         </div>
     `;
     container.appendChild(header);
+
+    const timeRangeItems = [
+        { value: '60', label: 'Last 1 Hour' },
+        { value: '360', label: 'Last 6 Hours' },
+        { value: '1440', label: 'Last 24 Hours' }
+    ];
+    timeRangeDropdown = new CustomDropdown({
+        items: timeRangeItems,
+        value: timeRange,
+        searchable: false,
+        className: 'w-full',
+        onSelect: (val) => {
+            timeRange = val;
+            loadData();
+        }
+    });
+    const timeRangeContainer = header.querySelector('#time-range-container');
+    if (timeRangeContainer) timeRangeContainer.appendChild(timeRangeDropdown.getElement());
 
     // --- Content Area ---
     const contentArea = document.createElement('div');
@@ -53,10 +70,6 @@ export function renderQueryPerformanceDashboard(container, connection) {
     };
 
     header.querySelector('#refresh-perf').addEventListener('click', loadData);
-    header.querySelector('#time-range').addEventListener('change', (e) => {
-        timeRange = e.target.value;
-        loadData();
-    });
 
     const formatNumber = (num) => new Intl.NumberFormat().format(num || 0);
     const formatDuration = (ms) => {

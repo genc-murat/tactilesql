@@ -1,14 +1,18 @@
 import { HealthScoreApi } from '../../api/healthScore.js';
 import { toastError, toastSuccess } from '../../utils/Toast.js';
 import { HealthAiModal } from '../UI/HealthAiModal.js';
+import { CustomDropdown } from '../UI/CustomDropdown.js';
+import { ThemeManager } from '../../utils/ThemeManager.js';
 
 export function renderHealthDashboard(container, connection) {
     container.innerHTML = '';
 
+    const theme = ThemeManager.getCurrentTheme();
     let healthReport = null;
     let recommendations = [];
     let selectedCategory = null;
     let filterSeverity = 'all';
+    let severityDropdown = null;
 
     const header = document.createElement('div');
     header.className = 'flex items-center justify-between px-6 py-4 border-b border-[var(--border-color)] bg-[var(--bg-tertiary)]';
@@ -24,19 +28,33 @@ export function renderHealthDashboard(container, connection) {
             <button id="ai-analysis-btn" class="px-3 py-1.5 bg-purple-500/10 text-purple-400 rounded text-xs hover:bg-purple-500/20 transition-all font-bold uppercase tracking-wider flex items-center gap-1.5 border border-purple-500/20">
                 <span class="material-symbols-outlined text-sm">auto_awesome</span> AI Analysis
             </button>
-            <select id="severity-filter" class="bg-[var(--bg-primary)] border border-[var(--border-color)] text-[var(--text-primary)] text-xs rounded px-2 py-1.5 focus:outline-none focus:border-emerald-500/50">
-                <option value="all">All Severities</option>
-                <option value="critical">Critical</option>
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
-            </select>
+            <div id="severity-filter-container" class="w-28"></div>
             <button id="refresh-health" class="px-3 py-1.5 bg-emerald-500/10 text-emerald-400 rounded text-xs hover:bg-emerald-500/20 transition-all font-bold uppercase tracking-wider flex items-center gap-1.5 border border-emerald-500/20">
                 <span class="material-symbols-outlined text-sm">refresh</span> Refresh
             </button>
         </div>
     `;
     container.appendChild(header);
+
+    const severityItems = [
+        { value: 'all', label: 'All Severities' },
+        { value: 'critical', label: 'Critical' },
+        { value: 'high', label: 'High' },
+        { value: 'medium', label: 'Medium' },
+        { value: 'low', label: 'Low' }
+    ];
+    severityDropdown = new CustomDropdown({
+        items: severityItems,
+        value: filterSeverity,
+        searchable: false,
+        className: 'w-full',
+        onSelect: (val) => {
+            filterSeverity = val;
+            renderDashboard();
+        }
+    });
+    const severityContainer = header.querySelector('#severity-filter-container');
+    if (severityContainer) severityContainer.appendChild(severityDropdown.getElement());
 
     const contentArea = document.createElement('div');
     contentArea.className = 'flex-1 overflow-auto p-6 bg-[var(--bg-secondary)] space-y-6';
@@ -403,11 +421,6 @@ export function renderHealthDashboard(container, connection) {
             if (healthReport) {
                 HealthAiModal.show(healthReport, recommendations, connection);
             }
-        });
-        
-        header.querySelector('#severity-filter')?.addEventListener('change', (e) => {
-            filterSeverity = e.target.value;
-            renderDashboard();
         });
         
         contentArea.querySelectorAll('.category-card').forEach(card => {

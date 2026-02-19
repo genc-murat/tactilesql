@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { Dialog } from './Dialog.js';
 import { ThemeManager } from '../../utils/ThemeManager.js';
+import { CustomDropdown } from './CustomDropdown.js';
 
 export function showCreateTableModal(database, dbType) {
     const existing = document.getElementById('create-table-modal');
@@ -43,12 +44,7 @@ export function showCreateTableModal(database, dbType) {
                     </div>
                     <div class="space-y-2">
                         <label class="text-[10px] font-bold uppercase tracking-wider ${mutedText}">Engine</label>
-                        <select id="table-engine" class="w-full ${inputClass} rounded p-2.5 text-xs outline-none transition-colors">
-                            ${dbType === 'mysql' ? '<option value="InnoDB">InnoDB</option><option value="MyISAM">MyISAM</option><option value="Memory">Memory</option>' : ''}
-                            ${dbType === 'postgresql' ? '<option value="">Default</option>' : ''}
-                            ${dbType === 'clickhouse' ? '<option value="MergeTree">MergeTree</option><option value="ReplicatedMergeTree">ReplicatedMergeTree</option>' : ''}
-                            ${dbType === 'mssql' ? '<option value="">Default</option>' : ''}
-                        </select>
+                        <div id="table-engine-container"></div>
                     </div>
                 </div>
                 
@@ -75,18 +71,7 @@ export function showCreateTableModal(database, dbType) {
                                 <tr class="column-row border-t ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/5')}">
                                     <td class="px-3 py-2"><input type="text" class="col-name w-full ${inputClass} rounded px-2 py-1 outline-none font-mono" placeholder="id" /></td>
                                     <td class="px-3 py-2">
-                                        <select class="col-type w-full ${inputClass} rounded px-2 py-1 outline-none">
-                                            <option value="INT">INT</option>
-                                            <option value="BIGINT">BIGINT</option>
-                                            <option value="VARCHAR(255)">VARCHAR(255)</option>
-                                            <option value="TEXT">TEXT</option>
-                                            <option value="BOOLEAN">BOOLEAN</option>
-                                            <option value="DATE">DATE</option>
-                                            <option value="DATETIME">DATETIME</option>
-                                            <option value="TIMESTAMP">TIMESTAMP</option>
-                                            <option value="DECIMAL(10,2)">DECIMAL(10,2)</option>
-                                            <option value="JSON">JSON</option>
-                                        </select>
+                                        <div class="col-type-container"></div>
                                     </td>
                                     <td class="px-3 py-2"><input type="checkbox" class="col-nullable" /></td>
                                     <td class="px-3 py-2"><input type="checkbox" class="col-primary" checked /></td>
@@ -124,6 +109,38 @@ export function showCreateTableModal(database, dbType) {
 
     document.body.appendChild(overlay);
 
+    const engineContainer = overlay.querySelector('#table-engine-container');
+    let engineDropdown = null;
+    if (engineContainer) {
+        let engineItems = [];
+        if (dbType === 'mysql') {
+            engineItems = [
+                { value: 'InnoDB', label: 'InnoDB' },
+                { value: 'MyISAM', label: 'MyISAM' },
+                { value: 'Memory', label: 'Memory' }
+            ];
+        } else if (dbType === 'postgresql' || dbType === 'mssql') {
+            engineItems = [{ value: '', label: 'Default' }];
+        } else if (dbType === 'clickhouse') {
+            engineItems = [
+                { value: 'MergeTree', label: 'MergeTree' },
+                { value: 'ReplicatedMergeTree', label: 'ReplicatedMergeTree' }
+            ];
+        }
+        engineDropdown = new CustomDropdown({
+            items: engineItems,
+            value: engineItems[0]?.value || '',
+            searchable: false,
+            className: 'w-full'
+        });
+        engineContainer.appendChild(engineDropdown.getElement());
+    }
+
+    const firstRowColTypeContainer = overlay.querySelector('.col-type-container');
+    if (firstRowColTypeContainer) {
+        createColumnTypeDropdown(firstRowColTypeContainer);
+    }
+
     const closeModal = () => overlay.remove();
     const closeBtn = overlay.querySelector('#close-modal');
     const cancelBtn = overlay.querySelector('#cancel-btn');
@@ -143,18 +160,7 @@ export function showCreateTableModal(database, dbType) {
         row.innerHTML = `
             <td class="px-3 py-2"><input type="text" class="col-name w-full ${inputClass} rounded px-2 py-1 outline-none font-mono" placeholder="column_name" /></td>
             <td class="px-3 py-2">
-                <select class="col-type w-full ${inputClass} rounded px-2 py-1 outline-none">
-                    <option value="INT">INT</option>
-                    <option value="BIGINT">BIGINT</option>
-                    <option value="VARCHAR(255)">VARCHAR(255)</option>
-                    <option value="TEXT">TEXT</option>
-                    <option value="BOOLEAN">BOOLEAN</option>
-                    <option value="DATE">DATE</option>
-                    <option value="DATETIME">DATETIME</option>
-                    <option value="TIMESTAMP">TIMESTAMP</option>
-                    <option value="DECIMAL(10,2)">DECIMAL(10,2)</option>
-                    <option value="JSON">JSON</option>
-                </select>
+                <div class="col-type-container"></div>
             </td>
             <td class="px-3 py-2"><input type="checkbox" class="col-nullable" checked /></td>
             <td class="px-3 py-2"><input type="checkbox" class="col-primary" /></td>
@@ -162,6 +168,40 @@ export function showCreateTableModal(database, dbType) {
             <td class="px-3 py-2"><button class="remove-col-btn text-red-400 hover:text-red-300 transition-colors"><span class="material-symbols-outlined text-sm">delete</span></button></td>
         `;
         columnsBody.appendChild(row);
+        createColumnTypeDropdown(row.querySelector('.col-type-container'));
+    };
+
+    const COLUMN_TYPE_ITEMS = [
+        { value: 'INT', label: 'INT' },
+        { value: 'BIGINT', label: 'BIGINT' },
+        { value: 'VARCHAR(255)', label: 'VARCHAR(255)' },
+        { value: 'TEXT', label: 'TEXT' },
+        { value: 'BOOLEAN', label: 'BOOLEAN' },
+        { value: 'DATE', label: 'DATE' },
+        { value: 'DATETIME', label: 'DATETIME' },
+        { value: 'TIMESTAMP', label: 'TIMESTAMP' },
+        { value: 'DECIMAL(10,2)', label: 'DECIMAL(10,2)' },
+        { value: 'JSON', label: 'JSON' }
+    ];
+
+    const colTypeDropdowns = new Map();
+
+    const createColumnTypeDropdown = (container) => {
+        if (!container) return null;
+        const dropdown = new CustomDropdown({
+            items: COLUMN_TYPE_ITEMS,
+            value: 'INT',
+            searchable: false,
+            className: 'w-full'
+        });
+        container.appendChild(dropdown.getElement());
+        colTypeDropdowns.set(container, dropdown);
+        return dropdown;
+    };
+
+    const getColumnTypeValue = (container) => {
+        const dropdown = colTypeDropdowns.get(container);
+        return dropdown ? dropdown.value : 'INT';
     };
 
     const generateSQL = () => {
@@ -173,7 +213,7 @@ export function showCreateTableModal(database, dbType) {
         
         columnsBody.querySelectorAll('.column-row').forEach(row => {
             const name = row.querySelector('.col-name').value.trim();
-            const type = row.querySelector('.col-type').value;
+            const type = getColumnTypeValue(row.querySelector('.col-type-container'));
             const nullable = row.querySelector('.col-nullable').checked;
             const primary = row.querySelector('.col-primary').checked;
             const defaultVal = row.querySelector('.col-default').value.trim();
@@ -199,7 +239,7 @@ export function showCreateTableModal(database, dbType) {
         sql += '\n)';
         
         if (dbType === 'mysql') {
-            const engine = overlay.querySelector('#table-engine').value;
+            const engine = engineDropdown ? engineDropdown.value : '';
             if (engine) sql += ` ENGINE=${engine}`;
             sql += ' DEFAULT CHARSET=utf8mb4';
         }

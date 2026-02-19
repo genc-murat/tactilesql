@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { Dialog } from '../UI/Dialog.js';
+import { CustomDropdown } from '../UI/CustomDropdown.js';
 import { toastSuccess, toastError } from '../../utils/Toast.js';
 import { ThemeManager } from '../../utils/ThemeManager.js';
 
@@ -237,16 +238,7 @@ export function showClickHouseUserManager(connection) {
              <div class="space-y-4">
                 <div>
                     <label class="block text-xs font-bold uppercase text-gray-500 mb-1">Privilege</label>
-                    <select id="grant-privilege" class="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm text-gray-200 outline-none focus:border-blue-500">
-                        <option value="SELECT">SELECT</option>
-                        <option value="INSERT">INSERT</option>
-                        <option value="ALTER">ALTER</option>
-                        <option value="CREATE">CREATE</option>
-                        <option value="DROP">DROP</option>
-                        <option value="TRUNCATE">TRUNCATE</option>
-                        <option value="OPTIMIZE">OPTIMIZE</option>
-                        <option value="ALL">ALL</option>
-                    </select>
+                    <div id="grant-privilege-container"></div>
                 </div>
                 <div class="grid grid-cols-2 gap-4">
                     <div>
@@ -267,10 +259,29 @@ export function showClickHouseUserManager(connection) {
 
         document.body.appendChild(modalOverlay);
 
+        const privilegeItems = [
+            { value: 'SELECT', label: 'SELECT' },
+            { value: 'INSERT', label: 'INSERT' },
+            { value: 'ALTER', label: 'ALTER' },
+            { value: 'CREATE', label: 'CREATE' },
+            { value: 'DROP', label: 'DROP' },
+            { value: 'TRUNCATE', label: 'TRUNCATE' },
+            { value: 'OPTIMIZE', label: 'OPTIMIZE' },
+            { value: 'ALL', label: 'ALL' }
+        ];
+        const privilegeDropdown = new CustomDropdown({
+            id: 'grant-privilege-dropdown',
+            items: privilegeItems,
+            value: 'SELECT',
+            searchable: false
+        });
+        const privilegeContainer = modalContent.querySelector('#grant-privilege-container');
+        if (privilegeContainer) privilegeContainer.appendChild(privilegeDropdown.getElement());
+
         modalContent.querySelector('#cancel-grant-btn').onclick = () => modalOverlay.remove();
 
         modalContent.querySelector('#submit-grant-btn').onclick = async () => {
-            const privilege = modalContent.querySelector('#grant-privilege').value;
+            const privilege = privilegeDropdown.value;
             const database = modalContent.querySelector('#grant-database').value;
             const table = modalContent.querySelector('#grant-table').value;
 

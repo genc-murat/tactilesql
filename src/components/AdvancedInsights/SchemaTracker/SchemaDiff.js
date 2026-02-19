@@ -4,6 +4,7 @@ import { AiService } from '../../../utils/AiService.js';
 import { toastError, toastSuccess } from '../../../utils/Toast.js';
 import { SchemaTrackerApi } from '../../../api/schemaTracker.js';
 import { Dialog } from '../../UI/Dialog.js';
+import { CustomDropdown } from '../../UI/CustomDropdown.js';
 import { invoke } from '@tauri-apps/api/core';
 
 export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGenerateMigration, connectionId, baseSnapshotId = null, targetSnapshotId = null, dbType = null }) {
@@ -515,9 +516,7 @@ export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGen
                     </div>
                     <div class="mt-2 flex flex-wrap items-center gap-2">
                         <label class="text-[10px] uppercase tracking-widest ${isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400')}">Strategy</label>
-                        <select id="migration-strategy-select" class="px-2 py-1 rounded border text-[10px] ${isLight ? 'bg-white border-gray-200 text-gray-700' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279]' : 'bg-white/5 border-white/10 text-gray-200')}">
-                            ${strategyOptions}
-                        </select>
+                        <div id="migration-strategy-container" class="min-w-[180px]"></div>
                         <label class="inline-flex items-center gap-1 px-2 py-1 rounded border text-[10px] uppercase tracking-widest ${isLight ? 'bg-white border-gray-200 text-gray-600' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279]' : 'bg-white/5 border-white/10 text-gray-300')}">
                             <input id="migration-lock-guard-toggle" type="checkbox" class="w-3 h-3" ${lockGuardEnabled ? 'checked' : ''} />
                             Lock Guard
@@ -534,12 +533,31 @@ export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGen
                 </div>
             `;
 
-            scriptPanel.querySelector('#migration-strategy-select')?.addEventListener('change', (event) => {
-                const nextStrategy = event.target.value;
-                if (nextStrategy === migrationStrategy) return;
-                migrationStrategy = nextStrategy;
-                loadMigrationPlan();
-            });
+            const strategyContainer = scriptPanel.querySelector('#migration-strategy-container');
+            if (strategyContainer) {
+                const strategyItems = resolvedDbType === 'postgresql'
+                    ? [
+                        { value: 'postgres_concurrently', label: 'Indexes: CONCURRENTLY' },
+                        { value: 'native', label: 'Standard DDL' }
+                    ]
+                    : [
+                        { value: 'native', label: 'Native DDL' },
+                        { value: 'pt_osc', label: 'pt-online-schema-change plan' },
+                        { value: 'gh_ost', label: 'gh-ost plan' }
+                    ];
+                const strategyDropdown = new CustomDropdown({
+                    items: strategyItems,
+                    value: migrationStrategy,
+                    searchable: false,
+                    className: 'w-full',
+                    onSelect: (val) => {
+                        if (val === migrationStrategy) return;
+                        migrationStrategy = val;
+                        loadMigrationPlan();
+                    }
+                });
+                strategyContainer.appendChild(strategyDropdown.getElement());
+            }
 
             scriptPanel.querySelector('#migration-lock-guard-toggle')?.addEventListener('change', (event) => {
                 lockGuardEnabled = Boolean(event.target.checked);

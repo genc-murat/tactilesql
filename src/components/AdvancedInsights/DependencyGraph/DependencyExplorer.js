@@ -396,23 +396,34 @@ export function DependencyExplorer() {
 
             const hopDiv = document.createElement('div');
             hopDiv.className = `flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs ${isLight ? 'bg-amber-50 border-amber-100 text-amber-700' : 'bg-amber-500/10 border-amber-500/20 text-amber-300'}`;
-            hopDiv.innerHTML = `
-                <span class="font-bold uppercase tracking-wider">Focus Hops</span>
-                <select id="focus-hop-depth" class="px-2 py-1 rounded border text-xs ${isLight ? 'bg-white border-amber-200 text-amber-700' : 'bg-black/20 border-amber-500/25 text-amber-200'}">
-                    ${[1, 2, 3, 4, 5, 6].map(hop => `<option value="${hop}" ${hop === state.focusHopDepth ? 'selected' : ''}>${hop}</option>`).join('')}
-                </select>
-            `;
-            const hopSelect = hopDiv.querySelector('#focus-hop-depth');
-            hopSelect.onchange = () => {
-                const nextHop = Number.parseInt(hopSelect.value, 10);
-                if (Number.isNaN(nextHop)) return;
-                state.focusHopDepth = Math.max(1, Math.min(6, nextHop));
-                if (state.graphData && !state.isLoading) {
-                    fetchGraph();
-                } else {
-                    render();
+            
+            const hopLabel = document.createElement('span');
+            hopLabel.className = 'font-bold uppercase tracking-wider';
+            hopLabel.textContent = 'Focus Hops';
+            hopDiv.appendChild(hopLabel);
+            
+            const hopDropdownContainer = document.createElement('div');
+            hopDropdownContainer.className = 'ml-2';
+            hopDiv.appendChild(hopDropdownContainer);
+            
+            const hopItems = [1, 2, 3, 4, 5, 6].map(hop => ({ value: String(hop), label: String(hop) }));
+            const hopDropdown = new CustomDropdown({
+                items: hopItems,
+                value: String(state.focusHopDepth),
+                searchable: false,
+                className: 'w-16',
+                onSelect: (val) => {
+                    const nextHop = Number.parseInt(val, 10);
+                    if (Number.isNaN(nextHop)) return;
+                    state.focusHopDepth = Math.max(1, Math.min(6, nextHop));
+                    if (state.graphData && !state.isLoading) {
+                        fetchGraph();
+                    } else {
+                        render();
+                    }
                 }
-            };
+            });
+            hopDropdownContainer.appendChild(hopDropdown.getElement());
             controls.appendChild(hopDiv);
         }
 
@@ -562,18 +573,16 @@ export function DependencyExplorer() {
                 }
                         </div>
 
-                        <!-- Blast Radius -->
-                        <div>
-                             <h3 class="text-xs font-bold uppercase tracking-wider ${theme === 'neon' ? 'text-neon-accent' : 'text-orange-400'} mb-2 flex items-center gap-2">
-                                <span class="material-symbols-outlined text-sm">crisis_alert</span>
-                                Blast Radius (${blastRadius.totalImpacted})
-                             </h3>
-                             <div class="mb-2 flex items-center justify-between gap-2">
-                                <span class="text-[10px] opacity-60 ${classes.text.primary}">Max hop depth</span>
-                                <select id="blast-hop-cutoff" class="px-2 py-1 rounded border text-[11px] ${isLight ? 'bg-white border-orange-200 text-orange-700' : 'bg-black/20 border-orange-500/30 text-orange-300'}">
-                                    ${[1, 2, 3, 4, 5, 6, 7, 8, 10, 12].map(hop => `<option value="${hop}" ${hop === safeBlastCutoff ? 'selected' : ''}>${hop}</option>`).join('')}
-                                </select>
-                             </div>
+                         <!-- Blast Radius -->
+                         <div>
+                              <h3 class="text-xs font-bold uppercase tracking-wider ${theme === 'neon' ? 'text-neon-accent' : 'text-orange-400'} mb-2 flex items-center gap-2">
+                                 <span class="material-symbols-outlined text-sm">crisis_alert</span>
+                                 Blast Radius (${blastRadius.totalImpacted})
+                              </h3>
+                              <div class="mb-2 flex items-center justify-between gap-2">
+                                 <span class="text-[10px] opacity-60 ${classes.text.primary}">Max hop depth</span>
+                                 <div id="blast-hop-cutoff-container" class="w-16"></div>
+                              </div>
                              <div class="mb-2 text-[10px] opacity-60 ${classes.text.primary}">Scored within ${safeBlastCutoff}-hop impact window</div>
                              ${blastRadius.criticalNodes.length > 0
                     ? `<ul class="text-sm space-y-1 ${classes.text.primary}">
@@ -707,36 +716,40 @@ export function DependencyExplorer() {
                 };
             }
 
-            const blastHopSelect = sidebar.querySelector('#blast-hop-cutoff');
-            if (blastHopSelect) {
-                blastHopSelect.onchange = () => {
-                    if (!activeViewer || typeof activeViewer.getBlastRadius !== 'function') return;
-                    const selectedHop = Number.parseInt(blastHopSelect.value, 10);
-                    if (Number.isNaN(selectedHop)) return;
+            const blastHopContainer = sidebar.querySelector('#blast-hop-cutoff-container');
+            if (blastHopContainer) {
+                const blastHopItems = [1, 2, 3, 4, 5, 6, 7, 8, 10, 12].map(hop => ({ value: String(hop), label: String(hop) }));
+                const blastHopDropdown = new CustomDropdown({
+                    items: blastHopItems,
+                    value: String(safeBlastCutoff),
+                    searchable: false,
+                    className: 'w-full',
+                    onSelect: (val) => {
+                        if (!activeViewer || typeof activeViewer.getBlastRadius !== 'function') return;
+                        const selectedHop = Number.parseInt(val, 10);
+                        if (Number.isNaN(selectedHop)) return;
 
-                    const nextBlastRadius = activeViewer.getBlastRadius(
-                        data.id,
-                        Math.max(12, blastRadius.previewLimit || blastRadius.criticalNodes.length || 30),
-                        selectedHop
-                    );
-                    renderSidebar({
-                        ...data,
-                        blastRadius: nextBlastRadius,
-                        blastDistanceCutoff: selectedHop,
-                        pathFinder
-                    });
-                };
+                        const nextBlastRadius = activeViewer.getBlastRadius(
+                            data.id,
+                            Math.max(12, blastRadius.previewLimit || blastRadius.criticalNodes.length || 30),
+                            selectedHop
+                        );
+                        renderSidebar({
+                            ...data,
+                            blastRadius: nextBlastRadius,
+                            blastDistanceCutoff: selectedHop,
+                            pathFinder
+                        });
+                    }
+                });
+                blastHopContainer.appendChild(blastHopDropdown.getElement());
             }
 
             const loadMoreBlastBtn = sidebar.querySelector('#load-more-blast');
             if (loadMoreBlastBtn) {
                 loadMoreBlastBtn.onclick = () => {
                     if (!activeViewer || typeof activeViewer.getBlastRadius !== 'function') return;
-                    const selectedHop = Number.parseInt(
-                        sidebar.querySelector('#blast-hop-cutoff')?.value || `${safeBlastCutoff}`,
-                        10
-                    );
-                    const hopForQuery = Number.isNaN(selectedHop) ? safeBlastCutoff : selectedHop;
+                    const hopForQuery = safeBlastCutoff;
                     const fullBlastRadius = activeViewer.getBlastRadius(data.id, blastLoadMoreLimit, hopForQuery);
                     if (!fullBlastRadius) return;
 

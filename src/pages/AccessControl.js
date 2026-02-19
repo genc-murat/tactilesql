@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Dialog } from '../components/UI/Dialog.js';
 import { ThemeManager } from '../utils/ThemeManager.js';
 import { LoadingManager } from '../components/UI/LoadingStates.js';
+import { CustomDropdown } from '../components/UI/CustomDropdown.js';
 
 export function AccessControl() {
     let theme = ThemeManager.getCurrentTheme();
@@ -138,9 +139,7 @@ export function AccessControl() {
             body: `
                 <div class="space-y-4">
                     <p class="text-xs opacity-60">Select a role to grant to <b>${selectedUser.user}</b>:</p>
-                    <select id="role-select" class="tactile-input w-full">
-                        ${availableRoles.map(r => `<option value="${r}">${r}</option>`).join('')}
-                    </select>
+                    <div id="role-select-container"></div>
                 </div>
             `,
             actions: [
@@ -148,7 +147,8 @@ export function AccessControl() {
                     label: 'Grant',
                     primary: true,
                     onClick: async (dialog) => {
-                        const roleName = dialog.querySelector('#role-select').value;
+                        const roleDropdown = dialog.querySelector('#role-select-container')?.__dropdown;
+                        const roleName = roleDropdown ? roleDropdown.value : '';
                         try {
                             await invoke('manage_role', {
                                 action: 'GRANT',
@@ -166,6 +166,21 @@ export function AccessControl() {
                 { label: 'Cancel', onClick: (dialog) => dialog.close() }
             ]
         });
+
+        setTimeout(() => {
+            const container = document.querySelector('#role-select-container');
+            if (container) {
+                const roleItems = availableRoles.map(r => ({ value: r, label: r }));
+                const dropdown = new CustomDropdown({
+                    items: roleItems,
+                    value: roleItems[0]?.value || '',
+                    searchable: false,
+                    className: 'w-full'
+                });
+                container.appendChild(dropdown.getElement());
+                container.__dropdown = dropdown;
+            }
+        }, 0);
     }
 
     async function handleRevokeRole(roleName) {

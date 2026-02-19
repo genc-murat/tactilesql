@@ -81,6 +81,7 @@ export function SchemaDesigner() {
 
     // Dropdown Instances
     let dropdowns = {
+        strategy: null,
         sidebarType: null,
         idxType: null,
         fkLocal: null,
@@ -189,10 +190,8 @@ export function SchemaDesigner() {
                 </div>
                 <div class="flex items-center gap-3">
                     <div class="flex items-center gap-2 px-3 py-2 rounded-lg border ${strategyContainerClass}">
-                        <label for="schema-change-strategy" class="text-[9px] uppercase tracking-widest font-bold ${strategyLabelClass}">${isPostgres ? 'PG DDL Mode' : 'MySQL OSC Mode'}</label>
-                        <select id="schema-change-strategy" class="tactile-input text-[10px] py-1 px-2 min-w-[200px] ${isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isNeon ? 'bg-neon-bg border-neon-border/40 text-neon-text' : '')}">
-                            ${strategyOptions}
-                        </select>
+                        <label class="text-[9px] uppercase tracking-widest font-bold ${strategyLabelClass}">${isPostgres ? 'PG DDL Mode' : 'MySQL OSC Mode'}</label>
+                        <div id="schema-change-strategy-container" class="min-w-[200px]"></div>
                     </div>
                     <label class="flex items-center gap-2 px-2 py-1 rounded border ${lockGuardClass} text-[10px] font-bold uppercase tracking-widest">
                         <input type="checkbox" id="lock-guard-toggle" class="w-3 h-3" ${state.lockGuardEnabled ? 'checked' : ''} />
@@ -2116,12 +2115,30 @@ END"></textarea>
     container.querySelector('#tab-ddl').onclick = () => { state.activeTab = 'ddl'; updateAll(); };
     container.querySelector('#tab-stats').onclick = () => { state.activeTab = 'stats'; updateAll(); };
 
-    const strategySelect = container.querySelector('#schema-change-strategy');
-    if (strategySelect) {
-        strategySelect.onchange = () => {
-            state.schemaChangeStrategy = strategySelect.value;
-            generateSQL();
-        };
+    const strategyContainer = container.querySelector('#schema-change-strategy-container');
+    if (strategyContainer) {
+        const isPostgres = state.activeDbType === 'postgresql';
+        const strategyItems = isPostgres
+            ? [
+                { value: 'postgres_concurrently', label: 'Indexes: CONCURRENTLY' },
+                { value: 'native', label: 'Standard DDL' }
+            ]
+            : [
+                { value: 'native', label: 'Native DDL' },
+                { value: 'pt_osc', label: 'pt-online-schema-change plan' },
+                { value: 'gh_ost', label: 'gh-ost plan' }
+            ];
+        dropdowns.strategy = new CustomDropdown({
+            items: strategyItems,
+            value: state.schemaChangeStrategy,
+            searchable: false,
+            className: 'w-full',
+            onSelect: (val) => {
+                state.schemaChangeStrategy = val;
+                generateSQL();
+            }
+        });
+        strategyContainer.appendChild(dropdowns.strategy.getElement());
     }
 
     const lockGuardToggle = container.querySelector('#lock-guard-toggle');

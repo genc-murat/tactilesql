@@ -1,4 +1,5 @@
 import { QueryStoryAPI } from '../../api/queryStory.js';
+import { CustomDropdown } from '../UI/CustomDropdown.js';
 import './QueryStoryPanel.css';
 
 /**
@@ -494,27 +495,11 @@ export class QueryStoryPanel {
                     </div>
                     <div class="form-group">
                         <label>Business Domain</label>
-                        <select name="businessDomain">
-                            <option value="">Select...</option>
-                            <option value="Finance">Finance</option>
-                            <option value="Operations">Operations</option>
-                            <option value="Marketing">Marketing</option>
-                            <option value="HR">HR</option>
-                            <option value="Technical">Technical</option>
-                            <option value="Other">Other</option>
-                        </select>
+                        <div id="business-domain-container"></div>
                     </div>
                     <div class="form-group">
                         <label>Expected Frequency</label>
-                        <select name="frequency">
-                            <option value="OneTime">One time</option>
-                            <option value="Daily">Daily</option>
-                            <option value="Weekly">Weekly</option>
-                            <option value="Monthly">Monthly</option>
-                            <option value="Quarterly">Quarterly</option>
-                            <option value="Yearly">Yearly</option>
-                            <option value="OnDemand">On demand</option>
-                        </select>
+                        <div id="frequency-container"></div>
                     </div>
                     <div class="form-group">
                         <label>Tags (comma separated)</label>
@@ -534,6 +519,42 @@ export class QueryStoryPanel {
 
         document.body.appendChild(modal);
 
+        const businessDomainItems = [
+            { value: '', label: 'Select...' },
+            { value: 'Finance', label: 'Finance' },
+            { value: 'Operations', label: 'Operations' },
+            { value: 'Marketing', label: 'Marketing' },
+            { value: 'HR', label: 'HR' },
+            { value: 'Technical', label: 'Technical' },
+            { value: 'Other', label: 'Other' }
+        ];
+        const businessDomainDropdown = new CustomDropdown({
+            id: 'business-domain-dropdown',
+            items: businessDomainItems,
+            placeholder: 'Select...',
+            searchable: false
+        });
+        const businessDomainContainer = modal.querySelector('#business-domain-container');
+        if (businessDomainContainer) businessDomainContainer.appendChild(businessDomainDropdown.getElement());
+
+        const frequencyItems = [
+            { value: 'OneTime', label: 'One time' },
+            { value: 'Daily', label: 'Daily' },
+            { value: 'Weekly', label: 'Weekly' },
+            { value: 'Monthly', label: 'Monthly' },
+            { value: 'Quarterly', label: 'Quarterly' },
+            { value: 'Yearly', label: 'Yearly' },
+            { value: 'OnDemand', label: 'On demand' }
+        ];
+        const frequencyDropdown = new CustomDropdown({
+            id: 'frequency-dropdown',
+            items: frequencyItems,
+            value: 'OnDemand',
+            searchable: false
+        });
+        const frequencyContainer = modal.querySelector('#frequency-container');
+        if (frequencyContainer) frequencyContainer.appendChild(frequencyDropdown.getElement());
+
         modal.querySelector('.btn-cancel').addEventListener('click', () => {
             modal.remove();
         });
@@ -544,8 +565,8 @@ export class QueryStoryPanel {
 
             const context = {
                 purpose: formData.get('purpose'),
-                businessDomain: formData.get('businessDomain'),
-                expectedFrequency: formData.get('frequency'),
+                businessDomain: businessDomainDropdown.value || '',
+                expectedFrequency: frequencyDropdown.value || 'OnDemand',
                 stakeholders: [],
                 relatedTables: [],
                 notes: formData.get('notes') || ''
@@ -592,15 +613,7 @@ export class QueryStoryPanel {
                     </div>
                     <div class="form-group">
                         <label>Expected Frequency</label>
-                        <select name="frequency" value="${frequency}">
-                            <option value="OneTime" ${frequency === 'OneTime' ? 'selected' : ''}>One time</option>
-                            <option value="Daily" ${frequency === 'Daily' ? 'selected' : ''}>Daily</option>
-                            <option value="Weekly" ${frequency === 'Weekly' ? 'selected' : ''}>Weekly</option>
-                            <option value="Monthly" ${frequency === 'Monthly' ? 'selected' : ''}>Monthly</option>
-                            <option value="Quarterly" ${frequency === 'Quarterly' ? 'selected' : ''}>Quarterly</option>
-                            <option value="Yearly" ${frequency === 'Yearly' ? 'selected' : ''}>Yearly</option>
-                            <option value="OnDemand" ${frequency === 'OnDemand' ? 'selected' : ''}>On demand</option>
-                        </select>
+                        <div id="edit-frequency-container"></div>
                     </div>
                     <div class="form-group">
                         <label>Tags</label>
@@ -620,6 +633,24 @@ export class QueryStoryPanel {
 
         document.body.appendChild(modal);
 
+        const frequencyItems = [
+            { value: 'OneTime', label: 'One time' },
+            { value: 'Daily', label: 'Daily' },
+            { value: 'Weekly', label: 'Weekly' },
+            { value: 'Monthly', label: 'Monthly' },
+            { value: 'Quarterly', label: 'Quarterly' },
+            { value: 'Yearly', label: 'Yearly' },
+            { value: 'OnDemand', label: 'On demand' }
+        ];
+        const frequencyDropdown = new CustomDropdown({
+            id: 'edit-frequency-dropdown',
+            items: frequencyItems,
+            value: frequency,
+            searchable: false
+        });
+        const frequencyContainer = modal.querySelector('#edit-frequency-container');
+        if (frequencyContainer) frequencyContainer.appendChild(frequencyDropdown.getElement());
+
         modal.querySelector('.btn-cancel').addEventListener('click', () => {
             modal.remove();
         });
@@ -632,7 +663,7 @@ export class QueryStoryPanel {
                 ...context,
                 purpose: formData.get('purpose'),
                 businessDomain: formData.get('businessDomain'),
-                expectedFrequency: formData.get('frequency'),
+                expectedFrequency: frequencyDropdown.value || 'OnDemand',
                 notes: formData.get('notes') || ''
             };
 

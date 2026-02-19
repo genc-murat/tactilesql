@@ -3,6 +3,7 @@ import { SettingsManager } from '../utils/SettingsManager.js';
 import { SETTINGS_PATHS } from '../constants/settingsKeys.js';
 import { Dialog } from '../components/UI/Dialog.js';
 import { invoke } from '@tauri-apps/api/core';
+import { CustomDropdown } from '../components/UI/CustomDropdown.js';
 import commandContractSnapshot from '../generated/command-contract.json';
 
 // Snippet categories and descriptions
@@ -873,9 +874,7 @@ export function Settings() {
                                             <div id="dev-pg-meta-status" class="text-[11px] text-gray-500 mt-1">No metadata loaded.</div>
                                         </div>
                                         <div class="flex items-center gap-2">
-                                            <select id="dev-schema-select" class="px-2 py-1 rounded border ${isLight ? 'bg-white border-gray-200 text-gray-700' : 'bg-black/20 border-white/10 text-gray-200'}">
-                                                <option value="public">public</option>
-                                            </select>
+                                            <div id="dev-schema-select-container" class="min-w-[120px]"></div>
                                             <button id="refresh-pg-meta-btn" class="flex items-center gap-1 px-2.5 py-1.5 rounded-md ${isLight ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-white/10 text-gray-300 hover:bg-white/20'} font-medium transition-all">
                                                 <span class="material-symbols-outlined text-sm">database</span>
                                                 Refresh
@@ -1245,7 +1244,18 @@ export function Settings() {
         const devCloseSshBtn = container.querySelector('#dev-close-ssh-btn');
         const devSshConnectionEl = container.querySelector('#dev-ssh-connection');
         const devSshStatusEl = container.querySelector('#dev-ssh-status');
-        const devSchemaSelect = container.querySelector('#dev-schema-select');
+        const devSchemaSelectContainer = container.querySelector('#dev-schema-select-container');
+        let devSchemaDropdown = null;
+        if (devSchemaSelectContainer) {
+            devSchemaDropdown = new CustomDropdown({
+                items: [{ value: 'public', label: 'public' }],
+                value: 'public',
+                searchable: false,
+                className: 'w-full',
+                onSelect: () => loadPgMetadata()
+            });
+            devSchemaSelectContainer.appendChild(devSchemaDropdown.getElement());
+        }
         const refreshPgMetaBtn = container.querySelector('#refresh-pg-meta-btn');
         const devPgMetaStatusEl = container.querySelector('#dev-pg-meta-status');
         const devPgMetaPreviewEl = container.querySelector('#dev-pg-meta-preview');
@@ -1419,13 +1429,14 @@ export function Settings() {
                 const dbType = String(await invoke('get_active_db_type')).toLowerCase();
                 const schemas = safeList(await invoke('get_schemas'));
 
-                let selectedSchema = devSchemaSelect?.value || '';
-                if (devSchemaSelect) {
-                    devSchemaSelect.innerHTML = schemas.length > 0
-                        ? schemas.map((schemaName) => `<option value="${escapeHtml(schemaName)}">${escapeHtml(schemaName)}</option>`).join('')
-                        : '<option value="public">public</option>';
+                let selectedSchema = devSchemaDropdown?.value || '';
+                if (devSchemaDropdown) {
+                    const schemaItems = schemas.length > 0
+                        ? schemas.map((schemaName) => ({ value: schemaName, label: schemaName }))
+                        : [{ value: 'public', label: 'public' }];
+                    devSchemaDropdown.setItems(schemaItems);
                     selectedSchema = schemas.includes(selectedSchema) ? selectedSchema : (schemas[0] || 'public');
-                    devSchemaSelect.value = selectedSchema;
+                    devSchemaDropdown.setValue(selectedSchema);
                 } else {
                     selectedSchema = schemas[0] || 'public';
                 }
@@ -1602,7 +1613,6 @@ export function Settings() {
         });
 
         refreshPgMetaBtn?.addEventListener('click', loadPgMetadata);
-        devSchemaSelect?.addEventListener('change', loadPgMetadata);
 
         syncDevToolsState();
         syncRuntimeConnectionState();

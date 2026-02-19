@@ -3,6 +3,7 @@ import { TaskManagerApi } from '../api/taskManager.js';
 import { ThemeManager } from '../utils/ThemeManager.js';
 import { escapeHtml, formatTimeAgo } from '../utils/helpers.js';
 import { toastError, toastInfo, toastSuccess } from '../utils/Toast.js';
+import { CustomDropdown } from '../components/UI/CustomDropdown.js';
 
 const TASK_TYPE_OPTIONS = [
     { value: 'sql_script', label: 'SQL Script' },
@@ -94,6 +95,11 @@ export function TaskManager() {
         status: '',
         owner: '',
         tag: '',
+    };
+
+    const dropdowns = {
+        filterType: null,
+        filterStatus: null,
     };
 
     const triggerForm = {
@@ -1247,6 +1253,44 @@ export function TaskManager() {
     };
 
     const bindEvents = () => {
+        const filterTypeContainer = container.querySelector('#task-filter-type-container');
+        if (filterTypeContainer) {
+            const filterTypeItems = [
+                { value: '', label: 'All Types' },
+                ...TASK_TYPE_OPTIONS.map((option) => ({ value: option.value, label: option.label }))
+            ];
+            dropdowns.filterType = new CustomDropdown({
+                items: filterTypeItems,
+                value: taskFilters.taskType,
+                searchable: false,
+                className: 'w-full',
+                onSelect: (val) => {
+                    taskFilters.taskType = val || '';
+                    refreshTasks({ keepSelection: false });
+                }
+            });
+            filterTypeContainer.appendChild(dropdowns.filterType.getElement());
+        }
+
+        const filterStatusContainer = container.querySelector('#task-filter-status-container');
+        if (filterStatusContainer) {
+            const filterStatusItems = [
+                { value: '', label: 'All Status' },
+                ...TASK_STATUS_OPTIONS.map((option) => ({ value: option.value, label: option.label }))
+            ];
+            dropdowns.filterStatus = new CustomDropdown({
+                items: filterStatusItems,
+                value: taskFilters.status,
+                searchable: false,
+                className: 'w-full',
+                onSelect: (val) => {
+                    taskFilters.status = val || '';
+                    refreshTasks({ keepSelection: false });
+                }
+            });
+            filterStatusContainer.appendChild(dropdowns.filterStatus.getElement());
+        }
+
         container.querySelector('#task-refresh-btn')?.addEventListener('click', () => {
             refreshTasks({ keepSelection: true });
         });
@@ -1286,14 +1330,6 @@ export function TaskManager() {
             taskForm.payload = container.querySelector('#task-form-payload')?.value || '{}';
             submitTaskForm();
         });
-        container.querySelector('#task-filter-type')?.addEventListener('change', (event) => {
-            taskFilters.taskType = event.currentTarget.value || '';
-            refreshTasks({ keepSelection: false });
-        });
-        container.querySelector('#task-filter-status')?.addEventListener('change', (event) => {
-            taskFilters.status = event.currentTarget.value || '';
-            refreshTasks({ keepSelection: false });
-        });
         container.querySelector('#task-filter-owner')?.addEventListener('input', (event) => {
             taskFilters.owner = event.currentTarget.value || '';
             refreshTasks({ keepSelection: false });
@@ -1307,6 +1343,8 @@ export function TaskManager() {
             taskFilters.status = '';
             taskFilters.owner = '';
             taskFilters.tag = '';
+            if (dropdowns.filterType) dropdowns.filterType.setValue('');
+            if (dropdowns.filterStatus) dropdowns.filterStatus.setValue('');
             refreshTasks({ keepSelection: false });
         });
 
@@ -1538,22 +1576,8 @@ export function TaskManager() {
                         </div>
 
                         <div class="grid grid-cols-2 gap-2 mb-3">
-                            <select id="task-filter-type" class="rounded-lg border px-2 py-1.5 text-[11px] ${isLight
-                ? 'bg-white border-gray-200 text-gray-700'
-                : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279]' : (isNeon ? 'bg-neon-panel border-neon-border/40 text-neon-text' : 'bg-[#1a1d23] border-white/10 text-gray-200'))}">
-                                <option value="" ${taskFilters.taskType ? '' : 'selected'}>All Types</option>
-                                ${TASK_TYPE_OPTIONS.map((option) => `
-                                    <option value="${option.value}" ${taskFilters.taskType === option.value ? 'selected' : ''}>${option.label}</option>
-                                `).join('')}
-                            </select>
-                            <select id="task-filter-status" class="rounded-lg border px-2 py-1.5 text-[11px] ${isLight
-                ? 'bg-white border-gray-200 text-gray-700'
-                : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279]' : (isNeon ? 'bg-neon-panel border-neon-border/40 text-neon-text' : 'bg-[#1a1d23] border-white/10 text-gray-200'))}">
-                                <option value="" ${taskFilters.status ? '' : 'selected'}>All Status</option>
-                                ${TASK_STATUS_OPTIONS.map((option) => `
-                                    <option value="${option.value}" ${taskFilters.status === option.value ? 'selected' : ''}>${option.label}</option>
-                                `).join('')}
-                            </select>
+                            <div id="task-filter-type-container"></div>
+                            <div id="task-filter-status-container"></div>
                             <input id="task-filter-owner" value="${escapeHtml(taskFilters.owner)}" placeholder="Owner"
                                 class="rounded-lg border px-2 py-1.5 text-[11px] ${isLight
                 ? 'bg-white border-gray-200 text-gray-700'

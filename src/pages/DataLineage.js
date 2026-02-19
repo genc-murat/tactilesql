@@ -952,9 +952,7 @@ export function DataLineage() {
                             <h3 class="text-xs font-bold uppercase tracking-wider text-orange-400 mb-2">Blast Radius (${formatNumber(blastRadius.totalImpacted)})</h3>
                             <div class="mb-2 flex items-center justify-between gap-2">
                                 <span class="text-[10px] ${sidebarSubtle}">Max hop depth</span>
-                                <select id="lineage-blast-hop" class="px-2 py-1 rounded border text-[11px] ${isLight ? 'bg-white border-orange-200 text-orange-700' : 'bg-black/20 border-orange-500/30 text-orange-300'}">
-                                    ${[1, 2, 3, 4, 5, 6, 7, 8, 10, 12].map(hop => `<option value="${hop}" ${hop === safeBlastCutoff ? 'selected' : ''}>${hop}</option>`).join('')}
-                                </select>
+                                <div id="lineage-blast-hop-container" class="w-16"></div>
                             </div>
                             ${blastRadius.criticalNodes.length > 0
                     ? `<ul class="space-y-1 text-sm ${sidebarText}">
@@ -1052,23 +1050,33 @@ export function DataLineage() {
                 renderSidebar(state.detail);
             });
 
-            const blastHopSelect = sidebar.querySelector('#lineage-blast-hop');
-            blastHopSelect?.addEventListener('change', () => {
-                if (!activeViewer || typeof activeViewer.getBlastRadius !== 'function') return;
-                const selectedHop = clamp(Number.parseInt(blastHopSelect.value, 10) || safeBlastCutoff, 1, 12);
-                const nextBlast = activeViewer.getBlastRadius(
-                    data.id,
-                    Math.max(12, blastRadius.previewLimit || blastRadius.criticalNodes.length || 30),
-                    selectedHop
-                );
+            const blastHopContainer = sidebar.querySelector('#lineage-blast-hop-container');
+            if (blastHopContainer) {
+                const blastHopItems = [1, 2, 3, 4, 5, 6, 7, 8, 10, 12].map(hop => ({ value: String(hop), label: String(hop) }));
+                const blastHopDropdown = new CustomDropdown({
+                    items: blastHopItems,
+                    value: String(safeBlastCutoff),
+                    searchable: false,
+                    className: 'w-full',
+                    onSelect: (val) => {
+                        if (!activeViewer || typeof activeViewer.getBlastRadius !== 'function') return;
+                        const selectedHop = clamp(Number.parseInt(val, 10) || safeBlastCutoff, 1, 12);
+                        const nextBlast = activeViewer.getBlastRadius(
+                            data.id,
+                            Math.max(12, blastRadius.previewLimit || blastRadius.criticalNodes.length || 30),
+                            selectedHop
+                        );
 
-                state.detail = hydrateDetail({
-                    ...data,
-                    blastRadius: nextBlast,
-                    blastDistanceCutoff: selectedHop,
-                }, data);
-                renderSidebar(state.detail);
-            });
+                        state.detail = hydrateDetail({
+                            ...data,
+                            blastRadius: nextBlast,
+                            blastDistanceCutoff: selectedHop,
+                        }, data);
+                        renderSidebar(state.detail);
+                    }
+                });
+                blastHopContainer.appendChild(blastHopDropdown.getElement());
+            }
 
             const loadMoreBlastBtn = sidebar.querySelector('#lineage-load-more-blast');
             loadMoreBlastBtn?.addEventListener('click', () => {

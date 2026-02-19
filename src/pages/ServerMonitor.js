@@ -8,6 +8,7 @@ import { showMySQLSlowQueryConfigModal } from '../components/UI/MySQLSlowQueryCo
 import { showDeadlockAnalyzerModal } from '../components/UI/DeadlockAnalyzerModal.js';
 import { showTableMaintenanceWizard } from '../components/UI/TableMaintenanceWizard.js';
 import { HealthScoreApi } from '../api/healthScore.js';
+import { CustomDropdown } from '../components/UI/CustomDropdown.js';
 
 export function ServerMonitor() {
     let theme = ThemeManager.getCurrentTheme();
@@ -147,20 +148,13 @@ export function ServerMonitor() {
                 <form id="alert-form" class="p-6 space-y-4">
                     <div class="space-y-1.5">
                         <label class="text-xs font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">Metric</label>
-                        <select name="metric_name" required class="w-full px-4 py-2 rounded-lg border ${isLight ? 'bg-gray-50 border-gray-200' : 'bg-white/5 border-white/10'} focus:ring-2 focus:ring-mysql-teal outline-none transition-all">
-                            ${metrics.map(m => `<option value="${m.value}" ${alert?.metric_name === m.value ? 'selected' : ''}>${m.label}</option>`).join('')}
-                        </select>
+                        <div id="metric-name-container"></div>
                     </div>
 
                     <div class="grid grid-cols-2 gap-4">
                         <div class="space-y-1.5">
                             <label class="text-xs font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">Operator</label>
-                            <select name="operator" required class="w-full px-4 py-2 rounded-lg border ${isLight ? 'bg-gray-50 border-gray-200' : 'bg-white/5 border-white/10'} focus:ring-2 focus:ring-mysql-teal outline-none transition-all">
-                                <option value=">" ${alert?.operator === '>' ? 'selected' : ''}>Greater Than</option>
-                                <option value="<" ${alert?.operator === '<' ? 'selected' : ''}>Less Than</option>
-                                <option value=">=" ${alert?.operator === '>=' ? 'selected' : ''}>Greater or Equal</option>
-                                <option value="<=" ${alert?.operator === '<=' ? 'selected' : ''}>Less or Equal</option>
-                            </select>
+                            <div id="operator-container"></div>
                         </div>
                         <div class="space-y-1.5">
                             <label class="text-xs font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">Threshold</label>
@@ -192,6 +186,37 @@ export function ServerMonitor() {
 
         document.body.appendChild(modal);
 
+        const metricContainer = modal.querySelector('#metric-name-container');
+        let metricDropdown = null;
+        if (metricContainer) {
+            const metricItems = metrics.map(m => ({ value: m.value, label: m.label }));
+            metricDropdown = new CustomDropdown({
+                items: metricItems,
+                value: alert?.metric_name || metricItems[0]?.value || '',
+                searchable: false,
+                className: 'w-full'
+            });
+            metricContainer.appendChild(metricDropdown.getElement());
+        }
+
+        const operatorContainer = modal.querySelector('#operator-container');
+        let operatorDropdown = null;
+        if (operatorContainer) {
+            const operatorItems = [
+                { value: '>', label: 'Greater Than' },
+                { value: '<', label: 'Less Than' },
+                { value: '>=', label: 'Greater or Equal' },
+                { value: '<=', label: 'Less or Equal' }
+            ];
+            operatorDropdown = new CustomDropdown({
+                items: operatorItems,
+                value: alert?.operator || '>',
+                searchable: false,
+                className: 'w-full'
+            });
+            operatorContainer.appendChild(operatorDropdown.getElement());
+        }
+
         const closeModal = () => modal.remove();
         modal.querySelectorAll('.close-modal-btn').forEach(b => b.onclick = closeModal);
 
@@ -201,8 +226,8 @@ export function ServerMonitor() {
             const payload = {
                 id: alert?.id ?? null,
                 connection_id: "default_active",
-                metric_name: formData.get('metric_name'),
-                operator: formData.get('operator'),
+                metric_name: metricDropdown ? metricDropdown.value : '',
+                operator: operatorDropdown ? operatorDropdown.value : '>',
                 threshold: parseFloat(formData.get('threshold')),
                 cooldown_secs: parseInt(formData.get('cooldown_secs')),
                 is_enabled: formData.get('is_enabled') === 'on',
