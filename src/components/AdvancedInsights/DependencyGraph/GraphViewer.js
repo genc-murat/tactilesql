@@ -181,6 +181,10 @@ export function GraphViewer(graphData, theme, qualityMap, options = {}) {
 
     if (graphData.edges) {
         graphData.edges.forEach((edge, idx) => {
+            if (!nodeCatalog.has(edge.source) || !nodeCatalog.has(edge.target)) {
+                return;
+            }
+
             const edgeType = normalizeEdgeType(edge.edge_type);
             const executionCount = Math.max(0, Number(edge.execution_count) || 0);
             const totalDurationMs = Math.max(0, Number(edge.total_duration_ms) || 0);
