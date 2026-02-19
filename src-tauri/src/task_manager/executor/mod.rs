@@ -124,6 +124,17 @@ async fn execute_sql_task(app: &AppHandle, task: &TaskDefinition) -> Result<Valu
                 crate::clickhouse::execute_query_with_timeout(&config, sql.clone(), timeout_seconds).await?;
             summarize_result_sets(&results)
         }
+        DatabaseType::SQLite => {
+            let pool = {
+                let guard = state.sqlite_pool.lock().await;
+                guard
+                    .as_ref()
+                    .cloned()
+                    .ok_or("No SQLite connection established".to_string())?
+            };
+            let results = crate::sqlite::execute_query(&pool, &sql).await?;
+            summarize_result_sets(&results)
+        }
         DatabaseType::Disconnected => return Err("No connection established".to_string()),
     };
 
@@ -299,6 +310,9 @@ async fn execute_backup_task(app: &AppHandle, task: &TaskDefinition) -> Result<V
                 output.push('\n');
             }
         }
+        DatabaseType::SQLite => {
+            return Err("Backup task not yet supported for SQLite".to_string());
+        }
         DatabaseType::Disconnected => return Err("No connection established".to_string()),
     }
 
@@ -415,6 +429,9 @@ async fn execute_schema_snapshot_task(app: &AppHandle, task: &TaskDefinition) ->
 
             crate::schema_tracker::capture::capture_snapshot_clickhouse(&config, &database, &connection_id)
                 .await?
+        }
+        DatabaseType::SQLite => {
+            return Err("Schema snapshot not yet supported for SQLite".to_string());
         }
         DatabaseType::Disconnected => return Err("No connection established".to_string()),
     };
@@ -1335,6 +1352,9 @@ async fn apply_raw_sql_script(app: &AppHandle, script: &str) -> Result<(), Strin
             crate::clickhouse::execute_query(&config, sql.to_string()).await
                 .map_err(|e| format!("Failed to apply sync script on ClickHouse: {}", e))?;
         }
+        DatabaseType::SQLite => {
+            return Err("Sync script not yet supported for SQLite".to_string());
+        }
         DatabaseType::Disconnected => return Err("No connection established".to_string()),
     }
 
@@ -1451,6 +1471,7 @@ fn db_type_label(db_type: &DatabaseType) -> &'static str {
         DatabaseType::PostgreSQL => "postgresql",
         DatabaseType::ClickHouse => "clickhouse",
         DatabaseType::MSSQL => "mssql",
+        DatabaseType::SQLite => "sqlite",
         DatabaseType::Disconnected => "disconnected",
     }
 }

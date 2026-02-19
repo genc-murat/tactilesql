@@ -182,6 +182,49 @@ pub async fn build_er_graph(
                 });
             }
         }
+        DatabaseType::SQLite => {
+            let guard = app_state.sqlite_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No SQLite connection established")?;
+            let db_path = {
+                let path_guard = app_state.sqlite_db_path.lock().await;
+                path_guard.clone().unwrap_or_default()
+            };
+            
+            let tables = crate::sqlite::get_tables(pool).await?;
+            
+            for table_name in tables {
+                let columns = crate::sqlite::get_table_schema(pool, &db_path, &table_name).await?;
+                let fks = crate::sqlite::get_table_foreign_keys(pool, &db_path, &table_name).await?;
+                
+                nodes.push(ErNode {
+                    id: format!("main.{}", table_name),
+                    name: table_name.clone(),
+                    table: table_name.clone(),
+                    schema: Some("main".to_string()),
+                    node_type: "table".to_string(),
+                    is_stub: false,
+                    columns: columns.into_iter().map(|c| ErColumn {
+                        name: c.name,
+                        data_type: c.data_type,
+                        nullable: c.is_nullable,
+                        primary_key: c.column_key == "PRI",
+                    }).collect(),
+                });
+
+                for fk in fks {
+                    edges.push(ErEdge {
+                        id: format!("{}_{}_{}", table_name, fk.column_name, fk.referenced_table),
+                        source: format!("main.{}", table_name),
+                        target: format!("main.{}", fk.referenced_table),
+                        edge_type: "foreign_key".to_string(),
+                        source_column: Some(fk.column_name),
+                        target_column: Some(fk.referenced_column),
+                        cardinality: Some("n:1".to_string()),
+                        label: Some(fk.constraint_name),
+                    });
+                }
+            }
+        }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     }
 

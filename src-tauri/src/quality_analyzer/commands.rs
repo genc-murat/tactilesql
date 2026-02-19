@@ -48,6 +48,9 @@ pub async fn run_quality_analysis(
         DatabaseType::ClickHouse => {
             return Err("Quality analysis not yet supported for ClickHouse".into());
         }
+        DatabaseType::SQLite => {
+            return Err("Quality analysis not yet supported for SQLite".into());
+        }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     };
 

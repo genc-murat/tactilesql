@@ -368,6 +368,9 @@ async fn execute_step_file_sink(
             )
             .await
         }
+        DatabaseType::SQLite => {
+            Err("Data transfer from SQLite is not yet supported".to_string())
+        }
         DatabaseType::Disconnected => {
             Err("Disconnected database type is not valid for transfer".to_string())
         }
@@ -707,6 +710,9 @@ async fn resolve_sql_sink_target_hints(
         }
         DatabaseType::ClickHouse => {
             resolve_target_column_hints_clickhouse(&target.config, target_database, target_table).await
+        }
+        DatabaseType::SQLite => {
+            Err("Data transfer to SQLite is not yet supported".to_string())
         }
         DatabaseType::Disconnected => {
             Err("Disconnected database type is not valid for SQL sink schema mapping".to_string())
@@ -2827,6 +2833,7 @@ fn format_binary_literal(db_type: &DatabaseType, bytes: &[u8]) -> String {
         DatabaseType::MySQL | DatabaseType::ClickHouse => format!("0x{}", hex::encode(bytes)),
         DatabaseType::PostgreSQL => format!("'\\x{}'", hex::encode(bytes)),
         DatabaseType::MSSQL => format!("0x{}", hex::encode(bytes)),
+        DatabaseType::SQLite => format!("X'{}'", hex::encode(bytes)),
         DatabaseType::Disconnected => format!("'{}'", escape_sql_string(&String::from_utf8_lossy(bytes))),
     }
 }
@@ -2896,6 +2903,7 @@ fn db_type_label(db_type: &DatabaseType) -> &'static str {
         DatabaseType::PostgreSQL => "postgresql",
         DatabaseType::ClickHouse => "clickhouse",
         DatabaseType::MSSQL => "mssql",
+        DatabaseType::SQLite => "sqlite",
         DatabaseType::Disconnected => "disconnected",
     }
 }

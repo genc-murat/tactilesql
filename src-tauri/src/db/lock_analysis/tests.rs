@@ -21,19 +21,19 @@ fn test_simple_blocking_chain() {
         make_edge(1, 2, 10), // 1 waits for 2
         make_edge(2, 3, 5),  // 2 waits for 3
     ];
-    
+
     let analysis = build_lock_analysis(&DatabaseType::MySQL, edges);
-    
+
     assert_eq!(analysis.summary.total_edges, 2);
     assert_eq!(analysis.summary.max_chain_depth, 2);
     assert_eq!(analysis.summary.max_wait_seconds, 10);
     assert!(!analysis.has_deadlock);
-    
+
     // Check nodes
     let node1 = analysis.nodes.iter().find(|n| n.process_id == 1).unwrap();
     let node2 = analysis.nodes.iter().find(|n| n.process_id == 2).unwrap();
     let node3 = analysis.nodes.iter().find(|n| n.process_id == 3).unwrap();
-    
+
     assert_eq!(node1.role, "waiting");
     assert_eq!(node2.role, "both");
     assert_eq!(node3.role, "blocking");
@@ -41,11 +41,8 @@ fn test_simple_blocking_chain() {
 
 #[test]
 fn test_deadlock_detection() {
-    let edges = vec![
-        make_edge(1, 2, 1),
-        make_edge(2, 1, 1),
-    ];
-    
+    let edges = vec![make_edge(1, 2, 1), make_edge(2, 1, 1)];
+
     let analysis = build_lock_analysis(&DatabaseType::PostgreSQL, edges);
     assert!(analysis.has_deadlock);
     assert_eq!(analysis.summary.deadlock_cycles, 1);
@@ -57,7 +54,10 @@ fn test_recommendations() {
         make_edge(1, 2, 60), // Long wait
     ];
     let analysis = build_lock_analysis(&DatabaseType::MySQL, edges);
-    
-    let long_wait_rec = analysis.recommendations.iter().find(|r| r.title.contains("Long Wait"));
+
+    let long_wait_rec = analysis
+        .recommendations
+        .iter()
+        .find(|r| r.title.contains("Long Wait"));
     assert!(long_wait_rec.is_some());
 }

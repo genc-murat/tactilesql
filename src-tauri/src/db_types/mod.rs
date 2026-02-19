@@ -17,6 +17,7 @@ pub enum DatabaseType {
     PostgreSQL,
     ClickHouse,
     MSSQL,
+    SQLite,
 }
 
 // --- MySQL Version Info ---
@@ -48,6 +49,8 @@ pub struct AppState {
     pub mssql_pool: Arc<Mutex<Option<deadpool_tiberius::Pool>>>,
     pub clickhouse_pool: Arc<Mutex<Option<clickhouse::Client>>>,
     pub clickhouse_config: Arc<Mutex<Option<ConnectionConfig>>>,
+    pub sqlite_pool: Arc<Mutex<Option<Pool<Sqlite>>>>,
+    pub sqlite_db_path: Arc<Mutex<Option<String>>>,
     pub active_db_type: Arc<Mutex<DatabaseType>>,
     pub encryption_key: Arc<Mutex<Option<Vec<u8>>>>,
     pub awareness_store: Arc<Mutex<Option<crate::awareness::store::AwarenessStore>>>,
@@ -77,6 +80,8 @@ impl Default for AppState {
             mssql_pool: Arc::new(Mutex::new(None)),
             clickhouse_pool: Arc::new(Mutex::new(None)),
             clickhouse_config: Arc::new(Mutex::new(None)),
+            sqlite_pool: Arc::new(Mutex::new(None)),
+            sqlite_db_path: Arc::new(Mutex::new(None)),
             active_db_type: Arc::new(Mutex::new(DatabaseType::Disconnected)),
             encryption_key: Arc::new(Mutex::new(None)),
             awareness_store: Arc::new(Mutex::new(None)),
@@ -110,6 +115,8 @@ impl Clone for AppState {
             mssql_pool: Arc::clone(&self.mssql_pool),
             clickhouse_pool: Arc::clone(&self.clickhouse_pool),
             clickhouse_config: Arc::clone(&self.clickhouse_config),
+            sqlite_pool: Arc::clone(&self.sqlite_pool),
+            sqlite_db_path: Arc::clone(&self.sqlite_db_path),
             active_db_type: Arc::clone(&self.active_db_type),
             encryption_key: Arc::clone(&self.encryption_key),
             awareness_store: Arc::clone(&self.awareness_store),

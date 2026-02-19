@@ -700,6 +700,11 @@ pub async fn load_table_schema_for_compare(
                 .ok_or("No ClickHouse connection established")?;
             clickhouse::get_table_schema(config, database, table).await
         }
+        DatabaseType::SQLite => {
+            let guard = app_state.sqlite_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No SQLite connection established")?;
+            crate::sqlite::get_table_schema(pool, database, table).await
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -734,6 +739,11 @@ pub async fn load_table_primary_keys_for_compare(
                 .as_ref()
                 .ok_or("No ClickHouse connection established")?;
             clickhouse::get_table_primary_keys(config, database, table).await
+        }
+        DatabaseType::SQLite => {
+            let guard = app_state.sqlite_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No SQLite connection established")?;
+            crate::sqlite::get_table_primary_keys(pool, database, table).await
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
@@ -775,6 +785,11 @@ pub async fn load_table_row_count_for_compare(
                 .as_ref()
                 .ok_or("No ClickHouse connection established")?;
             clickhouse::execute_query(config, query).await
+        }
+        DatabaseType::SQLite => {
+            let guard = app_state.sqlite_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No SQLite connection established")?;
+            crate::sqlite::execute_query(pool, &query).await
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }?;
@@ -838,6 +853,11 @@ pub async fn load_table_rows_for_compare(
                 .as_ref()
                 .ok_or("No ClickHouse connection established")?;
             clickhouse::execute_query(config, query).await
+        }
+        DatabaseType::SQLite => {
+            let guard = app_state.sqlite_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No SQLite connection established")?;
+            crate::sqlite::execute_query(pool, &query).await
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }?;

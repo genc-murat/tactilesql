@@ -9,6 +9,7 @@ use crate::mysql;
 use crate::postgres;
 use crate::clickhouse;
 use crate::mssql;
+use crate::sqlite;
 
 static SYSTEM_QUERY_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     // Matches:
@@ -57,6 +58,7 @@ pub fn spawn_awareness_log(
     let mysql_pool_arc = app_state.mysql_pool.clone();
     let postgres_pool_arc = app_state.postgres_pool.clone();
     let mssql_pool_arc = app_state.mssql_pool.clone();
+    let sqlite_pool_arc = app_state.sqlite_pool.clone();
 
     tauri::async_runtime::spawn(async move {
         let guard = store_arc.lock().await;
@@ -111,6 +113,14 @@ pub fn spawn_awareness_log(
                         DatabaseType::ClickHouse => {
                             // ClickHouse execution plan not implemented yet
                             Err("ClickHouse plan analysis not supported yet".to_string())
+                        }
+                        DatabaseType::SQLite => {
+                            let g = sqlite_pool_arc.lock().await;
+                            if let Some(pool) = g.as_ref() {
+                                crate::sqlite::get_execution_plan(pool, &query_clone).await
+                            } else {
+                                Err("SQLite pool not available".to_string())
+                            }
                         }
                         DatabaseType::Disconnected => Err("No connection established".to_string()),
                     };
@@ -240,6 +250,11 @@ pub async fn execute_query(
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
             clickhouse::execute_query(config, query.clone()).await
         }
+        DatabaseType::SQLite => {
+            let guard = app_state.sqlite_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No SQLite connection established")?;
+            sqlite::execute_query(pool, &query).await
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     };
 
@@ -344,6 +359,12 @@ pub async fn execute_query_profiled(
                 query.clone(),
             )
             .await?;
+            (res, None)
+        }
+        DatabaseType::SQLite => {
+            let guard = app_state.sqlite_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No SQLite connection established")?;
+            let res = sqlite::execute_query(pool, &query).await?;
             (res, None)
         }
         DatabaseType::Disconnected => return Err("No connection established".into()),

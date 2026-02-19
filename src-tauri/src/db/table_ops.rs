@@ -5,6 +5,7 @@ use sqlx::Row;
 use crate::db_types::{AppState, DatabaseType};
 use crate::clickhouse;
 use crate::mssql;
+use crate::sqlite;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TableDependency {
@@ -84,6 +85,12 @@ pub async fn truncate_table(
             clickhouse::execute_query(config, query).await?;
             Ok(format!("Table {}.{} truncated successfully", database, table))
         }
+        DatabaseType::SQLite => {
+            let guard = app_state.sqlite_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No SQLite connection established")?;
+            sqlite::truncate_table(pool, &database, &table).await?;
+            Ok(format!("Table {} truncated successfully", table))
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -155,6 +162,12 @@ pub async fn drop_table(
             clickhouse::execute_query(config, query).await?;
             Ok(format!("Table {}.{} dropped successfully", database, table))
         }
+        DatabaseType::SQLite => {
+            let guard = app_state.sqlite_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No SQLite connection established")?;
+            sqlite::drop_table(pool, &database, &table).await?;
+            Ok(format!("Table {} dropped successfully", table))
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -222,6 +235,12 @@ pub async fn rename_table(
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
             let query = format!("RENAME TABLE `{}`.`{}` TO `{}`.`{}`", database, table, database, new_name);
             clickhouse::execute_query(config, query).await?;
+            Ok(format!("Table renamed to {} successfully", new_name))
+        }
+        DatabaseType::SQLite => {
+            let guard = app_state.sqlite_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No SQLite connection established")?;
+            sqlite::rename_table(pool, &database, &table, &new_name).await?;
             Ok(format!("Table renamed to {} successfully", new_name))
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
@@ -325,6 +344,19 @@ pub async fn duplicate_table(
                 let insert_query = format!("INSERT INTO `{}`.`{}` SELECT * FROM `{}`.`{}`", database, new_name, database, table);
                 clickhouse::execute_query(config, insert_query).await?;
             }
+            
+            Ok(format!("Table duplicated as {} successfully", new_name))
+        }
+        DatabaseType::SQLite => {
+            let guard = app_state.sqlite_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No SQLite connection established")?;
+            
+            let create_query = if include_data {
+                format!("CREATE TABLE \"{}\" AS SELECT * FROM \"{}\"", new_name, table)
+            } else {
+                format!("CREATE TABLE \"{}\" AS SELECT * FROM \"{}\" WHERE 1=0", new_name, table)
+            };
+            sqlite::execute_query(pool, &create_query).await?;
             
             Ok(format!("Table duplicated as {} successfully", new_name))
         }
@@ -693,6 +725,12 @@ pub async fn drop_view(
             clickhouse::execute_query(config, query).await?;
             Ok(format!("View {}.{} dropped successfully", database, view))
         }
+        DatabaseType::SQLite => {
+            let guard = app_state.sqlite_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No SQLite connection established")?;
+            sqlite::drop_view(pool, &view).await?;
+            Ok(format!("View {} dropped successfully", view))
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -734,7 +772,13 @@ pub async fn drop_trigger(
                 .map_err(|e| format!("Failed to drop trigger: {}", e))?;
             Ok(format!("Trigger {} dropped successfully", trigger))
         }
-        _ => Err("Drop trigger is only supported for PostgreSQL and MySQL".to_string()),
+        DatabaseType::SQLite => {
+            let guard = app_state.sqlite_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No SQLite connection established")?;
+            sqlite::drop_trigger(pool, &trigger).await?;
+            Ok(format!("Trigger {} dropped successfully", trigger))
+        }
+        _ => Err("Drop trigger is only supported for PostgreSQL, MySQL, and SQLite".to_string()),
     }
 }
 
@@ -782,6 +826,9 @@ pub async fn drop_database(
             let query = format!("DROP DATABASE IF EXISTS `{}`", database);
             clickhouse::execute_query(config, query).await?;
             Ok(format!("Database {} dropped successfully", database))
+        }
+        DatabaseType::SQLite => {
+            Err("Drop database not supported for SQLite (delete the file instead)".to_string())
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
@@ -831,6 +878,9 @@ pub async fn create_database(
             let query = format!("CREATE DATABASE `{}`", database);
             clickhouse::execute_query(config, query).await?;
             Ok(format!("Database {} created successfully", database))
+        }
+        DatabaseType::SQLite => {
+            Err("Create database not supported for SQLite (create a new file instead)".to_string())
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }

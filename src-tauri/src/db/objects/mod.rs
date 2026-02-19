@@ -7,6 +7,7 @@ use crate::mysql;
 use crate::postgres;
 use crate::clickhouse;
 use crate::mssql;
+use crate::sqlite;
 
 #[tauri::command]
 pub async fn get_events(
@@ -25,8 +26,9 @@ pub async fn get_events(
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_events(pool, &database).await
         }
-        DatabaseType::MSSQL => Ok(Vec::new()), // MSSQL doesn't have events like MySQL
+        DatabaseType::MSSQL => Ok(Vec::new()),
         DatabaseType::ClickHouse => Ok(Vec::new()),
+        DatabaseType::SQLite => Ok(Vec::new()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -110,6 +112,12 @@ pub async fn get_views(
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
             clickhouse::get_views(config, &database).await
         }
+        DatabaseType::SQLite => {
+            let guard = app_state.sqlite_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No SQLite connection established")?;
+            let views = sqlite::get_views(pool).await?;
+            Ok(views.into_iter().map(|v| v.name).collect())
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -160,6 +168,12 @@ pub async fn get_view_definition(
             let definition = clickhouse::get_table_ddl(config, &_database, &view).await?;
             Ok(ViewDefinition { name: view, definition })
         }
+        DatabaseType::SQLite => {
+            let guard = app_state.sqlite_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No SQLite connection established")?;
+            let definition = sqlite::get_table_ddl(pool, &_database, &view).await?;
+            Ok(ViewDefinition { name: view, definition })
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -198,6 +212,12 @@ pub async fn alter_view(
             let guard = app_state.clickhouse_config.lock().await;
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
             clickhouse::execute_query(config, definition).await?;
+            Ok("View updated successfully".to_string())
+        }
+        DatabaseType::SQLite => {
+            let guard = app_state.sqlite_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No SQLite connection established")?;
+            sqlite::execute_query(pool, &definition).await?;
             Ok("View updated successfully".to_string())
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
@@ -244,6 +264,11 @@ pub async fn get_triggers(
             }
         }
         DatabaseType::ClickHouse => Ok(Vec::new()),
+        DatabaseType::SQLite => {
+            let guard = app_state.sqlite_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No SQLite connection established")?;
+            sqlite::get_triggers(pool).await
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -289,6 +314,12 @@ pub async fn get_table_triggers(
             }
         }
         DatabaseType::ClickHouse => Ok(Vec::new()),
+        DatabaseType::SQLite => {
+            let guard = app_state.sqlite_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No SQLite connection established")?;
+            let all_triggers = sqlite::get_triggers(pool).await?;
+            Ok(all_triggers.into_iter().filter(|t| t.table_name == table).collect())
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -331,6 +362,7 @@ pub async fn get_procedures(
             }
         }
         DatabaseType::ClickHouse => Ok(Vec::new()),
+        DatabaseType::SQLite => Ok(Vec::new()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -373,6 +405,7 @@ pub async fn get_functions(
             }
         }
         DatabaseType::ClickHouse => Ok(Vec::new()),
+        DatabaseType::SQLite => Ok(Vec::new()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }

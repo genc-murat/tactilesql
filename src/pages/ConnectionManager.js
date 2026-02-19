@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-dialog';
 import { Dialog } from '../components/UI/Dialog.js';
 import { ThemeManager } from '../utils/ThemeManager.js';
 import { escapeHtml } from '../utils/helpers.js';
@@ -20,7 +21,7 @@ export function ConnectionManager() {
     const DEFAULT_CONFIG = {
         id: null,
         name: '',
-        dbType: 'mysql', // 'mysql' | 'postgresql' | 'clickhouse' | 'mssql'
+        dbType: 'mysql', // 'mysql' | 'postgresql' | 'clickhouse' | 'mssql' | 'sqlite'
         host: 'localhost',
         port: 3306,
         username: 'root',
@@ -29,6 +30,8 @@ export function ConnectionManager() {
         // PostgreSQL specific
         sslMode: 'prefer',
         schema: 'public',
+        // SQLite specific
+        dbPath: '',
         // SSH Tunnel settings
         useSSHTunnel: false,
         sshHost: '',
@@ -43,7 +46,8 @@ export function ConnectionManager() {
         mysql: { port: 3306, username: 'root', color: '#00c8ff' },
         postgresql: { port: 5432, username: 'postgres', color: '#336791' },
         clickhouse: { port: 8123, username: 'default', color: '#ffcc00' },
-        mssql: { port: 1433, username: 'sa', color: '#eb5757' }
+        mssql: { port: 1433, username: 'sa', color: '#eb5757' },
+        sqlite: { port: 0, username: '', color: '#03a9f4', dbPath: '' }
     };
 
     let config = { ...DEFAULT_CONFIG };
@@ -66,6 +70,7 @@ export function ConnectionManager() {
         const isPostgres = config.dbType === 'postgresql';
         const isMssql = config.dbType === 'mssql';
         const isClickhouse = config.dbType === 'clickhouse';
+        const isSqlite = config.dbType === 'sqlite';
 
         // Filter connections
         const filteredConnections = connections.filter(c =>
@@ -125,7 +130,7 @@ export function ConnectionManager() {
                             </div>
                             <div class="flex-1 min-w-0">
                                 <div class="text-xs font-semibold ${isLight ? 'text-gray-800' : (isNeon ? 'text-neon-text' : 'text-gray-200')} truncate" title="${escapeHtml(conn.name)}">${escapeHtml(conn.name)}</div>
-                                <div class="text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-500'} truncate" title="${escapeHtml(conn.username)}@${escapeHtml(conn.host)}">${escapeHtml(conn.username)}@${escapeHtml(conn.host)}</div>
+                                <div class="text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-500'} truncate" title="${escapeHtml(conn.dbType === 'sqlite' ? conn.host : conn.username + '@' + conn.host)}">${conn.dbType === 'sqlite' ? (conn.host ? conn.host.split('/').pop() : 'SQLite') : escapeHtml(conn.username) + '@' + escapeHtml(conn.host)}</div>
                             </div>
                             ${conn.last_connected ? `
                                 <div class="w-1.5 h-1.5 rounded-full bg-green-500" title="Recently connected"></div>
@@ -175,22 +180,26 @@ export function ConnectionManager() {
                                 <!-- Database Type -->
                                 <div class="${formGroupClass}">
                                     <label class="${labelClass}">Database Type</label>
-                                    <div class="grid grid-cols-4 gap-3">
+                                    <div class="grid grid-cols-5 gap-2">
                                         <button type="button" data-db-type="mysql" class="db-type-btn py-2.5 rounded-lg border flex flex-col items-center gap-1.5 transition-all ${config.dbType === 'mysql' ? (isLight ? 'border-mysql-teal bg-mysql-teal/10 text-mysql-teal' : (isNeon ? 'border-cyan-400 bg-cyan-400/20 text-neon-text' : 'border-mysql-teal bg-mysql-teal/20 text-mysql-teal')) : (isLight ? 'border-gray-200 hover:border-mysql-teal/50 hover:bg-gray-50' : (isNeon ? 'border-neon-border/30 hover:border-cyan-400/50 hover:bg-neon-panel/20' : 'border-white/10 hover:border-white/30 hover:bg-white/5 text-gray-400'))}">
-                                            <span class="material-symbols-outlined text-2xl">database</span>
-                                            <span class="text-[10px] font-bold">MySQL</span>
+                                            <span class="material-symbols-outlined text-xl">database</span>
+                                            <span class="text-[9px] font-bold">MySQL</span>
                                         </button>
                                         <button type="button" data-db-type="postgresql" class="db-type-btn py-2.5 rounded-lg border flex flex-col items-center gap-1.5 transition-all ${config.dbType === 'postgresql' ? (isLight ? 'border-[#336791] bg-[#336791]/10 text-[#336791]' : (isNeon ? 'border-neon-purple bg-neon-purple/20 text-neon-text' : 'border-[#336791] bg-[#336791]/20 text-[#336791]')) : (isLight ? 'border-gray-200 hover:border-[#336791]/50 hover:bg-gray-50' : (isNeon ? 'border-neon-border/30 hover:border-neon-purple/50 hover:bg-neon-panel/20' : 'border-white/10 hover:border-white/30 hover:bg-white/5 text-gray-400'))}">
-                                            <svg class="w-6 h-6 fill-current" viewBox="0 0 128 128"><path d="M93.809 92.112c.785-6.533.55-7.492 5.416-6.433l1.235.108c3.742.17 8.637-.602 11.513-1.938 6.191-2.873 9.861-7.668 3.758-6.409-13.924 2.873-14.881-1.842-14.881-1.842 14.703-21.815 20.849-49.508 15.545-56.287-14.47-18.489-39.517-9.746-39.936-9.52l-.134.025c-2.751-.571-5.83-.912-9.289-.968-6.301-.104-11.082 1.652-14.535 4.406 0 0-44.156-18.187-42.101 22.917 1.025 8.873 12.952 67.199 27.86 49.596 5.449-6.433 10.707-11.869 10.707-11.869 2.611 1.735 5.736 2.632 9.033 2.313l.255-.022c-.079.774-.129 1.534-.137 2.294-4.061 4.539-2.869 5.334-10.996 7.006-8.226 1.693-3.395 4.708-.24 5.499 3.822.959 12.66 2.318 18.632-6.072l-.227.884c1.438 1.151 2.14 7.466 1.932 13.196-.209 5.73-.361 9.668.214 12.739.574 3.073 1.44 10.296 7.58 8.171 5.137-1.778 8.934-6.371 9.362-14.036.303-5.437.89-4.623 1.297-9.472l.695-1.679c.803-6.622.175-8.747 4.685-7.755l1.107.199c3.348.309 7.73-.342 10.314-1.533 5.554-2.562 8.825-6.846 3.367-5.723z"/></svg>
-                                            <span class="text-[10px] font-bold">PostgreSQL</span>
+                                            <svg class="w-5 h-5 fill-current" viewBox="0 0 128 128"><path d="M93.809 92.112c.785-6.533.55-7.492 5.416-6.433l1.235.108c3.742.17 8.637-.602 11.513-1.938 6.191-2.873 9.861-7.668 3.758-6.409-13.924 2.873-14.881-1.842-14.881-1.842 14.703-21.815 20.849-49.508 15.545-56.287-14.47-18.489-39.517-9.746-39.936-9.52l-.134.025c-2.751-.571-5.83-.912-9.289-.968-6.301-.104-11.082 1.652-14.535 4.406 0 0-44.156-18.187-42.101 22.917 1.025 8.873 12.952 67.199 27.86 49.596 5.449-6.433 10.707-11.869 10.707-11.869 2.611 1.735 5.736 2.632 9.033 2.313l.255-.022c-.079.774-.129 1.534-.137 2.294-4.061 4.539-2.869 5.334-10.996 7.006-8.226 1.693-3.395 4.708-.24 5.499 3.822.959 12.66 2.318 18.632-6.072l-.227.884c1.438 1.151 2.14 7.466 1.932 13.196-.209 5.73-.361 9.668.214 12.739.574 3.073 1.44 10.296 7.58 8.171 5.137-1.778 8.934-6.371 9.362-14.036.303-5.437.89-4.623 1.297-9.472l.695-1.679c.803-6.622.175-8.747 4.685-7.755l1.107.199c3.348.309 7.73-.342 10.314-1.533 5.554-2.562 8.825-6.846 3.367-5.723z"/></svg>
+                                            <span class="text-[9px] font-bold">PostgreSQL</span>
                                         </button>
                                         <button type="button" data-db-type="clickhouse" class="db-type-btn py-2.5 rounded-lg border flex flex-col items-center gap-1.5 transition-all ${config.dbType === 'clickhouse' ? (isLight ? 'border-[#ffcc00] bg-[#ffcc00]/10 text-[#ffcc00]' : (isNeon ? 'border-yellow-400 bg-yellow-400/20 text-neon-text' : 'border-[#ffcc00] bg-[#ffcc00]/20 text-[#ffcc00]')) : (isLight ? 'border-gray-200 hover:border-[#ffcc00]/50 hover:bg-gray-50' : (isNeon ? 'border-neon-border/30 hover:border-yellow-400/50 hover:bg-neon-panel/20' : 'border-white/10 hover:border-white/30 hover:bg-white/5 text-gray-400'))}">
-                                            <span class="material-symbols-outlined text-2xl">view_column</span>
-                                            <span class="text-[10px] font-bold">ClickHouse</span>
+                                            <span class="material-symbols-outlined text-xl">view_column</span>
+                                            <span class="text-[9px] font-bold">ClickHouse</span>
                                         </button>
                                         <button type="button" data-db-type="mssql" class="db-type-btn py-2.5 rounded-lg border flex flex-col items-center gap-1.5 transition-all ${config.dbType === 'mssql' ? (isLight ? 'border-[#eb5757] bg-[#eb5757]/10 text-[#eb5757]' : (isNeon ? 'border-red-400 bg-red-400/20 text-neon-text' : 'border-[#eb5757] bg-[#eb5757]/20 text-[#eb5757]')) : (isLight ? 'border-gray-200 hover:border-[#eb5757]/50 hover:bg-gray-50' : (isNeon ? 'border-neon-border/30 hover:border-red-400/50 hover:bg-neon-panel/20' : 'border-white/10 hover:border-white/30 hover:bg-white/5 text-gray-400'))}">
-                                            <span class="material-symbols-outlined text-2xl">grid_view</span>
-                                            <span class="text-[10px] font-bold">MSSQL</span>
+                                            <span class="material-symbols-outlined text-xl">grid_view</span>
+                                            <span class="text-[9px] font-bold">MSSQL</span>
+                                        </button>
+                                        <button type="button" data-db-type="sqlite" class="db-type-btn py-2.5 rounded-lg border flex flex-col items-center gap-1.5 transition-all ${config.dbType === 'sqlite' ? (isLight ? 'border-[#03a9f4] bg-[#03a9f4]/10 text-[#03a9f4]' : (isNeon ? 'border-blue-400 bg-blue-400/20 text-neon-text' : 'border-[#03a9f4] bg-[#03a9f4]/20 text-[#03a9f4]')) : (isLight ? 'border-gray-200 hover:border-[#03a9f4]/50 hover:bg-gray-50' : (isNeon ? 'border-neon-border/30 hover:border-blue-400/50 hover:bg-neon-panel/20' : 'border-white/10 hover:border-white/30 hover:bg-white/5 text-gray-400'))}">
+                                            <span class="material-symbols-outlined text-xl">storage</span>
+                                            <span class="text-[9px] font-bold">SQLite</span>
                                         </button>
                                     </div>
                                 </div>
@@ -210,37 +219,52 @@ export function ConnectionManager() {
                                     </div>
                                 </div>
 
-                                <div class="grid grid-cols-3 gap-4">
-                                    <div class="col-span-2 ${formGroupClass}">
-                                        <label class="${labelClass}">Host</label>
-                                        <input name="host" type="text" class="${inputClass}" placeholder="localhost" value="${escapeHtml(config.host)}" required />
-                                    </div>
+                                <!-- SQLite: File Path -->
+                                ${isSqlite ? `
                                     <div class="${formGroupClass}">
-                                        <label class="${labelClass}">Port</label>
-                                        <input name="port" type="number" class="${inputClass}" placeholder="3306" value="${config.port}" required />
-                                    </div>
-                                </div>
-
-                                <div class="grid grid-cols-2 gap-4">
-                                    <div class="${formGroupClass}">
-                                        <label class="${labelClass}">Username</label>
-                                        <input name="username" type="text" class="${inputClass}" placeholder="root" value="${escapeHtml(config.username)}" required />
-                                    </div>
-                                    <div class="${formGroupClass}">
-                                        <label class="${labelClass}">Password</label>
-                                        <div class="relative">
-                                            <input name="password" id="password-input" type="password" class="${inputClass} pr-10" placeholder="••••••••" value="${escapeHtml(config.password)}" />
-                                            <button type="button" id="toggle-password" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
-                                                <span class="material-symbols-outlined text-lg">visibility</span>
+                                        <label class="${labelClass}">Database File</label>
+                                        <div class="flex gap-2">
+                                            <input name="dbPath" type="text" class="${inputClass} flex-1" placeholder="/path/to/database.db" value="${escapeHtml(config.dbPath || config.host)}" />
+                                            <button type="button" id="browse-file-btn" class="px-3 py-2 rounded-md border ${isLight ? 'border-gray-200 hover:bg-gray-50 text-gray-600' : (isNeon ? 'border-neon-border/30 hover:bg-neon-panel/40 text-neon-text' : 'border-white/10 hover:bg-white/5 text-gray-400')} transition-colors flex items-center gap-1">
+                                                <span class="material-symbols-outlined text-lg">folder_open</span>
+                                                <span class="text-xs font-semibold">Browse</span>
                                             </button>
                                         </div>
+                                        <p class="text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-500'} mt-1">Select an existing .db file or enter a path for a new database</p>
                                     </div>
-                                </div>
+                                ` : `
+                                    <div class="grid grid-cols-3 gap-4">
+                                        <div class="col-span-2 ${formGroupClass}">
+                                            <label class="${labelClass}">Host</label>
+                                            <input name="host" type="text" class="${inputClass}" placeholder="localhost" value="${escapeHtml(config.host)}" required />
+                                        </div>
+                                        <div class="${formGroupClass}">
+                                            <label class="${labelClass}">Port</label>
+                                            <input name="port" type="number" class="${inputClass}" placeholder="3306" value="${config.port}" required />
+                                        </div>
+                                    </div>
 
-                                <div class="${formGroupClass}">
-                                    <label class="${labelClass}">Database ${isPostgres ? '<span class="text-xs normal-case">(Maintenance DB)</span>' : ''}</label>
-                                    <input name="database" type="text" class="${inputClass}" placeholder="${isPostgres ? 'postgres' : 'my_database'}" value="${escapeHtml(config.database)}" />
-                                </div>
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <div class="${formGroupClass}">
+                                            <label class="${labelClass}">Username</label>
+                                            <input name="username" type="text" class="${inputClass}" placeholder="root" value="${escapeHtml(config.username)}" required />
+                                        </div>
+                                        <div class="${formGroupClass}">
+                                            <label class="${labelClass}">Password</label>
+                                            <div class="relative">
+                                                <input name="password" id="password-input" type="password" class="${inputClass} pr-10" placeholder="••••••••" value="${escapeHtml(config.password)}" />
+                                                <button type="button" id="toggle-password" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
+                                                    <span class="material-symbols-outlined text-lg">visibility</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="${formGroupClass}">
+                                        <label class="${labelClass}">Database ${isPostgres ? '<span class="text-xs normal-case">(Maintenance DB)</span>' : ''}</label>
+                                        <input name="database" type="text" class="${inputClass}" placeholder="${isPostgres ? 'postgres' : 'my_database'}" value="${escapeHtml(config.database)}" />
+                                    </div>
+                                `}
 
                                 <!-- PostgreSQL Specific -->
                                 ${isPostgres ? `
@@ -259,7 +283,8 @@ export function ConnectionManager() {
                                     </div>
                                 ` : ''}
 
-                                <!-- SSH Tunnel -->
+                                <!-- SSH Tunnel (not for SQLite) -->
+                                ${!isSqlite ? `
                                 <div class="border-t ${isLight ? 'border-gray-100' : 'border-white/5'} pt-4 mt-2">
                                     <div class="flex items-center justify-between mb-3">
                                         <h3 class="text-xs font-bold ${isLight ? 'text-gray-700' : 'text-gray-300'} uppercase">SSH Tunnel</h3>
@@ -300,6 +325,7 @@ export function ConnectionManager() {
                                         </div>
                                     </div>
                                 </div>
+                                ` : ''}
 
                                 <!-- Bottom Spacer -->
                                 <div class="h-12"></div>
@@ -415,6 +441,30 @@ export function ConnectionManager() {
                     const isPass = passInput.type === 'password';
                     passInput.type = isPass ? 'text' : 'password';
                     togglePassBtn.querySelector('span').textContent = isPass ? 'visibility_off' : 'visibility';
+                });
+            }
+
+            // Browse SQLite file
+            const browseBtn = container.querySelector('#browse-file-btn');
+            if (browseBtn) {
+                browseBtn.addEventListener('click', async () => {
+                    try {
+                        const selected = await open({
+                            multiple: false,
+                            filters: [
+                                { name: 'SQLite', extensions: ['db', 'sqlite', 'sqlite3', 'db3'] },
+                                { name: 'All Files', extensions: ['*'] }
+                            ]
+                        });
+                        if (selected) {
+                            config.dbPath = selected;
+                            config.host = selected;
+                            const dbPathInput = container.querySelector('input[name="dbPath"]');
+                            if (dbPathInput) dbPathInput.value = selected;
+                        }
+                    } catch (err) {
+                        console.error('File dialog error:', err);
+                    }
                 });
             }
 

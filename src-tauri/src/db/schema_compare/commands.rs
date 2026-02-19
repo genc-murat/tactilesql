@@ -50,6 +50,7 @@ struct TempConnection {
     postgres_pool: Option<sqlx::Pool<sqlx::Postgres>>,
     mssql_pool: Option<deadpool_tiberius::Pool>,
     clickhouse_config: Option<ConnectionConfig>,
+    sqlite_pool: Option<sqlx::Pool<sqlx::Sqlite>>,
     tunnel_key: Option<String>,
 }
 
@@ -81,6 +82,7 @@ async fn create_temp_connection(config: &ConnectionConfig) -> Result<TempConnect
                 postgres_pool: None,
                 mssql_pool: None,
                 clickhouse_config: None,
+                sqlite_pool: None,
                 tunnel_key,
             })
         }
@@ -92,6 +94,7 @@ async fn create_temp_connection(config: &ConnectionConfig) -> Result<TempConnect
                 postgres_pool: Some(pool),
                 mssql_pool: None,
                 clickhouse_config: None,
+                sqlite_pool: None,
                 tunnel_key,
             })
         }
@@ -103,6 +106,7 @@ async fn create_temp_connection(config: &ConnectionConfig) -> Result<TempConnect
                 postgres_pool: None,
                 mssql_pool: Some(pool),
                 clickhouse_config: None,
+                sqlite_pool: None,
                 tunnel_key,
             })
         }
@@ -113,6 +117,20 @@ async fn create_temp_connection(config: &ConnectionConfig) -> Result<TempConnect
                 postgres_pool: None,
                 mssql_pool: None,
                 clickhouse_config: Some(effective_config),
+                sqlite_pool: None,
+                tunnel_key,
+            })
+        }
+        DatabaseType::SQLite => {
+            let db_path = effective_config.host.clone();
+            let pool = crate::sqlite::create_pool(&db_path).await?;
+            Ok(TempConnection {
+                db_type: DatabaseType::SQLite,
+                mysql_pool: None,
+                postgres_pool: None,
+                mssql_pool: None,
+                clickhouse_config: None,
+                sqlite_pool: Some(pool),
                 tunnel_key,
             })
         }
@@ -156,6 +174,7 @@ async fn get_databases_for_conn(conn: &TempConnection) -> Result<Vec<String>, St
             let config = conn.clickhouse_config.as_ref().ok_or("No ClickHouse config")?;
             clickhouse::get_databases(config).await
         }
+        DatabaseType::SQLite => Ok(vec!["main".to_string()]),
         DatabaseType::Disconnected => Err("No connection".into()),
     }
 }
@@ -180,6 +199,10 @@ async fn get_tables_for_conn(conn: &TempConnection, database: &str, schema: Opti
             let config = conn.clickhouse_config.as_ref().ok_or("No ClickHouse config")?;
             clickhouse::get_only_tables(config, database).await
         }
+        DatabaseType::SQLite => {
+            let pool = conn.sqlite_pool.as_ref().ok_or("No SQLite pool")?;
+            crate::sqlite::get_tables(pool).await
+        }
         DatabaseType::Disconnected => Err("No connection".into()),
     }
 }
@@ -203,6 +226,11 @@ async fn get_views_for_conn(conn: &TempConnection, database: &str, schema: Optio
             let config = conn.clickhouse_config.as_ref().ok_or("No ClickHouse config")?;
             clickhouse::get_views(config, database).await
         }
+        DatabaseType::SQLite => {
+            let pool = conn.sqlite_pool.as_ref().ok_or("No SQLite pool")?;
+            let views = crate::sqlite::get_views(pool).await?;
+            Ok(views.into_iter().map(|v| v.name).collect())
+        }
         DatabaseType::Disconnected => Err("No connection".into()),
     }
 }
@@ -216,6 +244,10 @@ async fn get_triggers_for_conn(conn: &TempConnection, database: &str) -> Result<
         DatabaseType::PostgreSQL => {
             let pool = conn.postgres_pool.as_ref().ok_or("No PostgreSQL pool")?;
             postgres::get_triggers(pool, database).await
+        }
+        DatabaseType::SQLite => {
+            let pool = conn.sqlite_pool.as_ref().ok_or("No SQLite pool")?;
+            crate::sqlite::get_triggers(pool).await
         }
         _ => Ok(vec![]),
     }
@@ -260,6 +292,10 @@ async fn get_table_schema_for_conn(
             let config = conn.clickhouse_config.as_ref().ok_or("No ClickHouse config")?;
             clickhouse::get_table_schema(config, database, table).await
         }
+        DatabaseType::SQLite => {
+            let pool = conn.sqlite_pool.as_ref().ok_or("No SQLite pool")?;
+            crate::sqlite::get_table_schema(pool, database, table).await
+        }
         DatabaseType::Disconnected => Err("No connection".into()),
     }
 }
@@ -288,6 +324,10 @@ async fn get_table_ddl_for_conn(
         DatabaseType::ClickHouse => {
             let config = conn.clickhouse_config.as_ref().ok_or("No ClickHouse config")?;
             clickhouse::get_table_ddl(config, database, table).await
+        }
+        DatabaseType::SQLite => {
+            let pool = conn.sqlite_pool.as_ref().ok_or("No SQLite pool")?;
+            crate::sqlite::get_table_ddl(pool, database, table).await
         }
         DatabaseType::Disconnected => Err("No connection".into()),
     }
@@ -318,6 +358,10 @@ async fn get_table_indexes_for_conn(
             let config = conn.clickhouse_config.as_ref().ok_or("No ClickHouse config")?;
             clickhouse::get_table_indexes(config, database, table).await
         }
+        DatabaseType::SQLite => {
+            let pool = conn.sqlite_pool.as_ref().ok_or("No SQLite pool")?;
+            crate::sqlite::get_table_indexes(pool, database, table).await
+        }
         DatabaseType::Disconnected => Err("No connection".into()),
     }
 }
@@ -342,6 +386,10 @@ async fn get_table_fks_for_conn(
             let pool = conn.mssql_pool.as_ref().ok_or("No MSSQL pool")?;
             let schema_name = schema.unwrap_or("dbo");
             mssql::get_table_foreign_keys(pool, database, schema_name, table).await
+        }
+        DatabaseType::SQLite => {
+            let pool = conn.sqlite_pool.as_ref().ok_or("No SQLite pool")?;
+            crate::sqlite::get_table_foreign_keys(pool, database, table).await
         }
         DatabaseType::ClickHouse | DatabaseType::Disconnected => Ok(vec![]),
     }
@@ -382,6 +430,11 @@ async fn get_view_definition_for_conn(
         DatabaseType::ClickHouse => {
             let config = conn.clickhouse_config.as_ref().ok_or("No ClickHouse config")?;
             let ddl = clickhouse::get_table_ddl(config, database, view).await?;
+            Ok(ViewDefinition { name: view.to_string(), definition: ddl })
+        }
+        DatabaseType::SQLite => {
+            let pool = conn.sqlite_pool.as_ref().ok_or("No SQLite pool")?;
+            let ddl = crate::sqlite::get_table_ddl(pool, database, view).await?;
             Ok(ViewDefinition { name: view.to_string(), definition: ddl })
         }
         DatabaseType::Disconnected => Err("No connection".into()),
@@ -447,6 +500,7 @@ fn quote_identifier(db_type: &DatabaseType, name: &str) -> String {
         DatabaseType::PostgreSQL => format!("\"{}\"", name),
         DatabaseType::MSSQL => format!("[{}]", name),
         DatabaseType::ClickHouse => format!("`{}`", name),
+        DatabaseType::SQLite => format!("\"{}\"", name),
         DatabaseType::Disconnected => name.to_string(),
     }
 }
@@ -457,6 +511,7 @@ fn qualified_table_name(db_type: &DatabaseType, database: &str, table: &str) -> 
         DatabaseType::PostgreSQL => format!("\"{}\".\"{}\"", database, table),
         DatabaseType::MSSQL => format!("[{}]..[{}]", database, table),
         DatabaseType::ClickHouse => format!("`{}`.`{}`", database, table),
+        DatabaseType::SQLite => format!("\"{}\"", table),
         DatabaseType::Disconnected => table.to_string(),
     }
 }

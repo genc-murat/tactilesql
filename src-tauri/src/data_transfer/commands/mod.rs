@@ -26,6 +26,7 @@ fn db_type_label(db_type: &crate::db_types::DatabaseType) -> &'static str {
         crate::db_types::DatabaseType::PostgreSQL => "postgresql",
         crate::db_types::DatabaseType::ClickHouse => "clickhouse",
         crate::db_types::DatabaseType::MSSQL => "mssql",
+        crate::db_types::DatabaseType::SQLite => "sqlite",
         crate::db_types::DatabaseType::Disconnected => "disconnected",
     }
 }
@@ -155,6 +156,9 @@ async fn capture_schema_snapshot(
         }
         DatabaseType::MSSQL => {
             Err("Schema tracking not yet supported for MSSQL".to_string())
+        }
+        DatabaseType::SQLite => {
+            Err("Schema tracking not yet supported for SQLite".to_string())
         }
         DatabaseType::Disconnected => {
             Err("Disconnected database type is not valid for schema preflight".to_string())

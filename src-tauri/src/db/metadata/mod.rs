@@ -8,6 +8,7 @@ use crate::mysql;
 use crate::postgres;
 use crate::clickhouse;
 use crate::mssql;
+use crate::sqlite;
 
 #[tauri::command]
 pub async fn get_databases(app_state: State<'_, AppState>) -> Result<Vec<String>, String> {
@@ -39,6 +40,11 @@ pub async fn get_databases(app_state: State<'_, AppState>) -> Result<Vec<String>
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
             clickhouse::get_databases(config).await
         }
+        DatabaseType::SQLite => {
+            let guard = app_state.sqlite_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No SQLite connection established")?;
+            sqlite::get_databases(pool).await
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -68,6 +74,7 @@ pub async fn get_schemas(
             mssql::get_schemas(pool, &database).await
         }
         DatabaseType::ClickHouse => Ok(vec![database]),
+        DatabaseType::SQLite => Ok(vec!["main".to_string()]),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -109,6 +116,11 @@ pub async fn get_tables(
             let guard = app_state.clickhouse_config.lock().await;
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
             clickhouse::get_only_tables(config, &db_name).await
+        }
+        DatabaseType::SQLite => {
+            let guard = app_state.sqlite_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No SQLite connection established")?;
+            sqlite::get_tables(pool).await
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
@@ -153,6 +165,11 @@ pub async fn get_table_schema(
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
             clickhouse::get_table_schema(config, &db_name, &table).await
         }
+        DatabaseType::SQLite => {
+            let guard = app_state.sqlite_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No SQLite connection established")?;
+            sqlite::get_table_schema(pool, &db_name, &table).await
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -194,6 +211,11 @@ pub async fn get_table_ddl(
             let guard = app_state.clickhouse_config.lock().await;
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
             clickhouse::get_table_ddl(config, &db_name, &table).await
+        }
+        DatabaseType::SQLite => {
+            let guard = app_state.sqlite_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No SQLite connection established")?;
+            sqlite::get_table_ddl(pool, &db_name, &table).await
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
@@ -237,6 +259,11 @@ pub async fn get_table_indexes(
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
             clickhouse::get_table_indexes(config, &db_name, &table).await
         }
+        DatabaseType::SQLite => {
+            let guard = app_state.sqlite_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No SQLite connection established")?;
+            sqlite::get_table_indexes(pool, &db_name, &table).await
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -275,6 +302,11 @@ pub async fn get_table_foreign_keys(
             mssql::get_table_foreign_keys(pool, &db_name, &schema_name, &table).await
         }
         DatabaseType::ClickHouse => Ok(vec![]),
+        DatabaseType::SQLite => {
+            let guard = app_state.sqlite_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No SQLite connection established")?;
+            sqlite::get_table_foreign_keys(pool, &db_name, &table).await
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -333,6 +365,11 @@ pub async fn get_table_primary_keys(
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
             clickhouse::get_table_primary_keys(config, &db_name, &table).await
         }
+        DatabaseType::SQLite => {
+            let guard = app_state.sqlite_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No SQLite connection established")?;
+            sqlite::get_table_primary_keys(pool, &db_name, &table).await
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -370,6 +407,7 @@ pub async fn get_table_constraints(
             let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
             mssql::get_table_constraints(pool, &db_name, &schema_name, &table).await
         }
+        DatabaseType::SQLite => Ok(vec![]),
         _ => Ok(vec![]),
     }
 }
@@ -411,6 +449,11 @@ pub async fn get_table_stats(
             let guard = app_state.clickhouse_config.lock().await;
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
             clickhouse::get_table_stats(config, &db_name, &table).await
+        }
+        DatabaseType::SQLite => {
+            let guard = app_state.sqlite_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No SQLite connection established")?;
+            sqlite::get_table_stats(pool, &db_name, &table).await
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }

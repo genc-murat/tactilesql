@@ -22,6 +22,7 @@ pub async fn get_dependency_graph(
         DatabaseType::PostgreSQL => "postgresql",
         DatabaseType::ClickHouse => "clickhouse",
         DatabaseType::MSSQL => "mssql",
+        DatabaseType::SQLite => "sqlite",
         DatabaseType::Disconnected => "disconnected",
     };
 
@@ -96,6 +97,9 @@ pub async fn get_dependency_graph(
                     hop_depth_usize,
                 )
                 .await
+            }
+            DatabaseType::SQLite => {
+                Err("Dependency graph not yet supported for SQLite".to_string())
             }
             DatabaseType::Disconnected => Err("No connection established".into()),
         }

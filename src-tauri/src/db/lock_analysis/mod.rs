@@ -79,7 +79,10 @@ pub fn build_lock_analysis(db_type: &DatabaseType, edges: Vec<LockGraphEdge>) ->
     // 5. Build summary
     let summary = LockAnalysisSummary {
         total_edges: edges.len() as i64,
-        waiting_sessions: nodes_map.values().filter(|n| n.waiting_on_count > 0).count() as i64,
+        waiting_sessions: nodes_map
+            .values()
+            .filter(|n| n.waiting_on_count > 0)
+            .count() as i64,
         blocking_sessions: nodes_map.values().filter(|n| n.blocked_count > 0).count() as i64,
         max_wait_seconds: edges.iter().map(|e| e.wait_seconds).max().unwrap_or(0),
         max_chain_depth: chains.iter().map(|c| c.depth).max().unwrap_or(0),
@@ -224,6 +227,7 @@ fn get_db_specific_hints(db_type: &DatabaseType) -> &'static str {
         DatabaseType::PostgreSQL => "In PostgreSQL, examine 'pg_stat_activity' and 'pg_locks'. Deep chains often result from un-indexed foreign keys or explicit 'LOCK TABLE' commands.",
         DatabaseType::MSSQL => "In MSSQL, check 'sys.dm_tran_locks' and 'sys.dm_os_waiting_tasks'. Use 'SET TRANSACTION ISOLATION LEVEL SNAPSHOT' if concurrency is high.",
         DatabaseType::ClickHouse => "ClickHouse uses a different concurrency model; locks are usually on parts or metadata during heavy mutations.",
+        DatabaseType::SQLite => "SQLite uses database-level locking. Writers block all readers and other writers. Consider WAL mode for better concurrency.",
         DatabaseType::Disconnected => "Reconnect to a database to get DB-specific lock mitigation hints.",
     }
 }
@@ -234,6 +238,7 @@ fn db_type_label(db_type: &DatabaseType) -> &'static str {
         DatabaseType::PostgreSQL => "postgresql",
         DatabaseType::ClickHouse => "clickhouse",
         DatabaseType::MSSQL => "mssql",
+        DatabaseType::SQLite => "sqlite",
         DatabaseType::Disconnected => "disconnected".to_string().leak(), // Simplified leak for static
     }
 }

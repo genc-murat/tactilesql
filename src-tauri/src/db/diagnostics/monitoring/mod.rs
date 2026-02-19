@@ -38,6 +38,9 @@ pub async fn kill_process(
         DatabaseType::ClickHouse => {
             Err("Kill process not supported for ClickHouse yet".to_string())
         }
+        DatabaseType::SQLite => {
+            Err("Kill process not applicable for SQLite".to_string())
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }

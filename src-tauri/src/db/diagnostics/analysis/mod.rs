@@ -6,6 +6,7 @@ use crate::mysql;
 use crate::postgres;
 use crate::clickhouse;
 use crate::mssql;
+use crate::sqlite;
 use crate::db::lock_analysis::build_lock_analysis;
 use std::collections::HashMap;
 use tauri::State;
@@ -56,6 +57,11 @@ pub async fn get_execution_plan(
                 }).collect::<Vec<_>>().join("\n")
             }).unwrap_or_default())
         }
+        DatabaseType::SQLite => {
+            let guard = app_state.sqlite_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No SQLite connection established")?;
+            sqlite::get_execution_plan(pool, &query).await
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -88,6 +94,7 @@ pub async fn get_lock_analysis(app_state: State<'_, AppState>) -> Result<LockAna
             mssql::get_lock_graph_edges(pool).await?
         }
         DatabaseType::ClickHouse => Vec::new(),
+        DatabaseType::SQLite => Vec::new(),
         DatabaseType::Disconnected => return Err("No connection established".into()),
     };
 
@@ -127,6 +134,9 @@ pub async fn get_slow_queries(
         DatabaseType::ClickHouse => {
             Ok(Vec::new())
         }
+        DatabaseType::SQLite => {
+            Ok(Vec::new())
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -163,6 +173,9 @@ pub async fn analyze_query(
             let guard = app_state.clickhouse_config.lock().await;
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
             clickhouse::analyze_query(config, &query).await
+        }
+        DatabaseType::SQLite => {
+            Err("Query analysis not yet supported for SQLite".to_string())
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
@@ -435,6 +448,15 @@ pub async fn simulate_index_drop(
                     vec!["Index simulation not yet supported for ClickHouse".to_string()],
                 )
             }
+            DatabaseType::SQLite => {
+                (
+                    "manual".to_string(),
+                    String::new(),
+                    String::new(),
+                    Vec::new(),
+                    vec!["Index simulation not yet supported for SQLite".to_string()],
+                )
+            }
             DatabaseType::Disconnected => return Err("No connection established".into()),
         };
 
@@ -577,6 +599,13 @@ pub async fn get_ai_index_recommendations(
                 .await
                 .unwrap_or_default()
         }
+        DatabaseType::SQLite => {
+            let guard = app_state.sqlite_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No SQLite connection established")?;
+            sqlite::get_table_indexes(pool, &database, &table)
+                .await
+                .unwrap_or_default()
+        }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     };
 
@@ -609,6 +638,16 @@ pub async fn get_ai_index_recommendations(
             let guard = app_state.clickhouse_config.lock().await;
             if let Some(config) = guard.as_ref() {
                 clickhouse::get_table_schema(config, &database, &table)
+                    .await
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            }
+        }
+        DatabaseType::SQLite => {
+            let guard = app_state.sqlite_pool.lock().await;
+            if let Some(pool) = guard.as_ref() {
+                sqlite::get_table_schema(pool, &database, &table)
                     .await
                     .unwrap_or_default()
             } else {
@@ -734,6 +773,12 @@ pub async fn get_ai_index_recommendations(
                     database, table, table, col_name, col_name
                 )
             }
+            DatabaseType::SQLite => {
+                format!(
+                    "CREATE INDEX idx_{}_{} ON \"{}\" ({});",
+                    table, col_name, table, col_name
+                )
+            }
             DatabaseType::Disconnected => String::new(),
         };
 
@@ -804,6 +849,14 @@ pub async fn get_ai_index_recommendations(
                     format!(
                         "ALTER TABLE {}.{} ADD INDEX idx_{}_composite ({}) TYPE minmax GRANULARITY 3;",
                         database,
+                        table,
+                        table,
+                        top_cols.join(", ")
+                    )
+                }
+                DatabaseType::SQLite => {
+                    format!(
+                        "CREATE INDEX idx_{}_composite ON \"{}\" ({});",
                         table,
                         table,
                         top_cols.join(", ")

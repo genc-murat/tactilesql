@@ -46,6 +46,16 @@ pub async fn get_capacity_metrics(
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
             clickhouse::get_capacity_metrics(config, &database).await
         }
+        DatabaseType::SQLite => {
+            Ok(CapacityMetrics {
+                storage_bytes: 0,
+                data_bytes: 0,
+                index_bytes: 0,
+                buffer_hit_ratio: 0.0,
+                disk_read_bytes: 0,
+                disk_write_bytes: 0,
+            })
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -75,6 +85,7 @@ pub async fn get_sequences(
         DatabaseType::MySQL | DatabaseType::ClickHouse | DatabaseType::MSSQL => {
             Ok(Vec::new())
         }
+        DatabaseType::SQLite => Err("Not supported for SQLite".into()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -98,6 +109,7 @@ pub async fn get_custom_types(
             postgres::get_custom_types(pool, &schema).await
         }
         DatabaseType::MySQL | DatabaseType::ClickHouse | DatabaseType::MSSQL => Ok(Vec::new()),
+        DatabaseType::SQLite => Err("Not supported for SQLite".into()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -120,6 +132,7 @@ pub async fn get_tablespaces(app_state: State<'_, AppState>) -> Result<Vec<Strin
             postgres::get_tablespaces(pool).await
         }
         DatabaseType::MySQL | DatabaseType::ClickHouse | DatabaseType::MSSQL => Ok(Vec::new()),
+        DatabaseType::SQLite => Err("Not supported for SQLite".into()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -162,6 +175,7 @@ pub async fn get_index_suggestions(
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
             clickhouse::get_index_suggestions(config, &database, &table).await
         }
+        DatabaseType::SQLite => Err("Not supported for SQLite".into()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -200,6 +214,7 @@ pub async fn get_index_usage(
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
             clickhouse::get_index_usage(config, &database, &table).await
         }
+        DatabaseType::SQLite => Err("Not supported for SQLite".into()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -236,6 +251,7 @@ pub async fn get_index_sizes(
             let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
             clickhouse::get_index_sizes(config, &database, &table).await
         }
+        DatabaseType::SQLite => Err("Not supported for SQLite".into()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }

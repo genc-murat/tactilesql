@@ -61,6 +61,9 @@ pub async fn get_database_health_report(
             let connection_id = get_connection_id(&app_state).await;
             generate_clickhouse_health_report(config, &app_state, &connection_id).await
         }
+        DatabaseType::SQLite => {
+            Err("Health score not yet supported for SQLite".to_string())
+        }
         DatabaseType::Disconnected => Err("No database connection established".to_string()),
     }
 }

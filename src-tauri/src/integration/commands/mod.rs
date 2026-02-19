@@ -32,6 +32,9 @@ pub async fn check_impact(
         DatabaseType::ClickHouse => {
             return Err("Impact analyzer not yet supported for ClickHouse".into());
         }
+        DatabaseType::SQLite => {
+            return Err("Impact analyzer not yet supported for SQLite".into());
+        }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     };
 

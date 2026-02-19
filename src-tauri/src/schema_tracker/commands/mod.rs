@@ -36,6 +36,9 @@ pub async fn capture_schema_snapshot(
         DatabaseType::MSSQL => {
             return Err("Schema tracking not yet supported for MSSQL".into());
         }
+        DatabaseType::SQLite => {
+            return Err("Schema tracking not yet supported for SQLite".into());
+        }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     };
 

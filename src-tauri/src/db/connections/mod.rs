@@ -8,6 +8,7 @@ use crate::mysql;
 use crate::postgres;
 use crate::clickhouse;
 use crate::mssql;
+use crate::sqlite;
 use crate::ssh_tunnel;
 use super::crypto::{decrypt_password_with_key, encrypt_password_with_key};
 use std::fs;
@@ -74,6 +75,7 @@ pub async fn test_connection(config: ConnectionConfig) -> Result<String, String>
         DatabaseType::MySQL => mysql::test_connection(&effective_config).await,
         DatabaseType::ClickHouse => clickhouse::test_connection(&effective_config).await,
         DatabaseType::MSSQL => mssql::test_connection(&effective_config).await,
+        DatabaseType::SQLite => sqlite::test_connection(&effective_config).await,
         DatabaseType::Disconnected => Err("Cannot test connection for 'Disconnected' type".into()),
     };
 
@@ -191,6 +193,21 @@ pub async fn establish_connection(
 
             Ok("MSSQL connection established successfully".to_string())
         }
+        DatabaseType::SQLite => {
+            let db_path = effective_config.host.clone();
+            let pool = sqlite::create_pool(&db_path).await?;
+
+            let mut sqlite_guard = app_state.sqlite_pool.lock().await;
+            *sqlite_guard = Some(pool);
+
+            let mut path_guard = app_state.sqlite_db_path.lock().await;
+            *path_guard = Some(db_path);
+
+            let mut db_type_guard = app_state.active_db_type.lock().await;
+            *db_type_guard = DatabaseType::SQLite;
+
+            Ok("SQLite connection established successfully".to_string())
+        }
         DatabaseType::Disconnected => Err("Cannot establish a 'Disconnected' connection".into()),
     };
 
@@ -253,6 +270,14 @@ pub async fn disconnect(app_state: State<'_, AppState>) -> Result<String, String
             }
             let mut config_guard = app_state.clickhouse_config.lock().await;
             *config_guard = None;
+        }
+        DatabaseType::SQLite => {
+            let mut guard = app_state.sqlite_pool.lock().await;
+            if let Some(pool) = guard.take() {
+                pool.close().await;
+            }
+            let mut path_guard = app_state.sqlite_db_path.lock().await;
+            *path_guard = None;
         }
         DatabaseType::Disconnected => {}
     }

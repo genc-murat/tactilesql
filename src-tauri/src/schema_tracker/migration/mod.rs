@@ -81,7 +81,7 @@ pub fn generate_schema_story_summary(diff: &SchemaDiff) -> String {
     if !diff.modified_tables.is_empty() {
         parts.push(format!("modified {} tables", diff.modified_tables.len()));
     }
-    
+
     if parts.is_empty() {
         "no schema changes detected".to_string()
     } else {
@@ -118,7 +118,10 @@ pub fn generate_migration_plan(
 
     match selected_strategy {
         MigrationStrategy::PtOsc | MigrationStrategy::GhOst if *db_type == DatabaseType::MySQL => {
-            script_lines.push("-- External OSC mode enabled. SQL statements are commented for safety.".to_string());
+            script_lines.push(
+                "-- External OSC mode enabled. SQL statements are commented for safety."
+                    .to_string(),
+            );
             script_lines.push(String::new());
             for statement in &base_statements {
                 script_lines.push(format!("-- {}", terminate_statement(statement)));
@@ -213,7 +216,11 @@ fn apply_strategy(
                 }
             }
 
-            (base_statements.to_vec(), external_commands, unsupported_statements)
+            (
+                base_statements.to_vec(),
+                external_commands,
+                unsupported_statements,
+            )
         }
         _ => (base_statements.to_vec(), Vec::new(), Vec::new()),
     }
@@ -231,11 +238,17 @@ fn apply_postgres_concurrently(statement: &str) -> String {
     }
 
     if upper.starts_with("CREATE INDEX ") && !upper.contains(" CONCURRENTLY ") {
-        return format!("CREATE INDEX CONCURRENTLY {}", &trimmed["CREATE INDEX ".len()..]);
+        return format!(
+            "CREATE INDEX CONCURRENTLY {}",
+            &trimmed["CREATE INDEX ".len()..]
+        );
     }
 
     if upper.starts_with("DROP INDEX ") && !upper.contains(" CONCURRENTLY ") {
-        return format!("DROP INDEX CONCURRENTLY {}", &trimmed["DROP INDEX ".len()..]);
+        return format!(
+            "DROP INDEX CONCURRENTLY {}",
+            &trimmed["DROP INDEX ".len()..]
+        );
     }
 
     trimmed.to_string()
@@ -257,7 +270,10 @@ fn extract_alter_table(statement: &str) -> Option<(String, String)> {
         return None;
     }
 
-    Some((normalize_mysql_table_name(table_part), alter_clause.to_string()))
+    Some((
+        normalize_mysql_table_name(table_part),
+        alter_clause.to_string(),
+    ))
 }
 
 fn normalize_mysql_table_name(raw_table: &str) -> String {
@@ -303,8 +319,10 @@ fn build_lock_warnings(
         }
     };
 
-    if matches!(strategy, MigrationStrategy::PtOsc | MigrationStrategy::GhOst)
-        && *db_type == DatabaseType::MySQL
+    if matches!(
+        strategy,
+        MigrationStrategy::PtOsc | MigrationStrategy::GhOst
+    ) && *db_type == DatabaseType::MySQL
     {
         push_warning(
             "medium",
@@ -356,7 +374,10 @@ fn build_lock_warnings(
             }
             DatabaseType::MySQL => {
                 if normalized.starts_with("ALTER TABLE") {
-                    if matches!(strategy, MigrationStrategy::PtOsc | MigrationStrategy::GhOst) {
+                    if matches!(
+                        strategy,
+                        MigrationStrategy::PtOsc | MigrationStrategy::GhOst
+                    ) {
                         push_warning(
                             "medium",
                             "ALTER TABLE is planned via external OSC tool; validate cutover window.",
@@ -384,11 +405,17 @@ fn build_lock_warnings(
             }
             DatabaseType::MSSQL => {
                 if normalized.starts_with("ALTER TABLE") {
-                    push_warning("medium", "MSSQL ALTER TABLE may acquire schema modification locks.");
+                    push_warning(
+                        "medium",
+                        "MSSQL ALTER TABLE may acquire schema modification locks.",
+                    );
                 }
             }
             DatabaseType::ClickHouse => {
                 // ClickHouse specific warnings can be added here
+            }
+            DatabaseType::SQLite => {
+                // SQLite specific warnings can be added here
             }
             DatabaseType::Disconnected => {}
         }
@@ -412,6 +439,7 @@ fn generate_create_table(table: &TableDefinition, db_type: &DatabaseType) -> Str
             DatabaseType::PostgreSQL => format_column_postgres(col),
             DatabaseType::ClickHouse => format_column_mysql(col), // ClickHouse via MySQL bridge
             DatabaseType::MSSQL => format_column_mssql(col),
+            DatabaseType::SQLite => format_column_mysql(col), // SQLite similar to MySQL
             DatabaseType::Disconnected => String::new(),
         };
         columns_def.push(col_def);
@@ -422,7 +450,7 @@ fn generate_create_table(table: &TableDefinition, db_type: &DatabaseType) -> Str
         .iter()
         .map(|pk| pk.column_name.clone())
         .collect();
-    
+
     match db_type {
         DatabaseType::PostgreSQL | DatabaseType::MySQL | DatabaseType::MSSQL => {
             if !pk_cols.is_empty() {
@@ -440,9 +468,18 @@ fn generate_create_table(table: &TableDefinition, db_type: &DatabaseType) -> Str
                 "CREATE TABLE {} (\n    {}\n) ENGINE = MergeTree() ORDER BY ({})",
                 table.name,
                 columns_def.join(",\n    "),
-                if pk_cols.is_empty() { "tuple()".to_string() } else { pk_cols.join(", ") }
+                if pk_cols.is_empty() {
+                    "tuple()".to_string()
+                } else {
+                    pk_cols.join(", ")
+                }
             )
         }
+        DatabaseType::SQLite => format!(
+            "CREATE TABLE {} (\n    {}\n);",
+            table.name,
+            columns_def.join(",\n    ")
+        ),
         DatabaseType::Disconnected => String::new(),
     }
 }
@@ -469,6 +506,11 @@ fn generate_alter_table(diff: &TableDiff, db_type: &DatabaseType) -> Vec<String>
                 format_column_mssql(col)
             )),
             DatabaseType::ClickHouse => stmts.push(format!(
+                "ALTER TABLE {} ADD COLUMN {}",
+                table,
+                format_column_mysql(col)
+            )),
+            DatabaseType::SQLite => stmts.push(format!(
                 "ALTER TABLE {} ADD COLUMN {}",
                 table,
                 format_column_mysql(col)
@@ -546,6 +588,13 @@ fn generate_alter_table(diff: &TableDiff, db_type: &DatabaseType) -> Vec<String>
                 table,
                 format_column_mysql(&col_diff.new_column)
             )),
+            DatabaseType::SQLite => {
+                // SQLite ALTER TABLE is limited; column modifications require table rebuild
+                stmts.push(format!(
+                    "-- SQLite: Column modification for {} requires table rebuild",
+                    col_diff.column_name
+                ));
+            }
             DatabaseType::Disconnected => {}
         }
     }
@@ -570,7 +619,10 @@ fn generate_alter_table(diff: &TableDiff, db_type: &DatabaseType) -> Vec<String>
             DatabaseType::MySQL => stmts.push(format!("DROP INDEX {} ON {}", idx.name, table)),
             DatabaseType::PostgreSQL => stmts.push(format!("DROP INDEX {}", idx.name)),
             DatabaseType::MSSQL => stmts.push(format!("DROP INDEX {} ON {}", idx.name, table)),
-            DatabaseType::ClickHouse => stmts.push(format!("ALTER TABLE {} DROP INDEX {}", table, idx.name)),
+            DatabaseType::ClickHouse => {
+                stmts.push(format!("ALTER TABLE {} DROP INDEX {}", table, idx.name))
+            }
+            DatabaseType::SQLite => stmts.push(format!("DROP INDEX IF EXISTS \"{}\"", idx.name)),
             DatabaseType::Disconnected => {}
         }
     }
