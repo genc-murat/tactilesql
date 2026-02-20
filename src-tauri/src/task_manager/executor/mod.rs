@@ -135,6 +135,9 @@ async fn execute_sql_task(app: &AppHandle, task: &TaskDefinition) -> Result<Valu
             let results = crate::sqlite::execute_query(&pool, &sql).await?;
             summarize_result_sets(&results)
         }
+        DatabaseType::DuckDB => {
+            return Err("SQL task not yet supported for DuckDB".to_string());
+        }
         DatabaseType::Disconnected => return Err("No connection established".to_string()),
     };
 
@@ -313,6 +316,9 @@ async fn execute_backup_task(app: &AppHandle, task: &TaskDefinition) -> Result<V
         DatabaseType::SQLite => {
             return Err("Backup task not yet supported for SQLite".to_string());
         }
+        DatabaseType::DuckDB => {
+            return Err("Backup task not yet supported for DuckDB".to_string());
+        }
         DatabaseType::Disconnected => return Err("No connection established".to_string()),
     }
 
@@ -432,6 +438,9 @@ async fn execute_schema_snapshot_task(app: &AppHandle, task: &TaskDefinition) ->
         }
         DatabaseType::SQLite => {
             return Err("Schema snapshot not yet supported for SQLite".to_string());
+        }
+        DatabaseType::DuckDB => {
+            return Err("Schema snapshot not yet supported for DuckDB".to_string());
         }
         DatabaseType::Disconnected => return Err("No connection established".to_string()),
     };
@@ -1355,6 +1364,9 @@ async fn apply_raw_sql_script(app: &AppHandle, script: &str) -> Result<(), Strin
         DatabaseType::SQLite => {
             return Err("Sync script not yet supported for SQLite".to_string());
         }
+        DatabaseType::DuckDB => {
+            return Err("Sync script not yet supported for DuckDB".to_string());
+        }
         DatabaseType::Disconnected => return Err("No connection established".to_string()),
     }
 
@@ -1472,6 +1484,7 @@ fn db_type_label(db_type: &DatabaseType) -> &'static str {
         DatabaseType::ClickHouse => "clickhouse",
         DatabaseType::MSSQL => "mssql",
         DatabaseType::SQLite => "sqlite",
+        DatabaseType::DuckDB => "duckdb",
         DatabaseType::Disconnected => "disconnected",
     }
 }

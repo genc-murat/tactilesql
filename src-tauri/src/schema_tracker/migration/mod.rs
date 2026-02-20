@@ -417,6 +417,9 @@ fn build_lock_warnings(
             DatabaseType::SQLite => {
                 // SQLite specific warnings can be added here
             }
+            DatabaseType::DuckDB => {
+                // DuckDB specific warnings can be added here
+            }
             DatabaseType::Disconnected => {}
         }
     }
@@ -440,6 +443,7 @@ fn generate_create_table(table: &TableDefinition, db_type: &DatabaseType) -> Str
             DatabaseType::ClickHouse => format_column_mysql(col), // ClickHouse via MySQL bridge
             DatabaseType::MSSQL => format_column_mssql(col),
             DatabaseType::SQLite => format_column_mysql(col), // SQLite similar to MySQL
+            DatabaseType::DuckDB => format_column_postgres(col), // DuckDB similar to PostgreSQL
             DatabaseType::Disconnected => String::new(),
         };
         columns_def.push(col_def);
@@ -480,6 +484,16 @@ fn generate_create_table(table: &TableDefinition, db_type: &DatabaseType) -> Str
             table.name,
             columns_def.join(",\n    ")
         ),
+        DatabaseType::DuckDB => {
+            if !pk_cols.is_empty() {
+                columns_def.push(format!("PRIMARY KEY ({})", pk_cols.join(", ")));
+            }
+            format!(
+                "CREATE TABLE {} (\n    {}\n)",
+                table.name,
+                columns_def.join(",\n    ")
+            )
+        }
         DatabaseType::Disconnected => String::new(),
     }
 }
@@ -514,6 +528,11 @@ fn generate_alter_table(diff: &TableDiff, db_type: &DatabaseType) -> Vec<String>
                 "ALTER TABLE {} ADD COLUMN {}",
                 table,
                 format_column_mysql(col)
+            )),
+            DatabaseType::DuckDB => stmts.push(format!(
+                "ALTER TABLE {} ADD COLUMN {}",
+                table,
+                format_column_postgres(col)
             )),
             DatabaseType::Disconnected => {}
         }
@@ -595,6 +614,12 @@ fn generate_alter_table(diff: &TableDiff, db_type: &DatabaseType) -> Vec<String>
                     col_diff.column_name
                 ));
             }
+            DatabaseType::DuckDB => {
+                stmts.push(format!(
+                    "ALTER TABLE {} ALTER COLUMN {} TYPE {}",
+                    table, col_diff.column_name, col_diff.new_column.column_type
+                ));
+            }
             DatabaseType::Disconnected => {}
         }
     }
@@ -623,6 +648,7 @@ fn generate_alter_table(diff: &TableDiff, db_type: &DatabaseType) -> Vec<String>
                 stmts.push(format!("ALTER TABLE {} DROP INDEX {}", table, idx.name))
             }
             DatabaseType::SQLite => stmts.push(format!("DROP INDEX IF EXISTS \"{}\"", idx.name)),
+            DatabaseType::DuckDB => stmts.push(format!("DROP INDEX IF EXISTS \"{}\"", idx.name)),
             DatabaseType::Disconnected => {}
         }
     }

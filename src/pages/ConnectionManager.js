@@ -21,7 +21,7 @@ export function ConnectionManager() {
     const DEFAULT_CONFIG = {
         id: null,
         name: '',
-        dbType: 'mysql', // 'mysql' | 'postgresql' | 'clickhouse' | 'mssql' | 'sqlite'
+        dbType: 'mysql', // 'mysql' | 'postgresql' | 'clickhouse' | 'mssql' | 'sqlite' | 'duckdb'
         host: 'localhost',
         port: 3306,
         username: 'root',
@@ -30,7 +30,7 @@ export function ConnectionManager() {
         // PostgreSQL specific
         sslMode: 'prefer',
         schema: 'public',
-        // SQLite specific
+        // SQLite/DuckDB specific
         dbPath: '',
         // SSH Tunnel settings
         useSSHTunnel: false,
@@ -47,7 +47,8 @@ export function ConnectionManager() {
         postgresql: { port: 5432, username: 'postgres', color: '#336791' },
         clickhouse: { port: 8123, username: 'default', color: '#ffcc00' },
         mssql: { port: 1433, username: 'sa', color: '#eb5757' },
-        sqlite: { port: 0, username: '', color: '#03a9f4', dbPath: '' }
+        sqlite: { port: 0, username: '', color: '#03a9f4', dbPath: '' },
+        duckdb: { port: 0, username: '', color: '#fff000', dbPath: '' }
     };
 
     let config = { ...DEFAULT_CONFIG };
@@ -71,6 +72,8 @@ export function ConnectionManager() {
         const isMssql = config.dbType === 'mssql';
         const isClickhouse = config.dbType === 'clickhouse';
         const isSqlite = config.dbType === 'sqlite';
+        const isDuckDB = config.dbType === 'duckdb';
+        const isFileBased = isSqlite || isDuckDB;
 
         // Filter connections
         const filteredConnections = connections.filter(c =>
@@ -95,6 +98,8 @@ export function ConnectionManager() {
             if (type === 'postgresql') return isNeon ? 'text-neon-purple' : 'text-[#336791]';
             if (type === 'mssql') return isNeon ? 'text-red-400' : 'text-[#eb5757]';
             if (type === 'clickhouse') return isNeon ? 'text-yellow-400' : 'text-[#ffcc00]';
+            if (type === 'duckdb') return isNeon ? 'text-yellow-300' : 'text-[#fff000]';
+            if (type === 'sqlite') return isNeon ? 'text-blue-400' : 'text-[#03a9f4]';
             return isNeon ? 'text-cyan-400' : 'text-mysql-teal';
         };
 
@@ -125,12 +130,12 @@ export function ConnectionManager() {
                         <div class="connection-item cursor-pointer p-3 rounded-lg flex items-center gap-3 transition-all ${getItemClass(conn)}" data-id="${conn.id}">
                             <div class="w-8 h-8 rounded-md flex items-center justify-center ${isLight ? 'bg-gray-100' : (isNeon ? 'bg-neon-panel/40' : 'bg-[#0a0c10]')}">
                                 <span class="material-symbols-outlined text-lg ${getIconClass(conn.dbType)}">
-                                    ${conn.dbType === 'postgresql' ? 'dataset' : (conn.dbType === 'clickhouse' ? 'view_column' : (conn.dbType === 'mssql' ? 'grid_view' : 'database'))}
+                                    ${conn.dbType === 'postgresql' ? 'dataset' : (conn.dbType === 'clickhouse' ? 'view_column' : (conn.dbType === 'mssql' ? 'grid_view' : (conn.dbType === 'duckdb' ? 'analytics' : 'database')))}
                                 </span>
                             </div>
                             <div class="flex-1 min-w-0">
                                 <div class="text-xs font-semibold ${isLight ? 'text-gray-800' : (isNeon ? 'text-neon-text' : 'text-gray-200')} truncate" title="${escapeHtml(conn.name)}">${escapeHtml(conn.name)}</div>
-                                <div class="text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-500'} truncate" title="${escapeHtml(conn.dbType === 'sqlite' ? conn.host : conn.username + '@' + conn.host)}">${conn.dbType === 'sqlite' ? (conn.host ? conn.host.split('/').pop() : 'SQLite') : escapeHtml(conn.username) + '@' + escapeHtml(conn.host)}</div>
+                                <div class="text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-500'} truncate" title="${escapeHtml((conn.dbType === 'sqlite' || conn.dbType === 'duckdb') ? conn.host : conn.username + '@' + conn.host)}">${(conn.dbType === 'sqlite' || conn.dbType === 'duckdb') ? (conn.host ? conn.host.split('/').pop() : conn.dbType === 'duckdb' ? 'DuckDB' : 'SQLite') : escapeHtml(conn.username) + '@' + escapeHtml(conn.host)}</div>
                             </div>
                             ${conn.last_connected ? `
                                 <div class="w-1.5 h-1.5 rounded-full bg-green-500" title="Recently connected"></div>
@@ -180,7 +185,7 @@ export function ConnectionManager() {
                                 <!-- Database Type -->
                                 <div class="${formGroupClass}">
                                     <label class="${labelClass}">Database Type</label>
-                                    <div class="grid grid-cols-5 gap-2">
+                                    <div class="grid grid-cols-6 gap-2">
                                         <button type="button" data-db-type="mysql" class="db-type-btn py-2.5 rounded-lg border flex flex-col items-center gap-1.5 transition-all ${config.dbType === 'mysql' ? (isLight ? 'border-mysql-teal bg-mysql-teal/10 text-mysql-teal' : (isNeon ? 'border-cyan-400 bg-cyan-400/20 text-neon-text' : 'border-mysql-teal bg-mysql-teal/20 text-mysql-teal')) : (isLight ? 'border-gray-200 hover:border-mysql-teal/50 hover:bg-gray-50' : (isNeon ? 'border-neon-border/30 hover:border-cyan-400/50 hover:bg-neon-panel/20' : 'border-white/10 hover:border-white/30 hover:bg-white/5 text-gray-400'))}">
                                             <span class="material-symbols-outlined text-xl">database</span>
                                             <span class="text-[9px] font-bold">MySQL</span>
@@ -201,6 +206,10 @@ export function ConnectionManager() {
                                             <span class="material-symbols-outlined text-xl">storage</span>
                                             <span class="text-[9px] font-bold">SQLite</span>
                                         </button>
+                                        <button type="button" data-db-type="duckdb" class="db-type-btn py-2.5 rounded-lg border flex flex-col items-center gap-1.5 transition-all ${config.dbType === 'duckdb' ? (isLight ? 'border-[#fff000] bg-[#fff000]/10 text-[#fff000]' : (isNeon ? 'border-yellow-300 bg-yellow-300/20 text-neon-text' : 'border-[#fff000] bg-[#fff000]/20 text-[#fff000]')) : (isLight ? 'border-gray-200 hover:border-[#fff000]/50 hover:bg-gray-50' : (isNeon ? 'border-neon-border/30 hover:border-yellow-300/50 hover:bg-neon-panel/20' : 'border-white/10 hover:border-white/30 hover:bg-white/5 text-gray-400'))}">
+                                            <span class="material-symbols-outlined text-xl">analytics</span>
+                                            <span class="text-[9px] font-bold">DuckDB</span>
+                                        </button>
                                     </div>
                                 </div>
 
@@ -219,18 +228,18 @@ export function ConnectionManager() {
                                     </div>
                                 </div>
 
-                                <!-- SQLite: File Path -->
-                                ${isSqlite ? `
+                                <!-- SQLite/DuckDB: File Path -->
+                                ${isFileBased ? `
                                     <div class="${formGroupClass}">
                                         <label class="${labelClass}">Database File</label>
                                         <div class="flex gap-2">
-                                            <input name="dbPath" type="text" class="${inputClass} flex-1" placeholder="/path/to/database.db" value="${escapeHtml(config.dbPath || config.host)}" />
+                                            <input name="dbPath" type="text" class="${inputClass} flex-1" placeholder="${isDuckDB ? '/path/to/database.duckdb' : '/path/to/database.db'}" value="${escapeHtml(config.dbPath || config.host)}" />
                                             <button type="button" id="browse-file-btn" class="px-3 py-2 rounded-md border ${isLight ? 'border-gray-200 hover:bg-gray-50 text-gray-600' : (isNeon ? 'border-neon-border/30 hover:bg-neon-panel/40 text-neon-text' : 'border-white/10 hover:bg-white/5 text-gray-400')} transition-colors flex items-center gap-1">
                                                 <span class="material-symbols-outlined text-lg">folder_open</span>
                                                 <span class="text-xs font-semibold">Browse</span>
                                             </button>
                                         </div>
-                                        <p class="text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-500'} mt-1">Select an existing .db file or enter a path for a new database</p>
+                                        <p class="text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-500'} mt-1">${isDuckDB ? 'Select an existing .duckdb file or use :memory: for in-memory database' : 'Select an existing .db file or enter a path for a new database'}</p>
                                     </div>
                                 ` : `
                                     <div class="grid grid-cols-3 gap-4">
@@ -283,8 +292,8 @@ export function ConnectionManager() {
                                     </div>
                                 ` : ''}
 
-                                <!-- SSH Tunnel (not for SQLite) -->
-                                ${!isSqlite ? `
+                                <!-- SSH Tunnel (not for file-based databases) -->
+                                ${!isFileBased ? `
                                 <div class="border-t ${isLight ? 'border-gray-100' : 'border-white/5'} pt-4 mt-2">
                                     <div class="flex items-center justify-between mb-3">
                                         <h3 class="text-xs font-bold ${isLight ? 'text-gray-700' : 'text-gray-300'} uppercase">SSH Tunnel</h3>

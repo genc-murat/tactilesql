@@ -6,6 +6,7 @@ use crate::db_types::{AppState, DatabaseType};
 use crate::clickhouse;
 use crate::mssql;
 use crate::sqlite;
+use crate::duckdb;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TableDependency {
@@ -91,6 +92,12 @@ pub async fn truncate_table(
             sqlite::truncate_table(pool, &database, &table).await?;
             Ok(format!("Table {} truncated successfully", table))
         }
+        DatabaseType::DuckDB => {
+            let guard = app_state.duckdb_pool.lock().await;
+            let conn = guard.as_ref().ok_or("No DuckDB connection established")?;
+            duckdb::truncate_table(conn, &database, &table)?;
+            Ok(format!("Table {} truncated successfully", table))
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -168,6 +175,12 @@ pub async fn drop_table(
             sqlite::drop_table(pool, &database, &table).await?;
             Ok(format!("Table {} dropped successfully", table))
         }
+        DatabaseType::DuckDB => {
+            let guard = app_state.duckdb_pool.lock().await;
+            let conn = guard.as_ref().ok_or("No DuckDB connection established")?;
+            duckdb::drop_table(conn, &database, &table)?;
+            Ok(format!("Table {} dropped successfully", table))
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -241,6 +254,12 @@ pub async fn rename_table(
             let guard = app_state.sqlite_pool.lock().await;
             let pool = guard.as_ref().ok_or("No SQLite connection established")?;
             sqlite::rename_table(pool, &database, &table, &new_name).await?;
+            Ok(format!("Table renamed to {} successfully", new_name))
+        }
+        DatabaseType::DuckDB => {
+            let guard = app_state.duckdb_pool.lock().await;
+            let conn = guard.as_ref().ok_or("No DuckDB connection established")?;
+            duckdb::rename_table(conn, &database, &table, &new_name)?;
             Ok(format!("Table renamed to {} successfully", new_name))
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
@@ -358,6 +377,12 @@ pub async fn duplicate_table(
             };
             sqlite::execute_query(pool, &create_query).await?;
             
+            Ok(format!("Table duplicated as {} successfully", new_name))
+        }
+        DatabaseType::DuckDB => {
+            let guard = app_state.duckdb_pool.lock().await;
+            let conn = guard.as_ref().ok_or("No DuckDB connection established")?;
+            duckdb::duplicate_table(conn, &database, &table, &new_name, include_data)?;
             Ok(format!("Table duplicated as {} successfully", new_name))
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
@@ -731,6 +756,12 @@ pub async fn drop_view(
             sqlite::drop_view(pool, &view).await?;
             Ok(format!("View {} dropped successfully", view))
         }
+        DatabaseType::DuckDB => {
+            let guard = app_state.duckdb_pool.lock().await;
+            let conn = guard.as_ref().ok_or("No DuckDB connection established")?;
+            duckdb::drop_view(conn, &view)?;
+            Ok(format!("View {} dropped successfully", view))
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -830,6 +861,9 @@ pub async fn drop_database(
         DatabaseType::SQLite => {
             Err("Drop database not supported for SQLite (delete the file instead)".to_string())
         }
+        DatabaseType::DuckDB => {
+            Err("Drop database not supported for DuckDB (delete the file instead)".to_string())
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -881,6 +915,9 @@ pub async fn create_database(
         }
         DatabaseType::SQLite => {
             Err("Create database not supported for SQLite (create a new file instead)".to_string())
+        }
+        DatabaseType::DuckDB => {
+            Err("Create database not supported for DuckDB (create a new file instead)".to_string())
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }

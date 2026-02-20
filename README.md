@@ -4,7 +4,7 @@
 
 # TactileSQL
 
-TactileSQL is a modern, desktop-first SQL workbench for MySQL, PostgreSQL, ClickHouse, MSSQL, and SQLite, built with Tauri 2 and vanilla JavaScript. It provides a rich SQL editing experience, schema tools, and operational dashboards in a fast, native shell.
+TactileSQL is a modern, desktop-first SQL workbench for MySQL, PostgreSQL, ClickHouse, MSSQL, SQLite, and DuckDB, built with Tauri 2 and vanilla JavaScript. It provides a rich SQL editing experience, schema tools, and operational dashboards in a fast, native shell.
 
 ## Highlights
 
@@ -14,6 +14,7 @@ TactileSQL is a modern, desktop-first SQL workbench for MySQL, PostgreSQL, Click
 - **Advanced PostgreSQL Support**: Deep-dive monitoring with the **Server Activity Monitor** (session termination), **Lock Monitor** (visualize blocking chains), and **Extension Management** (install/uninstall extensions).
 - **Proactive MySQL Compatibility Initiative**: Comprehensive support for MySQL 5.5 through 8.4+. Features **Intelligent SQL Normalization** (automatically patches breaking syntax like `GROUP BY DESC`), **Version-Aware SQL Snippets**, and **Deep Query Analysis** with proactive `EXPLAIN FORMAT=JSON` selection, cost estimation, and structural insights for Window Functions and CTEs. Extensive monitoring coverage for legacy and modern Performance Schema schemas.
 - **SQLite Support**: Full connectivity to SQLite databases via file-based connections. Features table browsing, DDL inspection via `sqlite_master`, index and foreign key management through `PRAGMA` commands, query execution with profiling, and data import/export. Zero-configuration — just point to a `.db` file and start working.
+- **DuckDB Support**: Full connectivity to DuckDB databases via file-based or in-memory connections. Features table browsing through `information_schema`, DDL inspection via `SHOW CREATE TABLE`, index and foreign key management, extension management (install/load), query execution with profiling, and data import/export. Supports both file-based (`.duckdb`) and in-memory (`:memory:`) databases.
 - **Code Folding**: Collapse and expand code blocks (subqueries, CASE/END, BEGIN/END, block comments) for improved readability.
 - **Configurable SQL Execution Defaults**: Set default run mode (`current statement` / `selection first` / `run all`) and query timeout (`0 = unlimited`).
 - **Smart Autocomplete++** with context-aware suggestions, abbreviation matching (e.g. `tc` → `test_customers`), FK-based JOIN hints, database/schema qualification control, and frequency learning.
@@ -43,7 +44,7 @@ TactileSQL is a modern, desktop-first SQL workbench for MySQL, PostgreSQL, Click
 
 - **Frontend**: Vite + Vanilla JS + Tailwind CSS
 - **Desktop**: Tauri v2
-- **Backend**: Rust + SQLx (MySQL + PostgreSQL + SQLite) + Tiberius (MSSQL) + Clickhouse-rs (HTTP)
+- **Backend**: Rust + SQLx (MySQL + PostgreSQL + SQLite) + Tiberius (MSSQL) + Clickhouse-rs (HTTP) + DuckDB (bundled)
 - **State**: LocalStorage + Tauri app data directory + SQLite (Local Store)
 
 ## Project Structure
@@ -70,7 +71,7 @@ src-tauri/
 
 - **Node.js** (LTS recommended)
 - **Rust toolchain** (stable)
-- **Database Server**: MySQL (5.5+), PostgreSQL (12+), ClickHouse, SQL Server (2017+), or SQLite
+- **Database Server**: MySQL (5.5+), PostgreSQL (12+), ClickHouse, SQL Server (2017+), SQLite, or DuckDB
 - **Tauri system dependencies** for your OS (see Tauri v2 docs)
 
 ## Setup
@@ -212,6 +213,7 @@ Right-click on any object in the Object Explorer to access powerful operations:
 - **ClickHouse errors**: Check if the HTTP interface is enabled (typically port 8123).
 - **ClickHouse version compatibility**: ClickHouse features support multiple versions (22.x through 26.x+) with automatic fallback for system table schema differences. Some features like Query Cache require CH 22+, Projections require CH 22+, and Backup/Restore requires CH 23.6+.
 - **SQLite file issues**: Ensure the database file exists and has read/write permissions. For new databases, provide a valid path where the application has write access.
+- **DuckDB file issues**: Ensure the database file has read/write permissions. Use `:memory:` for temporary in-memory databases. DuckDB files use `.duckdb` extension by default but any extension works.
 
 ## Recommended IDE Setup
 

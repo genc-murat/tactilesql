@@ -62,6 +62,9 @@ pub async fn get_execution_plan(
             let pool = guard.as_ref().ok_or("No SQLite connection established")?;
             sqlite::get_execution_plan(pool, &query).await
         }
+        DatabaseType::DuckDB => {
+            Err("Execution plan not yet supported for DuckDB".to_string())
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -95,6 +98,7 @@ pub async fn get_lock_analysis(app_state: State<'_, AppState>) -> Result<LockAna
         }
         DatabaseType::ClickHouse => Vec::new(),
         DatabaseType::SQLite => Vec::new(),
+        DatabaseType::DuckDB => Vec::new(),
         DatabaseType::Disconnected => return Err("No connection established".into()),
     };
 
@@ -137,6 +141,9 @@ pub async fn get_slow_queries(
         DatabaseType::SQLite => {
             Ok(Vec::new())
         }
+        DatabaseType::DuckDB => {
+            Ok(Vec::new())
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -176,6 +183,9 @@ pub async fn analyze_query(
         }
         DatabaseType::SQLite => {
             Err("Query analysis not yet supported for SQLite".to_string())
+        }
+        DatabaseType::DuckDB => {
+            Err("Query analysis not yet supported for DuckDB".to_string())
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
@@ -457,6 +467,15 @@ pub async fn simulate_index_drop(
                     vec!["Index simulation not yet supported for SQLite".to_string()],
                 )
             }
+            DatabaseType::DuckDB => {
+                (
+                    "manual".to_string(),
+                    String::new(),
+                    String::new(),
+                    Vec::new(),
+                    vec!["Index simulation not yet supported for DuckDB".to_string()],
+                )
+            }
             DatabaseType::Disconnected => return Err("No connection established".into()),
         };
 
@@ -606,6 +625,9 @@ pub async fn get_ai_index_recommendations(
                 .await
                 .unwrap_or_default()
         }
+        DatabaseType::DuckDB => {
+            Vec::new()
+        }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     };
 
@@ -654,6 +676,7 @@ pub async fn get_ai_index_recommendations(
                 Vec::new()
             }
         }
+        DatabaseType::DuckDB => Vec::new(),
         DatabaseType::Disconnected => Vec::new(),
     };
 
@@ -779,6 +802,12 @@ pub async fn get_ai_index_recommendations(
                     table, col_name, table, col_name
                 )
             }
+            DatabaseType::DuckDB => {
+                format!(
+                    "CREATE INDEX idx_{}_{} ON \"{}\" ({});",
+                    table, col_name, table, col_name
+                )
+            }
             DatabaseType::Disconnected => String::new(),
         };
 
@@ -855,6 +884,14 @@ pub async fn get_ai_index_recommendations(
                     )
                 }
                 DatabaseType::SQLite => {
+                    format!(
+                        "CREATE INDEX idx_{}_composite ON \"{}\" ({});",
+                        table,
+                        table,
+                        top_cols.join(", ")
+                    )
+                }
+                DatabaseType::DuckDB => {
                     format!(
                         "CREATE INDEX idx_{}_composite ON \"{}\" ({});",
                         table,

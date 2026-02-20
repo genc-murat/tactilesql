@@ -134,6 +134,9 @@ async fn create_temp_connection(config: &ConnectionConfig) -> Result<TempConnect
                 tunnel_key,
             })
         }
+        DatabaseType::DuckDB => {
+            Err("Schema compare not yet supported for DuckDB".to_string())
+        }
         DatabaseType::Disconnected => Err("Cannot create connection for Disconnected type".into()),
     };
 
@@ -175,6 +178,7 @@ async fn get_databases_for_conn(conn: &TempConnection) -> Result<Vec<String>, St
             clickhouse::get_databases(config).await
         }
         DatabaseType::SQLite => Ok(vec!["main".to_string()]),
+        DatabaseType::DuckDB => Ok(vec!["main".to_string()]),
         DatabaseType::Disconnected => Err("No connection".into()),
     }
 }
@@ -202,6 +206,9 @@ async fn get_tables_for_conn(conn: &TempConnection, database: &str, schema: Opti
         DatabaseType::SQLite => {
             let pool = conn.sqlite_pool.as_ref().ok_or("No SQLite pool")?;
             crate::sqlite::get_tables(pool).await
+        }
+        DatabaseType::DuckDB => {
+            Err("Schema compare not yet supported for DuckDB".to_string())
         }
         DatabaseType::Disconnected => Err("No connection".into()),
     }
@@ -231,6 +238,9 @@ async fn get_views_for_conn(conn: &TempConnection, database: &str, schema: Optio
             let views = crate::sqlite::get_views(pool).await?;
             Ok(views.into_iter().map(|v| v.name).collect())
         }
+        DatabaseType::DuckDB => {
+            Err("Schema compare not yet supported for DuckDB".to_string())
+        }
         DatabaseType::Disconnected => Err("No connection".into()),
     }
 }
@@ -249,6 +259,7 @@ async fn get_triggers_for_conn(conn: &TempConnection, database: &str) -> Result<
             let pool = conn.sqlite_pool.as_ref().ok_or("No SQLite pool")?;
             crate::sqlite::get_triggers(pool).await
         }
+        DatabaseType::DuckDB => Ok(vec![]),
         _ => Ok(vec![]),
     }
 }
@@ -296,6 +307,9 @@ async fn get_table_schema_for_conn(
             let pool = conn.sqlite_pool.as_ref().ok_or("No SQLite pool")?;
             crate::sqlite::get_table_schema(pool, database, table).await
         }
+        DatabaseType::DuckDB => {
+            Err("Schema compare not yet supported for DuckDB".to_string())
+        }
         DatabaseType::Disconnected => Err("No connection".into()),
     }
 }
@@ -328,6 +342,9 @@ async fn get_table_ddl_for_conn(
         DatabaseType::SQLite => {
             let pool = conn.sqlite_pool.as_ref().ok_or("No SQLite pool")?;
             crate::sqlite::get_table_ddl(pool, database, table).await
+        }
+        DatabaseType::DuckDB => {
+            Err("Schema compare not yet supported for DuckDB".to_string())
         }
         DatabaseType::Disconnected => Err("No connection".into()),
     }
@@ -362,6 +379,9 @@ async fn get_table_indexes_for_conn(
             let pool = conn.sqlite_pool.as_ref().ok_or("No SQLite pool")?;
             crate::sqlite::get_table_indexes(pool, database, table).await
         }
+        DatabaseType::DuckDB => {
+            Err("Schema compare not yet supported for DuckDB".to_string())
+        }
         DatabaseType::Disconnected => Err("No connection".into()),
     }
 }
@@ -391,6 +411,7 @@ async fn get_table_fks_for_conn(
             let pool = conn.sqlite_pool.as_ref().ok_or("No SQLite pool")?;
             crate::sqlite::get_table_foreign_keys(pool, database, table).await
         }
+        DatabaseType::DuckDB => Ok(vec![]),
         DatabaseType::ClickHouse | DatabaseType::Disconnected => Ok(vec![]),
     }
 }
@@ -436,6 +457,9 @@ async fn get_view_definition_for_conn(
             let pool = conn.sqlite_pool.as_ref().ok_or("No SQLite pool")?;
             let ddl = crate::sqlite::get_table_ddl(pool, database, view).await?;
             Ok(ViewDefinition { name: view.to_string(), definition: ddl })
+        }
+        DatabaseType::DuckDB => {
+            Err("Schema compare not yet supported for DuckDB".to_string())
         }
         DatabaseType::Disconnected => Err("No connection".into()),
     }
@@ -501,6 +525,7 @@ fn quote_identifier(db_type: &DatabaseType, name: &str) -> String {
         DatabaseType::MSSQL => format!("[{}]", name),
         DatabaseType::ClickHouse => format!("`{}`", name),
         DatabaseType::SQLite => format!("\"{}\"", name),
+        DatabaseType::DuckDB => format!("\"{}\"", name),
         DatabaseType::Disconnected => name.to_string(),
     }
 }
@@ -512,6 +537,7 @@ fn qualified_table_name(db_type: &DatabaseType, database: &str, table: &str) -> 
         DatabaseType::MSSQL => format!("[{}]..[{}]", database, table),
         DatabaseType::ClickHouse => format!("`{}`.`{}`", database, table),
         DatabaseType::SQLite => format!("\"{}\"", table),
+        DatabaseType::DuckDB => format!("\"{}\"", table),
         DatabaseType::Disconnected => table.to_string(),
     }
 }

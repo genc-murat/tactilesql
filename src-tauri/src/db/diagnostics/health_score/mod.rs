@@ -64,6 +64,9 @@ pub async fn get_database_health_report(
         DatabaseType::SQLite => {
             Err("Health score not yet supported for SQLite".to_string())
         }
+        DatabaseType::DuckDB => {
+            Err("Health score not yet supported for DuckDB".to_string())
+        }
         DatabaseType::Disconnected => Err("No database connection established".to_string()),
     }
 }

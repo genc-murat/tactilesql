@@ -51,6 +51,9 @@ pub async fn run_quality_analysis(
         DatabaseType::SQLite => {
             return Err("Quality analysis not yet supported for SQLite".into());
         }
+        DatabaseType::DuckDB => {
+            return Err("Quality analysis not yet supported for DuckDB".into());
+        }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     };
 

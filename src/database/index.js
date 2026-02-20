@@ -21,6 +21,28 @@ export const isClickHouse = () => {
 };
 
 /**
+ * Check if current database is SQLite
+ */
+export const isSQLite = () => {
+    return getActiveDbType() === DatabaseType.SQLITE;
+};
+
+/**
+ * Check if current database is DuckDB
+ */
+export const isDuckDB = () => {
+    return getActiveDbType() === DatabaseType.DUCKDB;
+};
+
+/**
+ * Check if current database is file-based (SQLite or DuckDB)
+ */
+export const isFileBased = () => {
+    const dbType = getActiveDbType();
+    return dbType === DatabaseType.SQLITE || dbType === DatabaseType.DUCKDB;
+};
+
+/**
  * Check if current database is MSSQL
  */
 export const isMSSQL = () => {
@@ -32,12 +54,15 @@ export const isMSSQL = () => {
  */
 export const getSqlKeywords = () => {
     const dbType = getActiveDbType();
-    if (dbType === DatabaseType.POSTGRESQL) {
+    if (dbType === DatabaseType.POSTGRESQL || dbType === DatabaseType.DUCKDB) {
         return [...COMMON_SQL_KEYWORDS, ...POSTGRESQL_KEYWORDS];
     } else if (dbType === DatabaseType.CLICKHOUSE) {
         return [...COMMON_SQL_KEYWORDS, ...CLICKHOUSE_KEYWORDS];
     } else if (dbType === DatabaseType.MSSQL) {
         return [...COMMON_SQL_KEYWORDS, ...MSSQL_KEYWORDS];
+    } else if (dbType === DatabaseType.SQLITE) {
+        // SQLite uses common SQL keywords
+        return [...COMMON_SQL_KEYWORDS];
     }
     return [...COMMON_SQL_KEYWORDS, ...MYSQL_KEYWORDS];
 };
@@ -47,12 +72,14 @@ export const getSqlKeywords = () => {
  */
 export const getSqlFunctions = () => {
     const dbType = getActiveDbType();
-    if (dbType === DatabaseType.POSTGRESQL) {
+    if (dbType === DatabaseType.POSTGRESQL || dbType === DatabaseType.DUCKDB) {
         return [...COMMON_SQL_FUNCTIONS, ...POSTGRESQL_FUNCTIONS];
     } else if (dbType === DatabaseType.CLICKHOUSE) {
         return [...COMMON_SQL_FUNCTIONS, ...CLICKHOUSE_FUNCTIONS];
     } else if (dbType === DatabaseType.MSSQL) {
         return [...COMMON_SQL_FUNCTIONS, ...MSSQL_FUNCTIONS];
+    } else if (dbType === DatabaseType.SQLITE) {
+        return [...COMMON_SQL_FUNCTIONS];
     }
     return [...COMMON_SQL_FUNCTIONS, ...MYSQL_FUNCTIONS];
 };
@@ -62,12 +89,14 @@ export const getSqlFunctions = () => {
  */
 export const getDataTypes = () => {
     const dbType = getActiveDbType();
-    if (dbType === DatabaseType.POSTGRESQL) {
+    if (dbType === DatabaseType.POSTGRESQL || dbType === DatabaseType.DUCKDB) {
         return [...COMMON_DATA_TYPES, ...POSTGRESQL_DATA_TYPES];
     } else if (dbType === DatabaseType.CLICKHOUSE) {
         return [...COMMON_DATA_TYPES, ...CLICKHOUSE_DATA_TYPES];
     } else if (dbType === DatabaseType.MSSQL) {
         return [...COMMON_DATA_TYPES, ...MSSQL_DATA_TYPES];
+    } else if (dbType === DatabaseType.SQLITE) {
+        return [...COMMON_DATA_TYPES];
     }
     return [...COMMON_DATA_TYPES, ...MYSQL_DATA_TYPES];
 };
@@ -78,12 +107,14 @@ export const getDataTypes = () => {
  */
 export const getSnippets = (version = null) => {
     const dbType = getActiveDbType();
-    if (dbType === DatabaseType.POSTGRESQL) {
+    if (dbType === DatabaseType.POSTGRESQL || dbType === DatabaseType.DUCKDB) {
         return POSTGRESQL_SNIPPETS;
     } else if (dbType === DatabaseType.CLICKHOUSE) {
         return CLICKHOUSE_SNIPPETS;
     } else if (dbType === DatabaseType.MSSQL) {
         return MSSQL_SNIPPETS;
+    } else if (dbType === DatabaseType.SQLITE) {
+        return MYSQL_SNIPPETS; // SQLite uses similar syntax to MySQL
     }
 
     if (version) {
@@ -175,6 +206,9 @@ export const getQuoteChar = (dbType = getActiveDbType()) => {
         return CLICKHOUSE_QUOTE_CHAR;
     } else if (dbType === DatabaseType.MSSQL) {
         return [MSSQL_QUOTE_START, MSSQL_QUOTE_END];
+    } else if (dbType === DatabaseType.SQLITE || dbType === DatabaseType.DUCKDB) {
+        // SQLite and DuckDB use double quotes like PostgreSQL
+        return POSTGRESQL_QUOTE_CHAR;
     }
     return MYSQL_QUOTE_CHAR;
 };
@@ -208,12 +242,14 @@ export const quoteIdentifier = (identifier, dbType = getActiveDbType()) => {
  */
 export const getExplainQuery = (sql) => {
     const dbType = getActiveDbType();
-    if (dbType === DatabaseType.POSTGRESQL) {
+    if (dbType === DatabaseType.POSTGRESQL || dbType === DatabaseType.DUCKDB) {
         return getPostgreSQLExplainQuery(sql);
     } else if (dbType === DatabaseType.CLICKHOUSE) {
         return getClickhouseExplainQuery(sql);
     } else if (dbType === DatabaseType.MSSQL) {
         return getMSSQLExplainQuery(sql);
+    } else if (dbType === DatabaseType.SQLITE) {
+        return `EXPLAIN QUERY PLAN ${sql}`;
     }
     return getMySQLExplainQuery(sql);
 };
@@ -223,12 +259,14 @@ export const getExplainQuery = (sql) => {
  */
 export const getInfoQueries = () => {
     const dbType = getActiveDbType();
-    if (dbType === DatabaseType.POSTGRESQL) {
+    if (dbType === DatabaseType.POSTGRESQL || dbType === DatabaseType.DUCKDB) {
         return POSTGRESQL_INFO_QUERIES;
     } else if (dbType === DatabaseType.CLICKHOUSE) {
         return CLICKHOUSE_INFO_QUERIES;
     } else if (dbType === DatabaseType.MSSQL) {
         return MSSQL_INFO_QUERIES;
+    } else if (dbType === DatabaseType.SQLITE) {
+        return MYSQL_INFO_QUERIES; // SQLite uses similar queries
     }
     return MYSQL_INFO_QUERIES;
 };
@@ -244,6 +282,10 @@ export const getDatabaseDisplayName = () => {
         return 'ClickHouse';
     } else if (dbType === DatabaseType.MSSQL) {
         return 'MSSQL';
+    } else if (dbType === DatabaseType.SQLITE) {
+        return 'SQLite';
+    } else if (dbType === DatabaseType.DUCKDB) {
+        return 'DuckDB';
     }
     return 'MySQL';
 };

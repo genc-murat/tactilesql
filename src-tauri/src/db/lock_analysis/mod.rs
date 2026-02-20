@@ -228,6 +228,7 @@ fn get_db_specific_hints(db_type: &DatabaseType) -> &'static str {
         DatabaseType::MSSQL => "In MSSQL, check 'sys.dm_tran_locks' and 'sys.dm_os_waiting_tasks'. Use 'SET TRANSACTION ISOLATION LEVEL SNAPSHOT' if concurrency is high.",
         DatabaseType::ClickHouse => "ClickHouse uses a different concurrency model; locks are usually on parts or metadata during heavy mutations.",
         DatabaseType::SQLite => "SQLite uses database-level locking. Writers block all readers and other writers. Consider WAL mode for better concurrency.",
+        DatabaseType::DuckDB => "DuckDB uses MVCC for concurrency. Writers don't block readers. Check for long-running transactions that may prevent cleanup.",
         DatabaseType::Disconnected => "Reconnect to a database to get DB-specific lock mitigation hints.",
     }
 }
@@ -239,7 +240,8 @@ fn db_type_label(db_type: &DatabaseType) -> &'static str {
         DatabaseType::ClickHouse => "clickhouse",
         DatabaseType::MSSQL => "mssql",
         DatabaseType::SQLite => "sqlite",
-        DatabaseType::Disconnected => "disconnected".to_string().leak(), // Simplified leak for static
+        DatabaseType::DuckDB => "duckdb",
+        DatabaseType::Disconnected => "disconnected".to_string().leak(),
     }
 }
 

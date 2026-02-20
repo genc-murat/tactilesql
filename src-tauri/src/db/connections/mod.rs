@@ -9,6 +9,7 @@ use crate::postgres;
 use crate::clickhouse;
 use crate::mssql;
 use crate::sqlite;
+use crate::duckdb;
 use crate::ssh_tunnel;
 use super::crypto::{decrypt_password_with_key, encrypt_password_with_key};
 use std::fs;
@@ -76,6 +77,7 @@ pub async fn test_connection(config: ConnectionConfig) -> Result<String, String>
         DatabaseType::ClickHouse => clickhouse::test_connection(&effective_config).await,
         DatabaseType::MSSQL => mssql::test_connection(&effective_config).await,
         DatabaseType::SQLite => sqlite::test_connection(&effective_config).await,
+        DatabaseType::DuckDB => duckdb::test_connection(&effective_config),
         DatabaseType::Disconnected => Err("Cannot test connection for 'Disconnected' type".into()),
     };
 
@@ -208,6 +210,21 @@ pub async fn establish_connection(
 
             Ok("SQLite connection established successfully".to_string())
         }
+        DatabaseType::DuckDB => {
+            let db_path = effective_config.host.clone();
+            let conn = duckdb::create_connection(&db_path)?;
+
+            let mut duckdb_guard = app_state.duckdb_pool.lock().await;
+            *duckdb_guard = Some(conn);
+
+            let mut path_guard = app_state.duckdb_db_path.lock().await;
+            *path_guard = Some(db_path);
+
+            let mut db_type_guard = app_state.active_db_type.lock().await;
+            *db_type_guard = DatabaseType::DuckDB;
+
+            Ok("DuckDB connection established successfully".to_string())
+        }
         DatabaseType::Disconnected => Err("Cannot establish a 'Disconnected' connection".into()),
     };
 
@@ -277,6 +294,12 @@ pub async fn disconnect(app_state: State<'_, AppState>) -> Result<String, String
                 pool.close().await;
             }
             let mut path_guard = app_state.sqlite_db_path.lock().await;
+            *path_guard = None;
+        }
+        DatabaseType::DuckDB => {
+            let mut guard = app_state.duckdb_pool.lock().await;
+            *guard = None;
+            let mut path_guard = app_state.duckdb_db_path.lock().await;
             *path_guard = None;
         }
         DatabaseType::Disconnected => {}

@@ -58,3 +58,6 @@ tokio-util = { version = "0.7", features = ["compat"] }
 sqlparser = "0.48"
 petgraph = { version = "0.6", features = ["serde-1"] }
 
+# DuckDB Support
+duckdb = { version = "1", features = ["bundled"] }
+

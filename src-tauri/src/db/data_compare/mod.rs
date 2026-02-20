@@ -705,6 +705,9 @@ pub async fn load_table_schema_for_compare(
             let pool = guard.as_ref().ok_or("No SQLite connection established")?;
             crate::sqlite::get_table_schema(pool, database, table).await
         }
+        DatabaseType::DuckDB => {
+            Err("Data compare not yet supported for DuckDB".to_string())
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -744,6 +747,9 @@ pub async fn load_table_primary_keys_for_compare(
             let guard = app_state.sqlite_pool.lock().await;
             let pool = guard.as_ref().ok_or("No SQLite connection established")?;
             crate::sqlite::get_table_primary_keys(pool, database, table).await
+        }
+        DatabaseType::DuckDB => {
+            Err("Data compare not yet supported for DuckDB".to_string())
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
@@ -790,6 +796,9 @@ pub async fn load_table_row_count_for_compare(
             let guard = app_state.sqlite_pool.lock().await;
             let pool = guard.as_ref().ok_or("No SQLite connection established")?;
             crate::sqlite::execute_query(pool, &query).await
+        }
+        DatabaseType::DuckDB => {
+            Err("Data compare not yet supported for DuckDB".to_string())
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }?;
@@ -858,6 +867,9 @@ pub async fn load_table_rows_for_compare(
             let guard = app_state.sqlite_pool.lock().await;
             let pool = guard.as_ref().ok_or("No SQLite connection established")?;
             crate::sqlite::execute_query(pool, &query).await
+        }
+        DatabaseType::DuckDB => {
+            Err("Data compare not yet supported for DuckDB".to_string())
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }?;

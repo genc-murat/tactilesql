@@ -41,6 +41,9 @@ pub async fn kill_process(
         DatabaseType::SQLite => {
             Err("Kill process not applicable for SQLite".to_string())
         }
+        DatabaseType::DuckDB => {
+            Err("Kill process not applicable for DuckDB".to_string())
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }

@@ -8,6 +8,7 @@ use crate::postgres;
 use crate::clickhouse;
 use crate::mssql;
 use crate::sqlite;
+use crate::duckdb;
 
 #[tauri::command]
 pub async fn get_events(
@@ -29,11 +30,12 @@ pub async fn get_events(
         DatabaseType::MSSQL => Ok(Vec::new()),
         DatabaseType::ClickHouse => Ok(Vec::new()),
         DatabaseType::SQLite => Ok(Vec::new()),
+        DatabaseType::DuckDB => Ok(Vec::new()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
 
-// --- Extensions (PostgreSQL) ---
+// --- Extensions (PostgreSQL & DuckDB) ---
 
 #[tauri::command]
 pub async fn get_extensions(
@@ -52,7 +54,12 @@ pub async fn get_extensions(
                 .ok_or("No PostgreSQL connection established")?;
             postgres::get_pg_extensions(pool).await
         }
-        _ => Err("Extensions are only supported for PostgreSQL".to_string()),
+        DatabaseType::DuckDB => {
+            let guard = app_state.duckdb_pool.lock().await;
+            let conn = guard.as_ref().ok_or("No DuckDB connection established")?;
+            duckdb::get_extensions(conn)
+        }
+        _ => Err("Extensions are only supported for PostgreSQL and DuckDB".to_string()),
     }
 }
 
@@ -75,7 +82,22 @@ pub async fn manage_extension(
                 .ok_or("No PostgreSQL connection established")?;
             postgres::manage_pg_extension(pool, &name, &action).await
         }
-        _ => Err("Extensions are only supported for PostgreSQL".to_string()),
+        DatabaseType::DuckDB => {
+            let guard = app_state.duckdb_pool.lock().await;
+            let conn = guard.as_ref().ok_or("No DuckDB connection established")?;
+            match action.as_str() {
+                "install" => {
+                    duckdb::install_extension(conn, &name)?;
+                    Ok(format!("Extension '{}' installed successfully", name))
+                }
+                "load" => {
+                    duckdb::load_extension(conn, &name)?;
+                    Ok(format!("Extension '{}' loaded successfully", name))
+                }
+                _ => Err(format!("Unknown extension action: {}", action)),
+            }
+        }
+        _ => Err("Extensions are only supported for PostgreSQL and DuckDB".to_string()),
     }
 }
 
@@ -116,6 +138,12 @@ pub async fn get_views(
             let guard = app_state.sqlite_pool.lock().await;
             let pool = guard.as_ref().ok_or("No SQLite connection established")?;
             let views = sqlite::get_views(pool).await?;
+            Ok(views.into_iter().map(|v| v.name).collect())
+        }
+        DatabaseType::DuckDB => {
+            let guard = app_state.duckdb_pool.lock().await;
+            let conn = guard.as_ref().ok_or("No DuckDB connection established")?;
+            let views = duckdb::get_views(conn, None)?;
             Ok(views.into_iter().map(|v| v.name).collect())
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
@@ -174,6 +202,12 @@ pub async fn get_view_definition(
             let definition = sqlite::get_table_ddl(pool, &_database, &view).await?;
             Ok(ViewDefinition { name: view, definition })
         }
+        DatabaseType::DuckDB => {
+            let guard = app_state.duckdb_pool.lock().await;
+            let conn = guard.as_ref().ok_or("No DuckDB connection established")?;
+            let definition = duckdb::get_table_ddl(conn, &_database, &view)?;
+            Ok(ViewDefinition { name: view, definition })
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -218,6 +252,12 @@ pub async fn alter_view(
             let guard = app_state.sqlite_pool.lock().await;
             let pool = guard.as_ref().ok_or("No SQLite connection established")?;
             sqlite::execute_query(pool, &definition).await?;
+            Ok("View updated successfully".to_string())
+        }
+        DatabaseType::DuckDB => {
+            let guard = app_state.duckdb_pool.lock().await;
+            let conn = guard.as_ref().ok_or("No DuckDB connection established")?;
+            duckdb::execute_query(conn, &definition)?;
             Ok("View updated successfully".to_string())
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
@@ -269,6 +309,7 @@ pub async fn get_triggers(
             let pool = guard.as_ref().ok_or("No SQLite connection established")?;
             sqlite::get_triggers(pool).await
         }
+        DatabaseType::DuckDB => Ok(Vec::new()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -320,6 +361,7 @@ pub async fn get_table_triggers(
             let all_triggers = sqlite::get_triggers(pool).await?;
             Ok(all_triggers.into_iter().filter(|t| t.table_name == table).collect())
         }
+        DatabaseType::DuckDB => Ok(Vec::new()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -363,6 +405,7 @@ pub async fn get_procedures(
         }
         DatabaseType::ClickHouse => Ok(Vec::new()),
         DatabaseType::SQLite => Ok(Vec::new()),
+        DatabaseType::DuckDB => Ok(Vec::new()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -406,9 +449,11 @@ pub async fn get_functions(
         }
         DatabaseType::ClickHouse => Ok(Vec::new()),
         DatabaseType::SQLite => Ok(Vec::new()),
+        DatabaseType::DuckDB => Ok(Vec::new()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
+
 #[tauri::command]
 pub async fn maintain_index(
     app_state: State<'_, AppState>,

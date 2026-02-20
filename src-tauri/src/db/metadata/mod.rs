@@ -9,6 +9,7 @@ use crate::postgres;
 use crate::clickhouse;
 use crate::mssql;
 use crate::sqlite;
+use crate::duckdb;
 
 #[tauri::command]
 pub async fn get_databases(app_state: State<'_, AppState>) -> Result<Vec<String>, String> {
@@ -45,6 +46,7 @@ pub async fn get_databases(app_state: State<'_, AppState>) -> Result<Vec<String>
             let pool = guard.as_ref().ok_or("No SQLite connection established")?;
             sqlite::get_databases(pool).await
         }
+        DatabaseType::DuckDB => duckdb::get_databases(),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -75,6 +77,11 @@ pub async fn get_schemas(
         }
         DatabaseType::ClickHouse => Ok(vec![database]),
         DatabaseType::SQLite => Ok(vec!["main".to_string()]),
+        DatabaseType::DuckDB => {
+            let guard = app_state.duckdb_pool.lock().await;
+            let conn = guard.as_ref().ok_or("No DuckDB connection established")?;
+            duckdb::get_schemas(conn)
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -121,6 +128,11 @@ pub async fn get_tables(
             let guard = app_state.sqlite_pool.lock().await;
             let pool = guard.as_ref().ok_or("No SQLite connection established")?;
             sqlite::get_tables(pool).await
+        }
+        DatabaseType::DuckDB => {
+            let guard = app_state.duckdb_pool.lock().await;
+            let conn = guard.as_ref().ok_or("No DuckDB connection established")?;
+            duckdb::get_tables(conn, schema.as_deref())
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
@@ -170,6 +182,11 @@ pub async fn get_table_schema(
             let pool = guard.as_ref().ok_or("No SQLite connection established")?;
             sqlite::get_table_schema(pool, &db_name, &table).await
         }
+        DatabaseType::DuckDB => {
+            let guard = app_state.duckdb_pool.lock().await;
+            let conn = guard.as_ref().ok_or("No DuckDB connection established")?;
+            duckdb::get_table_schema(conn, &db_name, &table)
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -216,6 +233,11 @@ pub async fn get_table_ddl(
             let guard = app_state.sqlite_pool.lock().await;
             let pool = guard.as_ref().ok_or("No SQLite connection established")?;
             sqlite::get_table_ddl(pool, &db_name, &table).await
+        }
+        DatabaseType::DuckDB => {
+            let guard = app_state.duckdb_pool.lock().await;
+            let conn = guard.as_ref().ok_or("No DuckDB connection established")?;
+            duckdb::get_table_ddl(conn, &db_name, &table)
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
@@ -264,6 +286,11 @@ pub async fn get_table_indexes(
             let pool = guard.as_ref().ok_or("No SQLite connection established")?;
             sqlite::get_table_indexes(pool, &db_name, &table).await
         }
+        DatabaseType::DuckDB => {
+            let guard = app_state.duckdb_pool.lock().await;
+            let conn = guard.as_ref().ok_or("No DuckDB connection established")?;
+            duckdb::get_table_indexes(conn, &db_name, &table)
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -306,6 +333,11 @@ pub async fn get_table_foreign_keys(
             let guard = app_state.sqlite_pool.lock().await;
             let pool = guard.as_ref().ok_or("No SQLite connection established")?;
             sqlite::get_table_foreign_keys(pool, &db_name, &table).await
+        }
+        DatabaseType::DuckDB => {
+            let guard = app_state.duckdb_pool.lock().await;
+            let conn = guard.as_ref().ok_or("No DuckDB connection established")?;
+            duckdb::get_table_foreign_keys(conn, &db_name, &table)
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
@@ -369,6 +401,11 @@ pub async fn get_table_primary_keys(
             let guard = app_state.sqlite_pool.lock().await;
             let pool = guard.as_ref().ok_or("No SQLite connection established")?;
             sqlite::get_table_primary_keys(pool, &db_name, &table).await
+        }
+        DatabaseType::DuckDB => {
+            let guard = app_state.duckdb_pool.lock().await;
+            let conn = guard.as_ref().ok_or("No DuckDB connection established")?;
+            duckdb::get_table_primary_keys(conn, &db_name, &table)
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
@@ -454,6 +491,11 @@ pub async fn get_table_stats(
             let guard = app_state.sqlite_pool.lock().await;
             let pool = guard.as_ref().ok_or("No SQLite connection established")?;
             sqlite::get_table_stats(pool, &db_name, &table).await
+        }
+        DatabaseType::DuckDB => {
+            let guard = app_state.duckdb_pool.lock().await;
+            let conn = guard.as_ref().ok_or("No DuckDB connection established")?;
+            duckdb::get_table_stats(conn, &db_name, &table)
         }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }

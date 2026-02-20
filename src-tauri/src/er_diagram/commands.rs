@@ -225,6 +225,9 @@ pub async fn build_er_graph(
                 }
             }
         }
+        DatabaseType::DuckDB => {
+            return Err("ER diagram not yet supported for DuckDB".to_string());
+        }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     }
 

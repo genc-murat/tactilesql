@@ -23,6 +23,7 @@ pub async fn get_dependency_graph(
         DatabaseType::ClickHouse => "clickhouse",
         DatabaseType::MSSQL => "mssql",
         DatabaseType::SQLite => "sqlite",
+        DatabaseType::DuckDB => "duckdb",
         DatabaseType::Disconnected => "disconnected",
     };
 
@@ -100,6 +101,9 @@ pub async fn get_dependency_graph(
             }
             DatabaseType::SQLite => {
                 Err("Dependency graph not yet supported for SQLite".to_string())
+            }
+            DatabaseType::DuckDB => {
+                Err("Dependency graph not yet supported for DuckDB".to_string())
             }
             DatabaseType::Disconnected => Err("No connection established".into()),
         }

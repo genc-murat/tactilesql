@@ -10,6 +10,7 @@ use crate::postgres;
 use crate::clickhouse;
 use crate::mssql;
 use crate::sqlite;
+use crate::duckdb;
 
 static SYSTEM_QUERY_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     // Matches:
@@ -59,6 +60,7 @@ pub fn spawn_awareness_log(
     let postgres_pool_arc = app_state.postgres_pool.clone();
     let mssql_pool_arc = app_state.mssql_pool.clone();
     let sqlite_pool_arc = app_state.sqlite_pool.clone();
+    let duckdb_pool_arc = app_state.duckdb_pool.clone();
 
     tauri::async_runtime::spawn(async move {
         let guard = store_arc.lock().await;
@@ -120,6 +122,14 @@ pub fn spawn_awareness_log(
                                 crate::sqlite::get_execution_plan(pool, &query_clone).await
                             } else {
                                 Err("SQLite pool not available".to_string())
+                            }
+                        }
+                        DatabaseType::DuckDB => {
+                            let g = duckdb_pool_arc.lock().await;
+                            if let Some(conn) = g.as_ref() {
+                                crate::duckdb::get_execution_plan(conn, &query_clone)
+                            } else {
+                                Err("DuckDB pool not available".to_string())
                             }
                         }
                         DatabaseType::Disconnected => Err("No connection established".to_string()),
@@ -255,6 +265,11 @@ pub async fn execute_query(
             let pool = guard.as_ref().ok_or("No SQLite connection established")?;
             sqlite::execute_query(pool, &query).await
         }
+        DatabaseType::DuckDB => {
+            let guard = app_state.duckdb_pool.lock().await;
+            let conn = guard.as_ref().ok_or("No DuckDB connection established")?;
+            duckdb::execute_query(conn, &query)
+        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     };
 
@@ -365,6 +380,12 @@ pub async fn execute_query_profiled(
             let guard = app_state.sqlite_pool.lock().await;
             let pool = guard.as_ref().ok_or("No SQLite connection established")?;
             let res = sqlite::execute_query(pool, &query).await?;
+            (res, None)
+        }
+        DatabaseType::DuckDB => {
+            let guard = app_state.duckdb_pool.lock().await;
+            let conn = guard.as_ref().ok_or("No DuckDB connection established")?;
+            let res = duckdb::execute_query(conn, &query)?;
             (res, None)
         }
         DatabaseType::Disconnected => return Err("No connection established".into()),
