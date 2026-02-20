@@ -555,6 +555,26 @@ pub async fn get_table_stats(pool: &Pool, database: &str, schema: &str, table: &
 
 // --- Monitoring Stubs ---
 
+pub async fn get_session_id(pool: &Pool) -> Result<Option<i64>, String> {
+    let res = execute_query(pool, "SELECT @@SPID as spid".to_string()).await?;
+    if let Some(first_result) = res.first() {
+        if let Some(first_row) = first_result.rows.first() {
+            if let Some(spid_value) = first_row.first() {
+                if let Some(spid_str) = spid_value.as_str() {
+                    return Ok(spid_str.parse::<i64>().ok());
+                }
+                if let Some(spid_num) = spid_value.as_i64() {
+                    return Ok(Some(spid_num));
+                }
+                if let Some(spid_num) = spid_value.as_u64() {
+                    return Ok(Some(spid_num as i64));
+                }
+            }
+        }
+    }
+    Ok(None)
+}
+
 pub async fn kill_process(pool: &Pool, process_id: i64) -> Result<String, String> {
     execute_query_with_timeout(pool, format!("KILL {}", process_id), Some(5)).await?;
     Ok(format!("Process {} killed", process_id))

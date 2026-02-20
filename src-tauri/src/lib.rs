@@ -297,6 +297,9 @@ pub fn run() {
             // Query Execution
             db::execute_query,
             db::execute_query_profiled,
+            db::cancel_running_query,
+            db::get_running_query_pid,
+            db::set_running_query_pid,
             // ClickHouse specific
             clickhouse::get_clickhouse_table_info,
             clickhouse::get_clickhouse_partitions,

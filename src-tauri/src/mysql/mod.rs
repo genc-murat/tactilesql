@@ -1503,6 +1503,16 @@ pub async fn get_process_list(pool: &Pool<MySql>, version: &MySqlVersion) -> Res
     Ok(processes)
 }
 
+pub async fn get_connection_id(pool: &Pool<MySql>) -> Result<Option<i64>, String> {
+    let row = sqlx::query("SELECT CONNECTION_ID() as id")
+        .fetch_one(pool)
+        .await
+        .map_err(|e| format!("Failed to get connection ID: {}", e))?;
+    
+    let id: i64 = row.try_get("id").unwrap_or(0);
+    Ok(Some(id))
+}
+
 pub async fn kill_process(pool: &Pool<MySql>, process_id: i64) -> Result<String, String> {
     let query = format!("KILL {}", process_id);
     sqlx::query(&query)

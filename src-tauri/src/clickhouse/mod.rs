@@ -3183,3 +3183,17 @@ pub async fn drop_clickhouse_backup(config: ConnectionConfig, backup_name: Strin
     execute_query_generic(&config, query).await?;
     Ok(format!("Backup '{}' dropped", backup_name))
 }
+
+pub async fn kill_query(config: &ConnectionConfig, process_id: i64) -> Result<String, String> {
+    let query = format!("KILL QUERY WHERE query_id = (SELECT query_id FROM system.processes WHERE thread_id = {})", process_id);
+    match execute_query_generic(config, query).await {
+        Ok(_) => Ok(format!("Query {} cancelled successfully", process_id)),
+        Err(e) => {
+            let fallback_query = format!("KILL QUERY WHERE thread_id = {}", process_id);
+            match execute_query_generic(config, fallback_query).await {
+                Ok(_) => Ok(format!("Query {} cancelled successfully", process_id)),
+                Err(e2) => Err(format!("Failed to cancel query: {} / {}", e, e2)),
+            }
+        }
+    }
+}

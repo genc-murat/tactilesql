@@ -1097,7 +1097,8 @@ export function QueryEditor() {
             isClickHouse,
             estimatedExecutionTime,
             lastExecutionTime,
-            defaultRunModeLabel
+            defaultRunModeLabel,
+            isExecuting
         });
 
         const editorAreaHTML = renderEditorArea({
@@ -1781,8 +1782,7 @@ export function QueryEditor() {
         if (isExecuting) return;
 
         const textarea = container.querySelector('#query-input');
-        const executeBtn = container.querySelector('#execute-btn');
-        if (!textarea || !executeBtn) return;
+        if (!textarea) return;
 
         const { query: editorContent } = pickExecutionQuery(textarea, mode);
         if (!editorContent) {
@@ -1801,6 +1801,7 @@ export function QueryEditor() {
         }
 
         isExecuting = true;
+        render();
 
         const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
         const database = activeConfig.database || '';
@@ -1811,12 +1812,7 @@ export function QueryEditor() {
         estimatedExecutionTime = estimate?.estimate || null;
 
         const startTime = performance.now();
-        const originalHTML = executeBtn.innerHTML;
         try {
-            executeBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span>';
-            executeBtn.classList.add('opacity-70', 'cursor-wait');
-
-            // Notify results table to show loading skeleton
             window.dispatchEvent(new CustomEvent('tactilesql:query-executing'));
 
             // Execute query (profiled) - UI stays responsive due to async/await
@@ -1981,11 +1977,17 @@ export function QueryEditor() {
             // Notify results table to hide loading skeleton
             window.dispatchEvent(new CustomEvent('tactilesql:query-result', { detail: [] }));
         } finally {
-            executeBtn.innerHTML = originalHTML;
-            executeBtn.classList.remove('opacity-70', 'cursor-wait');
             isExecuting = false;
-            // Re-render to show updated execution time
             render();
+        }
+    };
+
+    const cancelRunningQuery = async () => {
+        try {
+            await invoke('cancel_running_query');
+            toastWarning('Query cancellation requested');
+        } catch (error) {
+            console.error('Failed to cancel query:', error);
         }
     };
 
@@ -2700,6 +2702,14 @@ export function QueryEditor() {
             executeBtn.addEventListener('click', async (e) => {
                 const mode = e.shiftKey ? 'all' : getDefaultRunMode();
                 await executeEditorQuery(mode);
+            });
+        }
+
+        // Cancel Logic
+        const cancelBtn = container.querySelector('#cancel-btn');
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', async () => {
+                await cancelRunningQuery();
             });
         }
 
@@ -3674,6 +3684,11 @@ export function QueryEditor() {
         if (executeBtn) {
             executeBtn.click();
         }
+    });
+
+    // Listen for cancel query requests
+    window.addEventListener('tactilesql:cancel-query', async () => {
+        await cancelRunningQuery();
     });
 
     // Listen for set-query requests (from ObjectExplorer context menu)

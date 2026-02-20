@@ -8,7 +8,8 @@ export const renderToolbar = ({
     isClickHouse,
     estimatedExecutionTime,
     lastExecutionTime,
-    defaultRunModeLabel
+    defaultRunModeLabel,
+    isExecuting
 }) => {
     return `
         <div class="px-1.5 py-0.5 flex items-center justify-between gap-1.5 ${isLight ? 'bg-gray-50/80' : (isDawn ? 'bg-[#faf4ed]/80' : (isOceanic ? 'bg-ocean-bg/50' : (isNeon ? 'bg-neon-bg/50' : 'bg-[#16191e]/80')))} backdrop-blur-md relative z-30">
@@ -136,11 +137,18 @@ export const renderToolbar = ({
                     <span class="text-[8px] font-black uppercase tracking-widest relative z-10">Generate SQL</span>
                 </button>
 
-                <button id="execute-btn" class="relative flex items-center gap-1 px-2.5 py-0.5 bg-mysql-teal text-black rounded shadow-[0_0_8px_rgba(0,200,255,0.15)] hover:shadow-[0_0_15px_rgba(0,200,255,0.3)] hover:brightness-110 active:scale-95 transition-all duration-300 overflow-hidden group font-black uppercase tracking-wider text-[8px]" title="Run (${defaultRunModeLabel}) (Ctrl+Enter). Shift+Click or Ctrl+Shift+Enter runs all statements.">
-                    <span class="material-symbols-outlined text-[14px] relative z-10 group-hover:scale-110 transition-transform duration-200">play_arrow</span>
-                    <span class="relative z-10">Run</span>
-                    <span class="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-out"></span>
-                </button>
+                ${isExecuting ? `
+                    <button id="cancel-btn" class="relative flex items-center gap-1 px-2.5 py-0.5 bg-red-500 text-white rounded shadow-[0_0_8px_rgba(239,68,68,0.15)] hover:shadow-[0_0_15px_rgba(239,68,68,0.3)] hover:brightness-110 active:scale-95 transition-all duration-300 overflow-hidden group font-black uppercase tracking-wider text-[8px]" title="Cancel Running Query">
+                        <span class="material-symbols-outlined text-[14px] relative z-10 group-hover:scale-110 transition-transform duration-200 animate-pulse">stop</span>
+                        <span class="relative z-10">Cancel</span>
+                    </button>
+                ` : `
+                    <button id="execute-btn" class="relative flex items-center gap-1 px-2.5 py-0.5 bg-mysql-teal text-black rounded shadow-[0_0_8px_rgba(0,200,255,0.15)] hover:shadow-[0_0_15px_rgba(0,200,255,0.3)] hover:brightness-110 active:scale-95 transition-all duration-300 overflow-hidden group font-black uppercase tracking-wider text-[8px]" title="Run (${defaultRunModeLabel}) (Ctrl+Enter). Shift+Click or Ctrl+Shift+Enter runs all statements.">
+                        <span class="material-symbols-outlined text-[14px] relative z-10 group-hover:scale-110 transition-transform duration-200">play_arrow</span>
+                        <span class="relative z-10">Run</span>
+                        <span class="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-out"></span>
+                    </button>
+                `}
             </div>
         </div>
     `;

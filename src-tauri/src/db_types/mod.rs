@@ -73,6 +73,8 @@ pub struct AppState {
     pub task_last_retention_purge_epoch: Arc<Mutex<i64>>,
     pub local_db_pool: Arc<Mutex<Option<Pool<Sqlite>>>>,
     pub mysql_version: Arc<Mutex<Option<MySqlVersion>>>,
+    pub running_query_pid: Arc<Mutex<Option<i64>>>,
+    pub query_cancel_requested: Arc<Mutex<bool>>,
 }
 
 impl Default for AppState {
@@ -105,12 +107,11 @@ impl Default for AppState {
             task_last_retention_purge_epoch: Arc::new(Mutex::new(0)),
             local_db_pool: Arc::new(Mutex::new(None)),
             mysql_version: Arc::new(Mutex::new(None)),
+            running_query_pid: Arc::new(Mutex::new(None)),
+            query_cancel_requested: Arc::new(Mutex::new(false)),
         }
     }
 }
-
-#[cfg(test)]
-mod tests;
 
 impl Clone for AppState {
     fn clone(&self) -> Self {
@@ -140,6 +141,8 @@ impl Clone for AppState {
             task_last_retention_purge_epoch: Arc::clone(&self.task_last_retention_purge_epoch),
             local_db_pool: Arc::clone(&self.local_db_pool),
             mysql_version: Arc::clone(&self.mysql_version),
+            running_query_pid: Arc::clone(&self.running_query_pid),
+            query_cancel_requested: Arc::clone(&self.query_cancel_requested),
         }
     }
 }
@@ -356,8 +359,8 @@ pub struct SlowQuery {
     pub lock_time: String,
     pub rows_sent: i64,
     pub rows_examined: i64,
-    pub sql_text: String,   // Keep for backward compatibility
-    pub query: String,      // New unified field
+    pub sql_text: String, // Keep for backward compatibility
+    pub query: String,    // New unified field
 }
 
 // --- Lock Info ---

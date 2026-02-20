@@ -1176,6 +1176,16 @@ pub async fn get_process_list(pool: &Pool<Postgres>) -> Result<Vec<ProcessInfo>,
     Ok(processes)
 }
 
+pub async fn get_backend_pid(pool: &Pool<Postgres>) -> Result<Option<i64>, String> {
+    let row = sqlx::query("SELECT pg_backend_pid() as pid")
+        .fetch_one(pool)
+        .await
+        .map_err(|e| format!("Failed to get backend PID: {}", e))?;
+    
+    let pid: i64 = row.try_get("pid").unwrap_or(0);
+    Ok(Some(pid))
+}
+
 pub async fn kill_process(pool: &Pool<Postgres>, process_id: i64) -> Result<String, String> {
     let query = format!("SELECT pg_terminate_backend({})", process_id);
     sqlx::query(&query)

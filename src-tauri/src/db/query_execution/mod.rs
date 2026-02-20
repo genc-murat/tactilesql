@@ -306,6 +306,46 @@ pub async fn execute_query_profiled(
         guard.clone()
     };
 
+    // Reset cancel flag at start
+    {
+        let mut cancel_guard = app_state.query_cancel_requested.lock().await;
+        *cancel_guard = false;
+    }
+
+    // Get and store the current connection/thread ID for potential cancellation
+    let pid_result: Result<Option<i64>, String> = match &db_type {
+        DatabaseType::MySQL => {
+            let guard = app_state.mysql_pool.lock().await;
+            if let Some(pool) = guard.as_ref() {
+                mysql::get_connection_id(pool).await
+            } else {
+                Ok(None)
+            }
+        }
+        DatabaseType::PostgreSQL => {
+            let guard = app_state.postgres_pool.lock().await;
+            if let Some(pool) = guard.as_ref() {
+                postgres::get_backend_pid(pool).await
+            } else {
+                Ok(None)
+            }
+        }
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            if let Some(pool) = guard.as_ref() {
+                mssql::get_session_id(pool).await
+            } else {
+                Ok(None)
+            }
+        }
+        DatabaseType::ClickHouse | DatabaseType::SQLite | DatabaseType::DuckDB | DatabaseType::Disconnected => Ok(None),
+    };
+
+    if let Ok(Some(pid)) = pid_result {
+        let mut pid_guard = app_state.running_query_pid.lock().await;
+        *pid_guard = Some(pid);
+    }
+
     let explain_analyze_enabled = profile_options
         .as_ref()
         .and_then(|opts| opts.explain_analyze)
@@ -409,6 +449,87 @@ pub async fn execute_query_profiled(
         duration_ms,
         status_diff,
     })
+}
+
+#[tauri::command]
+pub async fn cancel_running_query(
+    app_state: State<'_, AppState>,
+) -> Result<String, String> {
+    let db_type = {
+        let guard = app_state.active_db_type.lock().await;
+        guard.clone()
+    };
+
+    let pid_opt = {
+        let guard = app_state.running_query_pid.lock().await;
+        *guard
+    };
+
+    let Some(process_id) = pid_opt else {
+        return Err("No running query to cancel".to_string());
+    };
+
+    {
+        let mut guard = app_state.query_cancel_requested.lock().await;
+        *guard = true;
+    }
+
+    let result = match db_type {
+        DatabaseType::PostgreSQL => {
+            let guard = app_state.postgres_pool.lock().await;
+            let pool = guard
+                .as_ref()
+                .ok_or("No PostgreSQL connection established")?;
+            postgres::kill_process(pool, process_id).await
+        }
+        DatabaseType::MySQL => {
+            let guard = app_state.mysql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MySQL connection established")?;
+            mysql::kill_process(pool, process_id).await
+        }
+        DatabaseType::MSSQL => {
+            let guard = app_state.mssql_pool.lock().await;
+            let pool = guard.as_ref().ok_or("No MSSQL connection established")?;
+            mssql::kill_process(pool, process_id).await
+        }
+        DatabaseType::ClickHouse => {
+            let guard = app_state.clickhouse_config.lock().await;
+            let config = guard.as_ref().ok_or("No ClickHouse connection established")?;
+            clickhouse::kill_query(config, process_id).await
+        }
+        DatabaseType::SQLite => {
+            Err("Cancel not applicable for SQLite".to_string())
+        }
+        DatabaseType::DuckDB => {
+            Err("Cancel not applicable for DuckDB".to_string())
+        }
+        DatabaseType::Disconnected => Err("No connection established".into()),
+    };
+
+    {
+        let mut guard = app_state.running_query_pid.lock().await;
+        *guard = None;
+    }
+
+    result
+}
+
+#[tauri::command]
+pub async fn get_running_query_pid(
+    app_state: State<'_, AppState>,
+) -> Result<Option<i64>, String> {
+    let guard = app_state.running_query_pid.lock().await;
+    Ok(*guard)
+}
+
+#[tauri::command]
+pub async fn set_running_query_pid(
+    app_state: State<'_, AppState>,
+    pid: Option<i64>,
+) -> Result<(), String> {
+    let mut guard = app_state.running_query_pid.lock().await;
+    *guard = pid;
+    Ok(())
 }
 
 #[cfg(test)]
