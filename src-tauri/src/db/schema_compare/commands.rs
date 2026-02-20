@@ -938,3 +938,41 @@ pub async fn get_table_ddl_for_config(
     close_temp_connection(conn).await;
     result
 }
+
+#[tauri::command]
+pub async fn get_table_indexes_for_config(
+    config: ConnectionConfig,
+    database: String,
+    schema: Option<String>,
+    table: String,
+) -> Result<Vec<TableIndex>, String> {
+    let conn = create_temp_connection(&config).await?;
+    let result = get_table_indexes_for_conn(&conn, &database, schema.as_deref(), &table).await;
+    close_temp_connection(conn).await;
+    result
+}
+
+#[tauri::command]
+pub async fn get_table_foreign_keys_for_config(
+    config: ConnectionConfig,
+    database: String,
+    schema: Option<String>,
+    table: String,
+) -> Result<Vec<ForeignKey>, String> {
+    let conn = create_temp_connection(&config).await?;
+    let result = get_table_fks_for_conn(&conn, &database, schema.as_deref(), &table).await;
+    close_temp_connection(conn).await;
+    result
+}
+
+#[tauri::command]
+pub async fn get_view_definition_for_config(
+    config: ConnectionConfig,
+    database: String,
+    view: String,
+) -> Result<ViewDefinition, String> {
+    let conn = create_temp_connection(&config).await?;
+    let result = get_view_definition_for_conn(&conn, &database, &view).await;
+    close_temp_connection(conn).await;
+    result
+}

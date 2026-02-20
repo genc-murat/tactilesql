@@ -51,6 +51,12 @@ export const renderToolbar = ({
                             ${formatDuration(lastExecutionTime)}
                         </div>
                     ` : ''}
+                    ${isExecuting ? `
+                        <div id="query-timer" class="px-1 py-0 text-[8px] ${isLight ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'} rounded font-bold flex items-center gap-0.5 animate-pulse">
+                            <span class="material-symbols-outlined" style="font-size: 9px;">timer</span>
+                            <span id="query-timer-value">00:00.000</span>
+                        </div>
+                    ` : ''}
                 </div>
             </div>
 

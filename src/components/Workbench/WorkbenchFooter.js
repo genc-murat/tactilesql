@@ -4,6 +4,59 @@ import { ThemeManager } from '../../utils/ThemeManager.js';
 export function WorkbenchFooter() {
     const footer = document.createElement('footer');
     let theme = ThemeManager.getCurrentTheme();
+    let isQueryExecuting = false;
+    let queryStartTime = null;
+    let queryTimerInterval = null;
+
+    const formatQueryDuration = (ms) => {
+        const totalSeconds = Math.floor(ms / 1000);
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        const milliseconds = Math.floor((ms % 1000) / 10);
+        return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(milliseconds).padStart(2, '0')}`;
+    };
+
+    const updateQueryStatus = () => {
+        const statusEl = footer.querySelector('#query-status-indicator');
+        if (!statusEl) return;
+
+        const isLight = theme === 'light';
+        const isDawn = theme === 'dawn';
+        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
+
+        if (isQueryExecuting && queryStartTime) {
+            const elapsed = Date.now() - queryStartTime;
+            statusEl.innerHTML = `
+                <div class="flex items-center gap-2">
+                    <span class="material-symbols-outlined text-[14px] animate-spin ${isLight ? 'text-amber-600' : (isOceanic ? 'text-ocean-accent' : 'text-amber-400')}">progress_activity</span>
+                    <span class="${isLight ? 'text-amber-600' : (isOceanic ? 'text-ocean-accent' : 'text-amber-400')}">EXECUTING: ${formatQueryDuration(elapsed)}</span>
+                </div>
+            `;
+        } else {
+            statusEl.innerHTML = '';
+        }
+    };
+
+    const onQueryExecuting = () => {
+        isQueryExecuting = true;
+        queryStartTime = Date.now();
+        if (queryTimerInterval) clearInterval(queryTimerInterval);
+        queryTimerInterval = setInterval(updateQueryStatus, 100);
+        updateQueryStatus();
+    };
+
+    const onQueryComplete = () => {
+        isQueryExecuting = false;
+        queryStartTime = null;
+        if (queryTimerInterval) {
+            clearInterval(queryTimerInterval);
+            queryTimerInterval = null;
+        }
+        updateQueryStatus();
+    };
+
+    window.addEventListener('tactilesql:query-executing', onQueryExecuting);
+    window.addEventListener('tactilesql:query-result', onQueryComplete);
 
     const update = async () => {
         const isLight = theme === 'light';
@@ -143,11 +196,12 @@ export function WorkbenchFooter() {
                 </div>
             </div>
             <div class="flex items-center gap-6">
+                <div id="query-status-indicator"></div>
                 <div class="flex items-center gap-4">
                     <span title="Round Trip Time">TIME: <span class="${(isLight || isDawn) ? 'text-mysql-teal' : (isOceanic ? 'text-ocean-frost' : 'text-cyan-400')} font-bold">${latencyStr}</span></span>
                     <span title="Memory/Data Usage">MEM: <span class="${(isLight || isDawn) ? 'text-mysql-teal' : (isOceanic ? 'text-ocean-frost' : 'text-cyan-400')} font-bold">${memStr}</span></span>
                 </div>
-                <div class="px-3 py-0.5 rounded-full ${isLight ? 'bg-green-50 text-green-600 border-green-200' : (isDawn ? 'bg-green-50 text-green-600 border-green-200' : (isOceanic ? 'bg-ocean-mint/20 text-ocean-mint border-ocean-mint/30' : 'bg-green-500/10 text-green-500 border-green-500/20'))} font-bold border tracking-widest uppercase text-[9px]">
+                <div id="connection-status-badge" class="px-3 py-0.5 rounded-full ${isLight ? 'bg-green-50 text-green-600 border-green-200' : (isDawn ? 'bg-green-50 text-green-600 border-green-200' : (isOceanic ? 'bg-ocean-mint/20 text-ocean-mint border-ocean-mint/30' : 'bg-green-500/10 text-green-500 border-green-500/20'))} font-bold border tracking-widest uppercase text-[9px]">
                     CONNECTED
                 </div>
             </div>
@@ -173,7 +227,10 @@ export function WorkbenchFooter() {
 
     footer.onUnmount = () => {
         clearInterval(intervalId);
+        if (queryTimerInterval) clearInterval(queryTimerInterval);
         window.removeEventListener('themechange', onThemeChange);
+        window.removeEventListener('tactilesql:query-executing', onQueryExecuting);
+        window.removeEventListener('tactilesql:query-result', onQueryComplete);
     };
 
     return footer;

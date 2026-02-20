@@ -1843,6 +1843,65 @@ export function ObjectExplorer() {
     };
 
     // --- Context Menus ---
+    const showCreateDatabaseModal = async () => {
+        const isDawn = theme === 'dawn';
+        const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
+        
+        const overlay = document.createElement('div');
+        overlay.className = 'fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center';
+        overlay.id = 'create-database-modal';
+
+        const modal = document.createElement('div');
+        modal.className = `${isLight ? 'bg-white' : 'bg-[#1e2025]'} w-[400px] rounded-lg shadow-xl border ${isLight ? 'border-gray-200' : 'border-white/10'} p-6 space-y-4`;
+        overlay.appendChild(modal);
+
+        modal.innerHTML = `
+            <h3 class="text-lg font-bold ${isLight ? 'text-gray-800' : 'text-gray-200'}">Create New Database</h3>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-xs font-bold uppercase ${isLight ? 'text-gray-500' : 'text-gray-400'} mb-1">Database Name</label>
+                    <input id="new-db-name" type="text" class="w-full ${isLight ? 'bg-gray-100 border-gray-200' : 'bg-black/20 border-white/10'} border rounded px-3 py-2 text-sm ${isLight ? 'text-gray-800' : 'text-gray-200'} outline-none focus:border-blue-500 transition-colors" placeholder="my_database" />
+                </div>
+                <div>
+                    <label class="block text-xs font-bold uppercase ${isLight ? 'text-gray-500' : 'text-gray-400'} mb-1">Character Set (MySQL only)</label>
+                    <input id="new-db-charset" type="text" class="w-full ${isLight ? 'bg-gray-100 border-gray-200' : 'bg-black/20 border-white/10'} border rounded px-3 py-2 text-sm ${isLight ? 'text-gray-800' : 'text-gray-200'} outline-none focus:border-blue-500 transition-colors" placeholder="utf8mb4" />
+                </div>
+                <div>
+                    <label class="block text-xs font-bold uppercase ${isLight ? 'text-gray-500' : 'text-gray-400'} mb-1">Collation (MySQL only)</label>
+                    <input id="new-db-collation" type="text" class="w-full ${isLight ? 'bg-gray-100 border-gray-200' : 'bg-black/20 border-white/10'} border rounded px-3 py-2 text-sm ${isLight ? 'text-gray-800' : 'text-gray-200'} outline-none focus:border-blue-500 transition-colors" placeholder="utf8mb4_general_ci" />
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 mt-6 pt-4 ${isLight ? 'border-gray-200' : 'border-white/10'} border-t">
+                <button id="cancel-create-db" class="px-4 py-2 ${isLight ? 'text-gray-600 hover:text-gray-800' : 'text-gray-400 hover:text-white'} text-xs font-bold uppercase transition-colors">Cancel</button>
+                <button id="submit-create-db" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold uppercase transition-colors">Create Database</button>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+
+        modal.querySelector('#cancel-create-db').onclick = () => overlay.remove();
+        modal.querySelector('#submit-create-db').onclick = async () => {
+            const dbName = modal.querySelector('#new-db-name').value.trim();
+            const charset = modal.querySelector('#new-db-charset').value.trim();
+            const collation = modal.querySelector('#new-db-collation').value.trim();
+
+            if (!dbName) {
+                Dialog.alert('Database name is required', 'Validation Error');
+                return;
+            }
+
+            try {
+                await invoke('create_database', { database: dbName });
+                toastSuccess(`Database "${dbName}" created successfully`);
+                overlay.remove();
+                DatabaseCache.invalidateAll();
+                loadDatabases();
+            } catch (err) {
+                Dialog.alert(`Failed to create database: ${err}`, 'Error');
+            }
+        };
+    };
+
     const showConnectionContextMenu = (x, y, id, dbType) => {
         const isCurrent = id === activeConnectionId;
         const isDawn = theme === 'dawn';
@@ -1864,6 +1923,12 @@ export function ObjectExplorer() {
                         loadDatabases();
                         toastSuccess('Schema cache refreshed');
                     }
+                },
+                {
+                    label: 'Create Database',
+                    icon: 'add_circle',
+                    iconColor: isDawn ? 'text-[#56949f]' : 'text-green-400',
+                    onClick: () => showCreateDatabaseModal()
                 },
                 ...(['mysql', 'postgresql'].includes(dbType) ? [
                     {

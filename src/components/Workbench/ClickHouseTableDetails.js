@@ -36,6 +36,7 @@ export function showClickHouseTableDetails(connection, database, table) {
     tabsContainer.innerHTML = `
         <button data-tab="overview" class="tab-btn px-6 py-3 font-medium text-blue-600 border-b-2 border-blue-500 bg-blue-50/50 dark:bg-blue-900/20">Overview</button>
         <button data-tab="partitions" class="tab-btn px-6 py-3 font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white border-b-2 border-transparent">Partitions</button>
+        <button data-tab="projections" class="tab-btn px-6 py-3 font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white border-b-2 border-transparent">Projections</button>
         <button data-tab="storage" class="tab-btn px-6 py-3 font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white border-b-2 border-transparent">Storage</button>
         <button data-tab="ttl" class="tab-btn px-6 py-3 font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white border-b-2 border-transparent">TTL</button>
     `;
@@ -54,6 +55,7 @@ export function showClickHouseTableDetails(connection, database, table) {
     let tableStorage = null;
     let tableTTL = null;
     let partitions = [];
+    let projections = [];
     let storageAnalyzer = null;
     let ttlManager = null;
 
@@ -109,6 +111,13 @@ export function showClickHouseTableDetails(connection, database, table) {
                 renderPartitions();
             } catch (e) {
                 contentArea.innerHTML = `<div class="text-red-500 text-center">Failed to load partitions: ${e}</div>`;
+            }
+        } else if (currentTab === 'projections') {
+            try {
+                projections = await invoke('get_clickhouse_projections', { config: connection, database, table });
+                renderProjections();
+            } catch (e) {
+                contentArea.innerHTML = `<div class="text-red-500 text-center">Failed to load projections: ${e}</div>`;
             }
         } else if (currentTab === 'storage') {
             contentArea.innerHTML = ''; // Clear for component
@@ -343,6 +352,180 @@ export function showClickHouseTableDetails(connection, database, table) {
 
         renderRows();
         filterInput.oninput = (e) => renderRows(e.target.value);
+    };
+
+    const renderProjections = () => {
+        contentArea.innerHTML = `
+            <div class="space-y-4">
+                <div class="flex justify-between items-center">
+                    <h3 class="font-bold text-gray-700 dark:text-gray-200">
+                        ${projections.length} Projection${projections.length !== 1 ? 's' : ''}
+                    </h3>
+                    <button id="create-projection-btn" class="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-xs font-medium transition-colors">
+                        <span class="material-symbols-outlined text-sm">add</span>
+                        Create Projection
+                    </button>
+                </div>
+                ${projections.length === 0 ? `
+                    <div class="flex flex-col items-center justify-center h-64 text-gray-400">
+                        <span class="material-symbols-outlined text-4xl mb-2">view_column</span>
+                        <p>No projections defined for this table.</p>
+                        <p class="text-xs mt-1">Projections can significantly improve query performance.</p>
+                    </div>
+                ` : `
+                    <div class="border border-gray-200 dark:border-white/10 rounded-lg overflow-hidden">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 uppercase font-bold text-[10px]">
+                                <tr>
+                                    <th class="px-4 py-3">Name</th>
+                                    <th class="px-4 py-3">Status</th>
+                                    <th class="px-4 py-3 text-right">Rows</th>
+                                    <th class="px-4 py-3 text-right">Compressed</th>
+                                    <th class="px-4 py-3 text-right">Uncompressed</th>
+                                    <th class="px-4 py-3">Query</th>
+                                    <th class="px-4 py-3 text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="projections-body" class="divide-y divide-gray-100 dark:divide-white/5">
+                                ${projections.map(p => `
+                                    <tr class="hover:bg-gray-50 dark:hover:bg-white/5 group transition-colors">
+                                        <td class="px-4 py-2 font-mono text-gray-800 dark:text-gray-200">${p.name}</td>
+                                        <td class="px-4 py-2">
+                                            <span class="px-2 py-0.5 rounded-full text-[10px] ${p.status === 'Ready' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'}">
+                                                ${p.status || 'Unknown'}
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-2 text-right font-mono">${formatNumber(p.rows)}</td>
+                                        <td class="px-4 py-2 text-right font-mono text-blue-500">${formatBytes(p.compressed_bytes)}</td>
+                                        <td class="px-4 py-2 text-right font-mono">${formatBytes(p.uncompressed_bytes)}</td>
+                                        <td class="px-4 py-2 max-w-xs truncate font-mono text-gray-500 text-[10px]" title="${p.query}">${p.query || '-'}</td>
+                                        <td class="px-4 py-2 text-center flex justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button class="materialize-btn p-1 hover:bg-green-500/10 text-green-500 rounded" title="Materialize" data-name="${p.name}">
+                                                <span class="material-symbols-outlined text-sm">sync</span>
+                                            </button>
+                                            <button class="clear-btn p-1 hover:bg-orange-500/10 text-orange-500 rounded" title="Clear" data-name="${p.name}">
+                                                <span class="material-symbols-outlined text-sm">cleaning_services</span>
+                                            </button>
+                                            <button class="drop-btn p-1 hover:bg-red-500/10 text-red-500 rounded" title="Drop" data-name="${p.name}">
+                                                <span class="material-symbols-outlined text-sm">delete</span>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `}
+            </div>
+        `;
+
+        const createBtn = contentArea.querySelector('#create-projection-btn');
+        if (createBtn) {
+            createBtn.onclick = () => showCreateProjectionModal();
+        }
+
+        // Bind actions
+        contentArea.querySelectorAll('.materialize-btn').forEach(btn => {
+            btn.onclick = async () => {
+                const name = btn.dataset.name;
+                if (!await Dialog.confirm(`Materialize projection "${name}"?`, 'Confirm')) return;
+                try {
+                    await invoke('materialize_clickhouse_projection', { config: connection, database, table, name });
+                    toastSuccess(`Projection ${name} materialized`);
+                    renderContent();
+                } catch (e) {
+                    Dialog.alert(`Failed to materialize: ${e}`, 'Error');
+                }
+            };
+        });
+
+        contentArea.querySelectorAll('.clear-btn').forEach(btn => {
+            btn.onclick = async () => {
+                const name = btn.dataset.name;
+                if (!await Dialog.confirm(`Clear projection "${name}"?`, 'Confirm')) return;
+                try {
+                    await invoke('clear_clickhouse_projection', { config: connection, database, table, name });
+                    toastSuccess(`Projection ${name} cleared`);
+                    renderContent();
+                } catch (e) {
+                    Dialog.alert(`Failed to clear: ${e}`, 'Error');
+                }
+            };
+        });
+
+        contentArea.querySelectorAll('.drop-btn').forEach(btn => {
+            btn.onclick = async () => {
+                const name = btn.dataset.name;
+                if (!await Dialog.confirm(`Drop projection "${name}"? This cannot be undone.`, 'Confirm Deletion')) return;
+                try {
+                    await invoke('drop_clickhouse_projection', { config: connection, database, table, name });
+                    toastSuccess(`Projection ${name} dropped`);
+                    renderContent();
+                } catch (e) {
+                    Dialog.alert(`Failed to drop: ${e}`, 'Error');
+                }
+            };
+        });
+    };
+
+    const showCreateProjectionModal = () => {
+        const overlay = document.createElement('div');
+        overlay.className = 'fixed inset-0 bg-black/60 backdrop-blur-sm z-[10000] flex items-center justify-center';
+
+        const modal = document.createElement('div');
+        modal.className = 'bg-[#1e2025] w-[600px] rounded-lg shadow-xl border border-white/10 p-6 space-y-4';
+        overlay.appendChild(modal);
+
+        modal.innerHTML = `
+            <h3 class="text-lg font-bold text-gray-200">Create Projection</h3>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-xs font-bold uppercase text-gray-400 mb-1">Projection Name</label>
+                    <input id="proj-name" type="text" class="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm text-gray-200 outline-none focus:border-blue-500 transition-colors" placeholder="my_projection" />
+                </div>
+                <div>
+                    <label class="block text-xs font-bold uppercase text-gray-400 mb-1">SELECT Query</label>
+                    <textarea id="proj-query" rows="5" class="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm text-gray-200 outline-none focus:border-blue-500 transition-colors font-mono" placeholder="SELECT column1, column2 FROM table WHERE ..."></textarea>
+                    <p class="text-[10px] text-gray-500 mt-1">The query defines which columns and aggregations the projection will store.</p>
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 mt-6 pt-4 border-t border-white/10">
+                <button id="cancel-proj-btn" class="px-4 py-2 text-gray-400 hover:text-white text-xs font-bold uppercase transition-colors">Cancel</button>
+                <button id="submit-proj-btn" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold uppercase transition-colors">Create</button>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+
+        modal.querySelector('#cancel-proj-btn').onclick = () => overlay.remove();
+        modal.querySelector('#submit-proj-btn').onclick = async () => {
+            const name = modal.querySelector('#proj-name').value.trim();
+            const query = modal.querySelector('#proj-query').value.trim();
+
+            if (!name) {
+                Dialog.alert('Projection name is required', 'Validation Error');
+                return;
+            }
+            if (!query) {
+                Dialog.alert('Query is required', 'Validation Error');
+                return;
+            }
+
+            try {
+                await invoke('create_clickhouse_projection', {
+                    config: connection,
+                    database,
+                    table,
+                    name,
+                    query
+                });
+                toastSuccess(`Projection "${name}" created`);
+                overlay.remove();
+                renderContent();
+            } catch (e) {
+                Dialog.alert(`Failed to create projection: ${e}`, 'Error');
+            }
+        };
     };
 
     // Initial Render

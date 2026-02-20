@@ -174,6 +174,8 @@ export function QueryEditor() {
     let estimatedExecutionTime = null;
     let maxVisibleTabs = 5; // Default start
     let isExecuting = false;
+    let executionStartTime = null;
+    let timerInterval = null;
 
     // Autocomplete state
     let suggestions = [];
@@ -1778,6 +1780,34 @@ export function QueryEditor() {
         });
     };
 
+    const startQueryTimer = () => {
+        executionStartTime = Date.now();
+        if (timerInterval) clearInterval(timerInterval);
+        timerInterval = setInterval(() => {
+            const timerEl = container.querySelector('#query-timer-value');
+            if (timerEl && executionStartTime) {
+                const elapsed = Date.now() - executionStartTime;
+                timerEl.textContent = formatTimerValue(elapsed);
+            }
+        }, 50);
+    };
+
+    const stopQueryTimer = () => {
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+        }
+        executionStartTime = null;
+    };
+
+    const formatTimerValue = (ms) => {
+        const totalSeconds = Math.floor(ms / 1000);
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        const milliseconds = ms % 1000;
+        return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(milliseconds).padStart(3, '0')}`;
+    };
+
     const executeEditorQuery = async (mode = 'smart') => {
         if (isExecuting) return;
 
@@ -1801,6 +1831,7 @@ export function QueryEditor() {
         }
 
         isExecuting = true;
+        startQueryTimer();
         render();
 
         const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
@@ -1978,6 +2009,7 @@ export function QueryEditor() {
             window.dispatchEvent(new CustomEvent('tactilesql:query-result', { detail: [] }));
         } finally {
             isExecuting = false;
+            stopQueryTimer();
             render();
         }
     };
@@ -1985,6 +2017,7 @@ export function QueryEditor() {
     const cancelRunningQuery = async () => {
         try {
             await invoke('cancel_running_query');
+            stopQueryTimer();
             toastWarning('Query cancellation requested');
         } catch (error) {
             console.error('Failed to cancel query:', error);

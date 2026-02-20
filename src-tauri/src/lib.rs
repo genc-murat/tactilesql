@@ -522,6 +522,9 @@ pub fn run() {
             db::compare_schemas_cross_connection,
             db::get_table_schema_for_config,
             db::get_table_ddl_for_config,
+            db::get_table_indexes_for_config,
+            db::get_table_foreign_keys_for_config,
+            db::get_view_definition_for_config,
             // Table Operations
             db::truncate_table,
             db::drop_table,

@@ -74,16 +74,27 @@ export function showClickHouseUserManager(connection) {
 
     // --- State & Functions ---
     let users = [];
+    let availableRoles = [];
 
     const close = () => overlay.remove();
     header.querySelector('#close-btn').onclick = close;
     overlay.onclick = (e) => { if (e.target === overlay) close(); };
+
+    const loadRoles = async () => {
+        try {
+            availableRoles = await invoke('get_clickhouse_roles', { config: connection });
+        } catch (err) {
+            console.warn('Could not load roles:', err);
+            availableRoles = [];
+        }
+    };
 
     const loadUsers = async () => {
         const tbody = content.querySelector('#users-list-body');
         tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-center text-gray-500">Loading users...</td></tr>';
 
         try {
+            await loadRoles();
             users = await invoke('get_clickhouse_users', { config: connection });
             renderUsers();
         } catch (err) {
@@ -115,8 +126,14 @@ export function showClickHouseUserManager(connection) {
                 </td>
                 <td class="p-3 text-right">
                     <div class="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button class="edit-btn p-1.5 hover:bg-green-500/10 text-green-500 rounded" title="Edit User" data-user="${user.name}">
+                            <span class="material-symbols-outlined text-[18px]">edit</span>
+                        </button>
                         <button class="grant-btn p-1.5 hover:bg-blue-500/10 text-blue-500 rounded" title="Grant Privileges" data-user="${user.name}">
                             <span class="material-symbols-outlined text-[18px]">key</span>
+                        </button>
+                        <button class="revoke-btn p-1.5 hover:bg-orange-500/10 text-orange-500 rounded" title="Revoke Privileges" data-user="${user.name}">
+                            <span class="material-symbols-outlined text-[18px]">remove_key</span>
                         </button>
                         <button class="delete-btn p-1.5 hover:bg-red-500/10 text-red-500 rounded" title="Delete User" data-user="${user.name}">
                             <span class="material-symbols-outlined text-[18px]">delete</span>
@@ -127,8 +144,14 @@ export function showClickHouseUserManager(connection) {
         `).join('');
 
         // Attach event listeners
+        tbody.querySelectorAll('.edit-btn').forEach(btn => {
+            btn.onclick = () => showEditModal(btn.dataset.user);
+        });
         tbody.querySelectorAll('.grant-btn').forEach(btn => {
             btn.onclick = () => showGrantModal(btn.dataset.user);
+        });
+        tbody.querySelectorAll('.revoke-btn').forEach(btn => {
+            btn.onclick = () => showRevokeModal(btn.dataset.user);
         });
         tbody.querySelectorAll('.delete-btn').forEach(btn => {
             btn.onclick = () => handleDeleteUser(btn.dataset.user);
@@ -155,6 +178,8 @@ export function showClickHouseUserManager(connection) {
         modalContent.className = `${isLight ? 'bg-white' : 'bg-[#1e2025]'} w-[500px] rounded-lg shadow-xl border border-gray-700 p-6 space-y-4`;
         modalOverlay.appendChild(modalContent);
 
+        const rolesOptions = availableRoles.map(r => ({ value: r, label: r }));
+
         modalContent.innerHTML = `
             <h3 class="text-lg font-bold text-gray-200 mb-4">Create New User</h3>
             
@@ -172,8 +197,8 @@ export function showClickHouseUserManager(connection) {
                     <input id="new-profile" type="text" class="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm text-gray-200 outline-none focus:border-blue-500 transition-colors" placeholder="default" value="default" />
                 </div>
                 <div>
-                    <label class="block text-xs font-bold uppercase text-gray-500 mb-1">Roles (comma separated)</label>
-                    <input id="new-roles" type="text" class="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm text-gray-200 outline-none focus:border-blue-500 transition-colors" placeholder="viewer, analyst" />
+                    <label class="block text-xs font-bold uppercase text-gray-500 mb-1">Roles</label>
+                    <div id="new-roles-container"></div>
                 </div>
                 <div>
                     <label class="block text-xs font-bold uppercase text-gray-500 mb-1">Allowed Networks (comma separated)</label>
@@ -189,13 +214,22 @@ export function showClickHouseUserManager(connection) {
 
         document.body.appendChild(modalOverlay);
 
+        const rolesDropdown = new CustomDropdown({
+            id: 'new-roles-dropdown',
+            items: rolesOptions,
+            searchable: true,
+            multiSelect: true
+        });
+        const rolesContainer = modalContent.querySelector('#new-roles-container');
+        if (rolesContainer) rolesContainer.appendChild(rolesDropdown.getElement());
+
         modalContent.querySelector('#cancel-create-btn').onclick = () => modalOverlay.remove();
 
         modalContent.querySelector('#submit-create-btn').onclick = async () => {
             const name = modalContent.querySelector('#new-username').value.trim();
             const password = modalContent.querySelector('#new-password').value;
             const profile = modalContent.querySelector('#new-profile').value.trim();
-            const rolesStr = modalContent.querySelector('#new-roles').value.trim();
+            const roles = rolesDropdown.value;
             const networksStr = modalContent.querySelector('#new-networks').value.trim();
 
             if (!name) {
@@ -204,7 +238,6 @@ export function showClickHouseUserManager(connection) {
             }
 
             try {
-                const rolesVec = rolesStr ? rolesStr.split(',').map(r => r.trim()) : [];
                 const networksVec = networksStr ? networksStr.split(',').map(n => n.trim()) : [];
 
                 await invoke('create_clickhouse_user', {
@@ -212,7 +245,7 @@ export function showClickHouseUserManager(connection) {
                     name,
                     password: password || null,
                     profile: profile || null,
-                    roles: rolesVec.length > 0 ? rolesVec : null,
+                    roles: roles && roles.length > 0 ? roles : null,
                     networks: networksVec.length > 0 ? networksVec : null
                 });
 
@@ -297,6 +330,165 @@ export function showClickHouseUserManager(connection) {
                 modalOverlay.remove();
             } catch (err) {
                 Dialog.alert(`Failed to grant privilege: ${err}`, 'Error');
+            }
+        };
+    };
+
+    const showEditModal = (username) => {
+        const user = users.find(u => u.name === username);
+        if (!user) return;
+
+        const modalOverlay = document.createElement('div');
+        modalOverlay.className = 'fixed inset-0 bg-black/60 backdrop-blur-sm z-[10000] flex items-center justify-center';
+
+        const modalContent = document.createElement('div');
+        modalContent.className = `${isLight ? 'bg-white' : 'bg-[#1e2025]'} w-[500px] rounded-lg shadow-xl border border-gray-700 p-6 space-y-4`;
+        modalOverlay.appendChild(modalContent);
+
+        const currentRoles = user.default_roles || [];
+        const rolesOptions = availableRoles.map(r => ({ value: r, label: r }));
+
+        modalContent.innerHTML = `
+            <h3 class="text-lg font-bold text-gray-200 mb-4">Edit User: ${username}</h3>
+            
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-xs font-bold uppercase text-gray-500 mb-1">New Password</label>
+                    <input id="edit-password" type="password" class="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm text-gray-200 outline-none focus:border-blue-500 transition-colors" placeholder="Leave empty to keep current" />
+                </div>
+                <div>
+                    <label class="block text-xs font-bold uppercase text-gray-500 mb-1">Profile</label>
+                    <input id="edit-profile" type="text" class="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm text-gray-200 outline-none focus:border-blue-500 transition-colors" placeholder="default" value="${user.profile || 'default'}" />
+                </div>
+                <div>
+                    <label class="block text-xs font-bold uppercase text-gray-500 mb-1">Roles</label>
+                    <div id="edit-roles-container"></div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold uppercase text-gray-500 mb-1">Allowed Networks (comma separated)</label>
+                    <input id="edit-networks" type="text" class="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm text-gray-200 outline-none focus:border-blue-500 transition-colors" placeholder="::/0, 192.168.1.0/24" value="${user.host_names?.join(', ') || ''}" />
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-2 mt-6 pt-4 border-t border-white/10">
+                <button id="cancel-edit-btn" class="px-4 py-2 text-gray-400 hover:text-white text-xs font-bold uppercase transition-colors">Cancel</button>
+                <button id="submit-edit-btn" class="px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded text-xs font-bold uppercase transition-colors">Update User</button>
+            </div>
+        `;
+
+        document.body.appendChild(modalOverlay);
+
+        const rolesDropdown = new CustomDropdown({
+            id: 'edit-roles-dropdown',
+            items: rolesOptions,
+            value: currentRoles,
+            searchable: true,
+            multiSelect: true
+        });
+        const rolesContainer = modalContent.querySelector('#edit-roles-container');
+        if (rolesContainer) rolesContainer.appendChild(rolesDropdown.getElement());
+
+        modalContent.querySelector('#cancel-edit-btn').onclick = () => modalOverlay.remove();
+
+        modalContent.querySelector('#submit-edit-btn').onclick = async () => {
+            const password = modalContent.querySelector('#edit-password').value;
+            const profile = modalContent.querySelector('#edit-profile').value.trim();
+            const roles = rolesDropdown.value;
+            const networksStr = modalContent.querySelector('#edit-networks').value.trim();
+
+            try {
+                const networksVec = networksStr ? networksStr.split(',').map(n => n.trim()) : [];
+
+                await invoke('update_clickhouse_user', {
+                    config: connection,
+                    name: username,
+                    password: password || null,
+                    profile: profile || null,
+                    roles: roles && roles.length > 0 ? roles : null,
+                    networks: networksVec.length > 0 ? networksVec : null
+                });
+
+                toastSuccess(`User ${username} updated successfully`);
+                modalOverlay.remove();
+                loadUsers();
+            } catch (err) {
+                Dialog.alert(`Failed to update user: ${err}`, 'Error');
+            }
+        };
+    };
+
+    const showRevokeModal = (username) => {
+        const modalOverlay = document.createElement('div');
+        modalOverlay.className = 'fixed inset-0 bg-black/60 backdrop-blur-sm z-[10000] flex items-center justify-center';
+
+        const modalContent = document.createElement('div');
+        modalContent.className = `${isLight ? 'bg-white' : 'bg-[#1e2025]'} w-[500px] rounded-lg shadow-xl border border-gray-700 p-6 space-y-4`;
+        modalOverlay.appendChild(modalContent);
+
+        modalContent.innerHTML = `
+            <h3 class="text-lg font-bold text-gray-200 mb-4">Revoke Privileges from ${username}</h3>
+             <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold uppercase text-gray-500 mb-1">Privilege</label>
+                    <div id="revoke-privilege-container"></div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold uppercase text-gray-500 mb-1">Database</label>
+                        <input id="revoke-database" type="text" value="*" class="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm text-gray-200 outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase text-gray-500 mb-1">Table</label>
+                        <input id="revoke-table" type="text" value="*" class="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm text-gray-200 outline-none focus:border-blue-500" />
+                    </div>
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 mt-6 pt-4 border-t border-white/10">
+                <button id="cancel-revoke-btn" class="px-4 py-2 text-gray-400 hover:text-white text-xs font-bold uppercase transition-colors">Cancel</button>
+                <button id="submit-revoke-btn" class="px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded text-xs font-bold uppercase transition-colors">Revoke</button>
+            </div>
+        `;
+
+        document.body.appendChild(modalOverlay);
+
+        const privilegeItems = [
+            { value: 'SELECT', label: 'SELECT' },
+            { value: 'INSERT', label: 'INSERT' },
+            { value: 'ALTER', label: 'ALTER' },
+            { value: 'CREATE', label: 'CREATE' },
+            { value: 'DROP', label: 'DROP' },
+            { value: 'TRUNCATE', label: 'TRUNCATE' },
+            { value: 'OPTIMIZE', label: 'OPTIMIZE' },
+            { value: 'ALL', label: 'ALL' }
+        ];
+        const privilegeDropdown = new CustomDropdown({
+            id: 'revoke-privilege-dropdown',
+            items: privilegeItems,
+            value: 'SELECT',
+            searchable: false
+        });
+        const privilegeContainer = modalContent.querySelector('#revoke-privilege-container');
+        if (privilegeContainer) privilegeContainer.appendChild(privilegeDropdown.getElement());
+
+        modalContent.querySelector('#cancel-revoke-btn').onclick = () => modalOverlay.remove();
+
+        modalContent.querySelector('#submit-revoke-btn').onclick = async () => {
+            const privilege = privilegeDropdown.value;
+            const database = modalContent.querySelector('#revoke-database').value;
+            const table = modalContent.querySelector('#revoke-table').value;
+
+            try {
+                await invoke('revoke_clickhouse_privilege', {
+                    config: connection,
+                    user: username,
+                    privilege,
+                    database,
+                    table
+                });
+                toastSuccess(`Revoked ${privilege} from ${username}`);
+                modalOverlay.remove();
+            } catch (err) {
+                Dialog.alert(`Failed to revoke privilege: ${err}`, 'Error');
             }
         };
     };
