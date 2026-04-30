@@ -36,9 +36,6 @@ pub async fn get_users(app_state: State<'_, AppState>) -> Result<Vec<MySqlUser>,
         DatabaseType::SQLite => {
             Ok(Vec::new())
         }
-        DatabaseType::DuckDB => {
-            Ok(Vec::new())
-        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -67,7 +64,7 @@ pub async fn get_user_privileges(
             let pool = guard.as_ref().ok_or("No MySQL connection established")?;
             mysql::get_user_privileges(pool, &user, &host).await
         }
-        DatabaseType::MSSQL | DatabaseType::ClickHouse | DatabaseType::SQLite | DatabaseType::DuckDB => {
+        DatabaseType::MSSQL | DatabaseType::ClickHouse | DatabaseType::SQLite => {
             Ok(UserPrivileges {
                 global: Vec::new(),
                 databases: Vec::new(),

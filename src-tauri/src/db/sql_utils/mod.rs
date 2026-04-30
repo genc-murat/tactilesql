@@ -21,7 +21,7 @@ pub fn quote_identifier_mssql(name: &str) -> String {
 
 pub fn qualified_table_name(db_type: &DatabaseType, database: &str, table: &str) -> String {
     match db_type {
-        DatabaseType::PostgreSQL | DatabaseType::DuckDB | DatabaseType::SQLite => {
+        DatabaseType::PostgreSQL | DatabaseType::SQLite => {
             format!(
                 "{}.{}",
                 quote_identifier_postgres(database),
@@ -43,9 +43,7 @@ pub fn qualified_table_name(db_type: &DatabaseType, database: &str, table: &str)
 
 pub fn quote_column_name(db_type: &DatabaseType, column: &str) -> String {
     match db_type {
-        DatabaseType::PostgreSQL | DatabaseType::DuckDB | DatabaseType::SQLite => {
-            quote_identifier_postgres(column)
-        }
+        DatabaseType::PostgreSQL | DatabaseType::SQLite => quote_identifier_postgres(column),
         DatabaseType::MSSQL => quote_identifier_mssql(column),
         _ => quote_identifier_mysql(column),
     }

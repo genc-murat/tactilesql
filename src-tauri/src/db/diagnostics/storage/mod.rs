@@ -56,16 +56,6 @@ pub async fn get_capacity_metrics(
                 disk_write_bytes: 0,
             })
         }
-        DatabaseType::DuckDB => {
-            Ok(CapacityMetrics {
-                storage_bytes: 0,
-                data_bytes: 0,
-                index_bytes: 0,
-                buffer_hit_ratio: 0.0,
-                disk_read_bytes: 0,
-                disk_write_bytes: 0,
-            })
-        }
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -96,7 +86,6 @@ pub async fn get_sequences(
             Ok(Vec::new())
         }
         DatabaseType::SQLite => Err("Not supported for SQLite".into()),
-        DatabaseType::DuckDB => Err("Not supported for DuckDB".into()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -121,7 +110,6 @@ pub async fn get_custom_types(
         }
         DatabaseType::MySQL | DatabaseType::ClickHouse | DatabaseType::MSSQL => Ok(Vec::new()),
         DatabaseType::SQLite => Err("Not supported for SQLite".into()),
-        DatabaseType::DuckDB => Err("Not supported for DuckDB".into()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -145,7 +133,6 @@ pub async fn get_tablespaces(app_state: State<'_, AppState>) -> Result<Vec<Strin
         }
         DatabaseType::MySQL | DatabaseType::ClickHouse | DatabaseType::MSSQL => Ok(Vec::new()),
         DatabaseType::SQLite => Err("Not supported for SQLite".into()),
-        DatabaseType::DuckDB => Err("Not supported for DuckDB".into()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -189,7 +176,6 @@ pub async fn get_index_suggestions(
             clickhouse::get_index_suggestions(config, &database, &table).await
         }
         DatabaseType::SQLite => Err("Not supported for SQLite".into()),
-        DatabaseType::DuckDB => Err("Not supported for DuckDB".into()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -229,7 +215,6 @@ pub async fn get_index_usage(
             clickhouse::get_index_usage(config, &database, &table).await
         }
         DatabaseType::SQLite => Err("Not supported for SQLite".into()),
-        DatabaseType::DuckDB => Err("Not supported for DuckDB".into()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }
@@ -267,7 +252,6 @@ pub async fn get_index_sizes(
             clickhouse::get_index_sizes(config, &database, &table).await
         }
         DatabaseType::SQLite => Err("Not supported for SQLite".into()),
-        DatabaseType::DuckDB => Err("Not supported for DuckDB".into()),
         DatabaseType::Disconnected => Err("No connection established".into()),
     }
 }

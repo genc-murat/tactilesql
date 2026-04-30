@@ -42,7 +42,6 @@ TactileSQL is a powerful, native desktop SQL workbench designed for database dev
 | **ClickHouse** | 22.x - 26.x+ | HTTP (8123) |
 | **MSSQL** | 2017+ | TDS (Tiberius) |
 | **SQLite** | 3.x | File-based |
-| **DuckDB** | 1.x | File-based / In-memory |
 
 ---
 
@@ -103,11 +102,6 @@ TactileSQL is a powerful, native desktop SQL workbench designed for database dev
 - **PRAGMA Commands** - Index and foreign key management
 - **Query Profiling** - Execution statistics
 
-#### DuckDB
-- **Flexible Storage** - File-based (`.duckdb`) or in-memory (`:memory:`)
-- **Extension Management** - Install and load extensions
-- **Information Schema** - Full table browsing
-- **Data Import/Export** - Multiple format support
 
 ### 🤖 AI Assistant
 
@@ -193,7 +187,7 @@ TactileSQL is a powerful, native desktop SQL workbench designed for database dev
 | **SQLite** | SQLx (async, bundled) |
 | **ClickHouse** | clickhouse-rs (HTTP protocol) |
 | **MSSQL** | Tiberius (TDS protocol) |
-| **DuckDB** | duckdb-rs (bundled) |
+
 | **State** | LocalStorage + SQLite (WAL mode) |
 | **Encryption** | AES-256-GCM + OS Keychain |
 
@@ -278,8 +272,7 @@ tactileSQL/
 │       ├── postgres/          # PostgreSQL-specific
 │       ├── mysql/             # MySQL-specific
 │       ├── sqlite/            # SQLite-specific
-│       ├── duckdb/            # DuckDB-specific
-│       │
+
 │       ├── task_manager/      # Task orchestration
 │       ├── schema_tracker/    # Schema change tracking
 │       ├── quality_analyzer/  # Data quality
@@ -305,7 +298,7 @@ tactileSQL/
 
 - **Node.js** (LTS recommended) - [Download](https://nodejs.org/)
 - **Rust toolchain** (stable) - [Install](https://rustup.rs/)
-- **Database Server**: MySQL, PostgreSQL, ClickHouse, MSSQL, SQLite, or DuckDB
+- **Database Server**: MySQL, PostgreSQL, ClickHouse, MSSQL, or SQLite
 - **Tauri system dependencies** - [See Tauri v2 docs](https://v2.tauri.app/start/prerequisites/)
 
 ### Installation
@@ -528,7 +521,7 @@ Press `F1` in-app for complete shortcuts.
 | **ClickHouse** | HTTP errors | Verify HTTP interface is enabled (port 8123) |
 | **ClickHouse** | Feature unavailable | Check version compatibility (Query Cache: CH 22+, Backup: CH 23.6+) |
 | **SQLite** | File errors | Ensure file exists with read/write permissions |
-| **DuckDB** | Permission denied | Check file permissions; use `:memory:` for temporary databases |
+
 | **MySQL** | Syntax errors on older versions | Enable SQL normalization in settings |
 
 ---

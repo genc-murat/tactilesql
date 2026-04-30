@@ -35,9 +35,6 @@ pub async fn check_impact(
         DatabaseType::SQLite => {
             return Err("Impact analyzer not yet supported for SQLite".into());
         }
-        DatabaseType::DuckDB => {
-            return Err("Impact analyzer not yet supported for DuckDB".into());
-        }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     };
 

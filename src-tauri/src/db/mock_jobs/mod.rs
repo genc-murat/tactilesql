@@ -545,9 +545,6 @@ async fn execute_mock_data_job(
                 .ok_or("No SQLite connection established")?;
             crate::sqlite::get_table_schema(pool, &database, &table).await?
         }
-        DatabaseType::DuckDB => {
-            return Err("Mock data generation not yet supported for DuckDB".to_string());
-        }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     };
 
@@ -902,7 +899,6 @@ async fn execute_mock_data_job(
             }
         }
         DatabaseType::Disconnected => return Err("No connection established".into()),
-        DatabaseType::DuckDB => return Err("Mock data generation not yet supported for DuckDB".to_string()),
     }
 
     let _ = update_mock_job(&operation_id, local_pool.as_ref(), |job| {
@@ -1172,9 +1168,6 @@ pub async fn preview_mock_data(
             let guard = app_state.sqlite_pool.lock().await;
             let pool = guard.as_ref().ok_or("No SQLite connection established")?;
             crate::sqlite::get_table_schema(pool, &database, &table).await?
-        }
-        DatabaseType::DuckDB => {
-            return Err("Mock data preview not yet supported for DuckDB".to_string());
         }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     };

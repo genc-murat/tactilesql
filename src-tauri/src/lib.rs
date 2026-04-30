@@ -76,7 +76,6 @@ pub mod postgres;
 pub mod clickhouse;
 pub mod mssql;
 pub mod sqlite;
-pub mod duckdb;
 pub mod quality_analyzer;
 pub mod query_story;
 pub mod scheduler;

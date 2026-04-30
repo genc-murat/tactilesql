@@ -77,9 +77,6 @@ pub async fn export_table_csv(
             let rows = crate::sqlite::execute_query(pool, &query).await?;
             (schema, rows)
         }
-        DatabaseType::DuckDB => {
-            return Err("CSV export not yet supported for DuckDB".to_string());
-        }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     };
 
@@ -185,9 +182,6 @@ pub async fn export_table_json(
             let rows = crate::sqlite::execute_query(pool, &query).await?;
             (schema, rows)
         }
-        DatabaseType::DuckDB => {
-            return Err("JSON export not yet supported for DuckDB".to_string());
-        }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     };
 
@@ -286,9 +280,6 @@ pub async fn export_table_sql(
             let rows = crate::sqlite::execute_query(pool, &query).await?;
             (ddl, rows)
         }
-        DatabaseType::DuckDB => {
-            return Err("SQL export not yet supported for DuckDB".to_string());
-        }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     };
 
@@ -372,9 +363,6 @@ pub async fn import_csv(
             let guard = app_state.sqlite_pool.lock().await;
             let pool = guard.as_ref().ok_or("No SQLite connection established")?;
             crate::sqlite::get_table_schema(pool, &database, &table).await?
-        }
-        DatabaseType::DuckDB => {
-            return Err("CSV import not yet supported for DuckDB".to_string());
         }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     };
@@ -669,9 +657,6 @@ pub async fn import_csv(
                 }
             }
         }
-        DatabaseType::DuckDB => {
-            return Err("CSV import not yet supported for DuckDB".to_string());
-        }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     }
 
@@ -843,9 +828,6 @@ pub async fn backup_database(
                 output.push('\n');
             }
         }
-        DatabaseType::DuckDB => {
-            return Err("Backup not yet supported for DuckDB".to_string());
-        }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     }
 
@@ -908,9 +890,6 @@ pub async fn restore_database(
             crate::sqlite::execute_query(pool, &sql_content)
                 .await
                 .map_err(|e| format!("Restore failed: {}", e))?;
-        }
-        DatabaseType::DuckDB => {
-            return Err("Restore not yet supported for DuckDB".to_string());
         }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     }

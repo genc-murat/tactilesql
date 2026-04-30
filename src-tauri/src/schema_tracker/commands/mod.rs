@@ -39,9 +39,6 @@ pub async fn capture_schema_snapshot(
         DatabaseType::SQLite => {
             return Err("Schema tracking not yet supported for SQLite".into());
         }
-        DatabaseType::DuckDB => {
-            return Err("Schema tracking not yet supported for DuckDB".into());
-        }
         DatabaseType::Disconnected => return Err("No connection established".into()),
     };
 

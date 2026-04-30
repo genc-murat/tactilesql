@@ -18,7 +18,6 @@ pub enum DatabaseType {
     ClickHouse,
     MSSQL,
     SQLite,
-    DuckDB,
 }
 
 // --- MySQL Version Info ---
@@ -52,8 +51,6 @@ pub struct AppState {
     pub clickhouse_config: Arc<Mutex<Option<ConnectionConfig>>>,
     pub sqlite_pool: Arc<Mutex<Option<Pool<Sqlite>>>>,
     pub sqlite_db_path: Arc<Mutex<Option<String>>>,
-    pub duckdb_pool: Arc<Mutex<Option<Arc<std::sync::Mutex<duckdb::Connection>>>>>,
-    pub duckdb_db_path: Arc<Mutex<Option<String>>>,
     pub active_db_type: Arc<Mutex<DatabaseType>>,
     pub encryption_key: Arc<Mutex<Option<Vec<u8>>>>,
     pub awareness_store: Arc<Mutex<Option<crate::awareness::store::AwarenessStore>>>,
@@ -87,8 +84,6 @@ impl Default for AppState {
             clickhouse_config: Arc::new(Mutex::new(None)),
             sqlite_pool: Arc::new(Mutex::new(None)),
             sqlite_db_path: Arc::new(Mutex::new(None)),
-            duckdb_pool: Arc::new(Mutex::new(None)),
-            duckdb_db_path: Arc::new(Mutex::new(None)),
             active_db_type: Arc::new(Mutex::new(DatabaseType::Disconnected)),
             encryption_key: Arc::new(Mutex::new(None)),
             awareness_store: Arc::new(Mutex::new(None)),
@@ -123,8 +118,6 @@ impl Clone for AppState {
             clickhouse_config: Arc::clone(&self.clickhouse_config),
             sqlite_pool: Arc::clone(&self.sqlite_pool),
             sqlite_db_path: Arc::clone(&self.sqlite_db_path),
-            duckdb_pool: Arc::clone(&self.duckdb_pool),
-            duckdb_db_path: Arc::clone(&self.duckdb_db_path),
             active_db_type: Arc::clone(&self.active_db_type),
             encryption_key: Arc::clone(&self.encryption_key),
             awareness_store: Arc::clone(&self.awareness_store),

@@ -31,6 +31,9 @@ import { FindReplacePane } from './editor/FindReplacePane.js';
 import { renderToolbar } from './editor/ui/Toolbar.js';
 import { renderTabBar } from './editor/ui/TabBar.js';
 import { renderEditorArea } from './editor/ui/EditorArea.js';
+import { getCurrentWord as getWordAtCursor, getCaretCoordinates as getCaretCoords, getWordAtPosition as getWordAt } from './editor/caretPosition.js';
+import { createAutocompleteUI } from './editor/autocompleteUI.js';
+import { createGhostTextController } from './editor/ghostText.js';
 
 
 // SQL Keywords for autocomplete
@@ -177,23 +180,16 @@ export function QueryEditor() {
     let executionStartTime = null;
     let timerInterval = null;
 
-    // Autocomplete state
-    let suggestions = [];
-    let selectedIndex = 0;
-    let autocompleteVisible = false;
-
-    // Snippet placeholder state
-    let snippetPlaceholders = [];
-    let currentPlaceholderIndex = 0;
-    let isSnippetMode = false;
-
     // Cache state
     let cachedDatabases = [];
     let cachedTables = {};
     let cachedColumns = {};
 
-    let currentGhostText = ''; // State for ghost text prediction
     const isAutocompleteEnabled = () => SettingsManager.get(SETTINGS_PATHS.AUTOCOMPLETE_ENABLED);
+
+    // These will be initialized after helper functions are defined (see below)
+    let autocompleteUI = null;
+    let ghostTextCtrl = null;
 
     // --- Context Menu State ---
     let contextMenu = {
@@ -360,17 +356,11 @@ export function QueryEditor() {
 
     const applySyntaxRender = (textarea, syntaxHighlight, html, errors) => {
         let renderedHtml = html || '';
-        currentGhostText = '';
 
-        const text = textarea.value || '';
-        const cursorPos = textarea.selectionStart ?? 0;
-        if (isAutocompleteEnabled() && cursorPos === text.length && text.length > 0 && !autocompleteVisible) {
-            const nextToken = smartAutocomplete.getNextTokenPrediction(text);
-            if (nextToken) {
-                currentGhostText = nextToken;
-                const prefix = text.endsWith(' ') ? '' : ' ';
-                renderedHtml += `<span class="opacity-40 select-none pointer-events-none text-gray-500 italic" data-ghost="true">${prefix}${escapeHtml(nextToken)}</span>`;
-            }
+        // Ghost text injection via extracted module
+        if (ghostTextCtrl) {
+            const ghostResult = ghostTextCtrl.injectGhostText(renderedHtml, textarea, autocompleteUI?.isVisible() ?? false);
+            renderedHtml = ghostResult.html;
         }
 
         // Apply fold indicators - add visual markers for collapsed regions
@@ -566,35 +556,10 @@ export function QueryEditor() {
         render();
     };
 
-    // --- Autocomplete Logic ---
-    const getCurrentWord = (textarea) => {
-        const cursorPos = textarea.selectionStart;
-        const text = textarea.value.substring(0, cursorPos);
-        const match = text.match(/[\w.]+$/);
-        return match ? match[0] : '';
-    };
+    // --- Autocomplete Logic (delegated to extracted modules) ---
+    const getCurrentWord = (textarea) => getWordAtCursor(textarea);
 
-    const getCaretCoordinates = (textarea) => {
-        const cursorPos = textarea.selectionStart;
-        const text = textarea.value.substring(0, cursorPos);
-        const lines = text.split('\n');
-        const currentLineIndex = lines.length - 1;
-        const currentLineLength = lines[currentLineIndex].length;
-        const typography = getEditorTypography();
-        const lineNumbersNode = container.querySelector('#line-numbers');
-        const lineNumberOffset = lineNumbersNode
-            ? Math.round(lineNumbersNode.getBoundingClientRect().width + 24)
-            : (SettingsManager.get(SETTINGS_PATHS.EDITOR_LINE_NUMBERS) ? 80 : 20);
-
-        // Approximate position
-        const lineHeight = typography.lineHeight;
-        const charWidth = typography.charWidth;
-
-        return {
-            top: (currentLineIndex + 1) * lineHeight + 40,
-            left: currentLineLength * charWidth + lineNumberOffset
-        };
-    };
+    const getCaretCoordinates = (textarea) => getCaretCoords(textarea, container, getEditorTypography());
 
     const loadDatabasesForAutocomplete = async () => {
         return await DatabaseCache.getOrFetch(
@@ -604,7 +569,6 @@ export function QueryEditor() {
                 try {
                     return await invoke('get_databases');
                 } catch (e) {
-                    // Silently fail if no connection
                     return [];
                 }
             }
@@ -663,40 +627,32 @@ export function QueryEditor() {
     const getSuggestions = async (word, textarea) => {
         if (!word || word.length < 1) return [];
 
-        // Use Smart Autocomplete for context-aware suggestions
         const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
         const currentDb = activeConfig.database || '';
         const query = textarea?.value || '';
         const cursorPos = textarea?.selectionStart || 0;
-
-        // Get database type from activeDbType in localStorage
         const activeDbType = localStorage.getItem('activeDbType') || 'mysql';
 
-        // Set connection ID for cache tracking
         if (activeConfig.id) {
             DatabaseCache.setConnectionId(activeConfig.id);
         }
 
-        // Fallback to basic autocomplete function
         const getBasicSuggestions = async () => {
             await DatabaseCache.ready();
             const upper = word.toUpperCase();
             const lower = word.toLowerCase();
             let results = [];
 
-            // SQL Keywords
             const keywordMatches = SQL_KEYWORDS.filter(k => k.startsWith(upper)).slice(0, 10);
             results.push(...keywordMatches.map(k => ({ type: 'keyword', value: k, icon: 'code', color: 'text-purple-400' })));
 
-            // Database names from cache
-            const cachedDatabases = DatabaseCache.get(CacheTypes.DATABASES, '_default') || [];
-            const dbMatches = cachedDatabases.filter(db => db.toLowerCase().startsWith(lower));
+            const cachedDbs = DatabaseCache.get(CacheTypes.DATABASES, '_default') || [];
+            const dbMatches = cachedDbs.filter(db => db.toLowerCase().startsWith(lower));
             results.push(...dbMatches.map(db => ({ type: 'database', value: db, icon: 'database', color: 'text-mysql-teal' })));
 
-            // Table names from current database (from cache)
-            const cachedTables = currentDb ? DatabaseCache.get(CacheTypes.TABLES, currentDb) : null;
-            if (cachedTables) {
-                const tableMatches = cachedTables.filter(t => t.toLowerCase().startsWith(lower));
+            const cachedTbls = currentDb ? DatabaseCache.get(CacheTypes.TABLES, currentDb) : null;
+            if (cachedTbls) {
+                const tableMatches = cachedTbls.filter(t => t.toLowerCase().startsWith(lower));
                 results.push(...tableMatches.map(t => ({ type: 'table', value: t, icon: 'table_rows', color: 'text-cyan-400' })));
             }
 
@@ -704,29 +660,22 @@ export function QueryEditor() {
         };
 
         try {
-            // Initialize caches if needed (using getOrFetch handles caching automatically)
             await loadDatabasesForAutocomplete();
             if (currentDb) {
                 await loadTablesForAutocomplete(currentDb);
             }
 
-            // Set database type for smart autocomplete
             smartAutocomplete.setDbType(activeDbType);
-
-            // Try smart autocomplete
             await smartAutocomplete.loadDatabases();
             if (currentDb) {
                 await smartAutocomplete.loadTables(currentDb);
             }
 
-            // Get context-aware suggestions
             const smartSuggestions = await smartAutocomplete.getSuggestions(query, cursorPos, currentDb);
-
             if (smartSuggestions && smartSuggestions.length > 0) {
                 return smartSuggestions;
             }
 
-            // Fallback if smart returned empty
             return await getBasicSuggestions();
         } catch (e) {
             console.warn('Smart autocomplete failed, falling back to basic:', e);
@@ -734,245 +683,36 @@ export function QueryEditor() {
         }
     };
 
-    const getWordAtPosition = (text, index) => {
-        if (index < 0 || index >= text.length && index !== 0) return null;
+    const getWordAtPosition = (text, index) => getWordAt(text, index);
 
-        // Characters allowed in identifiers
-        const isWordChar = (char) => /[a-zA-Z0-9_]/.test(char);
+    // --- Initialize extracted modules ---
+    autocompleteUI = createAutocompleteUI({
+        container,
+        getThemeFlags: () => ({ isLight, isDawn, isOceanic, isNeon }),
+        getTypography: getEditorTypography,
+        getSuggestions,
+        isAutocompleteEnabled,
+        setActiveTabContent,
+        updateSyntaxHighlight,
+    });
 
-        let start = index;
-        let end = index;
+    ghostTextCtrl = createGhostTextController({
+        isAutocompleteEnabled,
+        setActiveTabContent,
+        updateSyntaxHighlight,
+    });
 
-        // If clicking exactly at the end of a word or in whitespace, adjust strategy?
-        // Textarea selection correlates to cursor position.
-        // If cursor is at "table|" we want "table".
-        // If cursor is at "|table" we want "table".
-
-        // 1. Check if current char is word char. If not, maybe we are at end of word? check prev char.
-        if (index > 0 && !isWordChar(text[index]) && isWordChar(text[index - 1])) {
-            start--;
-            end--;
-        }
-
-        while (start > 0 && isWordChar(text[start - 1])) {
-            start--;
-        }
-        while (end < text.length && isWordChar(text[end])) {
-            end++;
-        }
-
-        if (start === end) return null; // No word found
-
-        return text.substring(start, end);
-    };
-
-    const showAutocomplete = async (textarea) => {
-        if (!isAutocompleteEnabled()) {
-            hideAutocomplete();
-            return;
-        }
-
-        const word = getCurrentWord(textarea);
-        suggestions = await getSuggestions(word, textarea);
-        selectedIndex = 0;
-
-        if (suggestions.length > 0) {
-            autocompleteVisible = true;
-            renderAutocomplete(textarea);
-        } else {
-            hideAutocomplete();
-        }
-    };
-
-    const hideAutocomplete = () => {
-        autocompleteVisible = false;
-        const popup = container.querySelector('#autocomplete-popup');
-        if (popup) popup.remove();
-    };
-
-    const scrollToSelectedItem = () => {
-        const popup = container.querySelector('#autocomplete-popup');
-        if (!popup) return;
-        const selectedItem = popup.querySelector(`.autocomplete-item[data-index="${selectedIndex}"]`);
-        if (selectedItem) {
-            selectedItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-        }
-    };
-
-    const renderAutocomplete = (textarea) => {
-        let popup = container.querySelector('#autocomplete-popup');
-        if (!popup) {
-            popup = document.createElement('div');
-            popup.id = 'autocomplete-popup';
-            popup.className = `absolute z-[100] ${isLight ? 'bg-white border-gray-200 shadow-xl' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] shadow-xl' : (isOceanic ? 'bg-ocean-panel border border-ocean-border/50 shadow-2xl' : (isNeon ? 'bg-neon-panel border border-neon-border/50 shadow-2xl' : 'bg-[#1a1d23] border border-white/10 shadow-2xl')))} rounded-lg py-1 min-w-[280px] max-w-[450px] max-h-[280px] overflow-y-auto custom-scrollbar transition-all duration-200`;
-            const editorContainer = container.querySelector('.neu-inset');
-            if (editorContainer) {
-                editorContainer.style.position = 'relative';
-                editorContainer.appendChild(popup);
-            }
-        }
-
-        const coords = getCaretCoordinates(textarea);
-        popup.style.top = `${coords.top}px`;
-        popup.style.left = `${Math.min(coords.left, 280)}px`;
-
-        const selectedSuggestion = suggestions[selectedIndex];
-        const hasDescription = selectedSuggestion?.description;
-
-        popup.innerHTML = `
-            ${suggestions.map((s, i) => `
-                <div class="autocomplete-item px-3 py-1.5 flex items-center gap-2 cursor-pointer transition-colors ${i === selectedIndex ? (isLight ? 'bg-mysql-teal/10 text-mysql-teal' : (isDawn ? 'bg-[#ea9d34]/20 text-[#ea9d34]' : (isNeon ? 'bg-neon-accent/10 text-neon-accent' : 'bg-mysql-teal/20 text-white'))) : (isLight ? 'text-gray-700 hover:bg-gray-50' : (isDawn ? 'text-[#575279] hover:bg-[#faf4ed]' : (isNeon ? 'text-neon-text hover:bg-white/5' : 'text-gray-400 hover:bg-white/5')))}" data-index="${i}">
-                    <span class="material-symbols-outlined text-sm ${s.color}">${s.icon}</span>
-                    <div class="flex-1 min-w-0">
-                        <div class="font-mono text-[12px] truncate">${s.display || s.value}</div>
-                        ${s.detail ? `<div class="text-[9px] ${isLight ? 'text-gray-400' : (isNeon ? 'text-neon-text/40' : 'text-gray-500')} truncate">${s.detail}</div>` : ''}
-                    </div>
-                    ${s.isSnippet ? '<span class="material-symbols-outlined text-[10px] text-emerald-400">code</span>' : ''}
-                    <span class="text-[9px] ${isLight ? 'text-gray-400' : (isDawn ? 'text-[#9893a5]' : (isOceanic ? 'text-ocean-text/40' : (isNeon ? 'text-neon-text/40' : 'text-gray-600')))} uppercase flex-shrink-0">${s.type}</span>
-                </div>
-            `).join('')}
-            ${hasDescription ? `
-                <div class="border-t ${isLight ? 'border-gray-100' : (isNeon ? 'border-neon-border/30' : 'border-white/5')} px-3 py-2 mt-1">
-                    <div class="text-[10px] ${isLight ? 'text-gray-500' : (isNeon ? 'text-neon-text/60' : 'text-gray-400')} leading-relaxed">${selectedSuggestion.description}</div>
-                </div>
-            ` : ''}
-        `;
-
-        // Click handlers
-        popup.querySelectorAll('.autocomplete-item').forEach(item => {
-            item.addEventListener('mousedown', (e) => {
-                e.preventDefault();
-                const idx = parseInt(item.dataset.index);
-                selectSuggestion(textarea, idx);
-            });
-        });
-    };
-
-    const selectSuggestion = (textarea, index) => {
-        const suggestion = suggestions[index];
-        if (!suggestion) return;
-
-        const cursorPos = textarea.selectionStart;
-        const text = textarea.value;
-        const word = getCurrentWord(textarea);
-        const wordStart = cursorPos - word.length;
-
-        let insertValue = suggestion.value;
-
-        if (word.includes('.') && suggestion.display) {
-            const dotIndex = word.lastIndexOf('.');
-            const prefix = word.substring(0, dotIndex + 1);
-            insertValue = prefix + suggestion.display;
-        }
-
-        // Handle snippet placeholders: ${1:default} ${2:default}
-        const placeholderRegex = /\$\{(\d+):([^}]+)\}/g;
-        const placeholders = [];
-        let match;
-        let processedValue = insertValue;
-        let placeholderOffset = 0;
-        
-        while ((match = placeholderRegex.exec(insertValue)) !== null) {
-            const placeholderNum = parseInt(match[1]);
-            const defaultValue = match[2];
-            const startPos = match.index - placeholderOffset;
-            const endPos = startPos + defaultValue.length;
-            
-            placeholders.push({
-                number: placeholderNum,
-                start: startPos,
-                end: endPos,
-                default: defaultValue,
-            });
-            
-            // Replace ${n:default} with just 'default'
-            processedValue = processedValue.replace(match[0], defaultValue);
-            placeholderOffset += match[0].length - defaultValue.length;
-        }
-
-        const newText = text.substring(0, wordStart) + processedValue + text.substring(cursorPos);
-        textarea.value = newText;
-
-        // Record selection for frequency learning
-        smartAutocomplete.recordSelection(suggestion.value);
-
-        // Handle snippet mode vs regular insertion
-        if (placeholders.length > 0) {
-            snippetPlaceholders = placeholders.map(p => ({
-                ...p,
-                start: wordStart + p.start,
-                end: wordStart + p.end,
-            }));
-            snippetPlaceholders.sort((a, b) => a.number - b.number);
-            currentPlaceholderIndex = 0;
-            isSnippetMode = true;
-            
-            // Select first placeholder
-            const firstPlaceholder = snippetPlaceholders[0];
-            textarea.setSelectionRange(firstPlaceholder.start, firstPlaceholder.end);
-        } else {
-            const newCursorPos = wordStart + processedValue.length;
-            textarea.setSelectionRange(newCursorPos, newCursorPos);
-            isSnippetMode = false;
-            snippetPlaceholders = [];
-        }
-
-        // Update tab content
-        setActiveTabContent(newText, { forceSnapshot: true, historySource: 'autocomplete' });
-
-        const syntaxHighlight = container.querySelector('#syntax-highlight');
-        if (syntaxHighlight) {
-            requestSyntaxRender(textarea, syntaxHighlight, true);
-        }
-
-        if (!isSnippetMode) {
-            hideAutocomplete();
-        }
-        textarea.focus();
-    };
-
-    const navigateSnippetPlaceholder = (textarea, forward = true) => {
-        if (!isSnippetMode || snippetPlaceholders.length === 0) {
-            return false;
-        }
-
-        // Update current placeholder position based on text changes
-        const text = textarea.value;
-        const cursorPos = textarea.selectionStart;
-        
-        // Find which placeholder we're at or near
-        let currentIdx = -1;
-        for (let i = 0; i < snippetPlaceholders.length; i++) {
-            if (cursorPos >= snippetPlaceholders[i].start && cursorPos <= snippetPlaceholders[i].end) {
-                currentIdx = i;
-                break;
-            }
-        }
-
-        // Recalculate positions based on current text
-        let nextIdx;
-        if (currentIdx === -1) {
-            nextIdx = forward ? 0 : snippetPlaceholders.length - 1;
-        } else {
-            nextIdx = forward ? currentIdx + 1 : currentIdx - 1;
-        }
-
-        if (nextIdx >= snippetPlaceholders.length || nextIdx < 0) {
-            // Exit snippet mode
-            isSnippetMode = false;
-            snippetPlaceholders = [];
-            return false;
-        }
-
-        const nextPlaceholder = snippetPlaceholders[nextIdx];
-        if (nextPlaceholder && nextPlaceholder.start <= text.length) {
-            textarea.setSelectionRange(nextPlaceholder.start, nextPlaceholder.end);
-            currentPlaceholderIndex = nextIdx;
-            return true;
-        }
-
-        return false;
-    };
+    // Thin wrappers for backward compatibility within QueryEditor
+    const showAutocomplete = (textarea) => autocompleteUI.show(textarea);
+    const hideAutocomplete = () => autocompleteUI.hide();
+    const scrollToSelectedItem = () => autocompleteUI.scrollToSelected();
+    const renderAutocomplete = (textarea) => autocompleteUI.render(textarea);
+    const selectSuggestion = (textarea, index) => autocompleteUI.selectSuggestion(textarea, index);
+    const navigateSnippetPlaceholder = (textarea, forward) => autocompleteUI.navigateSnippetPlaceholder(textarea, forward);
+    // Convenience getters for backward compat
+    const autocompleteVisible = () => autocompleteUI.isVisible();
+    const isSnippetMode = () => autocompleteUI.isInSnippetMode();
+    const currentGhostText = () => ghostTextCtrl.getCurrentGhostText();
 
 
     // --- Context Menu Logic ---
@@ -2391,86 +2131,14 @@ export function QueryEditor() {
                 return;
             }
 
-            // Snippet Placeholder Navigation (Tab to next, Shift+Tab to previous)
-            if (isSnippetMode && e.key === 'Tab') {
-                e.preventDefault();
-                const navigated = navigateSnippetPlaceholder(textarea, !e.shiftKey);
-                if (!navigated) {
-                    isSnippetMode = false;
-                    snippetPlaceholders = [];
-                }
+            // Ghost text acceptance (Tab key)
+            if (ghostTextCtrl.handleTabAccept(e, textarea, autocompleteUI.isVisible(), autocompleteUI.isInSnippetMode())) {
                 return;
             }
 
-            // Ghost Text Acceptance
-            if (isAutocompleteEnabled() && e.key === 'Tab' && currentGhostText && !autocompleteVisible && !isSnippetMode) {
-                e.preventDefault();
-
-                const text = textarea.value;
-                const prefix = text.endsWith(' ') ? '' : ' ';
-                const newText = text + prefix + currentGhostText;
-
-                textarea.value = newText;
-
-                setActiveTabContent(newText, { forceSnapshot: true, historySource: 'ghost' });
-
-                // Move cursor to end
-                textarea.selectionStart = textarea.selectionEnd = newText.length;
-
-                // Train on the accepted word!
-                smartAutocomplete.recordSelection(currentGhostText, 'ghost_text');
-
-                currentGhostText = '';
-                updateSyntaxHighlight(true);
+            // Autocomplete keyboard navigation (snippets, arrows, enter, escape, Ctrl+Space)
+            if (autocompleteUI.handleKeydown(e, textarea)) {
                 return;
-            }
-
-            if (!isAutocompleteEnabled() && autocompleteVisible) {
-                hideAutocomplete();
-            }
-
-            if (isAutocompleteEnabled() && autocompleteVisible) {
-                if (e.key === 'ArrowDown') {
-                    e.preventDefault();
-                    selectedIndex = Math.min(selectedIndex + 1, suggestions.length - 1);
-                    renderAutocomplete(textarea);
-                    scrollToSelectedItem(textarea);
-                } else if (e.key === 'ArrowUp') {
-                    e.preventDefault();
-                    selectedIndex = Math.max(selectedIndex - 1, 0);
-                    renderAutocomplete(textarea);
-                    scrollToSelectedItem(textarea);
-                } else if (e.key === 'PageDown') {
-                    e.preventDefault();
-                    const pageSize = 10;
-                    selectedIndex = Math.min(selectedIndex + pageSize, suggestions.length - 1);
-                    renderAutocomplete(textarea);
-                    scrollToSelectedItem(textarea);
-                } else if (e.key === 'PageUp') {
-                    e.preventDefault();
-                    const pageSize = 10;
-                    selectedIndex = Math.max(selectedIndex - pageSize, 0);
-                    renderAutocomplete(textarea);
-                    scrollToSelectedItem(textarea);
-                } else if (e.key === 'Home') {
-                    e.preventDefault();
-                    selectedIndex = 0;
-                    renderAutocomplete(textarea);
-                    scrollToSelectedItem(textarea);
-                } else if (e.key === 'End') {
-                    e.preventDefault();
-                    selectedIndex = suggestions.length - 1;
-                    renderAutocomplete(textarea);
-                    scrollToSelectedItem(textarea);
-                } else if (e.key === 'Enter' || e.key === 'Tab') {
-                    if (suggestions.length > 0) {
-                        e.preventDefault();
-                        selectSuggestion(textarea, selectedIndex);
-                    }
-                } else if (e.key === 'Escape') {
-                    e.preventDefault();
-                    hideAutocomplete();
-                }
             }
 
             // Ctrl+I to trigger AI Bar
@@ -2489,15 +2157,6 @@ export function QueryEditor() {
                 });
             }
 
-            // Ctrl+Space to trigger autocomplete
-            if (e.ctrlKey && e.code === 'Space') {
-                e.preventDefault();
-                if (!isAutocompleteEnabled()) {
-                    toastWarning('Autocomplete is disabled in Settings.');
-                    return;
-                }
-                showAutocomplete(textarea);
-            }
 
             // Ctrl+Shift+F to format SQL
             if (e.ctrlKey && e.shiftKey && e.key === 'F') {

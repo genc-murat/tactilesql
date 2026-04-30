@@ -55,6 +55,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "resources": ["windows-dlls/libstdc++-6.dll"],
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper"
