@@ -32,8 +32,7 @@ export const createContextMenu = (x, y, items, options = {}) => {
     removeContextMenu();
 
     const theme = ThemeManager.getCurrentTheme();
-    const isLight = theme === 'light';
-    const isDawn = theme === 'dawn';
+    const { isLight, isDawn } = ThemeManager.getThemeFlags();
     const isNeon = theme === 'neon';
     const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 

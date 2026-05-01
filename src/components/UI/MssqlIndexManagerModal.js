@@ -4,9 +4,7 @@ import { Dialog } from './Dialog.js';
 import { toastSuccess, toastError } from '../../utils/Toast.js';
 
 export async function showMssqlIndexManagerModal(database, table) {
-    const theme = ThemeManager.getCurrentTheme();
-    const isLight = theme === 'light';
-    const isDawn = theme === 'dawn';
+    const { theme, isLight, isDawn } = ThemeManager.getThemeFlags();
     const isNeon = theme === 'neon';
     const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 

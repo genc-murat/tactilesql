@@ -79,9 +79,7 @@ export function showViewSourceModal(dbName, viewName) {
     const existing = document.getElementById('view-source-modal');
     if (existing) existing.remove();
 
-    const theme = ThemeManager.getCurrentTheme();
-    const isLight = theme === 'light';
-    const isDawn = theme === 'dawn';
+    const { theme, isLight, isDawn } = ThemeManager.getThemeFlags();
     const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
     const overlay = document.createElement('div');

@@ -170,8 +170,7 @@ export const showToast = (message, type = 'info', options = {}) => {
     const container = getContainer();
     const config = getTypeConfig(type);
     const theme = ThemeManager.getCurrentTheme();
-    const isLight = theme === 'light';
-    const isDawn = theme === 'dawn';
+    const { isLight, isDawn } = ThemeManager.getThemeFlags();
 
     // Create toast element
     const toast = document.createElement('div');

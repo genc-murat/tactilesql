@@ -5,9 +5,7 @@ import { toastSuccess, toastError } from '../../utils/Toast.js';
 import { showVisualExplainModal } from './VisualExplainModal.js';
 
 export async function showPartitionManagementModal(database, table) {
-    const theme = ThemeManager.getCurrentTheme();
-    const isLight = theme === 'light';
-    const isDawn = theme === 'dawn';
+    const { theme, isLight, isDawn } = ThemeManager.getThemeFlags();
     const isNeon = theme === 'neon';
     const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 

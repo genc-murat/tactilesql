@@ -1328,8 +1328,7 @@ export function DataTools() {
     };
 
     const renderMockRules = () => {
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         const isNeon = theme === 'neon';
         const generators = [
@@ -1392,8 +1391,7 @@ export function DataTools() {
     };
 
     const renderMockPreview = () => {
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         const isNeon = theme === 'neon';
 
@@ -1440,8 +1438,7 @@ export function DataTools() {
 
     const renderMockJobStatus = () => {
         if (!mockJobStatus) return '';
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         const isNeon = theme === 'neon';
         const progress = Math.max(0, Math.min(100, Number(mockJobStatus.progressPct || 0)));
@@ -1483,8 +1480,7 @@ export function DataTools() {
     };
 
     const renderMockJobHistory = () => {
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         const isNeon = theme === 'neon';
 
@@ -1541,8 +1537,7 @@ export function DataTools() {
     };
 
     const render = () => {
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         const isNeon = theme === 'neon';
 
@@ -1801,8 +1796,7 @@ export function DataTools() {
     };
 
     const renderProcessing = () => {
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         return `
             <div class="flex flex-col items-center justify-center py-12">
                 <div class="w-16 h-16 rounded-full ${isLight ? 'bg-mysql-teal/10' : (isDawn ? 'bg-[#ea9d34]/20' : 'bg-mysql-teal/20')} flex items-center justify-center mb-4">
@@ -1815,8 +1809,7 @@ export function DataTools() {
     };
 
     const renderTabContent = () => {
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
         if (activeTab === 'export') {

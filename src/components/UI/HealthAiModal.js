@@ -10,9 +10,7 @@ export class HealthAiModal {
             this.currentModal.remove();
         }
 
-        const theme = ThemeManager.getCurrentTheme();
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { theme, isLight, isDawn } = ThemeManager.getThemeFlags();
 
         const overlay = document.createElement('div');
         overlay.id = 'health-ai-modal';

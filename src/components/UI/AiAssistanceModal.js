@@ -2,20 +2,17 @@ import { ThemeManager } from '../../utils/ThemeManager.js';
 
 export class AiAssistanceModal {
     static async show(title, content, options = {}) {
-        const theme = ThemeManager.getCurrentTheme();
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
+        const { isLight, isDawn, isOceanicVariant } = ThemeManager.getThemeFlags();
 
         const overlay = document.createElement('div');
         overlay.className = 'fixed inset-0 bg-black/60 backdrop-blur-sm z-[10000] flex items-center justify-center p-4 animate-in fade-in duration-200';
 
         const modal = document.createElement('div');
-        modal.className = `${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/40' : 'bg-[#1a1d23] border-white/10'))} border rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200`;
+        modal.className = `${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanicVariant ? 'bg-ocean-panel border-ocean-border/40' : 'bg-[#1a1d23] border-white/10'))} border rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200`;
 
         modal.innerHTML = `
             <!-- Header -->
-            <div class="px-6 py-4 border-b ${isLight ? 'border-gray-100 bg-gray-50/50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]/50' : (isOceanic ? 'border-ocean-border/20 bg-ocean-bg/30' : 'border-white/5 bg-white/2'))} flex items-center justify-between">
+            <div class="px-6 py-4 border-b ${isLight ? 'border-gray-100 bg-gray-50/50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]/50' : (isOceanicVariant ? 'border-ocean-border/20 bg-ocean-bg/30' : 'border-white/5 bg-white/2'))} flex items-center justify-between">
                 <div class="flex items-center gap-3">
                     <div class="w-10 h-10 rounded-xl bg-mysql-teal/10 flex items-center justify-center text-mysql-teal">
                         <span class="material-symbols-outlined text-[24px]">auto_awesome</span>

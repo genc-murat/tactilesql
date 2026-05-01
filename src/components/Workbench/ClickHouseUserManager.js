@@ -5,9 +5,7 @@ import { toastSuccess, toastError } from '../../utils/Toast.js';
 import { ThemeManager } from '../../utils/ThemeManager.js';
 
 export function showClickHouseUserManager(connection) {
-    const theme = ThemeManager.getCurrentTheme();
-    const isLight = theme === 'light';
-    const isDawn = theme === 'dawn';
+    const { theme, isLight, isDawn } = ThemeManager.getThemeFlags();
 
     const overlay = document.createElement('div');
     overlay.className = 'fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-8 text-sm';

@@ -3,9 +3,7 @@ import { Dialog } from '../UI/Dialog.js';
 import { ThemeManager } from '../../utils/ThemeManager.js';
 
 export function RelatedDataPopup({ tableName, matchedColumn, matchedValue, database, position }) {
-    const theme = ThemeManager.getCurrentTheme();
-    const isLight = theme === 'light';
-    const isDawn = theme === 'dawn';
+    const { theme, isLight, isDawn } = ThemeManager.getThemeFlags();
     const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
     // Create container overlay

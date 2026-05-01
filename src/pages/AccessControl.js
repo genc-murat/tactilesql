@@ -202,8 +202,7 @@ export function AccessControl() {
 
     // Render user list
     function renderUserList() {
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         const isNeon = theme === 'neon';
 
@@ -249,8 +248,7 @@ export function AccessControl() {
 
     // Render privilege toggles
     function renderPrivileges() {
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         const isNeon = theme === 'neon';
 
@@ -335,8 +333,7 @@ export function AccessControl() {
 
     // Main render
     const render = () => {
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         const isNeon = theme === 'neon';
         

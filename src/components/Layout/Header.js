@@ -6,8 +6,7 @@ export function Header() {
     let theme = ThemeManager.getCurrentTheme();
 
     const render = () => {
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
         header.className = `h-16 ${isLight ? 'glass-header' : (isDawn ? 'bg-[#fffaf3]/90 border-b border-[#f2e9e1] backdrop-blur-md' : (isOceanic ? 'bg-ocean-panel/90 border-b border-ocean-border backdrop-blur-md' : 'glass-header'))} px-8 flex items-center justify-between z-50 sticky top-0 transition-all duration-300`;

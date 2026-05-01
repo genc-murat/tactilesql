@@ -100,7 +100,7 @@ export const ThemeManager = {
 
     /**
      * Get theme flags object for easier destructuring
-     * @returns {Object} Theme flags { isLight, isDark, isDawn, isOceanic, isEmber, isAurora }
+     * @returns {Object} Theme flags { isLight, isDark, isDawn, isOceanic, isEmber, isAurora, isNeon, isCopper, isLightVariant, isDarkVariant, isNordVariant, isOceanicVariant }
      */
     getThemeFlags() {
         const theme = this.getCurrentTheme();
@@ -116,7 +116,8 @@ export const ThemeManager = {
             isCopper: theme === this.THEMES.COPPER,
             isLightVariant: this.LIGHT_THEMES.includes(theme),
             isDarkVariant: this.DARK_THEMES.includes(theme),
-            isNordVariant: this.NORD_THEMES.includes(theme)
+            isNordVariant: this.NORD_THEMES.includes(theme),
+            isOceanicVariant: ['oceanic', 'ember', 'aurora', 'copper'].includes(theme)
         };
     },
 

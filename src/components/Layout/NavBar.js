@@ -6,8 +6,7 @@ export function NavBar() {
     let theme = ThemeManager.getCurrentTheme();
 
     const render = () => {
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         const isNeon = theme === 'neon';
         const taskCenterEnabled = isFeatureEnabled('taskCenter');

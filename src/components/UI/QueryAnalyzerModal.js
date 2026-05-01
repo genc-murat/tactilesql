@@ -6,19 +6,15 @@ export function showQueryAnalyzerModal(title, query, connectionId) {
     const existing = document.getElementById('query-analyzer-modal');
     if (existing) existing.remove();
 
-    const theme = ThemeManager.getCurrentTheme();
-    const isLight = theme === 'light';
-    const isDawn = theme === 'dawn';
-    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
-    const isNeon = theme === 'neon';
+    const { theme, isLight, isDawn, isOceanicVariant, isNeon } = ThemeManager.getThemeFlags();
 
     const overlay = document.createElement('div');
     overlay.id = 'query-analyzer-modal';
     overlay.className = 'fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-center justify-center p-4';
 
     overlay.innerHTML = `
-        <div class="${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border' : 'bg-[#0f1115] border border-white/10'))} rounded-xl shadow-2xl w-full max-w-6xl h-[85vh] flex flex-col overflow-hidden">
-            <div class="flex items-center justify-between px-6 py-4 border-b ${isLight ? 'border-gray-100 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border/30 bg-ocean-panel' : 'border-white/10 bg-[#16191e]'))}">
+        <div class="${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanicVariant ? 'bg-ocean-panel border-ocean-border' : 'bg-[#0f1115] border border-white/10'))} rounded-xl shadow-2xl w-full max-w-6xl h-[85vh] flex flex-col overflow-hidden">
+            <div class="flex items-center justify-between px-6 py-4 border-b ${isLight ? 'border-gray-100 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanicVariant ? 'border-ocean-border/30 bg-ocean-panel' : 'border-white/10 bg-[#16191e]'))}">
                 <div class="flex items-center gap-3">
                     <span class="material-symbols-outlined text-blue-400">troubleshoot</span>
                     <h2 class="text-sm font-bold ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-white')} uppercase tracking-wider">${title}</h2>
@@ -30,7 +26,7 @@ export function showQueryAnalyzerModal(title, query, connectionId) {
             <div class="flex-1 flex flex-col overflow-hidden" id="modal-results-container">
                 <!-- ResultsTable will be injected here -->
             </div>
-            <div class="px-6 py-3 border-t ${isLight ? 'border-gray-100 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border/30 bg-ocean-panel' : 'border-white/10 bg-[#16191e]'))} flex justify-between items-center">
+            <div class="px-6 py-3 border-t ${isLight ? 'border-gray-100 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanicVariant ? 'border-ocean-border/30 bg-ocean-panel' : 'border-white/10 bg-[#16191e]'))} flex justify-between items-center">
                 <div class="text-[10px] font-mono text-gray-500 truncate max-w-2xl" title="${query.replace(/"/g, '&quot;')}">
                     ${query}
                 </div>

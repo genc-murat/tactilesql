@@ -7,21 +7,17 @@ import { toastSuccess, toastError } from '../../utils/Toast.js';
  * MySQL Slow Query Log Configuration Modal
  */
 export async function showMySQLSlowQueryConfigModal() {
-    const theme = ThemeManager.getCurrentTheme();
-    const isLight = theme === 'light';
-    const isDawn = theme === 'dawn';
-    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
-    const isNeon = theme === 'neon';
+    const { theme, isLight, isDawn, isOceanicVariant, isNeon } = ThemeManager.getThemeFlags();
 
     // Theme tokens
-    const bg = isLight ? 'bg-white' : isDawn ? 'bg-[#fffaf3]' : isOceanic ? 'bg-ocean-bg' : isNeon ? 'bg-neon-bg' : 'bg-[#0f1115]';
-    const panelBg = isLight ? 'bg-gray-50' : isDawn ? 'bg-[#faf4ed]' : isOceanic ? 'bg-ocean-panel' : isNeon ? 'bg-neon-panel' : 'bg-[#13161b]';
-    const border = isLight ? 'border-gray-200' : isDawn ? 'border-[#f2e9e1]' : isOceanic ? 'border-ocean-border/50' : isNeon ? 'border-neon-border/50' : 'border-white/10';
-    const borderSub = isLight ? 'border-gray-100' : isDawn ? 'border-[#f2e9e1]' : isOceanic ? 'border-ocean-border/30' : isNeon ? 'border-neon-border/30' : 'border-white/5';
+    const bg = isLight ? 'bg-white' : isDawn ? 'bg-[#fffaf3]' : isOceanicVariant ? 'bg-ocean-bg' : isNeon ? 'bg-neon-bg' : 'bg-[#0f1115]';
+    const panelBg = isLight ? 'bg-gray-50' : isDawn ? 'bg-[#faf4ed]' : isOceanicVariant ? 'bg-ocean-panel' : isNeon ? 'bg-neon-panel' : 'bg-[#13161b]';
+    const border = isLight ? 'border-gray-200' : isDawn ? 'border-[#f2e9e1]' : isOceanicVariant ? 'border-ocean-border/50' : isNeon ? 'border-neon-border/50' : 'border-white/10';
+    const borderSub = isLight ? 'border-gray-100' : isDawn ? 'border-[#f2e9e1]' : isOceanicVariant ? 'border-ocean-border/30' : isNeon ? 'border-neon-border/30' : 'border-white/5';
     const textPrimary = isLight ? 'text-gray-800' : isDawn ? 'text-[#575279]' : 'text-white';
     const textSecondary = isLight ? 'text-gray-500' : isDawn ? 'text-[#9893a5]' : 'text-gray-400';
     const btnBg = isLight ? 'bg-white border-gray-200 hover:bg-gray-50' : isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] hover:bg-[#f2e9e1]' : isNeon ? 'bg-neon-panel border-neon-border/30 hover:bg-neon-accent/10' : 'bg-white/5 border-white/10 hover:bg-white/10';
-    const inputBg = isLight ? 'bg-white' : isDawn ? 'bg-[#fffaf3]' : isOceanic ? 'bg-ocean-bg/50' : isNeon ? 'bg-black/40' : 'bg-black/20';
+    const inputBg = isLight ? 'bg-white' : isDawn ? 'bg-[#fffaf3]' : isOceanicVariant ? 'bg-ocean-bg/50' : isNeon ? 'bg-black/40' : 'bg-black/20';
 
     const overlay = document.createElement('div');
     overlay.id = 'mysql-slow-query-config-modal';

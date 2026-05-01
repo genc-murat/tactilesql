@@ -28,8 +28,7 @@ export function ClickHouseWorkbench() {
     let cleanupCurrentView = null;
 
     const render = () => {
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
         container.innerHTML = `
@@ -94,8 +93,7 @@ export function ClickHouseWorkbench() {
 
     const renderNavItem = (id, icon, label) => {
         const isActive = activeTab === id;
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
         let activeClass = '';

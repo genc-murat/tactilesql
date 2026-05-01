@@ -157,7 +157,7 @@ export function DbConfig() {
                 btn.classList.remove('bg-white/5', 'text-gray-400', 'text-gray-500');
             } else {
                 btn.classList.remove('bg-blue-500', 'text-white');
-                const isLight = theme === 'light';
+                const { isLight } = ThemeManager.getThemeFlags();
                 btn.classList.add(isLight ? 'text-gray-500' : 'text-gray-400', isLight ? 'bg-white' : 'bg-white/5');
             }
         });
@@ -173,8 +173,7 @@ export function DbConfig() {
         const tableContainer = container.querySelector('#config-table-container');
         if (!tableContainer) return;
 
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
 
         if (isLoading) {
             tableContainer.innerHTML = '';
@@ -253,8 +252,7 @@ export function DbConfig() {
     };
 
     const render = () => {
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const isNeon = theme === 'neon';
 
         container.innerHTML = `

@@ -8,14 +8,16 @@ import { CustomDropdown } from '../../UI/CustomDropdown.js';
 import { invoke } from '@tauri-apps/api/core';
 
 export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGenerateMigration, connectionId, baseSnapshotId = null, targetSnapshotId = null, dbType = null }) {
-    const theme = ThemeManager.getCurrentTheme();
-    const isLight = theme === 'light';
-    const isDawn = theme === 'dawn';
-    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
-    const isEmber = theme === 'ember';
-    const isAurora = theme === 'aurora';
-    const isCopper = theme === 'copper';
-    const isNeon = theme === 'neon';
+    const {
+        theme,
+        isLight,
+        isDawn,
+        isOceanic,
+        isEmber,
+        isAurora,
+        isCopper,
+        isNeon
+    } = ThemeManager.getThemeFlags();
 
     const container = document.createElement('div');
     container.className = `flex-1 h-full flex flex-col overflow-hidden`;

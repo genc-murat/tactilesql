@@ -9,17 +9,18 @@ import { Dialog } from '../../UI/Dialog.js';
 import './QualityDashboard.css';
 
 export function QualityDashboard() {
-    let theme = ThemeManager.getCurrentTheme();
+    let {
+        theme,
+        isLight,
+        isDawn,
+        isOceanic,
+        isEmber,
+        isAurora,
+        isNeon
+    } = ThemeManager.getThemeFlags();
 
     // Theme helpers
     const getClasses = (t) => {
-        const isLight = t === 'light';
-        const isDawn = t === 'dawn';
-        const isOceanic = t === 'oceanic' || t === 'ember' || t === 'aurora' || t === 'copper';
-        const isEmber = t === 'ember';
-        const isAurora = t === 'aurora';
-        const isNeon = t === 'neon';
-
         return {
             container: `quality-dashboard flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-[#2E3440]' : (isEmber ? 'bg-[#140c12]' : (isAurora ? 'bg-[#0b1214]' : (isNeon ? 'bg-neon-bg' : 'bg-[#0a0c10]')))))} transition-colors duration-300`,
             header: `px-6 py-4 flex flex-col gap-4 border-b ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-[#3B4252] border-[#4C566A]' : (isEmber ? 'bg-[#1d141c] border-[#2c1c27]' : (isAurora ? 'bg-[#0f1a1d] border-[#1b2e33]' : (isNeon ? 'bg-neon-panel border-neon-border/30' : 'bg-[#13161b] border-white/10')))))}`,
@@ -1283,7 +1284,15 @@ export function QualityDashboard() {
     }
 
     const onThemeChange = (e) => {
-        theme = e.detail.theme;
+        ({
+            theme,
+            isLight,
+            isDawn,
+            isOceanic,
+            isEmber,
+            isAurora,
+            isNeon
+        } = ThemeManager.getThemeFlags());
         classes = getClasses(theme);
         render();
     };

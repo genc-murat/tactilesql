@@ -173,14 +173,10 @@ export const LoadingStates = {
      * @returns {HTMLElement}
      */
     skeleton({ width = '100%', height = '16px', rounded = 'md', className = '' } = {}) {
-        const theme = ThemeManager.getCurrentTheme();
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
-        const isNeon = theme === 'neon';
+        const { isLight, isDawn, isOceanicVariant, isNeon } = ThemeManager.getThemeFlags();
 
         const el = document.createElement('div');
-        el.className = `animate-pulse ${isLight ? 'bg-gray-200' : (isDawn ? 'bg-[#e4ddd5]' : (isOceanic ? 'bg-ocean-border/30' : (isNeon ? 'bg-neon-accent/10' : 'bg-white/10')))} rounded-${rounded} ${className}`;
+        el.className = `animate-pulse ${isLight ? 'bg-gray-200' : (isDawn ? 'bg-[#e4ddd5]' : (isOceanicVariant ? 'bg-ocean-border/30' : (isNeon ? 'bg-neon-accent/10' : 'bg-white/10')))} rounded-${rounded} ${className}`;
         el.style.width = width;
         el.style.height = height;
         return el;
@@ -193,22 +189,18 @@ export const LoadingStates = {
      * @returns {HTMLElement}
      */
     tableSkeleton(rows = 8, cols = 5) {
-        const theme = ThemeManager.getCurrentTheme();
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
-        const isNeon = theme === 'neon';
+        const { isLight, isDawn, isOceanicVariant, isNeon } = ThemeManager.getThemeFlags();
 
         const container = document.createElement('div');
         container.className = 'w-full';
 
         // Header
         const header = document.createElement('div');
-        header.className = `flex gap-4 p-3 border-b ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanic ? 'border-ocean-border bg-ocean-panel' : (isNeon ? 'border-neon-border/20 bg-neon-panel' : 'border-white/5 bg-[#16191e]')))}`;
+        header.className = `flex gap-4 p-3 border-b ${isLight ? 'border-gray-200 bg-gray-50' : (isDawn ? 'border-[#f2e9e1] bg-[#faf4ed]' : (isOceanicVariant ? 'border-ocean-border bg-ocean-panel' : (isNeon ? 'border-neon-border/20 bg-neon-panel' : 'border-white/5 bg-[#16191e]')))}`;
 
         for (let i = 0; i < cols; i++) {
             const headerCell = document.createElement('div');
-            headerCell.className = `animate-pulse ${isLight ? 'bg-gray-300/50' : (isDawn ? 'bg-[#d8d1cf]' : (isOceanic ? 'bg-ocean-border/40' : (isNeon ? 'bg-neon-accent/10' : 'bg-white/10')))} rounded h-4 flex-1`;
+            headerCell.className = `animate-pulse ${isLight ? 'bg-gray-300/50' : (isDawn ? 'bg-[#d8d1cf]' : (isOceanicVariant ? 'bg-ocean-border/40' : (isNeon ? 'bg-neon-accent/10' : 'bg-white/10')))} rounded h-4 flex-1`;
             headerCell.style.animationDelay = `${i * 100}ms`;
             header.appendChild(headerCell);
         }
@@ -217,12 +209,12 @@ export const LoadingStates = {
         // Rows
         for (let r = 0; r < rows; r++) {
             const row = document.createElement('div');
-            row.className = `flex gap-4 p-3 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]/50' : (isOceanic ? 'border-ocean-border/30' : (isNeon ? 'border-neon-border/10' : 'border-white/[0.03]')))}`;
+            row.className = `flex gap-4 p-3 border-b ${isLight ? 'border-gray-100' : (isDawn ? 'border-[#f2e9e1]/50' : (isOceanicVariant ? 'border-ocean-border/30' : (isNeon ? 'border-neon-border/10' : 'border-white/[0.03]')))}`;
             row.style.opacity = `${1 - (r * 0.08)}`;
 
             for (let c = 0; c < cols; c++) {
                 const cell = document.createElement('div');
-                cell.className = `animate-pulse ${isLight ? 'bg-gray-200/60' : (isDawn ? 'bg-[#e4ddd5]/60' : (isOceanic ? 'bg-ocean-border/20' : (isNeon ? 'bg-neon-accent/5' : 'bg-white/5')))} rounded h-3 flex-1`;
+                cell.className = `animate-pulse ${isLight ? 'bg-gray-200/60' : (isDawn ? 'bg-[#e4ddd5]/60' : (isOceanicVariant ? 'bg-ocean-border/20' : (isNeon ? 'bg-neon-accent/5' : 'bg-white/5')))} rounded h-3 flex-1`;
                 cell.style.width = `${40 + Math.random() * 50}%`;
                 cell.style.animationDelay = `${(r * cols + c) * 50}ms`;
                 row.appendChild(cell);
@@ -238,25 +230,21 @@ export const LoadingStates = {
      * @returns {HTMLElement}
      */
     cardSkeleton() {
-        const theme = ThemeManager.getCurrentTheme();
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
-        const isNeon = theme === 'neon';
+        const { isLight, isDawn, isOceanicVariant, isNeon } = ThemeManager.getThemeFlags();
 
         const card = document.createElement('div');
-        card.className = `p-4 rounded-xl border ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border' : (isNeon ? 'bg-neon-panel border-neon-border/50' : 'bg-[#16191e] border-white/5')))}`;
+        card.className = `p-4 rounded-xl border ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanicVariant ? 'bg-ocean-panel border-ocean-border' : (isNeon ? 'bg-neon-panel border-neon-border/50' : 'bg-[#16191e] border-white/5')))}`;
         card.innerHTML = `
             <div class="flex items-center gap-3 mb-4">
-                <div class="animate-pulse w-10 h-10 rounded-lg ${isLight ? 'bg-gray-200' : (isDawn ? 'bg-[#e4ddd5]' : (isOceanic ? 'bg-ocean-border/30' : (isNeon ? 'bg-neon-accent/10' : 'bg-white/10')))}"></div>
+                <div class="animate-pulse w-10 h-10 rounded-lg ${isLight ? 'bg-gray-200' : (isDawn ? 'bg-[#e4ddd5]' : (isOceanicVariant ? 'bg-ocean-border/30' : (isNeon ? 'bg-neon-accent/10' : 'bg-white/10')))}"></div>
                 <div class="flex-1">
-                    <div class="animate-pulse h-4 ${isLight ? 'bg-gray-200' : (isDawn ? 'bg-[#e4ddd5]' : (isOceanic ? 'bg-ocean-border/30' : (isNeon ? 'bg-neon-accent/10' : 'bg-white/10')))} rounded w-3/4 mb-2"></div>
-                    <div class="animate-pulse h-3 ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#f2e9e1]' : (isOceanic ? 'bg-ocean-border/20' : (isNeon ? 'bg-neon-accent/5' : 'bg-white/5')))} rounded w-1/2"></div>
+                    <div class="animate-pulse h-4 ${isLight ? 'bg-gray-200' : (isDawn ? 'bg-[#e4ddd5]' : (isOceanicVariant ? 'bg-ocean-border/30' : (isNeon ? 'bg-neon-accent/10' : 'bg-white/10')))} rounded w-3/4 mb-2"></div>
+                    <div class="animate-pulse h-3 ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#f2e9e1]' : (isOceanicVariant ? 'bg-ocean-border/20' : (isNeon ? 'bg-neon-accent/5' : 'bg-white/5')))} rounded w-1/2"></div>
                 </div>
             </div>
             <div class="space-y-2">
-                <div class="animate-pulse h-3 ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#f2e9e1]' : (isOceanic ? 'bg-ocean-border/20' : (isNeon ? 'bg-neon-accent/5' : 'bg-white/5')))} rounded"></div>
-                <div class="animate-pulse h-3 ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#f2e9e1]' : (isOceanic ? 'bg-ocean-border/20' : (isNeon ? 'bg-neon-accent/5' : 'bg-white/5')))} rounded w-5/6"></div>
+                <div class="animate-pulse h-3 ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#f2e9e1]' : (isOceanicVariant ? 'bg-ocean-border/20' : (isNeon ? 'bg-neon-accent/5' : 'bg-white/5')))} rounded"></div>
+                <div class="animate-pulse h-3 ${isLight ? 'bg-gray-100' : (isDawn ? 'bg-[#f2e9e1]' : (isOceanicVariant ? 'bg-ocean-border/20' : (isNeon ? 'bg-neon-accent/5' : 'bg-white/5')))} rounded w-5/6"></div>
             </div>
         `;
         return card;
@@ -294,14 +282,10 @@ export const LoadingStates = {
      * @returns {HTMLElement}
      */
     progressBar(progress = 0, animated = true) {
-        const theme = ThemeManager.getCurrentTheme();
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
-        const isNeon = theme === 'neon';
+        const { isLight, isDawn, isOceanicVariant, isNeon } = ThemeManager.getThemeFlags();
 
         const container = document.createElement('div');
-        container.className = `w-full h-2 rounded-full ${isLight ? 'bg-gray-200' : (isDawn ? 'bg-[#e4ddd5]' : (isOceanic ? 'bg-ocean-border/30' : (isNeon ? 'bg-neon-accent/10' : 'bg-white/10')))} overflow-hidden`;
+        container.className = `w-full h-2 rounded-full ${isLight ? 'bg-gray-200' : (isDawn ? 'bg-[#e4ddd5]' : (isOceanicVariant ? 'bg-ocean-border/30' : (isNeon ? 'bg-neon-accent/10' : 'bg-white/10')))} overflow-hidden`;
 
         const bar = document.createElement('div');
         bar.className = `h-full bg-gradient-to-r ${isNeon ? 'from-neon-accent to-neon-cyan' : 'from-mysql-teal to-mysql-cyan'} rounded-full transition-all duration-300 ${animated ? 'animate-pulse' : ''}`;
@@ -317,20 +301,16 @@ export const LoadingStates = {
      * @returns {HTMLElement}
      */
     overlay(message = 'Loading...') {
-        const theme = ThemeManager.getCurrentTheme();
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
-        const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
-        const isNeon = theme === 'neon';
+        const { isLight, isDawn, isOceanicVariant, isNeon } = ThemeManager.getThemeFlags();
 
         const overlay = document.createElement('div');
-        overlay.className = `absolute inset-0 ${isLight ? 'bg-white/80' : (isDawn ? 'bg-[#faf4ed]/80' : (isOceanic ? 'bg-ocean-bg/80' : (isNeon ? 'bg-neon-bg/80' : 'bg-black/60')))} backdrop-blur-sm flex flex-col items-center justify-center gap-4 z-50`;
+        overlay.className = `absolute inset-0 ${isLight ? 'bg-white/80' : (isDawn ? 'bg-[#faf4ed]/80' : (isOceanicVariant ? 'bg-ocean-bg/80' : (isNeon ? 'bg-neon-bg/80' : 'bg-black/60')))} backdrop-blur-sm flex flex-col items-center justify-center gap-4 z-50`;
         overlay.innerHTML = `
             <div class="relative">
-                <div class="w-12 h-12 rounded-full border-4 ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border' : (isNeon ? 'border-neon-border/20' : 'border-white/10')))} border-t-mysql-teal animate-spin"></div>
+                <div class="w-12 h-12 rounded-full border-4 ${isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanicVariant ? 'border-ocean-border' : (isNeon ? 'border-neon-border/20' : 'border-white/10')))} border-t-mysql-teal animate-spin"></div>
                 <div class="absolute inset-0 w-12 h-12 rounded-full border-4 border-transparent ${isNeon ? 'border-r-neon-accent' : 'border-r-mysql-cyan'} animate-spin" style="animation-duration: 1.5s; animation-direction: reverse;"></div>
             </div>
-            <span class="text-sm font-medium ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text' : (isNeon ? 'text-neon-text' : 'text-gray-400')))}">${message}</span>
+            <span class="text-sm font-medium ${isLight ? 'text-gray-600' : (isDawn ? 'text-[#575279]' : (isOceanicVariant ? 'text-ocean-text' : (isNeon ? 'text-neon-text' : 'text-gray-400')))}">${message}</span>
         `;
         return overlay;
     },

@@ -133,8 +133,7 @@ export function ServerMonitor() {
         const modal = document.createElement('div');
         modal.className = 'fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm';
 
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
 
         modal.innerHTML = `
             <div class="${isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : 'bg-[#13161b]')} w-full max-w-md rounded-2xl shadow-2xl border ${isLight ? 'border-gray-200' : 'border-white/10'} overflow-hidden animate-in fade-in zoom-in duration-200">
@@ -465,8 +464,7 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
     };
 
     const renderHealthScoreWidget = () => {
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
         if (healthScoreLoading || !healthScoreReport) {
@@ -558,8 +556,7 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
     };
 
     const render = () => {
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
         container.innerHTML = `
@@ -659,7 +656,7 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
     };
 
     const renderLoading = () => {
-        const isLight = theme === 'light';
+        const { isLight } = ThemeManager.getThemeFlags();
         return `
             <div class="flex items-center justify-center h-64">
                 <div class="flex flex-col items-center gap-4">
@@ -685,8 +682,7 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
     };
 
     const renderMaintenance = () => {
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
         if (isAnalyzingBloat) {
@@ -796,8 +792,7 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
     };
 
     const renderOverview = () => {
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         const s = serverStatus;
 
@@ -978,8 +973,7 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
     };
 
     const renderProcesses = () => {
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
         return `
@@ -1035,8 +1029,7 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
     };
 
     const renderInnoDB = () => {
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         const i = innodbStatus;
 
@@ -1115,8 +1108,7 @@ Please identify any potential bottlenecks, resource issues, or suspicious patter
     };
 
     const renderSlowQueries = () => {
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         const activeDbType = localStorage.getItem('activeDbType') || 'mysql';
         const isPostgres = activeDbType === 'postgresql';
@@ -1251,8 +1243,7 @@ SET GLOBAL long_query_time = 1;</pre>
     };
 
     const renderLocks = () => {
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
         const analysisEdges = Array.isArray(lockAnalysis?.edges) ? lockAnalysis.edges : [];
@@ -1501,8 +1492,7 @@ SET GLOBAL long_query_time = 1;</pre>
     };
 
     const renderDeadlocks = () => {
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
         if (deadlockHistory.length === 0) {
@@ -1559,8 +1549,7 @@ SET GLOBAL long_query_time = 1;</pre>
     };
 
     const renderReplication = () => {
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         const r = replicationStatus;
 
@@ -1621,8 +1610,7 @@ SET GLOBAL long_query_time = 1;</pre>
     };
 
     const renderPostgresReplication = () => {
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         const r = replicationStatus;
 
@@ -1676,8 +1664,7 @@ SET GLOBAL long_query_time = 1;</pre>
 
     const renderHealthMetrics = () => {
         if (!healthMetrics || healthMetrics.length === 0) return '';
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
 
         return `
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -1705,7 +1692,7 @@ SET GLOBAL long_query_time = 1;</pre>
 
     const renderWaitEvents = () => {
         if (!waitEvents || waitEvents.length === 0) return '';
-        const isLight = theme === 'light';
+        const { isLight } = ThemeManager.getThemeFlags();
 
         return `
             <div class="rounded-xl p-6 mb-6 ${isLight ? 'bg-white border border-gray-200' : 'bg-[#13161b] border border-white/10'}">
@@ -1731,8 +1718,7 @@ SET GLOBAL long_query_time = 1;</pre>
     };
 
     const renderUsage = () => {
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
 
         if (!tableUsage || tableUsage.length === 0) {
             return `
@@ -1799,8 +1785,7 @@ SET GLOBAL long_query_time = 1;</pre>
     };
 
     const renderAlerts = () => {
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
         return `

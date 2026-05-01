@@ -31,11 +31,7 @@ import { showCreateViewModal } from '../UI/CreateViewModal.js';
 
 
 export function ObjectExplorer() {
-    let theme = ThemeManager.getCurrentTheme();
-    let isLight = theme === 'light';
-    let isDawn = theme === 'dawn';
-    let isNeon = theme === 'neon';
-    let isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
+    let { theme, isLight, isDawn, isOceanicVariant: isOceanic, isNeon } = ThemeManager.getThemeFlags();
 
     const explorer = document.createElement('div');
     const getExplorerClass = (t) => {
@@ -1844,7 +1840,6 @@ export function ObjectExplorer() {
 
     // --- Context Menus ---
     const showCreateDatabaseModal = async () => {
-        const isDawn = theme === 'dawn';
         const activeConfig = JSON.parse(localStorage.getItem('activeConnection') || '{}');
         
         const overlay = document.createElement('div');
@@ -3305,11 +3300,7 @@ export function ObjectExplorer() {
 
     // --- Theme Change Handling ---
     const onThemeChange = (e) => {
-        theme = e.detail.theme;
-        isLight = theme === 'light';
-        isDawn = theme === 'dawn';
-        isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
-        isNeon = theme === 'neon';
+        ({ theme, isLight, isDawn, isOceanicVariant: isOceanic, isNeon } = ThemeManager.getThemeFlags());
         explorer.className = getExplorerClass(theme);
 
         // Update header theme if it exists

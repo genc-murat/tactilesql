@@ -1,5 +1,6 @@
 import cytoscape from 'cytoscape';
 import dagre from 'cytoscape-dagre';
+import { ThemeManager } from '../../../utils/ThemeManager.js';
 
 cytoscape.use(dagre);
 
@@ -17,13 +18,7 @@ export function GraphViewer(graphData, theme, qualityMap, options = {}) {
     container.className = 'w-full h-full relative graph-viewer-container';
     container.tabIndex = 0;
 
-    const isLight = theme === 'light';
-    const isDawn = theme === 'dawn';
-    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
-    const isEmber = theme === 'ember';
-    const isAurora = theme === 'aurora';
-    const isCopper = theme === 'copper';
-    const isNeon = theme === 'neon';
+    const { isLight, isDawn, isOceanic, isEmber, isAurora, isCopper, isNeon } = ThemeManager.getThemeFlags();
 
     const colors = {
         nodeBg: isLight ? '#fff' : (isDawn ? '#fffaf3' : (isOceanic ? '#241510' : (isNeon ? '#000000' : '#1f2937'))),

@@ -20,8 +20,7 @@ export function WorkbenchFooter() {
         const statusEl = footer.querySelector('#query-status-indicator');
         if (!statusEl) return;
 
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
         if (isQueryExecuting && queryStartTime) {
@@ -59,8 +58,7 @@ export function WorkbenchFooter() {
     window.addEventListener('tactilesql:query-result', onQueryComplete);
 
     const update = async () => {
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         const config = JSON.parse(localStorage.getItem('activeConnection') || 'null');
 
@@ -209,8 +207,7 @@ export function WorkbenchFooter() {
     };
 
     const renderFooterStyle = () => {
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         footer.className = `h-8 ${isLight ? 'bg-white border-gray-200 text-gray-500' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : (isOceanic ? 'bg-ocean-panel border-ocean-border text-ocean-text/80' : 'bg-[#0a0c10] border-white/5 text-gray-400'))} border-t px-4 flex items-center justify-between shrink-0 text-[10px] font-bold tracking-[0.1em] transition-all duration-300 uppercase select-none z-50 relative`;
         update();

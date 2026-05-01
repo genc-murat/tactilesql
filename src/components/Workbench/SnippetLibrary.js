@@ -235,8 +235,7 @@ export function SnippetLibrary() {
 
     // --- Render ---
     const render = () => {
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
         const isNeon = theme === 'neon';
         const showSnippets = SettingsManager.get(SETTINGS_PATHS.WORKBENCH_SNIPPETS);

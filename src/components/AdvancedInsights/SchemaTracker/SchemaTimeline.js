@@ -1,14 +1,15 @@
 import { ThemeManager } from '../../../utils/ThemeManager.js';
 
 export function SchemaTimeline({ snapshots, onSelectSnapshot, selectedSnapshotId, qualityScores }) {
-    const theme = ThemeManager.getCurrentTheme();
-    const isLight = theme === 'light';
-    const isDawn = theme === 'dawn';
-    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
-    const isEmber = theme === 'ember';
-    const isAurora = theme === 'aurora';
-    const isCopper = theme === 'copper';
-    const isNeon = theme === 'neon';
+    const {
+        isLight,
+        isDawn,
+        isOceanic,
+        isEmber,
+        isAurora,
+        isCopper,
+        isNeon
+    } = ThemeManager.getThemeFlags();
 
     const container = document.createElement('div');
     const getContainerBg = () => {

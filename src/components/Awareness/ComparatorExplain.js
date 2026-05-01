@@ -1,10 +1,7 @@
 import { ThemeManager } from '../../utils/ThemeManager.js';
 
 export function ComparatorExplain(planA, planB) {
-    const theme = ThemeManager.getCurrentTheme();
-    const isLight = theme === 'light';
-    const isDawn = theme === 'dawn';
-    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
+    const { isLight, isDawn, isOceanicVariant } = ThemeManager.getThemeFlags();
 
     const container = document.createElement('div');
     container.className = 'w-full h-full flex flex-col gap-4 p-4 overflow-y-auto custom-scrollbar';
@@ -37,7 +34,7 @@ export function ComparatorExplain(planA, planB) {
     }
 
     const renderPlanTable = (data, title) => {
-        const bg = isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-[#2E3440]' : 'bg-black/20'));
+        const bg = isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : (isOceanicVariant ? 'bg-[#2E3440]' : 'bg-black/20'));
         const border = isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : 'border-white/10');
 
         return `

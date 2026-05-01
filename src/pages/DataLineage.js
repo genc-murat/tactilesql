@@ -828,8 +828,7 @@ export function DataLineage() {
         const sidebar = container.querySelector('#lineage-detail-sidebar');
         if (!viewer || !sidebar) return;
 
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
+        const { isLight, isDawn } = ThemeManager.getThemeFlags();
         const sidebarText = isLight ? 'text-gray-900' : (isDawn ? 'text-[#575279]' : 'text-gray-100');
         const sidebarSubtle = isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : 'text-gray-400');
 

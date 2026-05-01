@@ -7,9 +7,7 @@ import { Dialog } from './Dialog.js';
  * Visualizes MySQL deadlock information parsed from SHOW ENGINE INNODB STATUS
  */
 export function showDeadlockAnalyzerModal(deadlockHistory) {
-    const theme = ThemeManager.getCurrentTheme();
-    const isLight = theme === 'light';
-    const isDawn = theme === 'dawn';
+    const { theme, isLight, isDawn } = ThemeManager.getThemeFlags();
     const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
 
     const overlay = document.createElement('div');
@@ -102,8 +100,7 @@ export function showDeadlockAnalyzerModal(deadlockHistory) {
 }
 
 function renderDeadlockDetail(deadlock, theme) {
-    const isLight = theme === 'light';
-    const isDawn = theme === 'dawn';
+    const { isLight, isDawn } = ThemeManager.getThemeFlags();
     const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
     
     const border = isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/50' : 'border-white/10'));
@@ -205,7 +202,7 @@ function renderDeadlockDetail(deadlock, theme) {
 }
 
 function renderDeadlockGraph(deadlock, theme) {
-    const isLight = theme === 'light';
+    const { isLight } = ThemeManager.getThemeFlags();
     const text = isLight ? '#1f2937' : '#ffffff';
     
     // We'll use a simple SVG for now. 
@@ -272,9 +269,7 @@ function attachDetailEvents(container, deadlock) {
             tab.classList.add('border-red-500');
             
             // Add theme-specific text color
-            const theme = ThemeManager.getCurrentTheme();
-            const isLight = theme === 'light';
-            const isDawn = theme === 'dawn';
+            const { theme, isLight, isDawn } = ThemeManager.getThemeFlags();
             if (isLight) tab.classList.add('text-gray-900');
             else if (isDawn) tab.classList.add('text-[#575279]');
             else tab.classList.add('text-white');

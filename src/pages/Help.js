@@ -297,7 +297,7 @@ export function Help() {
     }
 
     const render = () => {
-        const isLight = theme === 'light' || theme === 'dawn';
+        const { isLightVariant: isLight } = ThemeManager.getThemeFlags();
 
         container.innerHTML = `
         <div class="h-full p-6 lg:p-8">
@@ -328,8 +328,7 @@ export function Help() {
     };
 
     function renderSnippetsTab() {
-        const isLight = theme === 'light' || theme === 'dawn';
-        const isDawn = theme === 'dawn';
+        const { isLightVariant: isLight, isDawn } = ThemeManager.getThemeFlags();
         const categories = Object.keys(SNIPPET_HELP);
 
         return `
@@ -391,8 +390,7 @@ export function Help() {
     }
 
     function renderShortcutsTab() {
-        const isLight = theme === 'light' || theme === 'dawn';
-        const isDawn = theme === 'dawn';
+        const { isLightVariant: isLight, isDawn } = ThemeManager.getThemeFlags();
         const SHORTCUTS = getAllShortcuts();
 
         // Group shortcuts by category

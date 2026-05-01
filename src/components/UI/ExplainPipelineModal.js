@@ -12,11 +12,7 @@ export function showExplainPipelineModal(rawText) {
         return;
     }
 
-    const theme = ThemeManager.getCurrentTheme();
-    const isLight = theme === 'light';
-    const isDawn = theme === 'dawn';
-    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
-    const isNeon = theme === 'neon';
+    const { theme, isLight, isDawn, isOceanicVariant, isNeon } = ThemeManager.getThemeFlags();
 
     // Parse the pipeline text
     const pipeline = parsePipeline(rawText);
@@ -27,13 +23,13 @@ export function showExplainPipelineModal(rawText) {
     const bottlenecks = findBottlenecks(pipeline);
 
     // Theme helpers
-    const bg = isLight ? 'bg-white' : isDawn ? 'bg-[#fffaf3]' : isOceanic ? 'bg-ocean-bg' : isNeon ? 'bg-neon-bg' : 'bg-[#0f1115]';
-    const panelBg = isLight ? 'bg-gray-50' : isDawn ? 'bg-[#faf4ed]' : isOceanic ? 'bg-ocean-panel' : isNeon ? 'bg-neon-panel' : 'bg-[#13161b]';
-    const border = isLight ? 'border-gray-200' : isDawn ? 'border-[#f2e9e1]' : isOceanic ? 'border-ocean-border/50' : isNeon ? 'border-neon-border/50' : 'border-white/10';
-    const borderSub = isLight ? 'border-gray-100' : isDawn ? 'border-[#f2e9e1]' : isOceanic ? 'border-ocean-border/30' : isNeon ? 'border-neon-border/30' : 'border-white/5';
+    const bg = isLight ? 'bg-white' : isDawn ? 'bg-[#fffaf3]' : isOceanicVariant ? 'bg-ocean-bg' : isNeon ? 'bg-neon-bg' : 'bg-[#0f1115]';
+    const panelBg = isLight ? 'bg-gray-50' : isDawn ? 'bg-[#faf4ed]' : isOceanicVariant ? 'bg-ocean-panel' : isNeon ? 'bg-neon-panel' : 'bg-[#13161b]';
+    const border = isLight ? 'border-gray-200' : isDawn ? 'border-[#f2e9e1]' : isOceanicVariant ? 'border-ocean-border/50' : isNeon ? 'border-neon-border/50' : 'border-white/10';
+    const borderSub = isLight ? 'border-gray-100' : isDawn ? 'border-[#f2e9e1]' : isOceanicVariant ? 'border-ocean-border/30' : isNeon ? 'border-neon-border/30' : 'border-white/5';
     const textPrimary = isLight ? 'text-gray-800' : isDawn ? 'text-[#575279]' : 'text-white';
     const textSecondary = isLight ? 'text-gray-500' : isDawn ? 'text-[#9893a5]' : 'text-gray-400';
-    const cardBg = isLight ? 'bg-gray-100' : isDawn ? 'bg-[#faf4ed]' : isOceanic ? 'bg-ocean-panel/50' : isNeon ? 'bg-neon-panel/50' : 'bg-white/5';
+    const cardBg = isLight ? 'bg-gray-100' : isDawn ? 'bg-[#faf4ed]' : isOceanicVariant ? 'bg-ocean-panel/50' : isNeon ? 'bg-neon-panel/50' : 'bg-white/5';
     const btnBg = isLight ? 'bg-gray-100 hover:bg-gray-200' : isDawn ? 'bg-[#fffaf3] hover:bg-[#f2e9e1] text-[#575279]' : isNeon ? 'bg-neon-panel hover:bg-neon-border/30 text-gray-400 hover:text-white' : 'bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white';
 
     const overlay = document.createElement('div');
@@ -49,7 +45,7 @@ export function showExplainPipelineModal(rawText) {
             ? 'bg-yellow-500/20 border-yellow-500/30' : 'bg-red-500/20 border-red-500/30';
 
     overlay.innerHTML = `
-        <div class="${isLight ? 'bg-white border-gray-200' : isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : isOceanic ? 'bg-ocean-panel border-ocean-border' : isNeon ? 'bg-neon-panel border-neon-border' : 'bg-[#0f1115] border border-white/10'} rounded-xl shadow-2xl w-full max-w-7xl h-[92vh] flex flex-col overflow-hidden">
+        <div class="${isLight ? 'bg-white border-gray-200' : isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : isOceanicVariant ? 'bg-ocean-panel border-ocean-border' : isNeon ? 'bg-neon-panel border-neon-border' : 'bg-[#0f1115] border border-white/10'} rounded-xl shadow-2xl w-full max-w-7xl h-[92vh] flex flex-col overflow-hidden">
             <!-- Header -->
             <div class="flex items-center justify-between px-6 py-4 border-b ${borderSub} ${panelBg}">
                 <div class="flex items-center gap-3">
@@ -154,7 +150,7 @@ export function showExplainPipelineModal(rawText) {
     // Render SVG
     const svg = overlay.querySelector('#pipeline-svg');
     try {
-        renderPipelineSVG(svg, pipeline, bottlenecks, isLight, isDawn, isOceanic, isNeon);
+        renderPipelineSVG(svg, pipeline, bottlenecks, isLight, isDawn, isOceanicVariant, isNeon);
     } catch (err) {
         console.error('Pipeline render error:', err);
         svg.innerHTML = `<text x="50" y="50" fill="#ef4444" font-size="13">Render error: ${err.message}</text>`;
@@ -266,7 +262,7 @@ function findBottlenecks(pipeline) {
 
 // ─── SVG Renderer ───────────────────────────────────────────────────────
 
-function renderPipelineSVG(svg, pipeline, bottlenecks, isLight, isDawn, isOceanic, isNeon) {
+function renderPipelineSVG(svg, pipeline, bottlenecks, isLight, isDawn, isOceanicVariant, isNeon) {
     const { nodes, edges } = pipeline;
     if (nodes.length === 0) {
         svg.setAttribute('width', 400);
@@ -486,7 +482,7 @@ function renderPipelineSVG(svg, pipeline, bottlenecks, isLight, isDawn, isOceani
         rect.setAttribute('width', nodeW);
         rect.setAttribute('height', nodeH);
         rect.setAttribute('rx', 12);
-        rect.setAttribute('fill', isLight ? '#ffffff' : isDawn ? '#fffaf3' : isOceanic ? '#1a2332' : isNeon ? '#1a1a2e' : '#111827');
+        rect.setAttribute('fill', isLight ? '#ffffff' : isDawn ? '#fffaf3' : isOceanicVariant ? '#1a2332' : isNeon ? '#1a1a2e' : '#111827');
         rect.setAttribute('stroke', node.isBottleneck ? '#ef4444' : (isLight || isDawn ? '#e2e8f0' : '#1f2937'));
         rect.setAttribute('stroke-width', node.isBottleneck ? '2' : '1');
         rect.setAttribute('filter', 'url(#pipeline-glow)');

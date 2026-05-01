@@ -7,7 +7,16 @@ import { CustomDropdown } from '../../UI/CustomDropdown.js';
 import './DependencyGraph.css';
 
 export function DependencyExplorer() {
-    let theme = ThemeManager.getCurrentTheme();
+    let {
+        theme,
+        isLight,
+        isDawn,
+        isOceanic,
+        isEmber,
+        isAurora,
+        isCopper,
+        isNeon
+    } = ThemeManager.getThemeFlags();
     let activeViewer = null;
     let activeViewerSignature = null;
     let searchTerm = '';
@@ -16,14 +25,6 @@ export function DependencyExplorer() {
 
     // Theme helpers
     const getClasses = (t) => {
-        const isLight = t === 'light';
-        const isDawn = t === 'dawn';
-        const isOceanic = t === 'oceanic' || t === 'ember' || t === 'aurora' || t === 'copper';
-        const isEmber = t === 'ember';
-        const isAurora = t === 'aurora';
-        const isCopper = t === 'copper';
-        const isNeon = t === 'neon';
-
         return {
             container: `dependency-explorer flex flex-col h-full overflow-hidden ${isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-bg' : (isNeon ? 'bg-neon-bg' : 'bg-[#0a0c10]')))} transition-colors duration-300`,
             header: `px-6 py-4 flex flex-col gap-4 border-b ${isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/50' : (isNeon ? 'bg-neon-panel border-neon-border/30' : 'bg-[#13161b] border-white/10')))}`,
@@ -218,8 +219,6 @@ export function DependencyExplorer() {
 
         container.innerHTML = '';
         container.className = classes.container;
-        const isLight = theme === 'light';
-        const isDawn = theme === 'dawn';
 
         // Header
         const header = document.createElement('div');
@@ -906,7 +905,16 @@ export function DependencyExplorer() {
 
     // Theme listener
     const onThemeChange = (e) => {
-        theme = e.detail.theme;
+        ({
+            theme,
+            isLight,
+            isDawn,
+            isOceanic,
+            isEmber,
+            isAurora,
+            isCopper,
+            isNeon
+        } = ThemeManager.getThemeFlags());
         classes = getClasses(theme);
         render();
     };

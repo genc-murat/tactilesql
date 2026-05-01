@@ -1,17 +1,11 @@
 import { ThemeManager } from '../../../utils/ThemeManager.js';
 
 export function StoryPanel({ story, isLoading }) {
-    const theme = ThemeManager.getCurrentTheme();
-    const isLight = theme === 'light';
-    const isDawn = theme === 'dawn';
-    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
-    const isEmber = theme === 'ember';
-    const isAurora = theme === 'aurora';
-    const isCopper = theme === 'copper';
-    const isNeon = theme === 'neon';
+    const { isLight, isDawn, isOceanicVariant, isEmber, isAurora, isCopper, isNeon } = ThemeManager.getThemeFlags();
+    const isOceanic = isOceanicVariant; // Map for existing usage if needed, but the flags above are better
 
     const container = document.createElement('div');
-    container.className = `flex-1 flex flex-col h-full overflow-hidden transition-colors duration-300 ${isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : (isOceanic ? 'bg-ocean-panel' : (isNeon ? 'bg-neon-bg' : 'bg-[#0f1115]')))} animate-fade-in`;
+    container.className = `flex-1 flex flex-col h-full overflow-hidden transition-colors duration-300 ${isLight ? 'bg-white' : (isDawn ? 'bg-[#fffaf3]' : (isOceanicVariant ? 'bg-ocean-panel' : (isNeon ? 'bg-neon-bg' : 'bg-[#0f1115]')))} animate-fade-in`;
 
     if (isLoading) {
         container.innerHTML = `

@@ -6,21 +6,17 @@ export function showTriggerManagerModal(database, tableName, dbType) {
     const existing = document.getElementById('trigger-manager-modal');
     if (existing) existing.remove();
 
-    const theme = ThemeManager.getCurrentTheme();
-    const isLight = theme === 'light';
-    const isDawn = theme === 'dawn';
-    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
-    const isNeon = theme === 'neon';
+    const { theme, isLight, isDawn, isOceanicVariant, isNeon } = ThemeManager.getThemeFlags();
 
     const overlay = document.createElement('div');
     overlay.id = 'trigger-manager-modal';
     overlay.className = 'fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-center justify-center p-4';
 
-    const bgClass = isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border' : (isNeon ? 'bg-neon-panel border-neon-border/50' : 'bg-[#0f1115] border border-white/10')));
-    const headerBg = isLight ? 'bg-gray-50 border-gray-100' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/30' : 'bg-[#16191e] border-white/10'));
-    const textClass = isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text' : (isNeon ? 'text-neon-text' : 'text-white')));
-    const mutedText = isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : (isOceanic ? 'text-ocean-text/60' : (isNeon ? 'text-neon-text/60' : 'text-gray-400')));
-    const rowHover = isLight ? 'hover:bg-gray-50' : (isDawn ? 'hover:bg-[#faf4ed]' : (isOceanic ? 'hover:bg-ocean-bg' : (isNeon ? 'hover:bg-neon-accent/5' : 'hover:bg-white/5')));
+    const bgClass = isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanicVariant ? 'bg-ocean-panel border-ocean-border' : (isNeon ? 'bg-neon-panel border-neon-border/50' : 'bg-[#0f1115] border border-white/10')));
+    const headerBg = isLight ? 'bg-gray-50 border-gray-100' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1]' : (isOceanicVariant ? 'bg-ocean-panel border-ocean-border/30' : 'bg-[#16191e] border-white/10'));
+    const textClass = isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : (isOceanicVariant ? 'text-ocean-text' : (isNeon ? 'text-neon-text' : 'text-white')));
+    const mutedText = isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : (isOceanicVariant ? 'text-ocean-text/60' : (isNeon ? 'text-neon-text/60' : 'text-gray-400')));
+    const rowHover = isLight ? 'hover:bg-gray-50' : (isDawn ? 'hover:bg-[#faf4ed]' : (isOceanicVariant ? 'hover:bg-ocean-bg' : (isNeon ? 'hover:bg-neon-accent/5' : 'hover:bg-white/5')));
 
     overlay.innerHTML = `
         <div class="${bgClass} rounded-xl shadow-2xl w-full max-w-4xl h-[70vh] flex flex-col overflow-hidden">
@@ -95,9 +91,9 @@ export function showTriggerManagerModal(database, tableName, dbType) {
                 return;
             }
 
-            const tableClass = isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-bg border-ocean-border/50' : (isNeon ? 'bg-neon-bg border-neon-border/30' : 'bg-[#0b0d11] border-white/5')));
-            const headerText = isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : (isOceanic ? 'text-ocean-text/70' : 'text-gray-400'));
-            const borderColor = isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanic ? 'border-ocean-border/30' : 'border-white/5'));
+            const tableClass = isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanicVariant ? 'bg-ocean-bg border-ocean-border/50' : (isNeon ? 'bg-neon-bg border-neon-border/30' : 'bg-[#0b0d11] border-white/5')));
+            const headerText = isLight ? 'text-gray-600' : (isDawn ? 'text-[#797593]' : (isOceanicVariant ? 'text-ocean-text/70' : 'text-gray-400'));
+            const borderColor = isLight ? 'border-gray-200' : (isDawn ? 'border-[#f2e9e1]' : (isOceanicVariant ? 'border-ocean-border/30' : 'border-white/5'));
 
             content.innerHTML = `
                 <table class="w-full text-xs">

@@ -7,22 +7,18 @@ export function showCreateTableModal(database, dbType) {
     const existing = document.getElementById('create-table-modal');
     if (existing) existing.remove();
 
-    const theme = ThemeManager.getCurrentTheme();
-    const isLight = theme === 'light';
-    const isDawn = theme === 'dawn';
-    const isOceanic = theme === 'oceanic' || theme === 'ember' || theme === 'aurora' || theme === 'copper';
-    const isNeon = theme === 'neon';
+    const { theme, isLight, isDawn, isOceanicVariant, isNeon } = ThemeManager.getThemeFlags();
 
     const overlay = document.createElement('div');
     overlay.id = 'create-table-modal';
     overlay.className = 'fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-center justify-center p-4';
 
-    const bgClass = isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border' : (isNeon ? 'bg-neon-panel border-neon-border/50' : 'bg-[#0f1115] border border-white/10')));
-    const headerBg = isLight ? 'bg-gray-50 border-gray-100' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1]' : (isOceanic ? 'bg-ocean-panel border-ocean-border/30' : 'bg-[#16191e] border-white/10'));
-    const textClass = isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : (isOceanic ? 'text-ocean-text' : (isNeon ? 'text-neon-text' : 'text-white')));
-    const mutedText = isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : (isOceanic ? 'text-ocean-text/60' : (isNeon ? 'text-neon-text/60' : 'text-gray-400')));
-    const inputClass = isLight ? 'bg-white border-gray-200 text-gray-800 focus:border-mysql-teal' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279] focus:border-[#ea9d34]' : (isOceanic ? 'bg-ocean-bg border-ocean-border text-ocean-text focus:border-ocean-frost' : (isNeon ? 'bg-neon-bg border-neon-border/30 text-neon-text focus:border-neon-accent' : 'bg-[#0b0d11] border border-white/10 text-gray-300 focus:border-mysql-teal/50')));
-    const cardBg = isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#faf4ed]' : (isOceanic ? 'bg-ocean-bg' : (isNeon ? 'bg-neon-bg' : 'bg-white/5')));
+    const bgClass = isLight ? 'bg-white border-gray-200' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1]' : (isOceanicVariant ? 'bg-ocean-panel border-ocean-border' : (isNeon ? 'bg-neon-panel border-neon-border/50' : 'bg-[#0f1115] border border-white/10')));
+    const headerBg = isLight ? 'bg-gray-50 border-gray-100' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1]' : (isOceanicVariant ? 'bg-ocean-panel border-ocean-border/30' : 'bg-[#16191e] border-white/10'));
+    const textClass = isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : (isOceanicVariant ? 'text-ocean-text' : (isNeon ? 'text-neon-text' : 'text-white')));
+    const mutedText = isLight ? 'text-gray-500' : (isDawn ? 'text-[#797593]' : (isOceanicVariant ? 'text-ocean-text/60' : (isNeon ? 'text-neon-text/60' : 'text-gray-400')));
+    const inputClass = isLight ? 'bg-white border-gray-200 text-gray-800 focus:border-mysql-teal' : (isDawn ? 'bg-[#fffaf3] border-[#f2e9e1] text-[#575279] focus:border-[#ea9d34]' : (isOceanicVariant ? 'bg-ocean-bg border-ocean-border text-ocean-text focus:border-ocean-frost' : (isNeon ? 'bg-neon-bg border-neon-border/30 text-neon-text focus:border-neon-accent' : 'bg-[#0b0d11] border border-white/10 text-gray-300 focus:border-mysql-teal/50')));
+    const cardBg = isLight ? 'bg-gray-50' : (isDawn ? 'bg-[#faf4ed]' : (isOceanicVariant ? 'bg-ocean-bg' : (isNeon ? 'bg-neon-bg' : 'bg-white/5')));
 
     overlay.innerHTML = `
         <div class="${bgClass} rounded-xl shadow-2xl w-full max-w-4xl h-[85vh] flex flex-col overflow-hidden">

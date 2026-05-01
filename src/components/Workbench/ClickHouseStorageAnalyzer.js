@@ -8,9 +8,7 @@ export function ClickHouseStorageAnalyzer({ connection, database, table, parentE
     let loading = true;
     let error = null;
 
-    const theme = ThemeManager.getCurrentTheme();
-    const isLight = theme === 'light';
-    const isDawn = theme === 'dawn';
+    const { theme, isLight, isDawn } = ThemeManager.getThemeFlags();
 
     const container = document.createElement('div');
     container.className = 'w-full h-full flex flex-col space-y-4';
