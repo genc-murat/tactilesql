@@ -16,25 +16,14 @@ export class AskAiBar {
         const isLightVariant = flags.isLightVariant;
 
         // Load saved settings
-        const provider = localStorage.getItem('ai_provider') || 'openai';
-        const isGemini = provider === 'gemini';
-        const isAnthropic = provider === 'anthropic';
-        const isDeepSeek = provider === 'deepseek';
+        const provider = 'openrouter';
         const isLocal = provider === 'local';
 
         const getSavedKey = (p) => {
-            if (p === 'gemini') return localStorage.getItem('gemini_api_key') || '';
-            if (p === 'anthropic') return localStorage.getItem('anthropic_api_key') || '';
-            if (p === 'deepseek') return localStorage.getItem('deepseek_api_key') || '';
-            if (p === 'local') return localStorage.getItem('local_api_key') || '';
-            return localStorage.getItem('openai_api_key') || '';
+            return localStorage.getItem('openrouter_api_key') || '';
         };
         const getSavedModel = (p) => {
-            if (p === 'gemini') return localStorage.getItem('gemini_model') || 'gemini-2.5-flash';
-            if (p === 'anthropic') return localStorage.getItem('anthropic_model') || 'claude-3-5-sonnet-20241022';
-            if (p === 'deepseek') return localStorage.getItem('deepseek_model') || 'deepseek-chat';
-            if (p === 'local') return localStorage.getItem('local_model') || 'llama3';
-            return localStorage.getItem('openai_model') || 'gpt-4o';
+            return localStorage.getItem('openrouter_model') || 'openrouter/free';
         };
 
         const savedKey = getSavedKey(provider);
@@ -89,21 +78,8 @@ export class AskAiBar {
 
         const getModelItems = () => {
             if (isLocal) return [{ value: savedModel, label: savedModel, icon: 'bolt' }];
-            if (isGemini) return [
-                { value: 'gemini-2.5-flash', label: 'Gemini Flash', icon: 'auto_awesome' },
-                { value: 'gemini-1.5-flash', label: 'Gemini 1.5', icon: 'auto_awesome' }
-            ];
-            if (isAnthropic) return [
-                { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5', icon: 'auto_awesome' },
-                { value: 'claude-3-opus-20240229', label: 'Claude 3 Opus', icon: 'auto_awesome' }
-            ];
-            if (isDeepSeek) return [
-                { value: 'deepseek-chat', label: 'DeepSeek Chat', icon: 'auto_awesome' },
-                { value: 'deepseek-reasoner', label: 'DS Reasoner', icon: 'auto_awesome' }
-            ];
             return [
-                { value: 'gpt-4o', label: 'GPT-4o', icon: 'auto_awesome' },
-                { value: 'gpt-4o-mini', label: 'GPT-4o Mini', icon: 'auto_awesome' }
+                { value: 'openrouter/free', label: 'Free Router', icon: 'auto_awesome' }
             ];
         };
 

@@ -79,40 +79,22 @@ export function SchemaDiffViewer({ diff, migrationScript, breakingChanges, onGen
         .replace(/'/g, '&#39;');
 
     const getAiSettings = () => {
-        const provider = localStorage.getItem('ai_provider') || 'openai';
+        const provider = 'openrouter';
 
         const keyStorageKeys = {
-            openai: 'openai_api_key',
-            gemini: 'gemini_api_key',
-            anthropic: 'anthropic_api_key',
-            deepseek: 'deepseek_api_key',
-            groq: 'groq_api_key',
-            mistral: 'mistral_api_key',
-            local: 'local_api_key'
+            openrouter: 'openrouter_api_key'
         };
 
         const modelStorageKeys = {
-            openai: 'openai_model',
-            gemini: 'gemini_model',
-            anthropic: 'anthropic_model',
-            deepseek: 'deepseek_model',
-            groq: 'groq_model',
-            mistral: 'mistral_model',
-            local: 'local_model'
+            openrouter: 'openrouter_model'
         };
 
         const defaultModels = {
-            openai: 'gpt-4o',
-            gemini: 'gemini-2.5-flash',
-            anthropic: 'claude-3-5-sonnet-20241022',
-            deepseek: 'deepseek-chat',
-            groq: 'llama-3.1-8b-instant',
-            mistral: 'mistral-large-latest',
-            local: 'llama3'
+            openrouter: 'openrouter/free'
         };
 
-        const apiKey = localStorage.getItem(keyStorageKeys[provider] || 'openai_api_key') || '';
-        const model = localStorage.getItem(modelStorageKeys[provider] || 'openai_model') || defaultModels[provider] || 'gpt-4o';
+        const apiKey = localStorage.getItem(keyStorageKeys[provider] || 'openrouter_api_key') || '';
+        const model = localStorage.getItem(modelStorageKeys[provider] || 'openrouter_model') || defaultModels[provider] || 'openrouter/free';
 
         return { provider, apiKey, model };
     };

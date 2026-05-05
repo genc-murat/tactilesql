@@ -362,13 +362,13 @@ export function Settings() {
                         <div data-settings-item class="space-y-2 relative" id="ai-provider-dropdown-container">
                             <label class="text-xs font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">AI Provider</label>
                             <button id="ai-provider-trigger" class="w-full flex items-center justify-between px-3 py-2 text-sm ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800 hover:bg-gray-100' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] hover:bg-[#faf4ed]' : 'bg-black/20 border-white/10 text-gray-300 hover:bg-white/5')} rounded-lg border transition-all outline-none focus:border-mysql-teal shadow-sm group">
-                                <span id="current-ai-provider">${localStorage.getItem('ai_provider') ? localStorage.getItem('ai_provider').charAt(0).toUpperCase() + localStorage.getItem('ai_provider').slice(1) : 'OpenAI'}</span>
+                                <span id="current-ai-provider">OpenRouter</span>
                                 <span class="material-symbols-outlined text-gray-500 group-hover:text-mysql-teal transition-transform duration-200" id="ai-provider-arrow">expand_more</span>
                             </button>
                             
                             <div id="ai-provider-options" class="hidden absolute top-full left-0 right-0 mt-2 ${isLight ? 'bg-white border-gray-100 shadow-2xl' : 'bg-[#1a1d23] border-white/10 shadow-2xl'} rounded-xl overflow-hidden z-[100] animate-in fade-in slide-in-from-top-2 duration-200 backdrop-blur-xl">
                                 <div class="p-1">
-                                    ${['openai', 'gemini', 'anthropic', 'deepseek', 'groq', 'mistral', 'local'].map(p => `
+                                    ${['openrouter'].map(p => `
                                         <div class="provider-option px-3 py-2 flex items-center gap-2 cursor-pointer rounded-lg transition-colors ${localStorage.getItem('ai_provider') === p ? (isLight ? 'bg-mysql-teal/10 text-mysql-teal font-bold' : 'bg-mysql-teal/20 text-mysql-teal font-bold') : (isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-white/5')}" data-value="${p}">
                                             <span class="text-sm font-medium flex-1">${p === 'local' ? 'Local AI (Ollama/Custom)' : p.charAt(0).toUpperCase() + p.slice(1)}</span>
                                             ${localStorage.getItem('ai_provider') === p ? '<span class="material-symbols-outlined text-mysql-teal text-sm">check_circle</span>' : ''}
@@ -379,7 +379,7 @@ export function Settings() {
                         </div>
 
                         <!-- Local Base URL (Hidden by default unless local is active) -->
-                        <div id="ai-local-url-container" data-settings-item class="space-y-2 ${localStorage.getItem('ai_provider') === 'local' ? '' : 'hidden'}">
+                        <div id="ai-local-url-container" data-settings-item class="space-y-2 hidden">
                             <label class="text-xs font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">Base URL</label>
                             <input type="text" id="setting-ai-local-url" class="w-full ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-300')} rounded px-3 py-2 text-sm font-mono outline-none focus:border-mysql-teal transition-colors" placeholder="http://localhost:11434/v1" value="${localStorage.getItem('local_base_url') || 'http://localhost:11434/v1'}">
                             <p class="text-[10px] text-gray-500">Ollama/LM Studio etc. (OpenAI compatible API)</p>
@@ -388,9 +388,9 @@ export function Settings() {
                         <div data-settings-item class="space-y-2">
                              <div class="flex items-center justify-between">
                                 <label id="ai-key-label" class="text-xs font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">
-                                    ${localStorage.getItem('ai_provider') === 'gemini' ? 'Gemini Key' : (localStorage.getItem('ai_provider') === 'anthropic' ? 'Anthropic Key' : (localStorage.getItem('ai_provider') === 'deepseek' ? 'DeepSeek Key' : (localStorage.getItem('ai_provider') === 'groq' ? 'Groq Key' : (localStorage.getItem('ai_provider') === 'mistral' ? 'Mistral Key' : (localStorage.getItem('ai_provider') === 'local' ? 'API Key' : 'OpenAI Key')))))}
+                                     OpenRouter Key
                                 </label>
-                                <a id="ai-key-link" href="#" target="_blank" class="text-[10px] text-mysql-teal hover:underline flex items-center gap-1 ${localStorage.getItem('ai_provider') === 'local' ? 'hidden' : ''}">
+                                <a id="ai-key-link" href="#" target="_blank" class="text-[10px] text-mysql-teal hover:underline flex items-center gap-1">
                                     Get API Key <span class="material-symbols-outlined text-[10px]">open_in_new</span>
                                 </a>
                              </div>
@@ -406,18 +406,13 @@ export function Settings() {
                         <div id="ai-model-container" data-settings-item class="space-y-2 pt-2 relative">
                             <label class="text-xs font-bold uppercase tracking-wider ${isLight ? 'text-gray-500' : 'text-gray-400'}">Default Model</label>
                             <div id="ai-model-select-wrapper">
-                                ${localStorage.getItem('ai_provider') === 'local' ? `
-                                    <input type="text" id="setting-ai-model" class="w-full ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-300')} rounded px-3 py-2 text-sm font-mono outline-none focus:border-mysql-teal transition-colors" placeholder="e.g. llama3" value="${localStorage.getItem('local_model') || 'llama3'}">
-                                ` : `
                                     <button id="ai-model-trigger" class="w-full flex items-center justify-between px-3 py-2 text-sm ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800 hover:bg-gray-100' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] hover:bg-[#faf4ed]' : 'bg-black/20 border-white/10 text-gray-300 hover:bg-white/5')} rounded-lg border transition-all outline-none focus:border-mysql-teal shadow-sm group">
                                         <span id="current-ai-model">Loading...</span>
                                         <span class="material-symbols-outlined text-gray-500 group-hover:text-mysql-teal transition-transform duration-200" id="ai-model-arrow">expand_more</span>
                                     </button>
                                     
                                     <div id="ai-model-options" class="hidden absolute top-full left-0 right-0 mt-2 ${isLight ? 'bg-white border-gray-100 shadow-2xl' : 'bg-[#1a1d23] border-white/10 shadow-2xl'} rounded-xl overflow-hidden z-[100] animate-in fade-in slide-in-from-top-2 duration-200 backdrop-blur-xl">
-                                        <!-- Options will be populated by logic -->
                                     </div>
-                                `}
                             </div>
                          </div>
                         
@@ -1796,8 +1791,6 @@ export function Settings() {
         const aiVisibilityBtn = container.querySelector('#toggle-ai-key-visibility');
         const aiKeyLabel = container.querySelector('#ai-key-label');
         const aiKeyLink = container.querySelector('#ai-key-link');
-        const aiLocalUrlContainer = container.querySelector('#ai-local-url-container');
-        const aiLocalUrlInput = container.querySelector('#setting-ai-local-url');
 
         const providerTrigger = container.querySelector('#ai-provider-trigger');
         const providerDropdown = container.querySelector('#ai-provider-options');
@@ -1827,19 +1820,17 @@ export function Settings() {
         const maxRowsInput = container.querySelector('#results-max-rows-input');
 
         if (aiKeyInput && aiSaveBtn && aiVisibilityBtn && aiKeyLabel && aiKeyLink) {
-            let activeProvider = localStorage.getItem('ai_provider') || 'openai';
+            let activeProvider = localStorage.getItem('ai_provider') || 'openrouter';
 
             const getSavedKey = (p) => {
                 const keys = {
-                    openai: 'openai_api_key', gemini: 'gemini_api_key', anthropic: 'anthropic_api_key',
-                    deepseek: 'deepseek_api_key', groq: 'groq_api_key', mistral: 'mistral_api_key', local: 'local_api_key'
+                    openrouter: 'openrouter_api_key'
                 };
                 return localStorage.getItem(keys[p]) || '';
             };
             const getSavedModel = (p) => {
                 const models = {
-                    openai: 'gpt-4o', gemini: 'gemini-1.5-flash', anthropic: 'claude-3-5-sonnet-20241022',
-                    deepseek: 'deepseek-chat', groq: 'llama-3.3-70b-versatile', mistral: 'mistral-large-latest', local: 'llama3'
+                    openrouter: 'openrouter/free'
                 };
                 return localStorage.getItem(`${p}_model`) || models[p];
             };
@@ -1849,13 +1840,11 @@ export function Settings() {
                 const currentKey = aiKeyInput.value.trim();
                 const modelEl = container.querySelector('#setting-ai-model') || container.querySelector('#current-ai-model');
                 const currentModel = modelEl ? (modelEl.value || modelEl.textContent) : '';
-                const currentUrl = aiLocalUrlInput?.value.trim() || '';
                 const savedKey = getSavedKey(activeProvider);
                 const savedModel = getSavedModel(activeProvider);
-                const savedUrl = getSavedBaseUrl();
-                const savedProvider = localStorage.getItem('ai_provider') || 'openai';
+                const savedProvider = localStorage.getItem('ai_provider') || 'openrouter';
 
-                const hasChanges = currentKey !== savedKey || currentModel !== savedModel || activeProvider !== savedProvider || (activeProvider === 'local' && currentUrl !== savedUrl);
+                const hasChanges = currentKey !== savedKey || currentModel !== savedModel || activeProvider !== savedProvider;
 
                 if (hasChanges) {
                     aiSaveBtn.disabled = false;
@@ -1868,32 +1857,21 @@ export function Settings() {
 
             const switchProvider = (provider) => {
                 activeProvider = provider;
-                const isLocal = provider === 'local';
 
                 const currentProviderSpan = container.querySelector('#current-ai-provider');
-                if (currentProviderSpan) currentProviderSpan.textContent = provider === 'local' ? 'Local AI' : provider.charAt(0).toUpperCase() + provider.slice(1);
+                if (currentProviderSpan) currentProviderSpan.textContent = 'OpenRouter';
 
-                const links = { openai: 'https://platform.openai.com/api-keys', gemini: 'https://aistudio.google.com/app/apikey', anthropic: 'https://console.anthropic.com/settings/keys', deepseek: 'https://platform.deepseek.com/api_keys', groq: 'https://console.groq.com/keys', mistral: 'https://console.mistral.ai/api-keys' };
-                aiKeyLabel.textContent = `${provider.charAt(0).toUpperCase() + provider.slice(1)} Key`;
-                aiKeyInput.placeholder = provider === 'local' ? 'Local API Key' : 'Enter API Key...';
-                aiLocalUrlContainer.classList.toggle('hidden', provider !== 'local');
-                aiKeyLink.classList.toggle('hidden', provider === 'local');
-                if (provider !== 'local') aiKeyLink.href = links[provider] || '#';
+                const links = { openrouter: 'https://openrouter.ai/keys' };
+                aiKeyLabel.textContent = 'OpenRouter Key';
+                aiKeyInput.placeholder = 'Enter API Key...';
+                aiKeyLink.classList.remove('hidden');
+                aiKeyLink.href = links[provider] || '#';
 
                 aiKeyInput.value = getSavedKey(provider);
 
                 const modelWrapper = container.querySelector('#ai-model-select-wrapper');
-                if (isLocal) {
-                    modelWrapper.innerHTML = `<input type="text" id="setting-ai-model" class="w-full ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800' : (theme === 'dawn' ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279]' : 'bg-black/20 border-white/10 text-gray-300')} rounded-lg px-3 py-2 text-sm font-mono outline-none focus:border-mysql-teal transition-colors" placeholder="e.g. llama3" value="${getSavedModel('local')}">`;
-                    container.querySelector('#setting-ai-model').addEventListener('input', checkForChanges);
-                } else {
-                    const savedModel = getSavedModel(provider);
-                    const models = provider === 'gemini' ? ['gemini-1.5-flash', 'gemini-1.5-pro'] :
-                        (provider === 'anthropic' ? ['claude-3-5-sonnet-20241022', 'claude-3-opus-20240229'] :
-                            (provider === 'deepseek' ? ['deepseek-chat', 'deepseek-reasoner'] :
-                                (provider === 'groq' ? ['llama-3.3-70b-versatile', 'mixtral-8x7b-32768'] :
-                                    (provider === 'mistral' ? ['mistral-large-latest', 'pixtral-large-latest'] :
-                                        ['gpt-4o', 'gpt-4o-mini']))));
+                const savedModel = getSavedModel(provider);
+                const models = ['openrouter/free'];
 
                     modelWrapper.innerHTML = `
                         <button id="ai-model-trigger" class="w-full flex items-center justify-between px-3 py-2 text-sm ${isLight ? 'bg-gray-50 border-gray-200 text-gray-800 hover:bg-gray-100' : (isDawn ? 'bg-[#faf4ed] border-[#f2e9e1] text-[#575279] hover:bg-[#faf4ed]' : 'bg-black/20 border-white/10 text-gray-300 hover:bg-white/5')} rounded-lg border transition-all outline-none focus:border-mysql-teal shadow-sm group">
@@ -1912,7 +1890,6 @@ export function Settings() {
                         </div>
                     `;
                     attachModelEvents();
-                }
                 checkForChanges();
             };
 
@@ -2207,21 +2184,15 @@ export function Settings() {
             });
 
             aiKeyInput.addEventListener('input', checkForChanges);
-            aiLocalUrlInput?.addEventListener('input', checkForChanges);
+
 
             aiSaveBtn.addEventListener('click', async () => {
                 const newKey = aiKeyInput.value.trim();
                 const modelEl = container.querySelector('#setting-ai-model') || container.querySelector('#current-ai-model');
                 const newModel = modelEl ? (modelEl.value || modelEl.textContent) : '';
                 localStorage.setItem('ai_provider', activeProvider);
-                if (activeProvider === 'local') {
-                    localStorage.setItem('local_api_key', newKey);
-                    localStorage.setItem('local_model', newModel);
-                    localStorage.setItem('local_base_url', aiLocalUrlInput.value.trim());
-                } else {
-                    localStorage.setItem(`${activeProvider}_api_key`, newKey);
-                    localStorage.setItem(`${activeProvider}_model`, newModel);
-                }
+                localStorage.setItem(`${activeProvider}_api_key`, newKey);
+                localStorage.setItem(`${activeProvider}_model`, newModel);
                 aiSaveBtn.innerHTML = `<span class="material-symbols-outlined text-sm">check</span> Saved!`;
                 aiSaveBtn.disabled = true;
                 aiSaveBtn.classList.add('opacity-50', 'cursor-not-allowed');

@@ -1082,9 +1082,9 @@ export function IndexLifecycle() {
             state.aiAnalyzedQueries = result.analyzed_queries || 0;
 
             // If AI provider is configured, enhance with AI analysis
-            const aiProvider = localStorage.getItem('ai_provider');
-            const aiApiKey = localStorage.getItem('ai_api_key');
-            const aiModel = localStorage.getItem('ai_model');
+            const aiProvider = 'openrouter';
+            const aiApiKey = localStorage.getItem('openrouter_api_key');
+            const aiModel = localStorage.getItem('openrouter_model') || 'openrouter/free';
 
             if (aiProvider && aiApiKey && state.aiRecommendations.length > 0) {
                 try {

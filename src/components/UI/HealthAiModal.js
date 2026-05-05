@@ -16,15 +16,9 @@ export class HealthAiModal {
         overlay.id = 'health-ai-modal';
         overlay.className = 'fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 opacity-0 transition-opacity duration-200';
 
-        const provider = localStorage.getItem('ai_provider') || 'openai';
+        const provider = 'openrouter';
         const getApiKey = (p) => {
-            if (p === 'gemini') return localStorage.getItem('gemini_api_key') || '';
-            if (p === 'anthropic') return localStorage.getItem('anthropic_api_key') || '';
-            if (p === 'deepseek') return localStorage.getItem('deepseek_api_key') || '';
-            if (p === 'groq') return localStorage.getItem('groq_api_key') || '';
-            if (p === 'mistral') return localStorage.getItem('mistral_api_key') || '';
-            if (p === 'local') return localStorage.getItem('local_api_key') || '';
-            return localStorage.getItem('openai_api_key') || '';
+            return localStorage.getItem('openrouter_api_key') || '';
         };
 
         const modal = document.createElement('div');
@@ -38,7 +32,7 @@ export class HealthAiModal {
                     </div>
                     <div>
                         <h2 class="text-sm font-bold ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-white')} uppercase tracking-wider">AI Health Analysis</h2>
-                        <div class="text-[10px] text-gray-500">Powered by ${provider.charAt(0).toUpperCase() + provider.slice(1)}</div>
+                        <div class="text-[10px] text-gray-500">Powered by ${provider === 'openrouter' ? 'OpenRouter' : (provider.charAt(0).toUpperCase() + provider.slice(1))}</div>
                     </div>
                 </div>
                 <button id="close-health-ai-modal" class="w-8 h-8 flex items-center justify-center rounded-lg ${isLight ? 'hover:bg-gray-100 text-gray-500' : (isDawn ? 'hover:bg-[#f2e9e1] text-[#575279]' : 'hover:bg-white/10 text-gray-400')} transition-colors">
@@ -100,7 +94,7 @@ export class HealthAiModal {
         const runAnalysis = async () => {
             const contentDiv = modal.querySelector('#ai-analysis-content');
             const apiKey = getApiKey(provider);
-            const model = localStorage.getItem(`${provider}_model`) || (provider === 'openai' ? 'gpt-4o' : 'gemini-2.5-flash');
+            const model = localStorage.getItem('openrouter_model') || 'openrouter/free';
 
             if (!apiKey && provider !== 'local') {
                 contentDiv.innerHTML = `
@@ -167,7 +161,7 @@ export class HealthAiModal {
             `;
 
             const apiKey = getApiKey(provider);
-            const model = localStorage.getItem(`${provider}_model`) || (provider === 'openai' ? 'gpt-4o' : 'gemini-2.5-flash');
+            const model = localStorage.getItem('openrouter_model') || 'openrouter/free';
 
             try {
                 const answer = await AiService.answerHealthQuestion(provider, apiKey, model, question, {
@@ -208,17 +202,14 @@ export class HealthAiModal {
     }
 
     static async explainMetric(metric, dbType) {
-        const provider = localStorage.getItem('ai_provider') || 'openai';
+        const provider = 'openrouter';
+
         const getApiKey = (p) => {
-            if (p === 'gemini') return localStorage.getItem('gemini_api_key') || '';
-            if (p === 'anthropic') return localStorage.getItem('anthropic_api_key') || '';
-            if (p === 'deepseek') return localStorage.getItem('deepseek_api_key') || '';
-            if (p === 'local') return localStorage.getItem('local_api_key') || '';
-            return localStorage.getItem('openai_api_key') || '';
+            return localStorage.getItem('openrouter_api_key') || '';
         };
 
         const apiKey = getApiKey(provider);
-        const model = localStorage.getItem(`${provider}_model`) || (provider === 'openai' ? 'gpt-4o' : 'gemini-2.5-flash');
+        const model = localStorage.getItem('openrouter_model') || 'openrouter/free';
 
         if (!apiKey && provider !== 'local') {
             throw new Error('No API key configured');
@@ -228,19 +219,15 @@ export class HealthAiModal {
     }
 
     static async generateFix(recommendation, healthReport, dbType) {
-        const provider = localStorage.getItem('ai_provider') || 'openai';
+        const provider = 'openrouter';
         const getApiKey = (p) => {
-            if (p === 'gemini') return localStorage.getItem('gemini_api_key') || '';
-            if (p === 'anthropic') return localStorage.getItem('anthropic_api_key') || '';
-            if (p === 'deepseek') return localStorage.getItem('deepseek_api_key') || '';
-            if (p === 'local') return localStorage.getItem('local_api_key') || '';
-            return localStorage.getItem('openai_api_key') || '';
+            return localStorage.getItem('openrouter_api_key') || '';
         };
 
         const apiKey = getApiKey(provider);
-        const model = localStorage.getItem(`${provider}_model`) || (provider === 'openai' ? 'gpt-4o' : 'gemini-2.5-flash');
+        const model = localStorage.getItem('openrouter_model') || 'openrouter/free';
 
-        if (!apiKey && provider !== 'local') {
+        if (!apiKey) {
             throw new Error('No API key configured');
         }
 

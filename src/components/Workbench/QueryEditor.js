@@ -14,6 +14,7 @@ import { AskAiModal } from '../UI/AskAiModal.js';
 import { AskAiBar } from '../UI/AskAiBar.js';
 import { AiService } from '../../utils/AiService.js';
 import { AiAssistancePanel } from '../UI/AiAssistancePanel.js';
+import { AiAssistanceModal } from '../UI/AiAssistanceModal.js';
 import { SettingsManager } from '../../utils/SettingsManager.js';
 import { SETTINGS_PATHS } from '../../constants/settingsKeys.js';
 import { detectSyntaxErrors } from './editor/syntaxChecker.js';
@@ -3146,12 +3147,9 @@ export function QueryEditor() {
 
     // --- AI Assistance Handlers ---
     const getAiConfig = () => {
-        const provider = localStorage.getItem('ai_provider') || 'openai';
-        const apiKey = localStorage.getItem(`${provider} _api_key`) || '';
-        const model = localStorage.getItem(`${provider} _model`) ||
-            (provider === 'gemini' ? 'gemini-2.5-flash' :
-                provider === 'anthropic' ? 'claude-3-5-sonnet-20241022' :
-                    provider === 'deepseek' ? 'deepseek-chat' : 'gpt-4o');
+        const provider = 'openrouter';
+        const apiKey = localStorage.getItem('openrouter_api_key') || '';
+        const model = localStorage.getItem('openrouter_model') || 'openrouter/free';
         return { provider, apiKey, model };
     };
 

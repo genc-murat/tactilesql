@@ -17,25 +17,14 @@ export class AskAiModal {
         overlay.className = 'fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 opacity-0 transition-opacity duration-200';
 
         // Load saved settings
-        const provider = localStorage.getItem('ai_provider') || 'openai';
-        const isGemini = provider === 'gemini';
-        const isAnthropic = provider === 'anthropic';
-        const isDeepSeek = provider === 'deepseek';
+        const provider = 'openrouter';
         const isLocal = provider === 'local';
 
         const getSavedKey = (p) => {
-            if (p === 'gemini') return localStorage.getItem('gemini_api_key') || '';
-            if (p === 'anthropic') return localStorage.getItem('anthropic_api_key') || '';
-            if (p === 'deepseek') return localStorage.getItem('deepseek_api_key') || '';
-            if (p === 'local') return localStorage.getItem('local_api_key') || '';
-            return localStorage.getItem('openai_api_key') || '';
+            return localStorage.getItem('openrouter_api_key') || '';
         };
         const getSavedModel = (p) => {
-            if (p === 'gemini') return localStorage.getItem('gemini_model') || 'gemini-2.5-flash';
-            if (p === 'anthropic') return localStorage.getItem('anthropic_model') || 'claude-3-5-sonnet-20241022';
-            if (p === 'deepseek') return localStorage.getItem('deepseek_model') || 'deepseek-chat';
-            if (p === 'local') return localStorage.getItem('local_model') || 'llama3';
-            return localStorage.getItem('openai_model') || 'gpt-4o';
+            return localStorage.getItem('openrouter_model') || 'openrouter/free';
         };
 
         const savedKey = getSavedKey(provider);
@@ -52,7 +41,7 @@ export class AskAiModal {
                     </div>
                     <div>
                         <h2 class="text-sm font-bold ${isLight ? 'text-gray-800' : (isDawn ? 'text-[#575279]' : 'text-white')} uppercase tracking-wider">Generate SQL With AI</h2>
-                        <div class="text-[10px] text-gray-500 font-mono">Powered by ${isGemini ? 'Google Gemini' : (isAnthropic ? 'Anthropic' : (isDeepSeek ? 'DeepSeek' : (isLocal ? 'Local AI' : 'OpenAI')))}</div>
+                        <div class="text-[10px] text-gray-500 font-mono">Powered by ${isLocal ? 'Local AI' : 'OpenRouter'}</div>
                     </div>
                 </div>
                 <button id="close-modal" class="w-8 h-8 flex items-center justify-center rounded-lg ${isLight ? 'hover:bg-gray-100 text-gray-500' : (isDawn ? 'hover:bg-[#f2e9e1] text-[#575279]' : 'hover:bg-white/10 text-gray-400')} transition-colors">
@@ -102,25 +91,8 @@ export class AskAiModal {
             modelContainer.appendChild(input);
         } else {
             const getModelItems = () => {
-                if (isGemini) return [
-                    { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', icon: 'auto_awesome' },
-                    { value: 'gemini-2.0-flash-exp', label: 'Gemini 2.0 Flash (Exp)', icon: 'auto_awesome' },
-                    { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash (Stable)', icon: 'auto_awesome' },
-                    { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro (Powerful)', icon: 'auto_awesome' }
-                ];
-                if (isAnthropic) return [
-                    { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet', icon: 'auto_awesome' },
-                    { value: 'claude-3-opus-20240229', label: 'Claude 3 Opus', icon: 'auto_awesome' },
-                    { value: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku', icon: 'auto_awesome' }
-                ];
-                if (isDeepSeek) return [
-                    { value: 'deepseek-chat', label: 'DeepSeek Chat', icon: 'auto_awesome' },
-                    { value: 'deepseek-reasoner', label: 'DeepSeek Reasoner', icon: 'auto_awesome' }
-                ];
                 return [
-                    { value: 'gpt-4o', label: 'GPT-4o (Best)', icon: 'auto_awesome' },
-                    { value: 'gpt-4o-mini', label: 'GPT-4o Mini (Fast)', icon: 'auto_awesome' },
-                    { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo', icon: 'auto_awesome' }
+                    { value: 'openrouter/free', label: 'Free Models Router', icon: 'auto_awesome' }
                 ];
             };
 
@@ -172,17 +144,7 @@ export class AskAiModal {
             }
 
             // Save preferences
-            if (isGemini) {
-                localStorage.setItem('gemini_model', model);
-            } else if (isAnthropic) {
-                localStorage.setItem('anthropic_model', model);
-            } else if (isDeepSeek) {
-                localStorage.setItem('deepseek_model', model);
-            } else if (isLocal) {
-                localStorage.setItem('local_model', model);
-            } else {
-                localStorage.setItem('openai_model', model);
-            }
+            localStorage.setItem('openrouter_model', model);
 
             // UI Loading State
             const statusEl = overlay.querySelector('#ai-status');

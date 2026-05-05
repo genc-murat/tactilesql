@@ -311,12 +311,12 @@ export function QueryProfiler() {
         const resultContainer = container.querySelector('#ai-analysis-result');
         const resultText = resultContainer.querySelector('#ai-analysis-text');
 
-        const provider = localStorage.getItem('ai_provider') || 'openai';
-        const apiKey = localStorage.getItem(`${provider}_api_key`) || '';
-        const model = localStorage.getItem(`${provider}_model`);
+        const provider = 'openrouter';
+        const apiKey = localStorage.getItem('openrouter_api_key') || '';
+        const model = localStorage.getItem('openrouter_model') || 'openrouter/free';
 
-        if (!apiKey && provider !== 'local') {
-            Dialog.alert(`Please configure your ${provider.toUpperCase()} API Key in Settings first.`);
+        if (!apiKey) {
+            Dialog.alert('Please configure your OpenRouter API Key in Settings first.');
             return;
         }
 
