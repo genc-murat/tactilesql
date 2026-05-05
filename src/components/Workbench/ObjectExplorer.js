@@ -242,6 +242,9 @@ export function ObjectExplorer() {
             didStateChangeSinceLastTreeRender = true;
             render();
 
+            // Load objects for expanded databases if not already loaded
+            ensureExpandedDataLoaded();
+
             // Scroll to first match if exists
             if (searchMatches.length > 0) {
                 // Load details for first match if needed (async, ui updates later)
@@ -2985,26 +2988,7 @@ export function ObjectExplorer() {
             });
 
 
-            // Trigger background pre-fetching for all databases
-            if (databases.length > 0) {
-                const sysDbs = getSystemDatabases().map(d => d.toLowerCase());
-                const currentDbsLower = databases.map(d => d.toLowerCase());
-                const userDbs = databases.filter(d => !sysDbs.includes(d.toLowerCase()));
-                const actualSysDbs = databases.filter(d => sysDbs.includes(d.toLowerCase()));
-                const connConfig = connections.find(c => c.id === activeConnectionId);
 
-                // Prioritize user databases
-                (async () => {
-                    for (const db of userDbs) {
-                        if (activeConnectionId !== connConfig.id) break; // Stop if switched away
-                        if (!dbObjects[db]) await loadDatabaseObjects(db, true);
-                    }
-                    for (const db of actualSysDbs) {
-                        if (activeConnectionId !== connConfig.id) break;
-                        if (!dbObjects[db]) await loadDatabaseObjects(db, true);
-                    }
-                })();
-            }
         } catch (error) {
             console.error('Failed to load databases:', error);
             // It's possible the connection is dead, we could handle that by unsetting active status
@@ -3222,7 +3206,7 @@ export function ObjectExplorer() {
     const ensureExpandedDataLoaded = async () => {
         const currentDbList = new Set(databases);
         const dbPromises = Array.from(expandedDbs).map(db => {
-            if (currentDbList.has(db) && !dbObjects[db]) return loadDatabaseObjects(db, true);
+            if (currentDbList.has(db) && !dbObjects[db]) return loadDatabaseObjects(db, false);
             return Promise.resolve();
         });
         const tablePromises = Array.from(expandedTables).map(key => {
