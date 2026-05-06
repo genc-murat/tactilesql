@@ -165,6 +165,26 @@ async fn query_metadata(pool: &Pool, query: &str) -> Result<Vec<String>, String>
     }
 }
 
+const MSSQL_SCHEMAS: &[&str] = &[
+    "dbo",
+    "guest",
+    "sys",
+    "INFORMATION_SCHEMA",
+    "db_owner",
+    "db_accessadmin",
+    "db_securityadmin",
+    "db_ddladmin",
+    "db_backupoperator",
+    "db_datareader",
+    "db_datawriter",
+    "db_denydatareader",
+    "db_denydatawriter",
+];
+
+fn is_mssql_schema(name: &str) -> bool {
+    MSSQL_SCHEMAS.iter().any(|&s| s.eq_ignore_ascii_case(name))
+}
+
 pub(crate) fn split_table_name<'a>(schema: &'a str, table: &'a str) -> (&'a str, &'a str) {
     if let Some(pos) = table.find('.') {
         (&table[..pos], &table[pos + 1..])
@@ -272,15 +292,22 @@ pub async fn get_schemas(pool: &Pool, database: &str) -> Result<Vec<String>, Str
 }
 
 pub async fn get_table_schema(pool: &Pool, database: &str, schema: &str, table: &str) -> Result<Vec<ColumnSchema>, String> {
-    let db_name = if !database.is_empty() && database != "default" { database } else { "master" };
     let (s_name, t_name) = split_table_name(schema, table);
+
+    let (db_prefix, actual_schema) = if is_mssql_schema(database) {
+        (String::new(), database)
+    } else if !database.is_empty() && database != "default" {
+        (format!("[{}].", database), s_name)
+    } else {
+        (String::new(), s_name)
+    };
 
     let query = format!(
         "SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_DEFAULT 
-         FROM [{}].INFORMATION_SCHEMA.COLUMNS 
+         FROM {}INFORMATION_SCHEMA.COLUMNS 
          WHERE TABLE_SCHEMA = '{}' AND TABLE_NAME = '{}' 
          ORDER BY ORDINAL_POSITION",
-        db_name, s_name, t_name
+        db_prefix, actual_schema, t_name
     );
 
     let res = execute_query(pool, query).await?;
@@ -303,15 +330,22 @@ pub async fn get_table_schema(pool: &Pool, database: &str, schema: &str, table: 
 }
 
 pub async fn get_table_ddl(pool: &Pool, database: &str, schema: &str, table: &str) -> Result<String, String> {
-    let db_name = if !database.is_empty() && database != "default" { database } else { "master" };
     let (s_name, t_name) = split_table_name(schema, table);
+
+    let (db_prefix, actual_schema) = if is_mssql_schema(database) {
+        (String::new(), database)
+    } else if !database.is_empty() && database != "default" {
+        (format!("[{}].", database), s_name)
+    } else {
+        (String::new(), s_name)
+    };
 
     let query = format!(
         "SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, IS_NULLABLE, COLUMN_DEFAULT \
-         FROM [{}].INFORMATION_SCHEMA.COLUMNS \
+         FROM {}INFORMATION_SCHEMA.COLUMNS \
          WHERE TABLE_SCHEMA = '{}' AND TABLE_NAME = '{}' \
          ORDER BY ORDINAL_POSITION",
-        db_name, s_name, t_name
+        db_prefix, actual_schema, t_name
     );
 
     let res = execute_query(pool, query).await?;
@@ -466,16 +500,23 @@ pub async fn get_table_primary_keys(pool: &Pool, database: &str, schema: &str, t
 }
 
 pub async fn get_table_constraints(pool: &Pool, database: &str, schema: &str, table: &str) -> Result<Vec<TableConstraint>, String> {
-    let db_name = if !database.is_empty() && database != "default" { database } else { "master" };
     let (s_name, t_name) = split_table_name(schema, table);
+
+    let (db_prefix, actual_schema) = if is_mssql_schema(database) {
+        (String::new(), database)
+    } else if !database.is_empty() && database != "default" {
+        (format!("[{}].", database), s_name)
+    } else {
+        (String::new(), s_name)
+    };
 
     let query = format!(
         "SELECT 
             CONSTRAINT_NAME,
             CONSTRAINT_TYPE
-         FROM [{}].INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+         FROM {}INFORMATION_SCHEMA.TABLE_CONSTRAINTS
          WHERE TABLE_SCHEMA = '{}' AND TABLE_NAME = '{}'",
-        db_name, s_name, t_name
+        db_prefix, actual_schema, t_name
     );
 
     let res = execute_query(pool, query).await?;

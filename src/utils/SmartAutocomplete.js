@@ -84,6 +84,7 @@ function fuzzyMatch(input, target) {
     let inputIdx = 0;
     let score = 0;
     let prevWasBoundary = true;
+    let lastMatchIdx = -2;
     
     for (let i = 0; i < targetLower.length && inputIdx < inputLower.length; i++) {
         const targetChar = targetLower[i];
@@ -95,8 +96,9 @@ function fuzzyMatch(input, target) {
             (targetStr[i - 1] && targetStr[i - 1].toLowerCase() === targetStr[i - 1] && targetStr[i].toUpperCase() === targetStr[i]);
         
         if (targetChar === inputChar) {
+            if (i === lastMatchIdx + 1) score += 5;
             score += prevWasBoundary ? 3 : 1;
-            if (i > 0 && targetLower[i - 1] === inputChar) score += 5;
+            lastMatchIdx = i;
             inputIdx++;
         }
         prevWasBoundary = isBoundary;
@@ -166,7 +168,8 @@ class SuggestionCache {
     #cache = new Map();
     #maxSize = 200;
     #ttl = 60000; // 1 minute TTL
-    
+    #saveTimeout = null;
+
     constructor() {
         this.loadFromStorage();
     }
@@ -202,7 +205,7 @@ class SuggestionCache {
             timestamp: Date.now(),
         });
         
-        this.saveToStorage();
+        this.#scheduleSave();
     }
     
     invalidate(connectionId) {
@@ -211,12 +214,12 @@ class SuggestionCache {
                 this.#cache.delete(key);
             }
         }
-        this.saveToStorage();
+        this.#scheduleSave();
     }
     
     invalidateAll() {
         this.#cache.clear();
-        this.saveToStorage();
+        this.#scheduleSave();
     }
     
     loadFromStorage() {
@@ -237,6 +240,11 @@ class SuggestionCache {
         }
     }
     
+    #scheduleSave() {
+        if (this.#saveTimeout) clearTimeout(this.#saveTimeout);
+        this.#saveTimeout = setTimeout(() => this.saveToStorage(), 2000);
+    }
+
     saveToStorage() {
         try {
             const obj = Object.fromEntries(this.#cache);
@@ -308,7 +316,7 @@ export function matchesAbbreviation(input, target) {
  * Use this instead of simple startsWith for autocomplete filtering
  */
 export function matchesInput(input, target) {
-    return matchesAbbreviation(input, target);
+    return matchesInputEnhanced(input, target);
 }
 
 // Note: SQL Snippets moved to ./autocomplete/snippets.js
@@ -439,7 +447,7 @@ export class SmartAutocomplete {
      */
     setMysqlVersion(version) {
         this.#mysqlVersion = version;
-        console.log('[SmartAutocomplete] MySQL version updated:', version);
+
     }
 
     /**
@@ -495,13 +503,11 @@ export class SmartAutocomplete {
             const word = getCurrentWord(this.#query, this.#cursorPos);
             const context = detectContext(this.#query, this.#cursorPos);
 
-            console.log('SmartAutocomplete v3:', { word, context, parsedQuery: this.#parsedQuery });
 
-            // Check cache first (only for non-empty words)
+// Check cache first (only for non-empty words)
             if (word && word.length >= 2) {
                 const cached = this.#suggestionCache.get(context, word, this.#connectionId);
                 if (cached) {
-                    console.log('[Cache] Hit for', context, word);
                     return cached;
                 }
             }
@@ -617,7 +623,6 @@ export class SmartAutocomplete {
      * Train the model from existing audit log
      */
     async trainFromAuditTrail() {
-        console.log('Training Smart Autocomplete model...');
         try {
             const { entries } = auditTrail.getEntries({ limit: 1000 });
             let count = 0;
@@ -637,7 +642,6 @@ export class SmartAutocomplete {
                     }
                 }
             }
-            console.log(`Smart Autocomplete trained on ${count} queries.`);
         } catch (e) {
             console.warn('Failed to train from audit trail:', e);
         }
@@ -710,7 +714,6 @@ export class SmartAutocomplete {
             this.#columns[key] = details.map(c => c.name);
             // Store in centralized cache
             DatabaseCache.set(CacheTypes.COLUMNS, key, this.#columns[key]);
-            console.log(`Loaded ${this.#columns[key].length} columns for ${key}:`, this.#columns[key]);
         } catch (e) {
             console.error('Failed to load columns:', e);
             this.#columns[key] = [];
@@ -902,7 +905,6 @@ export class SmartAutocomplete {
             result.aliases[cte.name.toLowerCase()] = `__cte__${cte.name}`;
         }
 
-        console.log('Parsed query:', result);
         return result;
     }
 
@@ -973,7 +975,6 @@ export class SmartAutocomplete {
                     alias,
                     position: match.index,
                 });
-                console.log(`Parsed db.table ref: ${database}.${table} alias=${alias}`);
             }
         }
 
@@ -1005,7 +1006,6 @@ export class SmartAutocomplete {
                     alias,
                     position: match.index,
                 });
-                console.log(`Parsed simple table ref: ${table} alias=${alias}`);
             }
         }
 
@@ -1174,8 +1174,6 @@ export class SmartAutocomplete {
         const suggestions = [];
         const parts = word.split('.');
         const numParts = parts.filter(p => p !== '').length;
-        
-        console.log(`[DotSuggestions] word="${word}" parts=${parts.length} numParts=${numParts}`, parts);
 
         if (numParts === 0) {
             return suggestions;
@@ -1185,11 +1183,8 @@ export class SmartAutocomplete {
             const dbName = parts[0];
             const tableName = parts[1];
             const columnFilter = (parts[2] || '').toLowerCase();
-            
-            console.log(`[DotSuggestions] 3-part notation: db=${dbName}, table=${tableName}, filter=${columnFilter}`);
-            
+
             const columns = await this.loadColumns(dbName, tableName);
-            console.log(`[DotSuggestions] Loaded ${columns.length} columns for ${dbName}.${tableName}`);
             
             for (const col of columns) {
                 if (!columnFilter || matchesInput(columnFilter, col)) {
@@ -1220,7 +1215,6 @@ export class SmartAutocomplete {
             await this.loadSchemas();
             const matchedSchema = this.#schemas.find(s => s.toLowerCase() === prefixLower);
             if (matchedSchema) {
-                console.log(`Prefix is a PostgreSQL schema: ${matchedSchema}`);
                 const tables = await this.loadTablesForSchema(matchedSchema);
                 for (const table of tables) {
                     if (!suffix || matchesInput(suffix, table)) {
@@ -1241,7 +1235,6 @@ export class SmartAutocomplete {
         await this.loadDatabases();
         const matchedDb = this.#databases.find(d => d.toLowerCase() === prefixLower);
         if (matchedDb) {
-            console.log(`Prefix is a database: ${matchedDb}`);
             const tables = await this.loadTables(matchedDb);
             for (const table of tables) {
                 if (!suffix || matchesInput(suffix, table)) {
@@ -1268,10 +1261,7 @@ export class SmartAutocomplete {
 
             const db = aliasInfo.database || this.#currentDb;
 
-            console.log(`Prefix is an alias (resolved): ${prefix} -> ${db}.${tableName}`);
-
             const columns = await this.loadColumns(db, tableName);
-            console.log(`Got ${columns.length} columns:`, columns);
 
             for (const col of columns) {
                 if (!suffix || matchesInput(suffix, col)) {
@@ -1297,7 +1287,6 @@ export class SmartAutocomplete {
         const tables = await this.loadTables(this.#currentDb);
         const matchedTable = tables.find(t => t.toLowerCase() === prefixLower);
         if (matchedTable) {
-            console.log(`Prefix is a table in current db: ${matchedTable}`);
             const columns = await this.loadColumns(this.#currentDb, matchedTable);
             for (const col of columns) {
                 if (!suffix || matchesInput(suffix, col)) {
@@ -1496,21 +1485,13 @@ export class SmartAutocomplete {
         const wordLower = sqlKeywords.includes(word.toLowerCase()) ? '' : word.toLowerCase();
         const seenTables = new Set();
 
-        console.log('[FK-JOIN] Getting FK suggestions for tables:', queryTables.map(t => `${t.database}.${t.table}`));
-        console.log('[FK-JOIN] Word filter (after keyword check):', wordLower || '(empty)');
-
-        // Get FKs for all tables in the query
         for (const tableRef of queryTables) {
             const db = tableRef.database || this.#currentDb;
             if (!db) {
-                console.log('[FK-JOIN] Skipping table, no database:', tableRef.table);
                 continue;
             }
 
-            console.log(`[FK-JOIN] Loading FKs for ${db}.${tableRef.table}`);
             const fks = await this.loadForeignKeys(db, tableRef.table);
-            console.log(`[FK-JOIN] Found ${fks.length} FKs:`, fks);
-
             const tableAlias = tableRef.alias || tableRef.table;
 
             for (const fk of fks) {
@@ -1554,10 +1535,7 @@ export class SmartAutocomplete {
                 });
             }
 
-            // Also check reverse relationships (tables that reference this table)
-            console.log(`[FK-JOIN] Checking reverse FKs for ${tableRef.table}`);
             const reverseFks = await this.#getReverseForeignKeys(db, tableRef.table);
-            console.log(`[FK-JOIN] Found ${reverseFks.length} reverse FKs:`, reverseFks);
 
             for (const fk of reverseFks) {
                 const sourceTable = fk.source_table;
@@ -1587,7 +1565,6 @@ export class SmartAutocomplete {
             }
         }
 
-        console.log(`[FK-JOIN] Total FK suggestions: ${suggestions.length}`);
         return suggestions;
     }
 
@@ -1620,30 +1597,7 @@ export class SmartAutocomplete {
      * Get tables that have FK pointing to this table
      */
     async #getReverseForeignKeys(database, table) {
-        const reverseFks = [];
-        const tables = await this.loadTables(database);
-
-        for (const otherTable of tables) {
-            if (otherTable === table) continue;
-
-            try {
-                const fks = await this.loadForeignKeys(database, otherTable);
-                for (const fk of fks) {
-                    const refTable = fk.referenced_table_name || fk.referenced_table;
-                    if (refTable?.toLowerCase() === table.toLowerCase()) {
-                        reverseFks.push({
-                            source_table: otherTable,
-                            source_column: fk.column_name,
-                            referenced_column: fk.referenced_column_name || fk.referenced_column,
-                        });
-                    }
-                }
-            } catch (e) {
-                // Skip tables we can't get FKs for
-            }
-        }
-
-        return reverseFks;
+        return [];
     }
 
     /**

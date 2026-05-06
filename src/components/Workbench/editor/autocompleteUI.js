@@ -6,7 +6,8 @@
  */
 
 import { getCurrentWord, getCaretCoordinates } from './caretPosition.js';
-import { smartAutocomplete } from '../../../utils/SmartAutocomplete.js';
+import { smartAutocomplete, matchesInputEnhanced, getMatchScore } from '../../../utils/SmartAutocomplete.js';
+import { detectContext, getCurrentWord as getParserCurrentWord } from '../../../utils/autocomplete/parser.js';
 import { toastWarning } from '../../../utils/Toast.js';
 
 /**
@@ -37,6 +38,12 @@ export function createAutocompleteUI(deps) {
     let selectedIndex = 0;
     let visible = false;
 
+    // Re-filtering state
+    let generation = 0;
+    let lastWord = '';
+    let lastContext = null;
+    let allSuggestions = [];
+
     // Snippet placeholder state
     let snippetPlaceholders = [];
     let currentPlaceholderIndex = 0;
@@ -48,8 +55,47 @@ export function createAutocompleteUI(deps) {
             return;
         }
 
+        const currentGen = ++generation;
         const word = getCurrentWord(textarea);
-        suggestions = await getSuggestions(word, textarea);
+        const query = textarea.value || '';
+        const cursorPos = textarea.selectionStart || 0;
+        const context = detectContext(query, cursorPos);
+
+        if (
+            allSuggestions.length > 0 &&
+            lastContext === context &&
+            word.length > lastWord.length &&
+            word.length > 0 &&
+            word.toLowerCase().startsWith(lastWord.toLowerCase())
+        ) {
+            suggestions = allSuggestions.filter(s => {
+                const label = s.display || s.value || '';
+                return matchesInputEnhanced(word, label);
+            });
+            suggestions.sort((a, b) => {
+                const scoreA = getMatchScore(word, a.display || a.value || '');
+                const scoreB = getMatchScore(word, b.display || b.value || '');
+                return scoreB - scoreA;
+            });
+            suggestions = suggestions.slice(0, 25);
+            selectedIndex = 0;
+            if (suggestions.length > 0) {
+                visible = true;
+                render(textarea);
+            } else {
+                hide();
+            }
+            return;
+        }
+
+        const newSuggestions = await getSuggestions(word, textarea);
+
+        if (currentGen !== generation) return;
+
+        lastWord = word;
+        lastContext = context;
+        allSuggestions = newSuggestions;
+        suggestions = newSuggestions;
         selectedIndex = 0;
 
         if (suggestions.length > 0) {
@@ -62,6 +108,9 @@ export function createAutocompleteUI(deps) {
 
     const hide = () => {
         visible = false;
+        lastWord = '';
+        lastContext = null;
+        allSuggestions = [];
         const popup = container.querySelector('#autocomplete-popup');
         if (popup) popup.remove();
     };

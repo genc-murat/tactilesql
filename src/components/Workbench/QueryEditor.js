@@ -661,11 +661,6 @@ export function QueryEditor() {
         };
 
         try {
-            await loadDatabasesForAutocomplete();
-            if (currentDb) {
-                await loadTablesForAutocomplete(currentDb);
-            }
-
             smartAutocomplete.setDbType(activeDbType);
             await smartAutocomplete.loadDatabases();
             if (currentDb) {
